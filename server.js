@@ -1,0 +1,1188 @@
+const express = require('express');
+const http = require('http');
+const path = require('path');
+const { Server } = require('socket.io');
+const { ProfileStore, AVATARS, avatarInfo } = require('./lib/profile-store');
+const { recordWager, recordOutcome, claimDailyBonus, publicProgress } = require('./lib/progression');
+const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
+const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
+const { HAND_NAMES, compareScores, bestPokerScore } = require('./lib/poker-evaluator');
+const { DIFFICULTIES, STYLES, createBot, publicBot } = require('./lib/bots/catalog');
+const { BotController } = require('./lib/bots/bot-controller');
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: true, credentials: true } });
+const PORT = process.env.PORT || 3000;
+
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size, botTasks: botController?.tasks.size || 0 }));
+app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+const rooms = new Map();
+const profiles = new ProfileStore(process.env.PROFILE_STORE_PATH);
+let botController = null;
+const ROOM_CAPACITY = 6;
+const BOT_ONLY_ROOM_TTL_MS = Math.max(100, Number(process.env.BOT_ONLY_ROOM_TTL_MS) || 5 * 60 * 1000);
+const SUITS = ['S', 'H', 'D', 'C'];
+const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+
+function cleanName(value) {
+  return String(value || '').replace(/[<>]/g, '').trim().slice(0, 18);
+}
+function cleanRoomName(value) {
+  return String(value || '').replace(/[<>]/g, '').trim().slice(0, 28);
+}
+function cleanMessage(value) {
+  return String(value || '').replace(/[<>]/g, '').trim().slice(0, 180);
+}
+function makeCode() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code;
+  do {
+    code = Array.from({ length: 5 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+  } while (rooms.has(code));
+  return code;
+}
+function makeDeck(decks = 1) {
+  const deck = [];
+  for (let n = 0; n < decks; n++) {
+    for (const suit of SUITS) for (const rank of RANKS) deck.push(rank + suit);
+  }
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  return deck;
+}
+function draw(room) {
+  if (!room.deck || room.deck.length < 15) room.deck = makeDeck(room.game === 'blackjack' ? 4 : 1);
+  return room.deck.pop();
+}
+function addSystem(room, text) {
+  room.messages.push({ id: `${Date.now()}-${Math.random()}`, system: true, text, time: Date.now() });
+  room.messages = room.messages.slice(-40);
+}
+function newPlayer(id, socket, name, avatar) {
+  const profile = profiles.getOrCreate(id, name, avatar);
+  const player = {
+    id: profile.id,
+    socketId: socket.id,
+    name: profile.name,
+    avatar: profile.avatar,
+    connected: true,
+    hand: [],
+    bet: 0,
+    roundBet: 0,
+    totalBet: 0,
+    status: 'waiting',
+    folded: false,
+    allIn: false,
+    acted: false,
+    quickChoice: null
+  };
+  Object.defineProperty(player, '_profile', { value: profile, enumerable: false });
+  Object.defineProperty(player, 'chips', {
+    enumerable: true,
+    get: () => profile.chips,
+    set: value => { profile.chips = Math.max(0, Math.floor(Number(value) || 0)); profiles.touch(profile); }
+  });
+  return player;
+}
+function createRoom(game, host, socket, requestedName) {
+  const code = makeCode();
+  const fallbackNames = {
+    poker: `Mesa de ${host.name}`,
+    blackjack: `Club 21 de ${host.name}`,
+    roulette: `Ruleta de ${host.name}`,
+    dice: `Dados de ${host.name}`,
+    coinflip: `Duelo de ${host.name}`
+  };
+  const quick = isQuickGame(game);
+  const room = {
+    code,
+    name: cleanRoomName(requestedName) || fallbackNames[game] || `Mesa de ${host.name}`,
+    game,
+    hostId: host.id,
+    players: [host],
+    phase: game === 'blackjack' || quick ? 'betting' : 'waiting',
+    deck: [],
+    dealerHand: [],
+    community: [],
+    pot: 0,
+    currentBet: 0,
+    minRaise: 20,
+    turnId: null,
+    turnDeadline: null,
+    turnDuration: game === 'poker' ? 30000 : game === 'blackjack' ? 25000 : null,
+    turnNonce: 0,
+    dealerIndex: -1,
+    handNumber: 0,
+    messages: [],
+    results: [],
+    quickResult: null,
+    recentWinners: [],
+    specialEvent: quick ? rollSpecialEvent() : null,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  Object.defineProperty(room, '_timers', { value: new Set(), enumerable: false });
+  Object.defineProperty(room, '_turnTimer', { value: null, writable: true, enumerable: false });
+  Object.defineProperty(room, '_cleanupTimer', { value: null, writable: true, enumerable: false });
+  addSystem(room, `${host.name} abrió la mesa.`);
+  rooms.set(code, room);
+  socket.join(code);
+  return room;
+}
+function playerForSocket(socket) {
+  const room = rooms.get(socket.data.roomCode);
+  if (!room) return {};
+  return { room, player: room.players.find(p => p.id === socket.data.playerId) };
+}
+function isPokerActive(room) {
+  return ['preflop', 'flop', 'turn', 'river'].includes(room.phase);
+}
+function publicRoom(room, viewerId) {
+  return {
+    code: room.code,
+    name: room.name,
+    game: room.game,
+    hostId: room.hostId,
+    phase: room.phase,
+    players: room.players.map((p, index) => ({
+      id: p.id,
+      seat: index,
+      name: p.name,
+      avatar: p.avatar || p._profile?.avatar || 'fox',
+      chips: p.chips,
+      stats: p._profile ? publicProgress(p._profile).stats : null,
+      connected: p.connected,
+      isBot: Boolean(p.isBot),
+      bot: publicBot(p),
+      hand: room.game === 'blackjack'
+        ? p.hand
+        : (p.id === viewerId || (room.phase === 'showdown' && !p.folded) ? p.hand : p.hand.map(() => 'XX')),
+      bet: p.bet,
+      roundBet: p.roundBet,
+      totalBet: p.totalBet,
+      status: p.status,
+      folded: p.folded,
+      allIn: p.allIn,
+      quickChoice: p.id === viewerId || room.phase === 'results' ? p.quickChoice : (p.bet > 0 ? 'locked' : null),
+      isHost: p.id === room.hostId
+    })),
+    dealerHand: room.game === 'blackjack' && room.phase === 'playing' && room.dealerHand.length > 1
+      ? [room.dealerHand[0], 'XX']
+      : room.dealerHand,
+    community: room.community,
+    pot: room.pot,
+    currentBet: room.currentBet,
+    minRaise: room.minRaise,
+    turnId: room.turnId,
+    turnDeadline: room.turnDeadline,
+    turnDuration: room.turnDuration,
+    dealerIndex: room.dealerIndex,
+    handNumber: room.handNumber,
+    messages: room.messages,
+    results: room.results,
+    quickResult: room.quickResult,
+    recentWinners: room.recentWinners || [],
+    specialEvent: room.specialEvent || null,
+    gameMeta: QUICK_GAMES[room.game] || null,
+    viewerProfile: (() => {
+      const viewer = room.players.find(player => player.id === viewerId);
+      return viewer?._profile ? publicProgress(viewer._profile, true) : null;
+    })(),
+    avatars: AVATARS,
+    botOptions: {
+      difficulties: Object.values(DIFFICULTIES).map(({ id, label }) => ({ id, label })),
+      styles: Object.values(STYLES).map(({ id, label }) => ({ id, label })),
+      capacity: ROOM_CAPACITY
+    }
+  };
+}
+function lobbySnapshot() {
+  return [...rooms.values()]
+    .filter(room => room.players.some(player => player.connected))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .map(room => ({
+      code: room.code,
+      name: room.name,
+      game: room.game,
+      phase: room.phase,
+      players: room.players.filter(player => player.connected).length,
+      humans: room.players.filter(player => player.connected && !player.isBot).length,
+      bots: room.players.filter(player => player.connected && player.isBot).length,
+      capacity: ROOM_CAPACITY,
+      host: room.players.find(player => player.id === room.hostId)?.name || 'Sin anfitrión',
+      handNumber: room.handNumber,
+      createdAt: room.createdAt
+    }));
+}
+function broadcastLobby() {
+  const list = lobbySnapshot();
+  io.emit('lobby_state', {
+    rooms: list,
+    playersOnline: list.reduce((sum, room) => sum + room.humans, 0)
+  });
+}
+function gameEvent(room, type, text, playerId = null, meta = {}) {
+  const event = { type, text, playerId, time: Date.now(), ...meta };
+  if (playerId) {
+    const player = room.players.find(item => item.id === playerId);
+    if (player?.socketId) io.to(player.socketId).emit('game_event', event);
+  } else io.to(room.code).emit('game_event', event);
+}
+function emitProgress(room, player, events = []) {
+  if (!events.length || !player?.socketId) return;
+  io.to(player.socketId).emit('profile_event', { events, profile: publicProgress(player._profile, true) });
+  for (const event of events) {
+    if (event.type === 'achievement') {
+      io.to(room.code).emit('social_event', { type: 'achievement', playerId: player.id, name: player.name, icon: event.icon, text: `${player.name} desbloqueó “${event.name}”.` });
+    }
+  }
+}
+function claimPlayerDaily(room, player) {
+  const events = claimDailyBonus(player._profile);
+  profiles.touch(player._profile);
+  emitProgress(room, player, events);
+}
+function trackWager(room, player, amount) {
+  const events = recordWager(player._profile, amount);
+  if (!player.isBot) profiles.touch(player._profile);
+  emitProgress(room, player, events);
+}
+function completePlayerRound(room, player, net) {
+  let finalNet = Math.floor(Number(net) || 0);
+  const specialBonus = bonusFor(room.specialEvent, finalNet);
+  if (specialBonus > 0) {
+    player.chips += specialBonus;
+    finalNet += specialBonus;
+    gameEvent(room, 'special_reward', `${room.specialEvent.label}: +${specialBonus} fichas.`, player.id, { amount: specialBonus, event: room.specialEvent });
+  }
+  const events = recordOutcome(player._profile, { game: room.game, net: finalNet });
+  if (!player.isBot) profiles.touch(player._profile);
+  if (player.isBot && player.botStats) {
+    player.botStats.roundsPlayed++;
+    if (finalNet > 0) { player.botStats.wins++; player.botStats.chipsWon += finalNet; }
+    else if (finalNet < 0) { player.botStats.losses++; player.botStats.chipsLost += Math.abs(finalNet); }
+    else player.botStats.pushes++;
+    if (!player.botStats.games.includes(room.game)) player.botStats.games.push(room.game);
+  }
+  emitProgress(room, player, events);
+  if (finalNet >= 500 || room.specialEvent?.type === 'jackpot' && finalNet > 0) {
+    io.to(room.code).emit('social_event', { type: 'big_win', playerId: player.id, name: player.name, amount: finalNet, text: `${player.name} logró una gran ganancia de ${finalNet} fichas.` });
+  }
+  return { net: finalNet, specialBonus };
+}
+function addRecentWinner(room, player, amount) {
+  if (amount <= 0) return;
+  room.recentWinners.unshift({ playerId: player.id, name: player.name, avatar: player.avatar, amount, game: room.game, time: Date.now() });
+  room.recentWinners = room.recentWinners.slice(0, 8);
+}
+function beginSpecialEvent(room) {
+  room.specialEvent = rollSpecialEvent();
+  if (room.specialEvent) gameEvent(room, 'special', `${room.specialEvent.icon} ${room.specialEvent.label}: ${room.specialEvent.description}.`);
+}
+function publishRoom(room, includeLobby = false) {
+  if (!room || !rooms.has(room.code)) return;
+  room.updatedAt = Date.now();
+  for (const player of room.players) {
+    if (player._profile) {
+      player.name = player._profile.name;
+      player.avatar = player._profile.avatar;
+      if (!player.isBot) profiles.touch(player._profile);
+    }
+    if (player.connected && player.socketId) io.to(player.socketId).emit('room_state', publicRoom(room, player.id));
+  }
+  if (includeLobby) broadcastLobby();
+}
+function broadcast(room) {
+  publishRoom(room, true);
+  botController?.sync(room);
+}
+function scheduleRoomTask(room, callback, delay) {
+  if (!room?._timers || !rooms.has(room.code)) return null;
+  let timer = null;
+  timer = setTimeout(() => {
+    room._timers.delete(timer);
+    callback();
+  }, Math.max(0, delay));
+  timer.unref?.();
+  room._timers.add(timer);
+  return timer;
+}
+function clearRoomTasks(room) {
+  if (!room) return;
+  for (const timer of room._timers || []) clearTimeout(timer);
+  room._timers?.clear();
+  room._turnTimer = null;
+  if (room._cleanupTimer) clearTimeout(room._cleanupTimer);
+  room._cleanupTimer = null;
+  botController?.cancelRoom(room.code);
+}
+function destroyRoom(code) {
+  const room = rooms.get(code);
+  if (!room) return false;
+  clearRoomTasks(room);
+  rooms.delete(code);
+  broadcastLobby();
+  return true;
+}
+function clearTurn(room) {
+  room.turnNonce = (room.turnNonce || 0) + 1;
+  room.turnId = null;
+  room.turnDeadline = null;
+  if (room._turnTimer) {
+    clearTimeout(room._turnTimer);
+    room._timers?.delete(room._turnTimer);
+    room._turnTimer = null;
+  }
+}
+function setTurn(room, playerId) {
+  clearTurn(room);
+  if (!playerId) return;
+  room.turnId = playerId;
+  room.turnDuration = room.game === 'poker' ? 30000 : 25000;
+  room.turnDeadline = Date.now() + room.turnDuration;
+  const nonce = room.turnNonce;
+  const player = room.players.find(item => item.id === playerId);
+  if (player) gameEvent(room, 'turn', 'Es tu turno. Elige tu jugada.', playerId, { deadline: room.turnDeadline });
+  room._turnTimer = scheduleRoomTask(room, () => {
+    room._turnTimer = null;
+    handleTurnTimeout(room.code, playerId, nonce);
+  }, room.turnDuration + 80);
+}
+function handleTurnTimeout(code, playerId, nonce) {
+  const room = rooms.get(code);
+  if (!room || room.turnId !== playerId || room.turnNonce !== nonce || Date.now() < room.turnDeadline) return;
+  const player = room.players.find(item => item.id === playerId);
+  if (!player) return;
+  if (room.game === 'poker' && isPokerActive(room)) {
+    const canCheck = player.roundBet === room.currentBet;
+    executePokerAction(room, player, { action: canCheck ? 'check' : 'fold' });
+    addSystem(room, `${player.name} agotó su tiempo: ${canCheck ? 'pasa automáticamente' : 'se retira automáticamente'}.`);
+    gameEvent(room, 'timeout', `El tiempo de ${player.name} terminó.`);
+  } else if (room.game === 'blackjack' && room.phase === 'playing') {
+    executeBlackjackAction(room, player, 'stand');
+    addSystem(room, `${player.name} agotó su tiempo y se planta automáticamente.`);
+    gameEvent(room, 'timeout', `El tiempo de ${player.name} terminó.`);
+  }
+  broadcast(room);
+}
+function actionError(error, code = 'invalid') { return { ok: false, error, code }; }
+function actionOk(extra = {}) { return { ok: true, ...extra }; }
+function ackResult(ack, result) {
+  if (typeof ack === 'function') ack(result);
+  return result;
+}
+function ackError(ack, message) { return ackResult(ack, actionError(message)); }
+function ackOk(ack, extra = {}) { return ackResult(ack, actionOk(extra)); }
+function requireTurn(room, player, ack) {
+  if (room.turnId !== player.id) {
+    ackError(ack, 'Aún no es tu turno.');
+    return false;
+  }
+  return true;
+}
+function nextConnectedHost(room) {
+  const next = room.players.find(p => p.connected);
+  room.hostId = next ? next.id : null;
+}
+
+// ---------------- BLACKJACK ----------------
+function blackjackScore(hand) {
+  let value = 0;
+  let aces = 0;
+  for (const card of hand) {
+    const rank = card.slice(0, -1);
+    if (rank === 'A') { value += 11; aces++; }
+    else if (['K', 'Q', 'J'].includes(rank)) value += 10;
+    else value += Number(rank);
+  }
+  while (value > 21 && aces > 0) { value -= 10; aces--; }
+  return { value, soft: aces > 0 };
+}
+function activeBlackjackPlayers(room) {
+  return room.players.filter(p => p.bet > 0 && ['playing', 'blackjack'].includes(p.status));
+}
+function nextBlackjackTurn(room, afterId) {
+  const start = room.players.findIndex(p => p.id === afterId);
+  for (let step = 1; step <= room.players.length; step++) {
+    const p = room.players[(start + step) % room.players.length];
+    if (p.bet > 0 && p.status === 'playing') {
+      setTurn(room, p.id);
+      return;
+    }
+  }
+  finishBlackjack(room);
+}
+function finishBlackjack(room) {
+  clearTurn(room);
+  let dealer = blackjackScore(room.dealerHand);
+  while (dealer.value < 17) {
+    room.dealerHand.push(draw(room));
+    dealer = blackjackScore(room.dealerHand);
+  }
+  const dealerNatural = room.dealerHand.length === 2 && dealer.value === 21;
+  const outcomes = [];
+  for (const p of room.players.filter(p => p.bet > 0)) {
+    const score = blackjackScore(p.hand);
+    let label;
+    let payout = 0;
+    if (p.status === 'bust' || score.value > 21) label = 'Pierde';
+    else if (p.status === 'blackjack' && !dealerNatural) { label = 'Blackjack'; payout = p.bet * 2.5; }
+    else if (dealer.value > 21) { label = 'Gana'; payout = p.bet * 2; }
+    else if (score.value > dealer.value) { label = 'Gana'; payout = p.bet * 2; }
+    else if (score.value === dealer.value) { label = 'Empate'; payout = p.bet; }
+    else label = 'Pierde';
+    p.chips += Math.floor(payout);
+    p.status = label.toLowerCase();
+    const baseAmount = payout ? Math.floor(payout - p.bet) : -p.bet;
+    const { net: amount, specialBonus } = completePlayerRound(room, p, baseAmount);
+    outcomes.push({ id: p.id, name: p.name, label, amount, specialBonus });
+    addRecentWinner(room, p, amount);
+    gameEvent(room, amount > 0 ? 'win' : amount < 0 ? 'loss' : 'push', amount > 0 ? `Ganaste ${amount} fichas.` : amount < 0 ? `Perdiste ${Math.abs(amount)} fichas.` : 'Empate: recuperas tu apuesta.', p.id, { amount });
+  }
+  room.results = outcomes;
+  room.phase = 'results';
+  const dealerText = dealer.value > 21 ? `La casa se pasó con ${dealer.value}.` : `La casa terminó con ${dealer.value}.`;
+  addSystem(room, dealerText);
+}
+function startBlackjack(room) {
+  if (room.phase !== 'betting') return actionError('La ronda ya está en curso.');
+  const playing = room.players.filter(p => p.bet > 0 && p.connected);
+  if (!playing.length) return actionError('Al menos una persona debe apostar.');
+  beginSpecialEvent(room);
+  room.deck = room.deck.length > 60 ? room.deck : makeDeck(4);
+  room.dealerHand = [draw(room), draw(room)];
+  room.results = [];
+  room.handNumber++;
+  for (const p of room.players) {
+    p.hand = [];
+    if (p.bet > 0 && p.connected) {
+      p.hand = [draw(room), draw(room)];
+      const score = blackjackScore(p.hand).value;
+      p.status = score === 21 ? 'blackjack' : 'playing';
+    } else p.status = 'waiting';
+  }
+  room.phase = 'playing';
+  clearTurn(room);
+  const first = room.players.find(p => p.bet > 0 && p.status === 'playing');
+  if (first) setTurn(room, first.id);
+  else finishBlackjack(room);
+  addSystem(room, `Ronda ${room.handNumber}: cartas repartidas.`);
+  gameEvent(room, 'round', `Comenzó la ronda ${room.handNumber}.`);
+  return actionOk();
+}
+function resetBlackjack(room) {
+  room.phase = 'betting';
+  clearTurn(room);
+  room.dealerHand = [];
+  room.results = [];
+  room.specialEvent = null;
+  for (const p of room.players) {
+    p.hand = [];
+    p.bet = 0;
+    p.status = 'waiting';
+  }
+}
+
+// ---------------- POKER ----------------
+function takeChips(room, player, amount) {
+  const paid = Math.max(0, Math.min(player.chips, amount));
+  player.chips -= paid;
+  player.roundBet += paid;
+  player.totalBet += paid;
+  if (paid) trackWager(room, player, paid);
+  if (player.chips === 0) player.allIn = true;
+  return paid;
+}
+function nextSeat(room, fromIndex, predicate) {
+  for (let step = 1; step <= room.players.length; step++) {
+    const index = (fromIndex + step) % room.players.length;
+    if (predicate(room.players[index])) return index;
+  }
+  return -1;
+}
+function handPlayers(room) {
+  return room.players.filter(p => p.hand.length === 2);
+}
+function livePokerPlayers(room) {
+  return handPlayers(room).filter(p => !p.folded);
+}
+function actablePokerPlayers(room) {
+  return livePokerPlayers(room).filter(p => !p.allIn && p.connected);
+}
+function setNextPokerTurn(room, afterId) {
+  const start = room.players.findIndex(p => p.id === afterId);
+  const index = nextSeat(room, start, p => p.hand.length === 2 && !p.folded && !p.allIn && p.connected);
+  setTurn(room, index >= 0 ? room.players[index].id : null);
+}
+function pokerRoundComplete(room) {
+  const actable = actablePokerPlayers(room);
+  if (actable.length <= 1 && livePokerPlayers(room).some(p => p.allIn)) return true;
+  return actable.every(p => p.acted && p.roundBet === room.currentBet);
+}
+function awardSinglePokerWinner(room, player) {
+  const payout = room.pot;
+  player.chips += payout;
+  let winnerNet = payout - player.totalBet;
+  const progress = new Map();
+  for (const participant of handPlayers(room)) {
+    const baseNet = participant.id === player.id ? winnerNet : -participant.totalBet;
+    progress.set(participant.id, completePlayerRound(room, participant, baseNet));
+  }
+  const winnerProgress = progress.get(player.id);
+  const totalAward = payout + (winnerProgress?.specialBonus || 0);
+  winnerNet = winnerProgress?.net || winnerNet;
+  room.results = [{ id: player.id, name: player.name, label: 'Gana sin mostrar', amount: totalAward, net: winnerNet }];
+  addRecentWinner(room, player, winnerNet);
+  addSystem(room, `${player.name} gana ${totalAward} fichas; el resto se retiró.`);
+  gameEvent(room, 'win', `Ganaste ${winnerNet} fichas netas.`, player.id, { amount: winnerNet });
+  for (const participant of handPlayers(room).filter(item => item.id !== player.id)) gameEvent(room, 'loss', 'Esta vez no ganaste el bote.', participant.id);
+  room.pot = 0;
+  clearTurn(room);
+  room.phase = 'showdown';
+  player.status = 'winner';
+}
+function advancePokerStreet(room) {
+  for (const p of handPlayers(room)) {
+    p.roundBet = 0;
+    p.acted = false;
+  }
+  room.currentBet = 0;
+  room.minRaise = 20;
+  if (room.phase === 'preflop') {
+    room.community.push(draw(room), draw(room), draw(room));
+    room.phase = 'flop';
+  } else if (room.phase === 'flop') {
+    room.community.push(draw(room));
+    room.phase = 'turn';
+  } else if (room.phase === 'turn') {
+    room.community.push(draw(room));
+    room.phase = 'river';
+  } else {
+    return showdownPoker(room);
+  }
+  addSystem(room, room.phase === 'flop' ? 'Sale el flop.' : room.phase === 'turn' ? 'Sale el turn.' : 'Sale el river.');
+  if (actablePokerPlayers(room).length <= 1) {
+    return advancePokerStreet(room);
+  }
+  setNextPokerTurn(room, room.players[room.dealerIndex]?.id);
+}
+function resolvePokerAfterAction(room, actorId) {
+  const live = livePokerPlayers(room);
+  if (live.length === 1) return awardSinglePokerWinner(room, live[0]);
+  if (pokerRoundComplete(room)) return advancePokerStreet(room);
+  setNextPokerTurn(room, actorId);
+}
+function startPoker(room) {
+  if (!['waiting', 'showdown'].includes(room.phase)) return actionError('La mano actual todavía no termina.');
+  const eligible = room.players.filter(p => p.connected && p.chips >= 20);
+  if (eligible.length < 2) return actionError('Se necesitan al menos 2 jugadores con 20 fichas.');
+  beginSpecialEvent(room);
+  room.deck = makeDeck(1);
+  room.community = [];
+  room.pot = 0;
+  room.currentBet = 0;
+  room.minRaise = 20;
+  room.results = [];
+  room.handNumber++;
+  for (const p of room.players) {
+    p.hand = [];
+    p.roundBet = 0;
+    p.totalBet = 0;
+    p.folded = false;
+    p.allIn = false;
+    p.acted = false;
+    p.status = eligible.includes(p) ? 'playing' : 'waiting';
+  }
+  let nextDealer = room.dealerIndex;
+  do { nextDealer = (nextDealer + 1) % room.players.length; }
+  while (!eligible.includes(room.players[nextDealer]));
+  room.dealerIndex = nextDealer;
+  for (let round = 0; round < 2; round++) {
+    for (let step = 1; step <= room.players.length; step++) {
+      const p = room.players[(room.dealerIndex + step) % room.players.length];
+      if (eligible.includes(p)) p.hand.push(draw(room));
+    }
+  }
+  const dealer = room.players[room.dealerIndex];
+  const sbIndex = eligible.length === 2
+    ? room.dealerIndex
+    : nextSeat(room, room.dealerIndex, p => eligible.includes(p));
+  const bbIndex = nextSeat(room, sbIndex, p => eligible.includes(p));
+  const sb = room.players[sbIndex];
+  const bb = room.players[bbIndex];
+  room.pot += takeChips(room, sb, 10);
+  room.pot += takeChips(room, bb, 20);
+  room.currentBet = Math.max(sb.roundBet, bb.roundBet);
+  room.phase = 'preflop';
+  setNextPokerTurn(room, bb.id);
+  addSystem(room, `Mano ${room.handNumber}. ${dealer.name} reparte; ciegas 10/20.`);
+  gameEvent(room, 'round', `Comenzó la mano ${room.handNumber}.`);
+  return actionOk();
+}
+function showdownPoker(room) {
+  while (room.community.length < 5) room.community.push(draw(room));
+  const live = livePokerPlayers(room);
+  const scored = new Map(live.map(p => [p.id, bestPokerScore([...p.hand, ...room.community])]));
+  const contributors = handPlayers(room).filter(p => p.totalBet > 0);
+  const levels = [...new Set(contributors.map(p => p.totalBet))].sort((a, b) => a - b);
+  const awards = new Map();
+  let previousLevel = 0;
+
+  // Build the main and side pots from each contribution tier. Folded players
+  // add chips to a pot, but are never eligible to win it.
+  for (const level of levels) {
+    const potAmount = (level - previousLevel) * contributors.filter(p => p.totalBet >= level).length;
+    previousLevel = level;
+    const eligible = live.filter(p => p.totalBet >= level);
+    if (!potAmount || !eligible.length) continue;
+    let best = scored.get(eligible[0].id);
+    for (const p of eligible.slice(1)) if (compareScores(scored.get(p.id), best) > 0) best = scored.get(p.id);
+    const winners = eligible.filter(p => compareScores(scored.get(p.id), best) === 0);
+    const share = Math.floor(potAmount / winners.length);
+    let remainder = potAmount - share * winners.length;
+    for (const winner of winners) {
+      const won = share + (remainder-- > 0 ? 1 : 0);
+      awards.set(winner.id, (awards.get(winner.id) || 0) + won);
+    }
+  }
+
+  // Normally the side-pot total equals room.pot. The fallback keeps every
+  // virtual chip accounted for even if a future rule change creates residue.
+  const awarded = [...awards.values()].reduce((sum, amount) => sum + amount, 0);
+  if (awarded < room.pot && live.length) awards.set(live[0].id, (awards.get(live[0].id) || 0) + room.pot - awarded);
+  for (const p of live) {
+    const amount = awards.get(p.id) || 0;
+    if (amount) { p.chips += amount; p.status = 'winner'; }
+  }
+  const participants = handPlayers(room);
+  const progress = new Map();
+  for (const participant of participants) {
+    const baseNet = (awards.get(participant.id) || 0) - participant.totalBet;
+    progress.set(participant.id, completePlayerRound(room, participant, baseNet));
+  }
+  room.results = [...awards.entries()].map(([id, amount]) => {
+    const p = live.find(player => player.id === id);
+    const playerProgress = progress.get(id);
+    const totalAward = amount + (playerProgress?.specialBonus || 0);
+    addRecentWinner(room, p, playerProgress?.net || 0);
+    return { id, name: p.name, label: HAND_NAMES[scored.get(id)[0]], amount: totalAward, net: playerProgress?.net || 0 };
+  });
+  const names = room.results.map(result => result.name);
+  addSystem(room, `${names.join(' y ')} ${names.length > 1 ? 'se reparten' : 'gana'} las fichas del bote.`);
+  for (const result of room.results) gameEvent(room, 'win', `Resultado neto: ${result.net >= 0 ? '+' : ''}${result.net} con ${result.label}.`, result.id, { amount: result.net });
+  for (const player of participants.filter(item => !awards.has(item.id))) gameEvent(room, 'loss', 'Esta vez no ganaste el bote.', player.id);
+  room.pot = 0;
+  clearTurn(room);
+  room.phase = 'showdown';
+}
+
+// ---------------- QUICK SOCIAL GAMES ----------------
+function resetQuickRound(room, announce = true) {
+  room.phase = 'betting';
+  room.results = [];
+  room.quickResult = null;
+  room.specialEvent = rollSpecialEvent();
+  for (const player of room.players) {
+    player.bet = 0;
+    player.quickChoice = null;
+    player.status = 'waiting';
+  }
+  if (announce) {
+    addSystem(room, `Ronda ${room.handNumber + 1}: apuestas abiertas.`);
+    gameEvent(room, 'round', `Apuestas abiertas para la ronda ${room.handNumber + 1}.`);
+    if (room.specialEvent) gameEvent(room, 'special', `${room.specialEvent.icon} ${room.specialEvent.label}: ${room.specialEvent.description}.`);
+  }
+}
+function resolveQuickRound(room) {
+  if (!room || !isQuickGame(room.game) || room.phase !== 'rolling') return;
+  const result = roll(room.game);
+  room.quickResult = result;
+  room.results = [];
+  for (const player of room.players.filter(item => item.bet > 0)) {
+    const multiplier = totalPayoutMultiplier(room.game, player.quickChoice, result);
+    const payout = Math.floor(player.bet * multiplier);
+    if (payout > 0) player.chips += payout;
+    const baseNet = payout - player.bet;
+    const { net, specialBonus } = completePlayerRound(room, player, baseNet);
+    const won = net > 0;
+    player.status = won ? 'winner' : net < 0 ? 'lost' : 'push';
+    const totalPayout = payout + specialBonus;
+    room.results.push({
+      id: player.id, name: player.name, choice: player.quickChoice,
+      choiceLabel: choiceLabel(room.game, player.quickChoice), label: won ? 'Gana' : net < 0 ? 'Pierde' : 'Empate',
+      payout: totalPayout, amount: net, specialBonus
+    });
+    addRecentWinner(room, player, net);
+    gameEvent(room, won ? 'win' : net < 0 ? 'loss' : 'push', won ? `Ganaste ${net} fichas.` : net < 0 ? `Perdiste ${Math.abs(net)} fichas.` : 'La ronda terminó en empate.', player.id, { amount: net });
+  }
+  room.phase = 'results';
+  addSystem(room, `${resultLabel(room.game, result)}. Ronda resuelta.`);
+  gameEvent(room, 'quick_result', `Resultado: ${resultLabel(room.game, result)}.`);
+  broadcast(room);
+}
+
+// Every human and bot action reaches these authoritative executors. The AI
+// proposes decisions, but never mutates cards, chips, turns or outcomes itself.
+function executeQuickBet(room, player, { amount, choice } = {}) {
+  amount = Math.floor(Number(amount));
+  if (!room || !player || !isQuickGame(room.game) || room.phase !== 'betting') return actionError('Las apuestas rápidas no están abiertas.');
+  choice = normalizeChoice(room.game, choice);
+  if (!choice) return actionError('Elige una opción válida.');
+  if (player.bet > 0) return actionError('Ya confirmaste tu apuesta para esta ronda.');
+  if (!Number.isFinite(amount) || amount < 10 || amount > player.chips) return actionError('Apuesta entre 10 y tus fichas disponibles.');
+  player.chips -= amount;
+  player.bet = amount;
+  player.quickChoice = choice;
+  player.status = 'ready';
+  trackWager(room, player, amount);
+  addSystem(room, `${player.name} confirmó una apuesta de ${amount} fichas.`);
+  return actionOk();
+}
+function executeQuickResolve(room, actor) {
+  if (!room || !actor || !isQuickGame(room.game) || actor.id !== room.hostId) return actionError('Solo el anfitrión puede lanzar la ronda.');
+  if (room.phase !== 'betting') return actionError('La ronda no está lista.');
+  if (!room.players.some(item => item.bet > 0 && item.connected)) return actionError('Al menos una persona debe apostar.');
+  room.handNumber++;
+  room.phase = 'rolling';
+  addSystem(room, `Ronda ${room.handNumber}: resultado en camino…`);
+  gameEvent(room, 'roll', `${QUICK_GAMES[room.game].name}: lanzando resultado.`);
+  scheduleRoomTask(room, () => resolveQuickRound(room), 1150);
+  return actionOk();
+}
+function executeQuickNew(room, actor) {
+  if (!room || !actor || !isQuickGame(room.game) || actor.id !== room.hostId || room.phase !== 'results') return actionError('No se puede abrir otra ronda todavía.');
+  resetQuickRound(room);
+  return actionOk();
+}
+function executeBlackjackBet(room, player, { amount } = {}) {
+  amount = Math.floor(Number(amount));
+  if (!room || !player || room.game !== 'blackjack' || room.phase !== 'betting') return actionError('Ahora no se puede apostar.');
+  if (player.bet > 0) return actionError('Ya hiciste tu apuesta.');
+  if (!Number.isFinite(amount) || amount < 10 || amount > player.chips) return actionError('Apuesta entre 10 y tus fichas disponibles.');
+  player.chips -= amount;
+  player.bet = amount;
+  trackWager(room, player, amount);
+  player.status = 'ready';
+  return actionOk();
+}
+function executeBlackjackStart(room, actor) {
+  if (!room || !actor || room.game !== 'blackjack' || actor.id !== room.hostId) return actionError('Solo el anfitrión puede repartir.');
+  return startBlackjack(room);
+}
+function executeBlackjackAction(room, player, action) {
+  if (!room || !player || room.game !== 'blackjack' || room.phase !== 'playing') return actionError('La ronda de blackjack no está activa.', 'stale');
+  if (room.turnId !== player.id) return actionError('Aún no es tu turno.', 'stale');
+  if (action === 'hit') {
+    player.hand.push(draw(room));
+    const value = blackjackScore(player.hand).value;
+    if (value > 21) { player.status = 'bust'; nextBlackjackTurn(room, player.id); }
+    else if (value === 21) { player.status = 'stand'; nextBlackjackTurn(room, player.id); }
+    else setTurn(room, player.id);
+  } else if (action === 'stand') {
+    player.status = 'stand';
+    nextBlackjackTurn(room, player.id);
+  } else if (action === 'double') {
+    if (player.hand.length !== 2 || player.chips < player.bet) return actionError('No puedes doblar esta mano.');
+    const extraBet = player.bet;
+    player.chips -= extraBet;
+    player.bet *= 2;
+    trackWager(room, player, extraBet);
+    player.hand.push(draw(room));
+    player.status = blackjackScore(player.hand).value > 21 ? 'bust' : 'stand';
+    nextBlackjackTurn(room, player.id);
+  } else return actionError('Jugada no válida.');
+  return actionOk();
+}
+function executeBlackjackNew(room, actor) {
+  if (!room || !actor || room.game !== 'blackjack' || actor.id !== room.hostId || room.phase !== 'results') return actionError('No se puede iniciar otra ronda.');
+  resetBlackjack(room);
+  return actionOk();
+}
+function executePokerStart(room, actor) {
+  if (!room || !actor || room.game !== 'poker' || actor.id !== room.hostId) return actionError('Solo el anfitrión puede iniciar la mano.');
+  return startPoker(room);
+}
+function executePokerAction(room, player, { action, amount } = {}) {
+  if (!room || !player || !isPokerActive(room)) return actionError('La mano de póker no está activa.', 'stale');
+  if (room.turnId !== player.id) return actionError('Aún no es tu turno.', 'stale');
+  if (player.folded || player.allIn) return actionError('No puedes hacer esa jugada.');
+  const toCall = Math.max(0, room.currentBet - player.roundBet);
+  if (action === 'fold') {
+    player.folded = true; player.acted = true; player.status = 'folded';
+  } else if (action === 'check') {
+    if (toCall !== 0) return actionError('Debes igualar, subir o retirarte.');
+    player.acted = true;
+  } else if (action === 'call') {
+    if (toCall === 0) return actionError('Puedes pasar.');
+    room.pot += takeChips(room, player, toCall);
+    player.acted = true;
+  } else if (action === 'raise') {
+    amount = Math.floor(Number(amount));
+    if (!Number.isFinite(amount) || amount < room.minRaise) return actionError(`La subida mínima es ${room.minRaise}.`);
+    const target = room.currentBet + amount;
+    const payment = target - player.roundBet;
+    if (payment > player.chips) return actionError('No tienes fichas suficientes para esa subida.');
+    room.pot += takeChips(room, player, payment);
+    room.currentBet = target;
+    room.minRaise = amount;
+    for (const other of handPlayers(room)) if (other.id !== player.id && !other.folded && !other.allIn) other.acted = false;
+    player.acted = true;
+  } else if (action === 'allin') {
+    const oldBet = room.currentBet;
+    const paid = takeChips(room, player, player.chips);
+    room.pot += paid;
+    if (player.roundBet > oldBet) {
+      const raiseSize = player.roundBet - oldBet;
+      room.currentBet = player.roundBet;
+      if (raiseSize >= room.minRaise) {
+        room.minRaise = raiseSize;
+        for (const other of handPlayers(room)) if (other.id !== player.id && !other.folded && !other.allIn) other.acted = false;
+      }
+    }
+    player.acted = true;
+  } else return actionError('Jugada no válida.');
+  resolvePokerAfterAction(room, player.id);
+  return actionOk();
+}
+function executeBotPurpose(room, bot, purpose, decision) {
+  if (purpose === 'poker-turn') return executePokerAction(room, bot, decision);
+  if (purpose === 'blackjack-turn') return executeBlackjackAction(room, bot, decision.action);
+  if (purpose === 'blackjack-bet') return executeBlackjackBet(room, bot, decision);
+  if (purpose === 'quick-bet') return executeQuickBet(room, bot, decision);
+  if (purpose === 'host-poker-start') return executePokerStart(room, bot);
+  if (purpose === 'host-blackjack-start') return executeBlackjackStart(room, bot);
+  if (purpose === 'host-blackjack-new') return executeBlackjackNew(room, bot);
+  if (purpose === 'host-quick-resolve') return executeQuickResolve(room, bot);
+  if (purpose === 'host-quick-new') return executeQuickNew(room, bot);
+  return actionError('Acción de bot desconocida.');
+}
+function forceSafeBotAction(room, bot, purpose) {
+  if (purpose === 'poker-turn' && room.turnId === bot.id) {
+    const action = bot.roundBet === room.currentBet ? 'check' : 'fold';
+    return executePokerAction(room, bot, { action });
+  }
+  if (purpose === 'blackjack-turn' && room.turnId === bot.id) return executeBlackjackAction(room, bot, 'stand');
+  return actionError('No se necesitó una acción automática.');
+}
+function rosterLocked(room) {
+  return isPokerActive(room) || room.phase === 'playing' || room.phase === 'rolling';
+}
+function addBotToRoom(room, options = {}) {
+  if (rosterLocked(room)) return actionError('Espera a que termine la ronda para cambiar bots.');
+  if (room.players.length >= ROOM_CAPACITY) return actionError(`La mesa está llena (máximo ${ROOM_CAPACITY}).`);
+  const bot = createBot(room, options);
+  room.players.push(bot);
+  addSystem(room, `🤖 ${bot.name} se sentó · ${DIFFICULTIES[bot.difficulty].label} · ${STYLES[bot.style].label}.`);
+  gameEvent(room, 'bot_joined', `${bot.name} se unió como bot.`, null, { botId: bot.id });
+  return actionOk({ botId: bot.id });
+}
+function removeBotFromRoom(room, bot) {
+  if (!bot?.isBot) return actionError('Bot no encontrado.');
+  if (rosterLocked(room)) return actionError('Espera a que termine la ronda para retirar bots.');
+  botController?.cancelBot(room.code, bot.id);
+  if ((room.game === 'blackjack' || isQuickGame(room.game)) && room.phase === 'betting' && bot.bet > 0) bot.chips += bot.bet;
+  room.players = room.players.filter(player => player.id !== bot.id);
+  if (room.hostId === bot.id) nextConnectedHost(room);
+  addSystem(room, `🤖 ${bot.name} dejó su asiento.`);
+  return actionOk();
+}
+function scheduleRoomCleanup(room) {
+  if (!room || room.players.some(player => player.connected && !player.isBot)) {
+    if (room?._cleanupTimer) {
+      clearTimeout(room._cleanupTimer);
+      room._timers?.delete(room._cleanupTimer);
+      room._cleanupTimer = null;
+    }
+    return;
+  }
+  if (room._cleanupTimer) return;
+  const delay = room.players.some(player => player.isBot && player.connected) ? BOT_ONLY_ROOM_TTL_MS : 30 * 60 * 1000;
+  room._cleanupTimer = scheduleRoomTask(room, () => {
+    room._cleanupTimer = null;
+    const latest = rooms.get(room.code);
+    if (latest && !latest.players.some(player => player.connected && !player.isBot)) destroyRoom(room.code);
+  }, delay);
+}
+
+function removeOrDisconnectPlayer(room, player, leave = false) { 
+  player.connected = false;
+  if ((room.game === 'blackjack' || isQuickGame(room.game)) && room.phase === 'betting' && player.bet > 0) {
+    player.chips += player.bet;
+    player.bet = 0;
+    player.quickChoice = null;
+    player.status = 'waiting';
+  }
+  if (isPokerActive(room) && player.hand.length && !player.folded && !player.allIn) {
+    player.folded = true;
+    player.status = 'folded';
+    resolvePokerAfterAction(room, player.id);
+  }
+  if (room.game === 'blackjack' && room.phase === 'playing' && room.turnId === player.id) {
+    player.status = 'stand';
+    nextBlackjackTurn(room, player.id);
+  }
+  if (leave && !isPokerActive(room) && room.phase !== 'playing' && room.phase !== 'rolling') {
+    room.players = room.players.filter(p => p.id !== player.id);
+  }
+  if (room.hostId === player.id) nextConnectedHost(room);
+  addSystem(room, `${player.name} salió de la mesa.`);
+  gameEvent(room, 'left', `${player.name} abandonó la sala.`);
+  scheduleRoomCleanup(room);
+}
+
+botController = new BotController({
+  roomExists: code => rooms.has(code),
+  getRoom: code => rooms.get(code),
+  getView: (room, botId) => publicRoom(room, botId),
+  publish: room => publishRoom(room, false),
+  broadcast,
+  execute: executeBotPurpose,
+  forceSafeAction: forceSafeBotAction,
+  announce: (room, bot, label, meta) => gameEvent(room, 'bot_action', `🤖 ${bot.name}: ${label}.`, null, { botId: bot.id, fallback: Boolean(meta?.fallback) }),
+  logError: ({ roomCode, botId, botName, game, purpose, error }) => console.warn(`[BOT_FALLBACK] room=${roomCode} bot=${botId} name=${botName} game=${game} task=${purpose}: ${error.message}`)
+});
+
+io.on('connection', socket => {
+  socket.emit('lobby_state', {
+    rooms: lobbySnapshot(),
+    playersOnline: lobbySnapshot().reduce((sum, room) => sum + room.humans, 0)
+  });
+
+  socket.on('create_room', ({ name, roomName, game, token, avatar } = {}, ack) => {
+    name = cleanName(name);
+    game = ['poker', 'blackjack', ...Object.keys(QUICK_GAMES)].includes(game) ? game : 'poker';
+    if (!name) return ackError(ack, 'Escribe tu nombre.');
+    if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
+    const player = newPlayer(String(token).slice(0, 80), socket, name, avatar);
+    const room = createRoom(game, player, socket, roomName);
+    socket.data.roomCode = room.code;
+    socket.data.playerId = player.id;
+    claimPlayerDaily(room, player);
+    ackOk(ack, { code: room.code });
+    gameEvent(room, 'joined', `${player.name} creó ${room.name}.`);
+    broadcast(room);
+  });
+
+  socket.on('join_room', ({ name, code, token, avatar } = {}, ack) => {
+    name = cleanName(name);
+    if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
+    code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+    const room = rooms.get(code);
+    if (!room) return ackError(ack, 'Esa sala no existe o ya cerró.');
+    let player = room.players.find(p => !p.isBot && p.id === String(token).slice(0, 80));
+    if (player) {
+      player.socketId = socket.id;
+      player.connected = true;
+      profiles.update(player._profile, { name, avatar });
+      player.name = player._profile.name;
+      player.avatar = player._profile.avatar;
+      addSystem(room, `${player.name} volvió a la mesa.`);
+    } else {
+      if (!name) return ackError(ack, 'Escribe tu nombre.');
+      if (room.players.length >= ROOM_CAPACITY) return ackError(ack, `La mesa está llena (máximo ${ROOM_CAPACITY}).`);
+      player = newPlayer(String(token).slice(0, 80), socket, name, avatar);
+      room.players.push(player);
+      addSystem(room, `${player.name} se sentó en la mesa.`);
+    }
+    socket.join(code);
+    socket.data.roomCode = code;
+    socket.data.playerId = player.id;
+    if (!room.hostId || room.players.find(item => item.id === room.hostId)?.isBot) room.hostId = player.id;
+    scheduleRoomCleanup(room);
+    claimPlayerDaily(room, player);
+    ackOk(ack, { code, game: room.game });
+    gameEvent(room, 'joined', `${player.name} se unió a la sala.`);
+    broadcast(room);
+  });
+
+  socket.on('chat', ({ text } = {}, ack) => {
+    const { room, player } = playerForSocket(socket);
+    text = cleanMessage(text);
+    if (!room || !player || !text) return ackError(ack, 'No se pudo enviar.');
+    room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: player.id, name: player.name, text, time: Date.now() });
+    room.messages = room.messages.slice(-40);
+    ackOk(ack);
+    broadcast(room);
+  });
+
+  socket.on('reaction', ({ emoji } = {}, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const allowed = ['🔥', '👏', '😂', '🍀', '😱', '💎'];
+    if (!room || !player || !allowed.includes(emoji)) return ackError(ack, 'Reacción no válida.');
+    io.to(room.code).emit('reaction', { playerId: player.id, name: player.name, avatar: player.avatar, emoji, time: Date.now() });
+    ackOk(ack);
+  });
+
+  socket.on('quick_chat', ({ message } = {}, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const allowed = ['¡Bien jugado!', '¡Voy con todo!', 'La suerte está de mi lado', 'Otra ronda', 'Esto se pone bueno'];
+    if (!room || !player || !allowed.includes(message)) return ackError(ack, 'Mensaje rápido no válido.');
+    room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: player.id, name: player.name, text: message, quick: true, time: Date.now() });
+    room.messages = room.messages.slice(-40);
+    ackOk(ack);
+    broadcast(room);
+  });
+
+  socket.on('profile_update', ({ name, avatar } = {}, ack) => {
+    const { room, player } = playerForSocket(socket);
+    if (!room || !player) return ackError(ack, 'Perfil no disponible.');
+    name = cleanName(name) || player.name;
+    profiles.update(player._profile, { name, avatar });
+    player.name = player._profile.name;
+    player.avatar = player._profile.avatar;
+    ackOk(ack, { profile: publicProgress(player._profile, true) });
+    broadcast(room);
+  });
+
+  socket.on('quick_bet', (data = {}, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const result = executeQuickBet(room, player, data);
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
+
+  socket.on('quick_resolve', (_data, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const result = executeQuickResolve(room, player);
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
+
+  socket.on('quick_new', (_data, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const result = executeQuickNew(room, player);
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
+
+  socket.on('blackjack_bet', (data = {}, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const result = executeBlackjackBet(room, player, data);
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
+  socket.on('blackjack_start', (_data, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const result = executeBlackjackStart(room, player);
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
+  for (const [event, action] of [['blackjack_hit', 'hit'], ['blackjack_stand', 'stand'], ['blackjack_double', 'double']]) {
+    socket.on(event, (_data, ack) => {
+      const { room, player } = playerForSocket(socket);
+      const result = executeBlackjackAction(room, player, action);
+      ackResult(ack, result);
+      if (result.ok) broadcast(room);
+    });
+  }
+  socket.on('blackjack_new', (_data, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const result = executeBlackjackNew(room, player);
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
+
+  socket.on('poker_start', (_data, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const result = executePokerStart(room, player);
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
+  socket.on('poker_action', (data = {}, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const result = executePokerAction(room, player, data);
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
+
+  socket.on('bot_add', ({ difficulty, style } = {}, ack) => {
+    const { room, player } = playerForSocket(socket);
+    if (!room || !player || player.id !== room.hostId) return ackError(ack, 'Solo el anfitrión puede configurar bots.');
+    if (!DIFFICULTIES[difficulty] || !STYLES[style]) return ackError(ack, 'Elige dificultad y estilo válidos.');
+    const result = addBotToRoom(room, { difficulty, style });
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
+
+  socket.on('bot_fill', ({ difficulty, style } = {}, ack) => {
+    const { room, player } = playerForSocket(socket);
+    if (!room || !player || player.id !== room.hostId) return ackError(ack, 'Solo el anfitrión puede completar la mesa.');
+    if (!DIFFICULTIES[difficulty] || !STYLES[style]) return ackError(ack, 'Elige dificultad y estilo válidos.');
+    if (rosterLocked(room)) return ackError(ack, 'Espera a que termine la ronda para cambiar bots.');
+    const available = ROOM_CAPACITY - room.players.length;
+    if (available <= 0) return ackError(ack, 'La mesa ya está llena.');
+    const botIds = [];
+    for (let index = 0; index < available; index++) {
+      const result = addBotToRoom(room, { difficulty, style });
+      if (!result.ok) break;
+      botIds.push(result.botId);
+    }
+    ackOk(ack, { botIds });
+    broadcast(room);
+  });
+
+  socket.on('bot_remove', ({ botId } = {}, ack) => {
+    const { room, player } = playerForSocket(socket);
+    if (!room || !player || player.id !== room.hostId) return ackError(ack, 'Solo el anfitrión puede retirar bots.');
+    const target = room.players.find(item => item.id === botId && item.isBot);
+    const result = removeBotFromRoom(room, target);
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
+
+  socket.on('rebuy', (_data, ack) => {
+    const { room, player } = playerForSocket(socket);
+    if (!room || isPokerActive(room) || room.phase === 'playing') return ackError(ack, 'Espera a que termine la mano.');
+    if (player.chips >= 200) return ackError(ack, 'La recarga está disponible con menos de 200 fichas.');
+    player.chips = 1000;
+    addSystem(room, `${player.name} recargó sus fichas virtuales.`);
+    ackOk(ack);
+    broadcast(room);
+  });
+
+  socket.on('kick_player', ({ playerId } = {}, ack) => {
+    const { room, player } = playerForSocket(socket);
+    if (!room || player.id !== room.hostId) return ackError(ack, 'Solo el anfitrión puede retirar jugadores.');
+    if (isPokerActive(room) || room.phase === 'playing') return ackError(ack, 'Espera a que termine la mano.');
+    const target = room.players.find(p => p.id === playerId && p.id !== player.id);
+    if (!target) return ackError(ack, 'Jugador no encontrado.');
+    if (target.isBot) {
+      const result = removeBotFromRoom(room, target);
+      ackResult(ack, result);
+      if (result.ok) broadcast(room);
+      return;
+    }
+    room.players = room.players.filter(p => p.id !== target.id);
+    if (target.socketId) io.to(target.socketId).emit('removed', { message: 'El anfitrión te retiró de la mesa.' });
+    addSystem(room, `${target.name} dejó su asiento.`);
+    ackOk(ack);
+    broadcast(room);
+  });
+  socket.on('leave_room', (_data, ack) => {
+    const { room, player } = playerForSocket(socket);
+    if (room && player) {
+      removeOrDisconnectPlayer(room, player, true);
+      socket.leave(room.code);
+      delete socket.data.roomCode;
+      delete socket.data.playerId;
+      broadcast(room);
+    }
+    ackOk(ack);
+  });
+
+  socket.on('disconnect', () => {
+    const { room, player } = playerForSocket(socket);
+    if (!room || !player || player.socketId !== socket.id) return;
+    removeOrDisconnectPlayer(room, player, false);
+    broadcast(room);
+  });
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Mesa Amiga lista en http://0.0.0.0:${PORT}`);
+});

@@ -1,0 +1,26 @@
+{
+  "name": "mesa-amiga-social-casino",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Casino social multijugador con salas compartibles por URL",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "check": "node --check server.js && node --check public/app.js && node --check lib/poker-evaluator.js && node --check lib/bots/catalog.js && node --check lib/bots/decision-engine.js && node --check lib/bots/bot-controller.js && node --check tests/bots-smoke.js && node --check tests/bots-fallback-smoke.js",
+    "test:multiplayer": "node tests/multiplayer-smoke.js",
+    "test:bots": "node tests/bots-smoke.js",
+    "test:bots:fallback": "node tests/bots-fallback-smoke.js",
+    "test": "npm run check && npm run test:multiplayer && npm run test:bots && npm run test:bots:fallback"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.3"
+  }
+}

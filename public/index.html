@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#060b0d" />
+  <meta name="description" content="Mesa Amiga: póker, blackjack, ruleta y minijuegos en vivo con amigos. Fichas 100% virtuales, perfiles, retos y logros." />
+  <title>Mesa Amiga — Casino social</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#games">Ir a los juegos</a>
+  <div class="noise" aria-hidden="true"></div>
+  <div class="ambient-grid" aria-hidden="true"></div>
+  <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
+
+  <div id="connection-overlay" class="connection-overlay" role="status" aria-live="polite" aria-atomic="true" aria-hidden="false">
+    <div class="loader-brand">
+      <div class="loader-orbit"><span>♠</span><i></i></div>
+      <div class="loader-wordmark"><b>MESA AMIGA</b><small id="loading-message">CONECTANDO AL CASINO</small></div>
+      <div class="loading-line"><i></i></div>
+      <p class="loader-helper"><span></span> Sincronizando fichas y preparando tu mesa</p>
+    </div>
+  </div>
+
+  <section id="landing" class="landing">
+    <nav class="landing-nav shell">
+      <a class="brand" href="/" aria-label="Mesa Amiga, inicio">
+        <span class="brand-mark"><span>♠</span></span>
+        <span class="brand-copy"><b>MESA AMIGA</b><em>SOCIAL CASINO</em></span>
+      </a>
+      <div class="nav-links">
+        <a href="#games">Juegos</a>
+        <a href="#live-lobby">Salas en vivo</a>
+        <a href="#how">Cómo jugar</a>
+      </div>
+      <div class="nav-actions">
+        <span id="nav-connection" class="connection-badge connected"><i></i><span>Conectado</span></span>
+        <button class="btn btn-ghost btn-small" data-open-mode="join"><span class="btn-icon">⌁</span> Entrar con código</button>
+      </div>
+    </nav>
+
+    <main class="hero">
+      <div class="hero-bg" aria-hidden="true"></div>
+      <div class="hero-content shell">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="eyebrow-dot"></span> 5 JUEGOS · FICHAS 100% VIRTUALES</div>
+          <h1>La noche es<br/><em>de su mesa.</em></h1>
+          <p>Crea un espacio privado para tu grupo y empieza en segundos. Cartas, minijuegos, chat y reacciones, todo sincronizado en vivo.</p>
+          <div class="hero-actions">
+            <button class="btn btn-primary btn-large" data-open-mode="create" data-game="poker">
+              <span class="btn-label">Crear una sala</span><span class="arrow">↗</span>
+            </button>
+            <button class="btn btn-glass btn-large" data-open-mode="join"><span class="live-icon">⌁</span> Unirme con código</button>
+          </div>
+          <a class="hero-live-link" href="#live-lobby"><span></span> O explora las salas abiertas <b>↓</b></a>
+          <div class="hero-proof">
+            <div class="proof-avatars"><span>L</span><span>M</span><span>A</span><i>+6</i></div>
+            <div><b>Hecho para jugar juntos</b><small>Sin cuenta · Sin descargas · Sin dinero real</small></div>
+          </div>
+        </div>
+        <div class="hero-hud">
+          <div class="hud-card hud-online">
+            <div class="hud-icon"><i class="pulse"></i>⌁</div>
+            <div><small>JUGADORES EN LÍNEA</small><strong id="hero-online-count">0</strong></div>
+            <span>LIVE</span>
+          </div>
+          <div class="hud-card hud-room">
+            <div class="hud-room-top"><span>PARTIDA PRIVADA</span><b>EN CURSO</b></div>
+            <div class="hud-players">
+              <span class="hud-avatar">M</span><span class="hud-avatar">L</span><span class="hud-avatar">T</span>
+              <div><strong>Mesa de los viernes</strong><small>Texas Hold’em · 3/6</small></div>
+            </div>
+            <div class="hud-progress"><i></i></div>
+          </div>
+          <div class="hud-float-chip"><span>♠</span></div>
+        </div>
+      </div>
+      <div class="scroll-cue"><span>EXPLORAR LOBBY</span><i>↓</i></div>
+    </main>
+
+    <section id="games" class="lobby-section shell">
+      <div class="section-heading">
+        <div><span class="kicker">LOBBY DE JUEGOS</span><h2>Elige tu próxima partida</h2></div>
+        <p>Clásicos de casino reinterpretados para jugar, conversar y competir con amigos.</p>
+      </div>
+
+      <div class="game-grid">
+        <article class="game-card poker-card">
+          <img src="/assets/poker-lounge.jpg" alt="Mesa futurista de Texas Hold’em con cartas y fichas" />
+          <div class="game-card-shade"></div>
+          <div class="game-badges"><span class="badge live"><i></i> EN VIVO</span><span class="badge">2–6 JUGADORES</span></div>
+          <div class="game-info">
+            <span class="game-suit">♠</span>
+            <div class="game-title-row"><div><small>ESTRATEGIA · COMPETITIVO</small><h3>Texas Hold’em</h3></div><span class="difficulty">CLÁSICO</span></div>
+            <p>Lee la mesa, mide a tus amigos y construye la mejor mano de cinco cartas.</p>
+            <div class="game-meta"><span>◷ 15–40 min</span><span>◉ Ciegas 10/20</span></div>
+            <button class="btn btn-card" data-open-mode="create" data-game="poker"><span>Crear mesa de póker</span><b>→</b></button>
+          </div>
+        </article>
+
+        <article class="game-card blackjack-card">
+          <img src="/assets/blackjack-lounge.jpg" alt="Mesa moderna de Blackjack con cartas oscuras y fichas" />
+          <div class="game-card-shade"></div>
+          <div class="game-badges"><span class="badge hot">POPULAR</span><span class="badge">1–6 JUGADORES</span></div>
+          <div class="game-info">
+            <span class="game-suit red-suit-icon">21</span>
+            <div class="game-title-row"><div><small>RÁPIDO · TODOS CONTRA LA CASA</small><h3>Blackjack</h3></div><span class="difficulty">FÁCIL</span></div>
+            <p>Acércate a 21 sin pasarte. Decide rápido y celebra cada victoria con tu grupo.</p>
+            <div class="game-meta"><span>◷ 5–20 min</span><span>◆ Paga 3:2</span></div>
+            <button class="btn btn-card" data-open-mode="create" data-game="blackjack"><span>Crear mesa de 21</span><b>→</b></button>
+          </div>
+        </article>
+      </div>
+
+      <div class="quick-games-heading"><span class="kicker">PARTIDAS RÁPIDAS</span><p>Reglas simples, rondas cortas y resultados perfectos para picar a tus amigos.</p></div>
+      <div class="quick-game-grid">
+        <article class="quick-game-card roulette-mini">
+          <div class="quick-art" aria-hidden="true"><span class="mini-table-surface roulette-surface"><span class="mini-wheel"><i>0</i></span><i class="mini-table-chip chip-red"></i><i class="mini-table-chip chip-gold"></i></span><b>◉</b></div>
+          <div class="quick-game-copy"><span>CLÁSICO SOCIAL</span><h3>Ruleta Nova</h3><p>Rojo, negro, paridad, rango o tu número favorito.</p><div class="quick-meta"><span>◎ 1–6 jugadores</span><span>◷ 3–10 min</span></div></div>
+          <button class="btn btn-card" data-open-mode="create" data-game="roulette"><span>Girar con amigos</span><b>→</b></button>
+        </article>
+        <article class="quick-game-card dice-mini">
+          <div class="quick-art" aria-hidden="true"><span class="mini-table-surface dice-surface"><span class="mini-die">⚄</span><span class="mini-die mini-die-second">⚁</span><i class="mini-table-chip chip-cyan"></i></span><b>✦</b></div>
+          <div class="quick-game-copy"><span>RIESGO RÁPIDO</span><h3>Dados Cósmicos</h3><p>Predice bajo, alto o clava el número exacto.</p><div class="quick-meta"><span>◎ 1–6 jugadores</span><span>◷ 2–8 min</span></div></div>
+          <button class="btn btn-card" data-open-mode="create" data-game="dice"><span>Lanzar los dados</span><b>→</b></button>
+        </article>
+        <article class="quick-game-card coin-mini">
+          <div class="quick-art" aria-hidden="true"><span class="mini-table-surface coin-surface"><span class="mini-coin">MA</span><i class="coin-shadow"></i><i class="mini-table-chip chip-gold"></i></span><b>◐</b></div>
+          <div class="quick-game-copy"><span>DUELO INSTANTÁNEO</span><h3>Cara o Cruz</h3><p>Una moneda virtual. Dos lados. Mucho pique.</p><div class="quick-meta"><span>◎ 1–6 jugadores</span><span>◷ 1–5 min</span></div></div>
+          <button class="btn btn-card" data-open-mode="create" data-game="coinflip"><span>Iniciar un duelo</span><b>→</b></button>
+        </article>
+      </div>
+    </section>
+
+    <section id="live-lobby" class="live-section">
+      <div class="shell">
+        <div class="live-header">
+          <div>
+            <span class="kicker"><i class="pulse-dot"></i> AHORA MISMO</span>
+            <h2>Salas disponibles</h2>
+            <p>Entra a una partida abierta o crea tu propio espacio.</p>
+          </div>
+          <div class="lobby-stats">
+            <span><b id="live-room-count">0</b><small>SALAS</small></span>
+            <span><b id="online-player-count">0</b><small>JUGADORES</small></span>
+            <div class="lobby-quick-actions">
+              <button class="btn btn-ghost" data-open-mode="join">⌁ Usar código</button>
+              <button class="btn btn-primary" data-open-mode="create" data-game="poker">+ Nueva sala</button>
+            </div>
+          </div>
+        </div>
+        <div class="room-filters" role="tablist">
+          <button class="active" data-room-filter="all">Todas</button>
+          <button data-room-filter="poker">Texas Hold’em</button>
+          <button data-room-filter="blackjack">Blackjack</button>
+          <button data-room-filter="roulette">Ruleta</button>
+          <button data-room-filter="dice">Dados</button>
+          <button data-room-filter="coinflip">Cara o cruz</button>
+          <span id="lobby-refresh"><i></i> Actualización en vivo</span>
+        </div>
+        <div id="live-rooms" class="live-rooms" aria-live="polite">
+          <div class="rooms-loading"><i></i><span>Buscando mesas disponibles…</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how" class="how-section shell">
+      <div class="how-intro"><span class="kicker">SIN COMPLICACIONES</span><h2>De cero a partida<br/>en menos de un minuto.</h2></div>
+      <div class="steps">
+        <article class="step"><span class="step-number">01</span><div class="step-icon">◇</div><h3>Crea tu sala</h3><p>Elige un juego, ponle nombre y toma el primer asiento.</p></article>
+        <article class="step"><span class="step-number">02</span><div class="step-icon">↗</div><h3>Comparte el enlace</h3><p>Envía la URL privada. Tus amigos entran con un toque.</p></article>
+        <article class="step"><span class="step-number">03</span><div class="step-icon">♠</div><h3>Que empiece el juego</h3><p>Turnos, apuestas y resultados sincronizados en vivo.</p></article>
+      </div>
+    </section>
+
+    <footer class="landing-footer">
+      <div class="shell footer-inner">
+        <a class="brand brand-small" href="/"><span class="brand-mark"><span>♠</span></span><span class="brand-copy"><b>MESA AMIGA</b><em>SOCIAL CASINO</em></span></a>
+        <p>Entretenimiento social con fichas sin valor monetario.<br/>Juega responsablemente.</p>
+        <span class="footer-status"><i></i> SERVIDORES OPERATIVOS</span>
+      </div>
+    </footer>
+  </section>
+
+  <div id="join-modal" class="modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-glow"></div>
+      <button class="modal-close" data-close-modal aria-label="Cerrar">×</button>
+      <div class="modal-heading">
+        <div class="modal-symbol">♠</div>
+        <div><span class="kicker" id="modal-kicker">NUEVA SALA</span><h2 id="modal-title">Prepara la mesa</h2></div>
+      </div>
+      <p id="modal-subtitle">Configura tu partida. Podrás invitar a tus amigos cuando entres.</p>
+      <form id="join-form">
+        <div class="form-row">
+          <div class="form-field">
+            <label for="player-name">Tu nombre</label>
+            <div class="input-wrap"><span>◎</span><input id="player-name" maxlength="18" autocomplete="nickname" placeholder="Ej. Ale" required /></div>
+          </div>
+          <div id="room-name-field" class="form-field">
+            <label for="room-name">Nombre de la sala</label>
+            <div class="input-wrap"><span>◇</span><input id="room-name" maxlength="28" autocomplete="off" placeholder="Noche de cartas" /></div>
+          </div>
+        </div>
+        <div class="field-group avatar-field">
+          <label>Elige tu avatar</label>
+          <div id="avatar-choice" class="avatar-choice" role="radiogroup">
+            <button type="button" data-select-avatar="fox" class="active" aria-label="Zorro">🦊</button>
+            <button type="button" data-select-avatar="tiger" aria-label="Tigre">🐯</button>
+            <button type="button" data-select-avatar="panda" aria-label="Panda">🐼</button>
+            <button type="button" data-select-avatar="owl" aria-label="Búho">🦉</button>
+            <button type="button" data-select-avatar="alien" aria-label="Alien">👽</button>
+            <button type="button" data-select-avatar="robot" aria-label="Robot">🤖</button>
+            <button type="button" data-select-avatar="crown" aria-label="Corona">👑</button>
+            <button type="button" data-select-avatar="diamond" aria-label="Diamante">💎</button>
+          </div>
+        </div>
+        <div id="game-choice" class="field-group">
+          <label>Elige el juego</label>
+          <div class="segmented game-segmented">
+            <button type="button" data-select-game="poker" class="active"><span>♠</span><b>Texas Hold’em</b><small>2–6 jugadores</small></button>
+            <button type="button" data-select-game="blackjack"><span>21</span><b>Blackjack</b><small>1–6 jugadores</small></button>
+            <button type="button" data-select-game="roulette"><span>◉</span><b>Ruleta Nova</b><small>Rondas rápidas</small></button>
+            <button type="button" data-select-game="dice"><span>⚄</span><b>Dados Cósmicos</b><small>Bajo, alto o exacto</small></button>
+            <button type="button" data-select-game="coinflip"><span>◐</span><b>Cara o Cruz</b><small>Duelo instantáneo</small></button>
+          </div>
+        </div>
+        <div id="code-field" class="field-group hidden">
+          <label for="room-code">Código de sala</label>
+          <div class="input-wrap code-input"><span>#</span><input id="room-code" maxlength="5" autocomplete="off" placeholder="ABCDE" /></div>
+        </div>
+        <button id="modal-submit" class="btn btn-primary btn-full" type="submit"><span class="btn-label">Crear sala</span><span class="arrow">→</span></button>
+      </form>
+      <div class="modal-note"><span>✓</span> No necesitas cuenta <i></i><span>✓</span> Solo fichas virtuales</div>
+    </div>
+  </div>
+
+  <div id="profile-modal" class="modal profile-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-profile></div>
+    <div class="modal-card profile-modal-card" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+      <button class="modal-close" data-close-profile aria-label="Cerrar">×</button>
+      <div class="profile-modal-head">
+        <div id="profile-big-avatar" class="profile-big-avatar">🦊</div>
+        <div><span class="kicker">PERFIL DEL JUGADOR</span><h2 id="profile-modal-title">Tu progreso</h2><p>Las fichas son virtuales y no tienen valor monetario.</p></div>
+      </div>
+      <form id="profile-form" class="profile-edit-form">
+        <div class="form-field"><label for="profile-name-input">Nombre</label><div class="input-wrap"><span>◎</span><input id="profile-name-input" maxlength="18" required /></div></div>
+        <div class="form-field"><label>Avatar</label><div id="profile-avatar-choice" class="avatar-choice compact"></div></div>
+        <button class="btn btn-primary" type="submit">Guardar perfil</button>
+      </form>
+      <div id="profile-stats" class="profile-stats"></div>
+      <div class="progress-columns">
+        <section><div class="progress-title"><span>RETOS</span><small>Recompensas automáticas</small></div><div id="challenge-list" class="challenge-list"></div></section>
+        <section><div class="progress-title"><span>LOGROS</span><small>Colección personal</small></div><div id="achievement-list" class="achievement-list"></div></section>
+      </div>
+      <div class="profile-reward-note"><span>🎁</span><div><b>Bono diario</b><small id="daily-bonus-status">Se entrega una vez al día al entrar.</small></div></div>
+    </div>
+  </div>
+
+  <section id="room-app" class="room-app hidden">
+    <div id="mobile-backdrop" class="mobile-backdrop"></div>
+    <aside class="sidebar">
+      <div class="side-top">
+        <a class="brand brand-small" href="#" id="room-logo"><span class="brand-mark"><span>♠</span></span><span class="brand-copy"><b>MESA AMIGA</b><em>EN VIVO</em></span></a>
+        <button class="icon-btn" id="sound-toggle" aria-label="Activar o desactivar sonido">♪</button>
+      </div>
+      <div id="profile-card" class="profile-card" role="button" tabindex="0" aria-label="Abrir perfil y progreso"></div>
+      <div class="side-section players-section">
+        <div class="side-title"><span>CLASIFICACIÓN</span><div class="player-tools"><b id="player-count">0 / 6</b><button id="bot-menu-toggle" class="bot-menu-toggle hidden" type="button" aria-expanded="false" aria-controls="bot-controls">＋ BOT</button></div></div>
+        <div id="bot-controls" class="bot-controls hidden">
+          <div class="bot-controls-head"><span>🤖 ASISTENTES DE MESA</span><button id="bot-menu-close" type="button" aria-label="Cerrar configuración de bots">×</button></div>
+          <label for="bot-difficulty">Dificultad</label><select id="bot-difficulty"><option value="easy">Fácil</option><option value="normal" selected>Normal</option><option value="hard">Difícil</option><option value="expert">Experto</option></select>
+          <label for="bot-style">Estilo</label><select id="bot-style"><option value="conservative">Conservador</option><option value="aggressive">Agresivo</option><option value="balanced" selected>Equilibrado</option><option value="risky">Arriesgado</option><option value="unpredictable">Impredecible</option></select>
+          <div class="bot-control-actions"><button id="bot-add" type="button">Agregar uno</button><button id="bot-fill" type="button">Completar mesa</button></div>
+          <small>Solo el anfitrión · máximo 6 asientos</small>
+        </div>
+        <div id="players-list" class="players-list"></div>
+      </div>
+      <div class="side-section chat-section">
+        <div class="side-title"><span>CHAT DE MESA</span><i class="live-pip"></i></div>
+        <div id="chat-list" class="chat-list"></div>
+        <div class="reaction-bar" aria-label="Reacciones rápidas">
+          <button data-reaction="🔥" title="Fuego">🔥</button><button data-reaction="👏" title="Aplauso">👏</button><button data-reaction="😂" title="Risa">😂</button><button data-reaction="🍀" title="Suerte">🍀</button><button data-reaction="😱" title="Sorpresa">😱</button><button data-reaction="💎" title="Diamante">💎</button><button id="quick-chat-toggle" title="Mensaje rápido">···</button>
+          <div id="quick-chat-menu" class="quick-chat-menu hidden"><button data-quick-chat="¡Bien jugado!">¡Bien jugado!</button><button data-quick-chat="¡Voy con todo!">¡Voy con todo!</button><button data-quick-chat="La suerte está de mi lado">La suerte está de mi lado</button><button data-quick-chat="Otra ronda">Otra ronda</button></div>
+        </div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" maxlength="180" placeholder="Escribe un mensaje…" autocomplete="off" />
+          <button aria-label="Enviar mensaje">↑</button>
+        </form>
+      </div>
+      <div class="side-footer">
+        <button id="leave-room" class="leave-button">← Volver al lobby</button>
+        <span>v1.0 · Social</span>
+      </div>
+    </aside>
+
+    <main class="game-main">
+      <header class="game-header">
+        <button id="mobile-menu" class="mobile-menu" aria-label="Abrir menú">☰</button>
+        <div class="room-identity">
+          <div class="game-breadcrumb"><span id="game-name">TEXAS HOLD’EM</span><i></i><b id="phase-label">SALA DE ESPERA</b></div>
+          <h2 id="room-title">Mesa privada</h2>
+        </div>
+        <div class="room-share">
+          <div class="connection-mini" id="header-connection"><i></i><span>En vivo</span></div>
+          <div class="room-code-display"><small>CÓDIGO DE SALA</small><b id="header-code">—</b></div>
+          <button id="copy-link" class="btn btn-primary btn-invite"><span>↗</span><b>Invitar</b></button>
+        </div>
+      </header>
+
+      <div class="game-stage">
+        <div class="table-hud">
+          <div id="game-status" class="game-status"></div>
+          <div id="turn-clock" class="turn-clock hidden" aria-label="Tiempo restante del turno">
+            <div class="clock-ring"><span id="clock-value">30</span></div>
+            <div><small>TIEMPO DE TURNO</small><b id="clock-player">Esperando</b></div>
+          </div>
+        </div>
+        <div id="special-event-banner" class="special-event-banner hidden"></div>
+        <div id="winner-ticker" class="winner-ticker hidden"></div>
+        <div id="reaction-stage" class="reaction-stage" aria-live="polite"></div>
+        <div id="round-flash" class="round-flash"></div>
+        <div id="table-wrap" class="table-wrap"></div>
+        <div id="action-panel" class="action-panel"></div>
+      </div>
+
+      <footer class="game-footer">
+        <span><i class="shield">✓</i> Sala protegida por enlace</span>
+        <span>Las fichas no tienen valor monetario</span>
+        <span id="connection-status" class="connection-footer connected"><i></i> Conectado</span>
+      </footer>
+    </main>
+  </section>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
