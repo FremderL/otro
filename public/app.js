@@ -47,15 +47,16 @@
     { id: 'crown', emoji: '👑', label: 'Corona' }, { id: 'diamond', emoji: '💎', label: 'Diamante' }
   ];
   const SUITS = { S: '♠', H: '♥', D: '♦', C: '♣' };
+  migrateLegacyStorage();
   const deviceToken = getDeviceToken();
   const routeCode = getRouteCode();
   const savedSession = readSession();
 
   const ui = {
     modalMode: 'create', selectedGame: 'poker', roomFilter: 'all', lobby: [], playersOnline: 0,
-    room: null, me: null, activeCode: null, playerName: localStorage.getItem('mesa-amiga-name') || '',
-    selectedAvatar: localStorage.getItem('mesa-amiga-avatar') || 'fox', profileAvatar: localStorage.getItem('mesa-amiga-avatar') || 'fox',
-    connection: 'connecting', sound: localStorage.getItem('mesa-amiga-sound') !== 'off',
+    room: null, me: null, activeCode: null, playerName: localStorage.getItem('montecristo-name') || '',
+    selectedAvatar: localStorage.getItem('montecristo-avatar') || 'fox', profileAvatar: localStorage.getItem('montecristo-avatar') || 'fox',
+    connection: 'connecting', sound: localStorage.getItem('montecristo-sound') !== 'off',
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
     lastEventKey: '', clockTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false
   };
@@ -72,6 +73,23 @@
   initScrollReveal();
 
   // ---------- Utilities ----------
+  function migrateLegacyStorage() {
+    // Migración "Mesa Amiga" -> "MonteCristo": conserva perfil, nombre, avatar y sonido de usuarios existentes.
+    try {
+      ['device', 'name', 'avatar', 'sound'].forEach(key => {
+        const legacy = localStorage.getItem(`mesa-amiga-${key}`);
+        if (legacy !== null && localStorage.getItem(`montecristo-${key}`) === null) {
+          localStorage.setItem(`montecristo-${key}`, legacy);
+        }
+        if (legacy !== null) localStorage.removeItem(`mesa-amiga-${key}`);
+      });
+      const legacySession = sessionStorage.getItem('mesa-amiga-session');
+      if (legacySession !== null && sessionStorage.getItem('montecristo-session') === null) {
+        sessionStorage.setItem('montecristo-session', legacySession);
+      }
+      if (legacySession !== null) sessionStorage.removeItem('mesa-amiga-session');
+    } catch { /* almacenamiento no disponible: continuar sin migrar */ }
+  }
   function initScrollReveal() {
     if (!('IntersectionObserver' in window) || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const observer = new IntersectionObserver(entries => entries.forEach(entry => {
@@ -94,10 +112,10 @@
     return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
   }
   function getDeviceToken() {
-    let token = localStorage.getItem('mesa-amiga-device');
+    let token = localStorage.getItem('montecristo-device');
     if (!token) {
       token = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-      localStorage.setItem('mesa-amiga-device', token);
+      localStorage.setItem('montecristo-device', token);
     }
     return token;
   }
@@ -106,13 +124,13 @@
     return match ? match[1].toUpperCase() : '';
   }
   function readSession() {
-    try { return JSON.parse(sessionStorage.getItem('mesa-amiga-session')); } catch { return null; }
+    try { return JSON.parse(sessionStorage.getItem('montecristo-session')); } catch { return null; }
   }
   function saveSession() {
     if (!ui.activeCode || !ui.playerName) return;
-    sessionStorage.setItem('mesa-amiga-session', JSON.stringify({ code: ui.activeCode, name: ui.playerName, avatar: ui.selectedAvatar }));
+    sessionStorage.setItem('montecristo-session', JSON.stringify({ code: ui.activeCode, name: ui.playerName, avatar: ui.selectedAvatar }));
   }
-  function clearSession() { sessionStorage.removeItem('mesa-amiga-session'); }
+  function clearSession() { sessionStorage.removeItem('montecristo-session'); }
   function initials(name) {
     const chunks = String(name || '?').trim().split(/\s+/).filter(Boolean);
     return (chunks[0]?.[0] || '?') + (chunks.length > 1 ? chunks[chunks.length - 1][0] : '');
@@ -260,7 +278,7 @@
   function openModal(mode = 'create', options = {}) {
     ui.modalMode = mode;
     ui.selectedGame = options.game === 'blackjack' ? 'blackjack' : (options.game || ui.selectedGame || 'poker');
-    els.playerName.value = ui.playerName || localStorage.getItem('mesa-amiga-name') || '';
+    els.playerName.value = ui.playerName || localStorage.getItem('montecristo-name') || '';
     els.roomCode.value = options.code || '';
     els.roomName.value = options.roomName || '';
     const joining = mode === 'join';
@@ -308,7 +326,7 @@
   }));
   $$('[data-select-avatar]').forEach(button => button.addEventListener('click', () => {
     ui.selectedAvatar = button.dataset.selectAvatar;
-    localStorage.setItem('mesa-amiga-avatar', ui.selectedAvatar);
+    localStorage.setItem('montecristo-avatar', ui.selectedAvatar);
     $$('[data-select-avatar]').forEach(item => {
       const selected = item === button;
       item.classList.toggle('active', selected);
@@ -322,7 +340,7 @@
     const name = els.playerName.value.trim();
     if (!name) { showToast('Falta tu nombre', 'Dinos cómo aparecerás en la mesa.', 'error'); els.playerName.focus(); return; }
     ui.playerName = name;
-    localStorage.setItem('mesa-amiga-name', name);
+    localStorage.setItem('montecristo-name', name);
     setButtonLoading(els.modalSubmit, true);
     ui.joining = true;
     const joining = ui.modalMode === 'join';
@@ -404,8 +422,8 @@
     if (ui.me) {
       ui.playerName = ui.me.name;
       ui.selectedAvatar = ui.me.avatar || ui.selectedAvatar;
-      localStorage.setItem('mesa-amiga-name', ui.playerName);
-      localStorage.setItem('mesa-amiga-avatar', ui.selectedAvatar);
+      localStorage.setItem('montecristo-name', ui.playerName);
+      localStorage.setItem('montecristo-avatar', ui.selectedAvatar);
     }
     saveSession();
     if (wasOutside) enterRoom();
@@ -430,7 +448,7 @@
     if (room.viewerProfile) {
       ui.selectedAvatar = room.viewerProfile.avatar || ui.selectedAvatar;
       ui.profileAvatar = ui.selectedAvatar;
-      localStorage.setItem('mesa-amiga-avatar', ui.selectedAvatar);
+      localStorage.setItem('montecristo-avatar', ui.selectedAvatar);
     }
     const gameMeta = GAME_META[room.game] || GAME_META.poker;
     els.gameName.textContent = `${gameMeta.icon} ${gameMeta.name}`;
@@ -949,8 +967,8 @@
     if (response.profile && ui.room) ui.room.viewerProfile = response.profile;
     ui.playerName = response.profile?.name || name;
     ui.selectedAvatar = response.profile?.avatar || ui.profileAvatar;
-    localStorage.setItem('mesa-amiga-name', ui.playerName);
-    localStorage.setItem('mesa-amiga-avatar', ui.selectedAvatar);
+    localStorage.setItem('montecristo-name', ui.playerName);
+    localStorage.setItem('montecristo-avatar', ui.selectedAvatar);
     showToast('Perfil actualizado', 'Tu nombre y avatar ya están visibles en la mesa.', 'notice', 3600, avatarEmoji(ui.selectedAvatar));
     renderProfileModal();
   });
@@ -1022,7 +1040,7 @@
   els.mobileMenu.addEventListener('click', openMobileMenu);
   els.mobileBackdrop.addEventListener('click', closeMobileMenu);
   els.soundToggle.addEventListener('click', () => {
-    ui.sound = !ui.sound; localStorage.setItem('mesa-amiga-sound', ui.sound ? 'on' : 'off'); updateSoundButton(); if (ui.sound) playTone('notice');
+    ui.sound = !ui.sound; localStorage.setItem('montecristo-sound', ui.sound ? 'on' : 'off'); updateSoundButton(); if (ui.sound) playTone('notice');
   });
   function updateSoundButton() { els.soundToggle.classList.toggle('off', !ui.sound); els.soundToggle.textContent = ui.sound ? '♪' : '×'; els.soundToggle.title = ui.sound ? 'Desactivar sonido' : 'Activar sonido'; }
   window.addEventListener('popstate', () => { if (!getRouteCode() && ui.room) leaveToLobby(true); });

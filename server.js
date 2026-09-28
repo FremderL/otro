@@ -1184,5 +1184,5 @@ io.on('connection', socket => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Mesa Amiga lista en http://0.0.0.0:${PORT}`);
+  console.log(`MonteCristo lista en http://0.0.0.0:${PORT}`);
 });

@@ -10,7 +10,7 @@ const { decide, fallbackDecision } = require('../lib/bots/decision-engine');
 
 const port = 3700 + Math.floor(Math.random() * 250);
 const url = `http://127.0.0.1:${port}`;
-const profilePath = path.join(os.tmpdir(), `mesa-amiga-bots-${process.pid}.json`);
+const profilePath = path.join(os.tmpdir(), `montecristo-bots-${process.pid}.json`);
 const child = spawn(process.execPath, ['server.js'], {
   cwd: path.join(__dirname, '..'),
   env: {

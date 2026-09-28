@@ -1,4 +1,4 @@
-# Mesa Amiga
+# MonteCristo
 
 Casino social multijugador para jugar con amigos mediante una URL privada. Incluye **Texas Hold’em, Blackjack/21, Ruleta Nova, Dados Cósmicos y Cara o Cruz**.
 
@@ -183,4 +183,4 @@ Los perfiles sobreviven reinicios en un archivo JSON, pero las salas, bots y est
 
 ## Uso responsable
 
-Mesa Amiga está diseñado exclusivamente para entretenimiento social con fichas sin valor monetario. No incorpora apuestas con dinero real ni mecanismos de pago.
+MonteCristo está diseñado exclusivamente para entretenimiento social con fichas sin valor monetario. No incorpora apuestas con dinero real ni mecanismos de pago.

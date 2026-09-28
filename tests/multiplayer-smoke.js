@@ -8,7 +8,7 @@ const os = require('node:os');
 
 const port = 3200 + Math.floor(Math.random() * 500);
 const url = `http://127.0.0.1:${port}`;
-const profilePath = path.join(os.tmpdir(), `mesa-amiga-smoke-${process.pid}.json`);
+const profilePath = path.join(os.tmpdir(), `montecristo-smoke-${process.pid}.json`);
 const server = spawn(process.execPath, ['server.js'], {
   cwd: path.join(__dirname, '..'),
   env: { ...process.env, PORT: String(port), PROFILE_STORE_PATH: profilePath },

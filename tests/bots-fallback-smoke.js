@@ -13,7 +13,7 @@ const child = spawn(process.execPath, ['server.js'], {
   env: {
     ...process.env,
     PORT: String(port),
-    PROFILE_STORE_PATH: path.join(os.tmpdir(), `mesa-amiga-fallback-${process.pid}.json`),
+    PROFILE_STORE_PATH: path.join(os.tmpdir(), `montecristo-fallback-${process.pid}.json`),
     BOT_SPEED_FACTOR: '0.02',
     BOT_ONLY_ROOM_TTL_MS: '250',
     BOT_FORCE_DECISION_ERROR: '1'
