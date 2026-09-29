@@ -11,7 +11,8 @@
     "test:multiplayer": "node tests/multiplayer-smoke.js",
     "test:bots": "node tests/bots-smoke.js",
     "test:bots:fallback": "node tests/bots-fallback-smoke.js",
-    "test": "npm run check && npm run test:multiplayer && npm run test:bots && npm run test:bots:fallback"
+    "test:lifecycle": "node tests/table-lifecycle-smoke.js",
+    "test": "npm run check && npm run test:multiplayer && npm run test:bots && npm run test:bots:fallback && npm run test:lifecycle"
   },
   "engines": {
     "node": ">=18"

@@ -11,7 +11,7 @@ const url = `http://127.0.0.1:${port}`;
 const profilePath = path.join(os.tmpdir(), `montecristo-smoke-${process.pid}.json`);
 const server = spawn(process.execPath, ['server.js'], {
   cwd: path.join(__dirname, '..'),
-  env: { ...process.env, PORT: String(port), PROFILE_STORE_PATH: profilePath },
+  env: { ...process.env, PORT: String(port), PROFILE_STORE_PATH: profilePath, AUTO_BOTS: 'off', RECONNECT_GRACE_MS: '400' },
   stdio: ['ignore', 'pipe', 'pipe']
 });
 let serverLog = '';

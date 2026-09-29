@@ -24,6 +24,13 @@ const profiles = new ProfileStore(process.env.PROFILE_STORE_PATH);
 let botController = null;
 const ROOM_CAPACITY = 6;
 const BOT_ONLY_ROOM_TTL_MS = Math.max(100, Number(process.env.BOT_ONLY_ROOM_TTL_MS) || 5 * 60 * 1000);
+// Fase 2: ciclo de vida de mesas. AUTO_BOTS=off restaura el comportamiento manual (usado por tests legados).
+const AUTO_BOTS = process.env.AUTO_BOTS !== 'off';
+const AUTO_BOT_DIFFICULTY = process.env.AUTO_BOT_DIFFICULTY && DIFFICULTIES[process.env.AUTO_BOT_DIFFICULTY] ? process.env.AUTO_BOT_DIFFICULTY : 'expert';
+const AUTO_BOT_STYLES = ['balanced', 'conservative', 'aggressive', 'unpredictable'];
+const HOST_INACTIVITY_MS = Math.max(200, Number(process.env.HOST_INACTIVITY_MS) || 60 * 1000);
+const HOST_INACTIVITY_SWEEP_MS = Math.max(50, Number(process.env.HOST_INACTIVITY_SWEEP_MS) || 10 * 1000);
+const RECONNECT_GRACE_MS = Math.max(200, Number(process.env.RECONNECT_GRACE_MS) || 90 * 1000);
 const SUITS = ['S', 'H', 'D', 'C'];
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 
@@ -71,6 +78,7 @@ function newPlayer(id, socket, name, avatar) {
     name: profile.name,
     avatar: profile.avatar,
     connected: true,
+    lastActiveAt: Date.now(),
     hand: [],
     bet: 0,
     roundBet: 0,
@@ -137,7 +145,9 @@ function createRoom(game, host, socket, requestedName) {
 function playerForSocket(socket) {
   const room = rooms.get(socket.data.roomCode);
   if (!room) return {};
-  return { room, player: room.players.find(p => p.id === socket.data.playerId) };
+  const player = room.players.find(p => p.id === socket.data.playerId);
+  if (player) player.lastActiveAt = Date.now();
+  return { room, player };
 }
 function isPokerActive(room) {
   return ['preflop', 'flop', 'turn', 'river'].includes(room.phase);
@@ -386,7 +396,8 @@ function requireTurn(room, player, ack) {
   return true;
 }
 function nextConnectedHost(room) {
-  const next = room.players.find(p => p.connected);
+  // La autoridad de la mesa siempre prefiere personas reales conectadas.
+  const next = room.players.find(p => p.connected && !p.isBot) || room.players.find(p => p.connected);
   room.hostId = next ? next.id : null;
 }
 
@@ -448,9 +459,11 @@ function finishBlackjack(room) {
   room.phase = 'results';
   const dealerText = dealer.value > 21 ? `La casa se pasó con ${dealer.value}.` : `La casa terminó con ${dealer.value}.`;
   addSystem(room, dealerText);
+  releaseBotSeats(room);
 }
 function startBlackjack(room) {
   if (room.phase !== 'betting') return actionError('La ronda ya está en curso.');
+  purgeDepartedPlayers(room);
   const playing = room.players.filter(p => p.bet > 0 && p.connected);
   if (!playing.length) return actionError('Al menos una persona debe apostar.');
   beginSpecialEvent(room);
@@ -545,6 +558,7 @@ function awardSinglePokerWinner(room, player) {
   clearTurn(room);
   room.phase = 'showdown';
   player.status = 'winner';
+  releaseBotSeats(room);
 }
 function advancePokerStreet(room) {
   for (const p of handPlayers(room)) {
@@ -579,6 +593,7 @@ function resolvePokerAfterAction(room, actorId) {
 }
 function startPoker(room) {
   if (!['waiting', 'showdown'].includes(room.phase)) return actionError('La mano actual todavía no termina.');
+  beginRoundRoster(room);
   const eligible = room.players.filter(p => p.connected && p.chips >= 20);
   if (eligible.length < 2) return actionError('Se necesitan al menos 2 jugadores con 20 fichas.');
   beginSpecialEvent(room);
@@ -679,6 +694,7 @@ function showdownPoker(room) {
   room.pot = 0;
   clearTurn(room);
   room.phase = 'showdown';
+  releaseBotSeats(room);
 }
 
 // ---------------- QUICK SOCIAL GAMES ----------------
@@ -723,6 +739,7 @@ function resolveQuickRound(room) {
   room.phase = 'results';
   addSystem(room, `${resultLabel(room.game, result)}. Ronda resuelta.`);
   gameEvent(room, 'quick_result', `Resultado: ${resultLabel(room.game, result)}.`);
+  releaseBotSeats(room);
   broadcast(room);
 }
 
@@ -746,6 +763,7 @@ function executeQuickBet(room, player, { amount, choice } = {}) {
 function executeQuickResolve(room, actor) {
   if (!room || !actor || !isQuickGame(room.game) || actor.id !== room.hostId) return actionError('Solo el anfitrión puede lanzar la ronda.');
   if (room.phase !== 'betting') return actionError('La ronda no está lista.');
+  purgeDepartedPlayers(room);
   if (!room.players.some(item => item.bet > 0 && item.connected)) return actionError('Al menos una persona debe apostar.');
   room.handNumber++;
   room.phase = 'rolling';
@@ -757,6 +775,7 @@ function executeQuickResolve(room, actor) {
 function executeQuickNew(room, actor) {
   if (!room || !actor || !isQuickGame(room.game) || actor.id !== room.hostId || room.phase !== 'results') return actionError('No se puede abrir otra ronda todavía.');
   resetQuickRound(room);
+  beginRoundRoster(room);
   return actionOk();
 }
 function executeBlackjackBet(room, player, { amount } = {}) {
@@ -801,6 +820,7 @@ function executeBlackjackAction(room, player, action) {
 function executeBlackjackNew(room, actor) {
   if (!room || !actor || room.game !== 'blackjack' || actor.id !== room.hostId || room.phase !== 'results') return actionError('No se puede iniciar otra ronda.');
   resetBlackjack(room);
+  beginRoundRoster(room);
   return actionOk();
 }
 function executePokerStart(room, actor) {
@@ -901,12 +921,79 @@ function scheduleRoomCleanup(room) {
     return;
   }
   if (room._cleanupTimer) return;
-  const delay = room.players.some(player => player.isBot && player.connected) ? BOT_ONLY_ROOM_TTL_MS : 30 * 60 * 1000;
+  // Personas desconectadas conservan su asiento un periodo de gracia (reconexión);
+  // sin ninguna persona real sentada, la mesa se elimina de inmediato (o al TTL legado si AUTO_BOTS está apagado).
+  const humanSeated = room.players.some(player => !player.isBot);
+  const botsSeated = room.players.some(player => player.isBot && player.connected);
+  const delay = humanSeated ? RECONNECT_GRACE_MS : (botsSeated && !AUTO_BOTS ? BOT_ONLY_ROOM_TTL_MS : 0);
   room._cleanupTimer = scheduleRoomTask(room, () => {
     room._cleanupTimer = null;
     const latest = rooms.get(room.code);
     if (latest && !latest.players.some(player => player.connected && !player.isBot)) destroyRoom(room.code);
   }, delay);
+}
+
+// ---------------- CICLO DE VIDA DE MESA (fase 2) ----------------
+// Completa los asientos libres con bots expertos mientras haya personas reales en la mesa.
+function autoFillBots(room) {
+  if (!AUTO_BOTS || !room || rosterLocked(room)) return false;
+  if (!room.players.some(p => !p.isBot && p.connected)) return false;
+  let added = false;
+  while (room.players.length < ROOM_CAPACITY) {
+    const style = AUTO_BOT_STYLES[Math.floor(Math.random() * AUTO_BOT_STYLES.length)];
+    const result = addBotToRoom(room, { difficulty: AUTO_BOT_DIFFICULTY, style });
+    if (!result.ok) break;
+    added = true;
+  }
+  return added;
+}
+// Al terminar la ronda, los bots desocupan sus asientos para que los tomen personas reales.
+function releaseBotSeats(room) {
+  if (!AUTO_BOTS || !room) return false;
+  const bots = room.players.filter(p => p.isBot);
+  if (!bots.length) return false;
+  for (const bot of bots) botController?.cancelBot(room.code, bot.id);
+  room.players = room.players.filter(p => !p.isBot);
+  if (bots.some(bot => bot.id === room.hostId)) nextConnectedHost(room);
+  addSystem(room, '🤖 Los bots dejaron sus asientos libres para nuevos jugadores.');
+  scheduleRoomCleanup(room);
+  return true;
+}
+// Cuando llega una persona real y la mesa está llena de bots, un bot cede el asiento.
+function makeSeatForHuman(room) {
+  if (!AUTO_BOTS || !room || rosterLocked(room)) return false;
+  const bot = [...room.players].reverse().find(p => p.isBot);
+  if (!bot) return false;
+  botController?.cancelBot(room.code, bot.id);
+  if ((room.game === 'blackjack' || isQuickGame(room.game)) && room.phase === 'betting' && bot.bet > 0) bot.chips += bot.bet;
+  room.players = room.players.filter(p => p.id !== bot.id);
+  if (room.hostId === bot.id) nextConnectedHost(room);
+  addSystem(room, `🤖 ${bot.name} cedió su asiento a una persona real.`);
+  return true;
+}
+// Retira de la mesa a quienes ya no están presentes de verdad (jugadores "fantasma").
+function purgeDepartedPlayers(room) {
+  if (!room) return false;
+  const departed = room.players.filter(p => !p.isBot && !p.connected);
+  if (!departed.length) return false;
+  for (const player of departed) {
+    if ((room.game === 'blackjack' || isQuickGame(room.game)) && room.phase === 'betting' && player.bet > 0) {
+      player.chips += player.bet;
+      player.bet = 0;
+    }
+    addSystem(room, `${player.name} dejó su asiento libre.`);
+  }
+  room.players = room.players.filter(p => p.isBot || p.connected);
+  if (departed.some(p => p.id === room.hostId)) nextConnectedHost(room);
+  scheduleRoomCleanup(room);
+  return true;
+}
+// Antes de arrancar cualquier ronda: valida presencia real, valida al anfitrión y completa la mesa.
+function beginRoundRoster(room) {
+  purgeDepartedPlayers(room);
+  const host = room.players.find(p => p.id === room.hostId);
+  if (!host || !host.connected || (host.isBot && room.players.some(p => !p.isBot && p.connected))) nextConnectedHost(room);
+  autoFillBots(room);
 }
 
 function removeOrDisconnectPlayer(room, player, leave = false) { 
@@ -963,6 +1050,7 @@ io.on('connection', socket => {
     socket.data.roomCode = room.code;
     socket.data.playerId = player.id;
     claimPlayerDaily(room, player);
+    autoFillBots(room);
     ackOk(ack, { code: room.code });
     gameEvent(room, 'joined', `${player.name} creó ${room.name}.`);
     broadcast(room);
@@ -978,12 +1066,15 @@ io.on('connection', socket => {
     if (player) {
       player.socketId = socket.id;
       player.connected = true;
+      player.lastActiveAt = Date.now();
       profiles.update(player._profile, { name, avatar });
       player.name = player._profile.name;
       player.avatar = player._profile.avatar;
       addSystem(room, `${player.name} volvió a la mesa.`);
     } else {
       if (!name) return ackError(ack, 'Escribe tu nombre.');
+      // Si la mesa está llena pero hay bots, un bot cede su asiento a la persona real.
+      if (room.players.length >= ROOM_CAPACITY) makeSeatForHuman(room);
       if (room.players.length >= ROOM_CAPACITY) return ackError(ack, `La mesa está llena (máximo ${ROOM_CAPACITY}).`);
       player = newPlayer(String(token).slice(0, 80), socket, name, avatar);
       room.players.push(player);
@@ -994,6 +1085,7 @@ io.on('connection', socket => {
     socket.data.playerId = player.id;
     if (!room.hostId || room.players.find(item => item.id === room.hostId)?.isBot) room.hostId = player.id;
     scheduleRoomCleanup(room);
+    autoFillBots(room);
     claimPlayerDaily(room, player);
     ackOk(ack, { code, game: room.game });
     gameEvent(room, 'joined', `${player.name} se unió a la sala.`);
@@ -1182,6 +1274,30 @@ io.on('connection', socket => {
     broadcast(room);
   });
 });
+
+// Fase 2: si el anfitrión lleva HOST_INACTIVITY_MS sin actividad (o se desconectó),
+// la autoridad de la mesa pasa a otra persona real activa. Nunca a un bot.
+const hostInactivitySweep = setInterval(() => {
+  const now = Date.now();
+  for (const room of rooms.values()) {
+    const humans = room.players.filter(p => !p.isBot && p.connected);
+    if (!humans.length) continue;
+    const host = room.players.find(p => p.id === room.hostId);
+    const hostValid = host && !host.isBot && host.connected;
+    if (hostValid && now - host.lastActiveAt <= HOST_INACTIVITY_MS) continue;
+    const candidates = humans
+      .filter(p => p.id !== room.hostId)
+      .filter(p => !hostValid || now - p.lastActiveAt <= HOST_INACTIVITY_MS)
+      .sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+    if (!candidates.length) continue;
+    const next = candidates[0];
+    const previousName = host?.name || 'el anfitrión anterior';
+    room.hostId = next.id;
+    addSystem(room, `👑 ${next.name} ahora dirige la mesa por inactividad de ${previousName}.`);
+    broadcast(room);
+  }
+}, HOST_INACTIVITY_SWEEP_MS);
+hostInactivitySweep.unref?.();
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`MonteCristo lista en http://0.0.0.0:${PORT}`);

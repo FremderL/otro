@@ -29,9 +29,11 @@
 
 **Entregable en Render:** deploy normal, sin cambios de configuración.
 
-## Fase 2 — Ciclo de vida de mesas, bots automáticos y presencia real
+## Fase 2 — Ciclo de vida de mesas, bots automáticos y presencia real ✅ COMPLETADA
 
 *Objetivo: que las mesas siempre se sientan vivas, que los bots cedan el lugar a personas reales y que la presencia de cada jugador sea 100 % confiable.*
+
+> Implementada con la variable `AUTO_BOTS` (por defecto activada; `off` restaura el modo manual para los smoke tests legados), `HOST_INACTIVITY_MS` (60 s), `RECONNECT_GRACE_MS` (90 s de gracia para reconexión antes de eliminar una mesa sin humanos conectados) y el nuevo smoke test `tests/table-lifecycle-smoke.js`. Extra: cuando una persona real llega a una mesa llena de bots, un bot le cede el asiento.
 
 1. **Autollenado con bots expertos.** Al entrar un usuario a una mesa con asientos libres, el servidor completa automáticamente los asientos vacíos con bots en dificultad **experto**. El anfitrión ya no necesita agregarlos a mano (los controles manuales de bots quedan como ajuste opcional).
 2. **Corrección de jugadores "fantasma".** Auditar todo el flujo de salida (botón salir, cierre de pestaña, pérdida de conexión, timeout de reconexión): el asiento debe liberarse y difundirse a todos los clientes de inmediato. Un solo camino de salida en el servidor (`removePlayer`) para evitar estados divergentes.

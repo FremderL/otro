@@ -17,6 +17,7 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Eventos especiales aleatorios: jackpot virtual, ganancia x2 y ronda bonus.
 - Migración de anfitrión, reconexión por dispositivo y reembolso de apuestas rápidas abiertas al salir.
 - Bots autoritativos configurables por el anfitrión, con cuatro dificultades, cinco estilos y decisiones específicas por juego.
+- Mesas siempre vivas: los asientos libres se completan automáticamente con bots **expertos** al entrar; los bots ceden su asiento cuando llega una persona real y los desocupan al terminar cada ronda; la autoridad de la mesa migra a una persona real activa tras 1 minuto de inactividad del anfitrión, y las mesas sin personas reales se eliminan.
 - Interfaz exclusiva para computadoras de escritorio y laptops, sin animaciones largas que bloqueen la partida.
 
 ## Experiencia visual y accesibilidad

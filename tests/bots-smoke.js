@@ -15,7 +15,7 @@ const child = spawn(process.execPath, ['server.js'], {
   cwd: path.join(__dirname, '..'),
   env: {
     ...process.env, PORT: String(port), PROFILE_STORE_PATH: profilePath,
-    BOT_SPEED_FACTOR: '0.05', BOT_ONLY_ROOM_TTL_MS: '350'
+    BOT_SPEED_FACTOR: '0.05', BOT_ONLY_ROOM_TTL_MS: '350', AUTO_BOTS: 'off', RECONNECT_GRACE_MS: '300'
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
