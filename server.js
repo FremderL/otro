@@ -67,6 +67,9 @@ app.get('/api/perfil/:token/historial', (req, res) => {
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const rooms = new Map();
+// Chat global del casino: vive en memoria y nunca se mezcla con los mensajes de una mesa.
+const lobbyChatMessages = [];
+const LOBBY_CHAT_LIMIT = 60;
 // Fase 10.2: se crea de forma asíncrona en bootstrap() (más abajo) para poder
 // esperar la carga inicial de Postgres cuando DATABASE_URL está definida; con
 // el ProfileStore de archivo (caso local y de todos los tests actuales) la
@@ -91,9 +94,32 @@ function cleanName(value) {
 function cleanRoomName(value) {
   return String(value || '').replace(/[<>]/g, '').trim().slice(0, 28);
 }
-function cleanMessage(value) {
-  return String(value || '').replace(/[<>]/g, '').trim().slice(0, 180);
+const PROFANITY_WORDS = [
+  'motherfucker', 'motherfuckers', 'gilipollas', 'chingada', 'chingado', 'chingar',
+  'cabrones', 'cabron', 'cabrón', 'pendejo', 'pendeja', 'pendejos', 'pendejas',
+  'putas', 'putos', 'puta', 'puto', 'mierda', 'coño', 'joder', 'maricon', 'maricón',
+  'fuck', 'fucking', 'fucker', 'shit', 'bitch', 'asshole', 'dick', 'cunt', 'bastard'
+].sort((a, b) => b.length - a.length);
+const PROFANITY_PATTERN = new RegExp(
+  `(^|[^\\p{L}\\p{N}_])(${PROFANITY_WORDS.map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?=$|[^\\p{L}\\p{N}_])`,
+  'giu'
+);
+function censorProfanity(value) {
+  return String(value || '').replace(PROFANITY_PATTERN, (_match, prefix, word) => `${prefix}${'*'.repeat([...word].length)}`);
 }
+function cleanMessage(value) {
+  const cleaned = String(value || '').replace(/[<>]/g, '').trim().slice(0, 180);
+  return censorProfanity(cleaned);
+}
+function duplicateMessageWithinWindow(socket, channel, text) {
+  const now = Date.now();
+  socket.data.lastChatMessages = socket.data.lastChatMessages || {};
+  const previous = socket.data.lastChatMessages[channel];
+  if (previous && previous.text === text && now - previous.time < 8000) return true;
+  socket.data.lastChatMessages[channel] = { text, time: now };
+  return false;
+}
+
 function makeCode() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code;
@@ -1519,21 +1545,23 @@ io.on('connection', socket => {
 
   // Fase 9 (QA): límite de frecuencia para mensajes y reacciones — máximo 6 cada 4 s
   // por conexión, para que nadie pueda inundar la sala con broadcasts.
-  function tooChatty() {
+  function tooChatty(channel = 'table') {
     const now = Date.now();
-    socket.data.chatTimes = (socket.data.chatTimes || []).filter(time => now - time < 4000);
-    if (socket.data.chatTimes.length >= 6) return true;
-    socket.data.chatTimes.push(now);
+    socket.data.chatTimes = socket.data.chatTimes || {};
+    socket.data.chatTimes[channel] = (socket.data.chatTimes[channel] || []).filter(time => now - time < 4000);
+    if (socket.data.chatTimes[channel].length >= 6) return true;
+    socket.data.chatTimes[channel].push(now);
     return false;
   }
 
   socket.on('chat', ({ text } = {}, ack) => {
     const { room, player } = playerForSocket(socket);
-    if (tooChatty()) return ackError(ack, 'Vas muy rápido: espera un momento para volver a escribir.');
+    if (tooChatty('table')) return ackError(ack, 'Vas muy rápido: espera un momento para volver a escribir.');
     text = cleanMessage(text);
     // Fase 8: los espectadores también chatean (se distinguen con el prefijo 👁).
     const spectator = !player && room ? room.spectators?.find(s => s.id === socket.data.spectatorId && s.connected) : null;
     if (!room || (!player && !spectator) || !text) return ackError(ack, 'No se pudo enviar.');
+    if (duplicateMessageWithinWindow(socket, 'table', text)) return ackError(ack, 'Ese mensaje ya fue enviado hace un momento.');
     const author = player || spectator;
     room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: author.id, name: spectator ? `👁 ${author.name}` : author.name, text, time: Date.now() });
     room.messages = room.messages.slice(-40);
@@ -1541,11 +1569,43 @@ io.on('connection', socket => {
     broadcast(room);
   });
 
+  // Chat único del casino. Solo recibe mensajes quien se identificó explícitamente
+  // con el token de dispositivo y aceptó los mismos Términos vigentes que las mesas.
+  socket.on('lobby_chat_join', ({ token, name, tos } = {}, ack) => {
+    const id = String(token || '').slice(0, 80);
+    name = cleanName(name);
+    if (!id) return ackError(ack, 'No se pudo identificar este dispositivo.');
+    if (!name) return ackError(ack, 'Elige un apodo para entrar al chat del casino.');
+    const profile = profiles.getOrCreate(id, name);
+    if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
+    profiles.update(profile, { name });
+    socket.data.lobbyChat = { id: profile.id, name: profile.name, avatar: profile.avatar };
+    const history = lobbyChatMessages.slice();
+    ackOk(ack, { name: profile.name, avatar: profile.avatar, messages: history, history });
+    socket.emit('lobby_chat', { messages: history });
+  });
+
+  socket.on('lobby_chat', ({ text } = {}, ack) => {
+    const author = socket.data.lobbyChat;
+    if (!author) return ackError(ack, 'Primero elige un apodo y acepta los Términos para entrar al chat.');
+    if (tooChatty('lobby')) return ackError(ack, 'Vas muy rápido: espera un momento para volver a escribir.');
+    text = cleanMessage(text);
+    if (!text) return ackError(ack, 'No se pudo enviar.');
+    if (duplicateMessageWithinWindow(socket, 'lobby', text)) return ackError(ack, 'Ese mensaje ya fue enviado hace un momento.');
+    const message = { id: `${Date.now()}-${Math.random()}`, playerId: author.id, name: author.name, avatar: author.avatar, text, time: Date.now() };
+    lobbyChatMessages.push(message);
+    while (lobbyChatMessages.length > LOBBY_CHAT_LIMIT) lobbyChatMessages.shift();
+    for (const client of io.sockets.sockets.values()) {
+      if (client.data.lobbyChat) client.emit('lobby_chat_message', message);
+    }
+    ackOk(ack, { message });
+  });
+
   socket.on('reaction', ({ emoji } = {}, ack) => {
     const { room, player } = playerForSocket(socket);
     const allowed = ['🔥', '👏', '😂', '🍀', '😱', '💎'];
     if (!room || !player || !allowed.includes(emoji)) return ackError(ack, 'Reacción no válida.');
-    if (tooChatty()) return ackError(ack, 'Vas muy rápido: espera un momento.');
+    if (tooChatty('table')) return ackError(ack, 'Vas muy rápido: espera un momento.');
     io.to(room.code).emit('reaction', { playerId: player.id, name: player.name, avatar: player.avatar, emoji, time: Date.now() });
     ackOk(ack);
   });
@@ -1554,7 +1614,9 @@ io.on('connection', socket => {
     const { room, player } = playerForSocket(socket);
     const allowed = ['¡Bien jugado!', '¡Voy con todo!', 'La suerte está de mi lado', 'Otra ronda', 'Esto se pone bueno'];
     if (!room || !player || !allowed.includes(message)) return ackError(ack, 'Mensaje rápido no válido.');
-    if (tooChatty()) return ackError(ack, 'Vas muy rápido: espera un momento.');
+    if (tooChatty('table')) return ackError(ack, 'Vas muy rápido: espera un momento.');
+    message = cleanMessage(message);
+    if (duplicateMessageWithinWindow(socket, 'table', message)) return ackError(ack, 'Ese mensaje ya fue enviado hace un momento.');
     room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: player.id, name: player.name, text: message, quick: true, time: Date.now() });
     room.messages = room.messages.slice(-40);
     ackOk(ack);

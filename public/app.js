@@ -14,6 +14,11 @@
     navConnection: $('#nav-connection'), headerConnection: $('#header-connection'), connectionStatus: $('#connection-status'),
     liveRooms: $('#live-rooms'), liveRoomCount: $('#live-room-count'), onlinePlayerCount: $('#online-player-count'),
     heroOnlineCount: $('#hero-online-count'), lobbyRefresh: $('#lobby-refresh'),
+    notificationsToggle: $('#notifications-toggle'), roomNotificationsToggle: $('#room-notifications-toggle'),
+    lobbyChatWidget: $('#lobby-chat-widget'), lobbyChatBubble: $('#lobby-chat-bubble'), lobbyChatPanel: $('#lobby-chat-panel'),
+    lobbyChatClose: $('#lobby-chat-close'), lobbyChatUnread: $('#lobby-chat-unread'), lobbyChatProfile: $('#lobby-chat-profile'),
+    lobbyChatProfileForm: $('#lobby-chat-profile-form'), lobbyChatName: $('#lobby-chat-name'), lobbyChatTos: $('#lobby-chat-tos'),
+    lobbyChatContent: $('#lobby-chat-content'), lobbyChatMessages: $('#lobby-chat-messages'), lobbyChatForm: $('#lobby-chat-form'), lobbyChatInput: $('#lobby-chat-input'),
     gameName: $('#game-name'), phaseLabel: $('#phase-label'), roomTitle: $('#room-title'), headerCode: $('#header-code'),
     tournamentBanner: $('#tournament-banner'),
     profileCard: $('#profile-card'), playersList: $('#players-list'), playerCount: $('#player-count'),
@@ -92,7 +97,8 @@
     modalMode: 'create', selectedGame: 'poker', roomFilter: 'all', lobby: [], playersOnline: 0,
     room: null, me: null, activeCode: null, playerName: localStorage.getItem('montecristo-name') || '',
     selectedAvatar: localStorage.getItem('montecristo-avatar') || 'fox', profileAvatar: localStorage.getItem('montecristo-avatar') || 'fox',
-    connection: 'connecting', sound: localStorage.getItem('montecristo-sound') !== 'off',
+    connection: 'connecting', sound: localStorage.getItem('montecristo-sound') !== 'off', notifications: localStorage.getItem('montecristo-notifications') !== 'off',
+    lobbyChat: { joined: false, joining: false, open: false, messages: [], unread: 0 },
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
     lastEventKey: '', clockTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false,
     rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null,
@@ -108,6 +114,7 @@
   }
   els.playerName.value = ui.playerName;
   updateSoundButton();
+  updateNotificationButtons();
   renderAvatarChoices();
   initScrollReveal();
 
@@ -271,6 +278,83 @@
     } catch (_) { /* Sound is an enhancement; game never depends on it. */ }
   }
 
+  function updateNotificationButtons() {
+    const buttons = [els.notificationsToggle, els.roomNotificationsToggle].filter(Boolean);
+    buttons.forEach(button => {
+      button.textContent = ui.notifications ? '🔔' : '🔕';
+      button.classList.toggle('off', !ui.notifications);
+      button.title = ui.notifications ? 'Silenciar notificaciones' : 'Activar notificaciones';
+      button.setAttribute('aria-label', ui.notifications ? 'Silenciar notificaciones' : 'Activar notificaciones');
+      button.setAttribute('aria-pressed', String(!ui.notifications));
+    });
+  }
+
+  function setLobbyChatOpen(open) {
+    ui.lobbyChat.open = Boolean(open);
+    els.lobbyChatPanel?.classList.toggle('hidden', !ui.lobbyChat.open);
+    els.lobbyChatPanel?.setAttribute('aria-hidden', String(!ui.lobbyChat.open));
+    els.lobbyChatBubble?.setAttribute('aria-expanded', String(ui.lobbyChat.open));
+    if (ui.lobbyChat.open) {
+      ui.lobbyChat.unread = 0;
+      renderLobbyChat();
+      if (!ui.lobbyChat.joined) {
+        els.lobbyChatProfile?.classList.remove('hidden');
+        els.lobbyChatContent?.classList.add('hidden');
+        els.lobbyChatTos.checked = tosAccepted();
+        els.lobbyChatName.value = localStorage.getItem('montecristo-lobby-name') || ui.playerName || '';
+        setTimeout(() => els.lobbyChatName?.focus(), 0);
+      } else els.lobbyChatInput?.focus();
+    }
+    renderLobbyChat();
+  }
+
+  function renderLobbyChat() {
+    if (!els.lobbyChatMessages) return;
+    const messages = ui.lobbyChat.messages || [];
+    els.lobbyChatMessages.innerHTML = messages.length
+      ? messages.map(message => `<div class="lobby-chat-message"><span class="lobby-chat-avatar" style="background:${avatarColor(message.playerId)}">${avatarEmoji(message.avatar)}</span><div><b>${escapeHtml(message.name)}</b><p>${escapeHtml(message.text)}</p></div></div>`).join('')
+      : '<div class="lobby-chat-empty">Sé el primero en saludar al casino.</div>';
+    els.lobbyChatMessages.scrollTop = els.lobbyChatMessages.scrollHeight;
+    const unread = Number(ui.lobbyChat.unread) || 0;
+    els.lobbyChatUnread?.classList.toggle('hidden', unread < 1);
+    if (els.lobbyChatUnread) els.lobbyChatUnread.textContent = unread > 99 ? '99+' : String(unread);
+    els.lobbyChatProfile?.classList.toggle('hidden', ui.lobbyChat.joined || !ui.lobbyChat.open);
+    els.lobbyChatContent?.classList.toggle('hidden', !ui.lobbyChat.joined);
+  }
+
+  async function joinLobbyChat(name, accepted = true, silent = false) {
+    name = String(name || '').trim();
+    if (!name) {
+      if (!silent) setLobbyChatOpen(true);
+      return { ok: false, error: 'Elige un apodo para entrar al chat del casino.' };
+    }
+    if (!tosAccepted() || !accepted) {
+      if (!silent) showTosModal();
+      return { ok: false, error: 'Debes aceptar los Términos y Condiciones vigentes.' };
+    }
+    if (ui.lobbyChat.joining) return { ok: false, error: 'Conectando al chat…' };
+    ui.lobbyChat.joining = true;
+    const response = await emitAck('lobby_chat_join', { token: deviceToken, name, tos: localStorage.getItem(TOS_KEY) });
+    ui.lobbyChat.joining = false;
+    if (!response.ok) {
+      if (!silent) showToast('No se pudo entrar al chat', response.error, 'error');
+      return response;
+    }
+    ui.lobbyChat.joined = true;
+    ui.lobbyChat.messages = Array.isArray(response.messages) ? response.messages : [];
+    ui.lobbyChat.unread = 0;
+    localStorage.setItem('montecristo-lobby-name', response.name || name);
+    els.lobbyChatName.value = response.name || name;
+    renderLobbyChat();
+    return response;
+  }
+
+  function tryAutoJoinLobbyChat() {
+    const savedName = localStorage.getItem('montecristo-lobby-name');
+    if (!savedName || !tosAccepted() || ui.room || routeCode) return;
+    joinLobbyChat(savedName, true, true);
+  }
+
   // ---------- Connection ----------
   function setConnection(status) {
     ui.connection = status;
@@ -305,6 +389,7 @@
   socket.on('connect', async () => {
     setConnection('connected');
     setColdStartHint(false);
+    tryAutoJoinLobbyChat();
     setTimeout(() => { if (!ui.joining) setOverlay(false); }, 350);
     if (ui.shouldResume && ui.activeCode && ui.playerName) {
       ui.shouldResume = false;
@@ -561,6 +646,25 @@
     });
   });
 
+  // ---------- Chat común del lobby ----------
+  socket.on('lobby_chat', payload => {
+    if (Array.isArray(payload?.messages)) {
+      ui.lobbyChat.messages = payload.messages;
+      ui.lobbyChat.joined = true;
+      renderLobbyChat();
+    }
+  });
+  socket.on('lobby_chat_message', message => {
+    if (!message?.id) return;
+    if (!ui.lobbyChat.messages.some(item => item.id === message.id)) ui.lobbyChat.messages.push(message);
+    ui.lobbyChat.messages = ui.lobbyChat.messages.slice(-60);
+    if (!ui.lobbyChat.open && message.playerId !== deviceToken) {
+      ui.lobbyChat.unread += 1;
+      if (!ui.room) showToast('Nuevo mensaje en el lobby', `${message.name}: ${message.text}`, 'notice', 4200, '💬', true);
+    }
+    renderLobbyChat();
+  });
+
   // ---------- Room state ----------
   socket.on('room_state', room => {
     const wasOutside = !ui.room;
@@ -595,6 +699,8 @@
 
   function enterRoom() {
     closeModal();
+    setLobbyChatOpen(false);
+    els.lobbyChatWidget?.classList.add('in-room');
     els.landing.classList.add('leaving');
     setTimeout(() => {
       els.landing.classList.add('hidden');
@@ -1403,7 +1509,7 @@
       special: ['Evento especial', '✦', 'achievement'], special_reward: ['Premio especial', '💎', 'reward']
     };
     const [title, icon, kind] = map[event.type] || ['Mesa actualizada', '•', 'notice'];
-    showToast(title, event.text, kind, ['turn', 'win', 'loss', 'special'].includes(event.type) ? 5500 : 3500, icon);
+    showToast(title, event.text, kind, ['turn', 'win', 'loss', 'special'].includes(event.type) ? 5500 : 3500, icon, ['achievement', 'reward'].includes(kind));
     playTone(kind === 'achievement' || kind === 'reward' ? 'win' : kind);
     if (event.type === 'round') showRoundFlash(event.text);
     if (event.type === 'turn') showRoundFlash('Tu turno');
@@ -1421,13 +1527,13 @@
     }
     (payload?.events || []).forEach(event => {
       const kind = event.type === 'achievement' ? 'achievement' : event.type === 'challenge' ? 'challenge' : 'reward';
-      showToast(event.type === 'challenge' ? 'Reto completado' : event.type === 'achievement' ? 'Logro desbloqueado' : event.name, `${event.name}${event.reward ? ` · +${event.reward} fichas` : ''}`, kind, 6500, event.icon);
+      showToast(event.type === 'challenge' ? 'Reto completado' : event.type === 'achievement' ? 'Logro desbloqueado' : event.name, `${event.name}${event.reward ? ` · +${event.reward} fichas` : ''}`, kind, 6500, event.icon, true);
       playTone('win');
     });
   });
   socket.on('social_event', event => {
     if (!event?.text) return;
-    showToast(event.type === 'big_win' ? '¡Gran resultado!' : 'Celebración en la mesa', event.text, event.type === 'big_win' ? 'reward' : 'achievement', 5600, event.icon || '✦');
+    showToast(event.type === 'big_win' ? '¡Gran resultado!' : 'Celebración en la mesa', event.text, event.type === 'big_win' ? 'reward' : 'achievement', 5600, event.icon || '✦', true);
     if (event.type === 'big_win') { celebrate(); showRoundFlash(`+${formatChips(event.amount)} fichas`); }
   });
   socket.on('reaction', event => showFloatingReaction(event));
@@ -1436,7 +1542,8 @@
     leaveToLobby(false);
   });
 
-  function showToast(title, text, kind = 'notice', duration = 3600, icon = null) {
+  function showToast(title, text, kind = 'notice', duration = 3600, icon = null, notification = false) {
+    if (notification && !ui.notifications) return;
     const symbols = { error: '!', win: '◆', loss: '×', turn: '◷', notice: '•', round: '♠' };
     const toast = document.createElement('div');
     toast.className = `toast ${kind}`;
@@ -1717,10 +1824,35 @@
     els.roomApp.classList.add('exiting');
     setTimeout(() => {
       els.roomApp.classList.add('hidden'); els.roomApp.classList.remove('exiting'); els.landing.classList.remove('hidden');
+      els.lobbyChatWidget?.classList.remove('in-room');
       updateHistory(''); window.scrollTo(0, 0);
+      tryAutoJoinLobbyChat();
     }, 280);
   }
 
+  [els.notificationsToggle, els.roomNotificationsToggle].filter(Boolean).forEach(button => button.addEventListener('click', () => {
+    ui.notifications = !ui.notifications;
+    localStorage.setItem('montecristo-notifications', ui.notifications ? 'on' : 'off');
+    updateNotificationButtons();
+  }));
+  els.lobbyChatBubble?.addEventListener('click', () => setLobbyChatOpen(!ui.lobbyChat.open));
+  els.lobbyChatClose?.addEventListener('click', () => setLobbyChatOpen(false));
+  els.lobbyChatProfileForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const response = await joinLobbyChat(els.lobbyChatName.value, els.lobbyChatTos.checked);
+    if (response.ok) setLobbyChatOpen(true);
+  });
+  els.lobbyChatForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const text = els.lobbyChatInput.value.trim();
+    if (!text) return;
+    els.lobbyChatInput.value = '';
+    const response = await emitAck('lobby_chat', { text });
+    if (!response.ok) {
+      els.lobbyChatInput.value = text;
+      showToast('No se envió el mensaje', response.error, 'error');
+    }
+  });
   els.soundToggle.addEventListener('click', () => {
     ui.sound = !ui.sound; localStorage.setItem('montecristo-sound', ui.sound ? 'on' : 'off'); updateSoundButton(); if (ui.sound) playTone('notice');
   });
