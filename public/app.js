@@ -40,7 +40,7 @@
     accountOpenBtn: $('#account-open-btn'), accountModal: $('#account-modal'), accountForm: $('#account-form'),
     accountModalTitle: $('#account-modal-title'), accountModalCopy: $('#account-modal-copy'),
     accountUsername: $('#account-username'), accountPassword: $('#account-password'), accountError: $('#account-error'),
-    accountSubmit: $('#account-submit'), accountSwitch: $('#account-switch')
+    accountSubmit: $('#account-submit'), accountSwitch: $('#account-switch'), accountLogout: $('#account-logout')
   };
 
   const PHASES = {
@@ -95,6 +95,7 @@
 
   const ui = {
     accountMode: 'login',
+    accountSession: readAccountSession(),
     modalMode: 'create', selectedGame: 'poker', roomFilter: 'all', lobby: [], playersOnline: 0,
     room: null, me: null, activeCode: null, playerName: localStorage.getItem('montecristo-name') || '',
     selectedAvatar: localStorage.getItem('montecristo-avatar') || 'fox', profileAvatar: localStorage.getItem('montecristo-avatar') || 'fox',
@@ -116,6 +117,7 @@
   els.playerName.value = ui.playerName;
   updateSoundButton();
   updateNotificationButtons();
+  renderAccountButton();
   renderAvatarChoices();
   initScrollReveal();
 
@@ -165,6 +167,21 @@
       localStorage.setItem('montecristo-device', token);
     }
     return token;
+  }
+  function readAccountSession() {
+    try { return JSON.parse(localStorage.getItem('montecristo-account-session')) || null; } catch { return null; }
+  }
+  function renderAccountButton() {
+    if (!els.accountOpenBtn) return;
+    const loggedIn = Boolean(ui.accountSession?.username);
+    els.accountOpenBtn.innerHTML = `<span class="btn-icon">${loggedIn ? '👤' : '🔑'}</span> ${loggedIn ? 'Perfil' : 'Iniciar sesión'}`;
+    els.accountOpenBtn.setAttribute('aria-label', loggedIn ? 'Abrir perfil de cuenta' : 'Iniciar sesión');
+  }
+  function saveAccountSession(profile) {
+    const safe = { username: profile.username, name: profile.name, avatar: profile.avatar, chips: profile.chips, stats: profile.stats, achievements: profile.achievements, gamesPlayed: profile.gamesPlayed, featuredAchievements: profile.featuredAchievements, allAchievements: profile.allAchievements, challenges: profile.challenges, dailyChallenges: profile.dailyChallenges, weeklyChallenges: profile.weeklyChallenges, gameStats: profile.gameStats, balanceHistory: profile.balanceHistory, medals: profile.medals, championBanner: profile.championBanner, dailyBonusClaimed: profile.dailyBonusClaimed };
+    ui.accountSession = safe;
+    localStorage.setItem('montecristo-account-session', JSON.stringify(safe));
+    renderAccountButton();
   }
   function getRouteCode() {
     const match = location.pathname.match(/^\/room\/([A-Z0-9]{5})/i);
@@ -1583,6 +1600,8 @@
 
   // ---------- Profile, social controls and general room controls ----------
   function openProfileModal() {
+    const accountProfile = ui.accountSession;
+    if (accountProfile && !ui.room?.viewerProfile) ui.room = { viewerProfile: accountProfile };
     if (!ui.room?.viewerProfile) return;
     ui.profileOpen = true;
     ui.profileAvatar = ui.room.viewerProfile.avatar || 'fox';
@@ -1723,6 +1742,7 @@
     els.accountError.textContent = '';
   }
   function openAccountModal() {
+    if (ui.accountSession?.username) { openProfileModal(); return; }
     ui.accountMode = 'login';
     renderAccountMode();
     els.accountForm.reset();
@@ -1740,6 +1760,13 @@
   }
   els.accountOpenBtn?.addEventListener('click', openAccountModal);
   $$('[data-close-account]').forEach(element => element.addEventListener('click', closeAccountModal));
+  els.accountLogout?.addEventListener('click', () => {
+    localStorage.removeItem('montecristo-account-session');
+    ui.accountSession = null;
+    renderAccountButton();
+    closeProfileModal();
+    showToast('Sesión cerrada', 'Puedes seguir jugando sin cuenta.', 'notice', 3000, '🔑');
+  });
   els.accountSwitch?.addEventListener('click', () => {
     ui.accountMode = ui.accountMode === 'login' ? 'signup' : 'login';
     renderAccountMode();
@@ -1757,12 +1784,13 @@
         els.accountError.classList.remove('hidden');
         return;
       }
-      localStorage.setItem('montecristo-device', response.token);
+      saveAccountSession({ ...response.profile, username: response.profile?.username || username });
       localStorage.setItem('montecristo-name', response.profile?.name || '');
       localStorage.setItem('montecristo-avatar', response.profile?.avatar || 'fox');
       showToast('Sesión iniciada', `Bienvenido de nuevo, ${response.profile?.name || username}.`, 'notice', 3600, '🔑');
       closeAccountModal();
-      setTimeout(() => location.reload(), 900);
+      if (response.profile) ui.room = { ...(ui.room || {}), viewerProfile: ui.accountSession };
+      showToast('Sesión iniciada', 'Tus datos públicos están disponibles en Perfil.', 'notice', 3600, '👤');
     } else {
       response = await emitAck('account_signup', {
         token: getDeviceToken(), name: ui.playerName, avatar: ui.selectedAvatar, username, password, tos: TOS_VERSION
@@ -1772,7 +1800,9 @@
         els.accountError.classList.remove('hidden');
         return;
       }
-      showToast('Cuenta creada', `Ya puedes iniciar sesión como @${username} desde cualquier otra computadora.`, 'notice', 4200, '🔑');
+      saveAccountSession({ ...response.profile, username: response.profile?.username || username });
+      ui.room = { ...(ui.room || {}), viewerProfile: ui.accountSession };
+      showToast('Cuenta creada', `Ya puedes iniciar sesión como @${username} desde cualquier otra computadora.`, 'notice', 4200, '👤');
       closeAccountModal();
     }
   });
