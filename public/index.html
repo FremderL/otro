@@ -44,6 +44,7 @@
       </div>
       <div class="nav-actions">
         <span id="nav-connection" class="connection-badge connected"><i></i><span>Conectado</span></span>
+        <button class="icon-btn notification-toggle" id="notifications-toggle" type="button" aria-label="Silenciar notificaciones" aria-pressed="false">🔔</button>
         <button class="btn btn-ghost btn-small" id="account-open-btn"><span class="btn-icon">🔑</span> Iniciar sesión</button>
         <button class="btn btn-ghost btn-small" data-open-mode="join"><span class="btn-icon">⌁</span> Entrar con código</button>
       </div>
@@ -150,6 +151,28 @@
         </article>
       </div>
     </section>
+
+    <!-- Chat común del casino: se oculta al entrar a una mesa. -->
+    <aside id="lobby-chat-widget" class="lobby-chat-widget" aria-label="Chat general del casino">
+      <button id="lobby-chat-bubble" class="lobby-chat-bubble" type="button" aria-expanded="false" aria-controls="lobby-chat-panel" aria-label="Abrir chat del casino">
+        <span>💬</span><b id="lobby-chat-unread" class="lobby-chat-unread hidden">0</b>
+      </button>
+      <section id="lobby-chat-panel" class="lobby-chat-panel hidden" aria-hidden="true">
+        <header class="lobby-chat-head"><div><span class="kicker">CHAT COMPARTIDO</span><h3>Lobby del casino</h3></div><button id="lobby-chat-close" type="button" aria-label="Cerrar chat">×</button></header>
+        <div id="lobby-chat-profile" class="lobby-chat-profile hidden">
+          <b>Elige tu apodo</b><p>Será visible para todo el casino. Usaremos tu dispositivo y la aceptación vigente de Términos y Condiciones.</p>
+          <form id="lobby-chat-profile-form">
+            <input id="lobby-chat-name" maxlength="18" autocomplete="nickname" placeholder="Tu apodo" required />
+            <label class="lobby-chat-tos"><input id="lobby-chat-tos" type="checkbox" /> Acepto los <a href="/terminos" target="_blank" rel="noopener">Términos y Condiciones</a></label>
+            <button class="btn btn-primary" type="submit">Entrar al chat →</button>
+          </form>
+        </div>
+        <div id="lobby-chat-content" class="lobby-chat-content">
+          <div id="lobby-chat-messages" class="lobby-chat-messages"></div>
+          <form id="lobby-chat-form" class="lobby-chat-form"><input id="lobby-chat-input" maxlength="180" placeholder="Escribe al lobby…" autocomplete="off" /><button aria-label="Enviar mensaje">↑</button></form>
+        </div>
+      </section>
+    </aside>
 
     <section id="live-lobby" class="live-section">
       <div class="shell">
@@ -283,12 +306,14 @@
         <button class="btn btn-primary" type="submit">Guardar perfil</button>
       </form>
       <div id="profile-stats" class="profile-stats"></div>
+      <section class="featured-achievements-box"><div class="progress-title"><span>VITRINA DE LOGROS</span><small>Elige hasta 3 para destacar</small></div><div id="featured-achievements" class="featured-achievements"></div></section>
       <div class="profile-analytics">
         <section class="analytics-box"><div class="progress-title"><span>EVOLUCIÓN DEL SALDO</span><small id="balance-chart-note">Tus últimos movimientos</small></div><div id="balance-chart" class="balance-chart" role="img" aria-label="Gráfica de evolución del saldo"></div><a id="history-download" class="history-download-link" download>⬇ Descargar mi historial completo</a></section>
         <section class="analytics-box"><div class="progress-title"><span>HISTORIAL POR JUEGO</span><small>Rondas · victorias · balance</small></div><div id="game-breakdown" class="game-breakdown"></div></section>
       </div>
+      <section class="rotating-challenges-box"><div class="progress-title"><span>RETOS ACTIVOS</span><small>Se renuevan automáticamente</small></div><div id="rotating-challenge-list" class="rotating-challenge-list"></div></section>
       <div class="progress-columns">
-        <section><div class="progress-title"><span>RETOS</span><small>Recompensas automáticas</small></div><div id="challenge-list" class="challenge-list"></div></section>
+        <section><div class="progress-title"><span>RETOS PERMANENTES</span><small>Recompensas automáticas</small></div><div id="challenge-list" class="challenge-list"></div></section>
         <section><div class="progress-title"><span>LOGROS</span><small>Colección personal</small></div><div id="achievement-list" class="achievement-list"></div></section>
       </div>
       <div class="profile-reward-note"><span>🎁</span><div><b>Bono diario</b><small id="daily-bonus-status">Se entrega una vez al día al entrar.</small></div></div>
@@ -317,7 +342,10 @@
     <aside class="sidebar">
       <div class="side-top">
         <a class="brand brand-small" href="#" id="room-logo"><span class="brand-mark"><span>♠</span></span><span class="brand-copy"><b>MONTECRISTO</b><em>EN VIVO</em></span></a>
-        <button class="icon-btn" id="sound-toggle" aria-label="Activar o desactivar sonido">♪</button>
+        <div class="side-audio-controls">
+          <button class="icon-btn" id="sound-toggle" aria-label="Activar o desactivar sonido">♪</button>
+          <button class="icon-btn notification-toggle" id="room-notifications-toggle" type="button" aria-label="Silenciar notificaciones" aria-pressed="false">🔔</button>
+        </div>
       </div>
       <div id="profile-card" class="profile-card" role="button" tabindex="0" aria-label="Abrir perfil y progreso"></div>
       <div class="side-section players-section">
