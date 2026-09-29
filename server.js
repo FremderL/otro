@@ -1,22 +1,47 @@
 const express = require('express');
+const compression = require('compression');
 const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
 const { ProfileStore, AVATARS, avatarInfo } = require('./lib/profile-store');
-const { recordWager, recordOutcome, claimDailyBonus, publicProgress } = require('./lib/progression');
+const { credit, recordWager, recordOutcome, claimDailyBonus, publicProgress } = require('./lib/progression');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
 const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
 const { HAND_NAMES, compareScores, bestPokerScore } = require('./lib/poker-evaluator');
 const { DIFFICULTIES, STYLES, createBot, publicBot } = require('./lib/bots/catalog');
 const { BotController } = require('./lib/bots/bot-controller');
+const { TOS_VERSION } = require('./lib/terms');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: true, credentials: true } });
 const PORT = process.env.PORT || 3000;
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Fase 7: logs estructurados (JSON por línea) para el visor de logs de Render. LOG_JSON=off los desactiva.
+const LOG_JSON = process.env.LOG_JSON !== 'off';
+function logEvent(event, data = {}) {
+  if (!LOG_JSON) return;
+  try { console.log(JSON.stringify({ time: new Date().toISOString(), event, ...data })); } catch (_) { /* un log nunca debe tumbar el servidor */ }
+}
+
+// Fase 9: presupuesto de rendimiento — gzip para HTML/CSS/JS y caché larga para las
+// imágenes del lobby (tienen nombre estable; si se reemplazan, cambiar el nombre del archivo).
+app.use(compression());
+app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: '7d', immutable: false }));
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '5m' }));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size, botTasks: botController?.tasks.size || 0 }));
+// Fase 7: health check para deploys sin caída en Render (configurado como healthCheckPath en render.yaml).
+app.get('/healthz', (_req, res) => {
+  res.json({
+    status: 'ok',
+    uptimeSeconds: Math.floor(process.uptime()),
+    rooms: rooms.size,
+    humanPlayers: [...rooms.values()].reduce((sum, room) => sum + room.players.filter(p => !p.isBot && p.connected).length, 0),
+    botTasks: botController?.tasks.size || 0,
+    tosVersion: TOS_VERSION
+  });
+});
+app.get('/terminos', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'terminos.html')));
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const rooms = new Map();
@@ -24,6 +49,13 @@ const profiles = new ProfileStore(process.env.PROFILE_STORE_PATH);
 let botController = null;
 const ROOM_CAPACITY = 6;
 const BOT_ONLY_ROOM_TTL_MS = Math.max(100, Number(process.env.BOT_ONLY_ROOM_TTL_MS) || 5 * 60 * 1000);
+// Fase 2: ciclo de vida de mesas. AUTO_BOTS=off restaura el comportamiento manual (usado por tests legados).
+const AUTO_BOTS = process.env.AUTO_BOTS !== 'off';
+const AUTO_BOT_DIFFICULTY = process.env.AUTO_BOT_DIFFICULTY && DIFFICULTIES[process.env.AUTO_BOT_DIFFICULTY] ? process.env.AUTO_BOT_DIFFICULTY : 'expert';
+const AUTO_BOT_STYLES = ['balanced', 'conservative', 'aggressive', 'unpredictable'];
+const HOST_INACTIVITY_MS = Math.max(200, Number(process.env.HOST_INACTIVITY_MS) || 60 * 1000);
+const HOST_INACTIVITY_SWEEP_MS = Math.max(50, Number(process.env.HOST_INACTIVITY_SWEEP_MS) || 10 * 1000);
+const RECONNECT_GRACE_MS = Math.max(200, Number(process.env.RECONNECT_GRACE_MS) || 90 * 1000);
 const SUITS = ['S', 'H', 'D', 'C'];
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 
@@ -71,6 +103,7 @@ function newPlayer(id, socket, name, avatar) {
     name: profile.name,
     avatar: profile.avatar,
     connected: true,
+    lastActiveAt: Date.now(),
     hand: [],
     bet: 0,
     roundBet: 0,
@@ -84,6 +117,7 @@ function newPlayer(id, socket, name, avatar) {
   Object.defineProperty(player, '_profile', { value: profile, enumerable: false });
   Object.defineProperty(player, 'chips', {
     enumerable: true,
+    configurable: true, // Fase 8.1: los torneos intercambian temporalmente el saldo real por un stack de torneo.
     get: () => profile.chips,
     set: value => { profile.chips = Math.max(0, Math.floor(Number(value) || 0)); profiles.touch(profile); }
   });
@@ -96,7 +130,8 @@ function createRoom(game, host, socket, requestedName) {
     blackjack: `Club 21 de ${host.name}`,
     roulette: `Ruleta de ${host.name}`,
     dice: `Dados de ${host.name}`,
-    coinflip: `Duelo de ${host.name}`
+    coinflip: `Duelo de ${host.name}`,
+    slots: `Tragamonedas de ${host.name}`
   };
   const quick = isQuickGame(game);
   const room = {
@@ -122,6 +157,8 @@ function createRoom(game, host, socket, requestedName) {
     results: [],
     quickResult: null,
     recentWinners: [],
+    spectators: [], // Fase 8: espectadores (modo observador con chat)
+    tournament: null, // Fase 8.1: torneo sit & go (solo póker)
     specialEvent: quick ? rollSpecialEvent() : null,
     createdAt: Date.now(),
     updatedAt: Date.now()
@@ -134,10 +171,28 @@ function createRoom(game, host, socket, requestedName) {
   socket.join(code);
   return room;
 }
+// Fase 3: la aceptación de Términos y Condiciones es obligatoria para jugar.
+// El cliente envía la versión aceptada; se registra en el perfil (con fecha)
+// para que la constancia sobreviva a limpiezas de localStorage.
+function verifyTosAcceptance(profile, tosVersion) {
+  if (String(tosVersion || '') === TOS_VERSION) {
+    if (profile.flags.tosVersion !== TOS_VERSION) {
+      profile.flags.tosVersion = TOS_VERSION;
+      profile.flags.tosAcceptedAt = Date.now();
+      profiles.touch(profile);
+    }
+    return true;
+  }
+  return profile.flags?.tosVersion === TOS_VERSION;
+}
+const TOS_REQUIRED_MESSAGE = 'Debes aceptar los Términos y Condiciones vigentes para jugar.';
+
 function playerForSocket(socket) {
   const room = rooms.get(socket.data.roomCode);
   if (!room) return {};
-  return { room, player: room.players.find(p => p.id === socket.data.playerId) };
+  const player = room.players.find(p => p.id === socket.data.playerId);
+  if (player) player.lastActiveAt = Date.now();
+  return { room, player };
 }
 function isPokerActive(room) {
   return ['preflop', 'flop', 'turn', 'river'].includes(room.phase);
@@ -159,8 +214,11 @@ function publicRoom(room, viewerId) {
       connected: p.connected,
       isBot: Boolean(p.isBot),
       bot: publicBot(p),
+      // Privacidad de cartas (fase 4): cada quien ve solo su mano.
+      // Blackjack: las manos ajenas van boca abajo hasta los resultados.
+      // Póker: boca abajo hasta el showdown (solo manos vivas se muestran).
       hand: room.game === 'blackjack'
-        ? p.hand
+        ? (p.id === viewerId || room.phase === 'results' ? p.hand : p.hand.map(() => 'XX'))
         : (p.id === viewerId || (room.phase === 'showdown' && !p.folded) ? p.hand : p.hand.map(() => 'XX')),
       bet: p.bet,
       roundBet: p.roundBet,
@@ -169,6 +227,15 @@ function publicRoom(room, viewerId) {
       folded: p.folded,
       allIn: p.allIn,
       quickChoice: p.id === viewerId || room.phase === 'results' ? p.quickChoice : (p.bet > 0 ? 'locked' : null),
+      // Fase 8.4: seguro y mano dividida (la mano ajena viaja boca abajo, como la principal).
+      insurance: p.insurance || 0,
+      split: p.split ? {
+        bet: p.split.bet,
+        active: p.split.active,
+        mainStatus: p.split.mainStatus,
+        status: p.split.status,
+        hand: p.id === viewerId || room.phase === 'results' ? p.split.hand : p.split.hand.map(() => 'XX')
+      } : null,
       isHost: p.id === room.hostId
     })),
     dealerHand: room.game === 'blackjack' && room.phase === 'playing' && room.dealerHand.length > 1
@@ -192,6 +259,25 @@ function publicRoom(room, viewerId) {
     viewerProfile: (() => {
       const viewer = room.players.find(player => player.id === viewerId);
       return viewer?._profile ? publicProgress(viewer._profile, true) : null;
+    })(),
+    // Fase 8.1: estado del torneo sit & go (si existe).
+    tournament: room.tournament ? {
+      active: room.tournament.active,
+      entry: room.tournament.entry,
+      prize: room.tournament.prize,
+      level: room.tournament.level,
+      blinds: tournamentBlinds(room.tournament.level),
+      handsAtLevel: room.tournament.handsAtLevel,
+      handsPerLevel: room.tournament.handsPerLevel,
+      remaining: room.tournament.active ? tournamentAlive(room).length : 0,
+      eliminated: room.tournament.eliminated.slice(-6),
+      winnerName: room.tournament.winnerName || null
+    } : null,
+    // Fase 8: tribuna de espectadores. El viewer sabe si está observando; nadie ve cartas ajenas.
+    spectators: (room.spectators || []).filter(s => s.connected).map(s => ({ id: s.id, name: s.name, avatar: s.avatar })),
+    viewerSpectator: (() => {
+      const spectator = (room.spectators || []).find(s => s.id === viewerId);
+      return spectator ? { id: spectator.id, name: spectator.name, avatar: spectator.avatar } : null;
     })(),
     avatars: AVATARS,
     botOptions: {
@@ -219,11 +305,20 @@ function lobbySnapshot() {
       createdAt: room.createdAt
     }));
 }
+// Fase 8.6: datos del ranking mensual para el lobby.
+function seasonSnapshot() {
+  return {
+    month: profiles.seasons.current,
+    ranking: profiles.top(10),
+    previous: profiles.seasons.history[profiles.seasons.history.length - 1] || null
+  };
+}
 function broadcastLobby() {
   const list = lobbySnapshot();
   io.emit('lobby_state', {
     rooms: list,
-    playersOnline: list.reduce((sum, room) => sum + room.humans, 0)
+    playersOnline: list.reduce((sum, room) => sum + room.humans, 0),
+    season: seasonSnapshot()
   });
 }
 function gameEvent(room, type, text, playerId = null, meta = {}) {
@@ -295,6 +390,9 @@ function publishRoom(room, includeLobby = false) {
     }
     if (player.connected && player.socketId) io.to(player.socketId).emit('room_state', publicRoom(room, player.id));
   }
+  for (const spectator of room.spectators || []) {
+    if (spectator.connected && spectator.socketId) io.to(spectator.socketId).emit('room_state', publicRoom(room, spectator.id));
+  }
   if (includeLobby) broadcastLobby();
 }
 function broadcast(room) {
@@ -321,11 +419,20 @@ function clearRoomTasks(room) {
   room._cleanupTimer = null;
   botController?.cancelRoom(room.code);
 }
+function removeSpectator(room, spectatorId) {
+  const spectator = room.spectators?.find(s => s.id === spectatorId);
+  if (!spectator) return;
+  room.spectators = room.spectators.filter(s => s.id !== spectatorId);
+  addSystem(room, `👁 ${spectator.name} dejó de ver la mesa.`);
+}
 function destroyRoom(code) {
   const room = rooms.get(code);
   if (!room) return false;
   clearRoomTasks(room);
   rooms.delete(code);
+  // Fase 8: avisar a espectadores (y a cualquier socket rezagado) que la mesa cerró.
+  io.to(code).emit('room_closed', { code });
+  logEvent('room_destroyed', { room: code, game: room.game, hands: room.handNumber || 0 });
   broadcastLobby();
   return true;
 }
@@ -386,11 +493,48 @@ function requireTurn(room, player, ack) {
   return true;
 }
 function nextConnectedHost(room) {
-  const next = room.players.find(p => p.connected);
+  // La autoridad de la mesa siempre prefiere personas reales conectadas.
+  const next = room.players.find(p => p.connected && !p.isBot) || room.players.find(p => p.connected);
   room.hostId = next ? next.id : null;
 }
 
 // ---------------- BLACKJACK ----------------
+// Fase 8.4: valor individual de una carta de blackjack (para validar splits).
+function bjCardValue(card) {
+  const rank = String(card).slice(0, -1);
+  if (rank === 'A') return 11;
+  if (['K', 'Q', 'J'].includes(rank)) return 10;
+  return Number(rank);
+}
+// Fase 8.4: mano activa del jugador (principal o dividida).
+function bjActiveHandOf(player) {
+  if (player.split && player.split.active === 'split') return { hand: player.split.hand, bet: player.split.bet, which: 'split' };
+  return { hand: player.hand, bet: player.bet, which: 'main' };
+}
+// Fase 8.4: cierra una mano y decide si sigue la otra mano del split o el siguiente jugador.
+function bjSetHandDone(room, player, which, status) {
+  if (!player.split) {
+    player.status = status;
+    nextBlackjackTurn(room, player.id);
+    return;
+  }
+  if (which === 'main') player.split.mainStatus = status; else player.split.status = status;
+  if (player.split.mainStatus === 'playing') {
+    player.split.active = 'main';
+    setTurn(room, player.id);
+    return;
+  }
+  if (player.split.status === 'playing') {
+    if (blackjackScore(player.split.hand).value === 21) player.split.status = 'stand';
+    else {
+      player.split.active = 'split';
+      setTurn(room, player.id);
+      return;
+    }
+  }
+  player.status = player.split.mainStatus === 'bust' && player.split.status === 'bust' ? 'bust' : 'stand';
+  nextBlackjackTurn(room, player.id);
+}
 function blackjackScore(hand) {
   let value = 0;
   let aces = 0;
@@ -427,18 +571,35 @@ function finishBlackjack(room) {
   const dealerNatural = room.dealerHand.length === 2 && dealer.value === 21;
   const outcomes = [];
   for (const p of room.players.filter(p => p.bet > 0)) {
-    const score = blackjackScore(p.hand);
-    let label;
+    // Fase 8.4: se evalúa la mano principal y, si existe, la mano dividida.
+    const hands = [{ hand: p.hand, bet: p.bet, status: p.split ? p.split.mainStatus : p.status, natural: p.status === 'blackjack' && !p.split }];
+    if (p.split) hands.push({ hand: p.split.hand, bet: p.split.bet, status: p.split.status, natural: false });
     let payout = 0;
-    if (p.status === 'bust' || score.value > 21) label = 'Pierde';
-    else if (p.status === 'blackjack' && !dealerNatural) { label = 'Blackjack'; payout = p.bet * 2.5; }
-    else if (dealer.value > 21) { label = 'Gana'; payout = p.bet * 2; }
-    else if (score.value > dealer.value) { label = 'Gana'; payout = p.bet * 2; }
-    else if (score.value === dealer.value) { label = 'Empate'; payout = p.bet; }
-    else label = 'Pierde';
+    let totalBet = 0;
+    const labels = [];
+    for (const item of hands) {
+      totalBet += item.bet;
+      const score = blackjackScore(item.hand);
+      let handPayout = 0;
+      let label;
+      if (item.status === 'bust' || score.value > 21) label = 'Pierde';
+      else if (item.natural && !dealerNatural) { label = 'Blackjack'; handPayout = item.bet * 2.5; }
+      else if (dealer.value > 21 || score.value > dealer.value) { label = 'Gana'; handPayout = item.bet * 2; }
+      else if (score.value === dealer.value) { label = 'Empate'; handPayout = item.bet; }
+      else label = 'Pierde';
+      payout += handPayout;
+      labels.push(label);
+    }
+    // Fase 8.4: liquidación del seguro (paga 2:1 si la casa tiene blackjack natural).
+    let insuranceNet = 0;
+    if (p.insurance > 0) {
+      if (dealerNatural) { p.chips += p.insurance * 3; insuranceNet = p.insurance * 2; }
+      else insuranceNet = -p.insurance;
+    }
     p.chips += Math.floor(payout);
-    p.status = label.toLowerCase();
-    const baseAmount = payout ? Math.floor(payout - p.bet) : -p.bet;
+    const label = p.split ? (labels[0] === labels[1] ? `${labels[0]} ×2` : `${labels[0]} / ${labels[1]}`) : labels[0];
+    p.status = Math.floor(payout) + insuranceNet > totalBet ? 'gana' : Math.floor(payout) + insuranceNet === totalBet ? 'empate' : 'pierde';
+    const baseAmount = Math.floor(payout) - totalBet + insuranceNet;
     const { net: amount, specialBonus } = completePlayerRound(room, p, baseAmount);
     outcomes.push({ id: p.id, name: p.name, label, amount, specialBonus });
     addRecentWinner(room, p, amount);
@@ -446,25 +607,36 @@ function finishBlackjack(room) {
   }
   room.results = outcomes;
   room.phase = 'results';
-  const dealerText = dealer.value > 21 ? `La casa se pasó con ${dealer.value}.` : `La casa terminó con ${dealer.value}.`;
+  const dealerText = dealerNatural ? 'La casa tiene blackjack natural.' : dealer.value > 21 ? `La casa se pasó con ${dealer.value}.` : `La casa terminó con ${dealer.value}.`;
   addSystem(room, dealerText);
+  releaseBotSeats(room);
 }
 function startBlackjack(room) {
   if (room.phase !== 'betting') return actionError('La ronda ya está en curso.');
+  purgeDepartedPlayers(room);
   const playing = room.players.filter(p => p.bet > 0 && p.connected);
   if (!playing.length) return actionError('Al menos una persona debe apostar.');
   beginSpecialEvent(room);
-  room.deck = room.deck.length > 60 ? room.deck : makeDeck(4);
+  // Gancho de pruebas: un mazo fijo permite verificar seguro y split de forma determinista.
+  room.deck = process.env.TEST_BLACKJACK_DECK
+    ? JSON.parse(process.env.TEST_BLACKJACK_DECK).slice().reverse()
+    : (room.deck.length > 60 ? room.deck : makeDeck(4));
   room.dealerHand = [draw(room), draw(room)];
   room.results = [];
   room.handNumber++;
   for (const p of room.players) {
     p.hand = [];
+    p.insurance = 0; // Fase 8.4
+    p.split = null; // Fase 8.4
     if (p.bet > 0 && p.connected) {
       p.hand = [draw(room), draw(room)];
       const score = blackjackScore(p.hand).value;
       p.status = score === 21 ? 'blackjack' : 'playing';
     } else p.status = 'waiting';
+  }
+  // Fase 8.4: si la casa muestra un as, se abre la ventana de seguro.
+  if (String(room.dealerHand[0]).slice(0, -1) === 'A') {
+    addSystem(room, '🛡 La casa muestra un as: puedes tomar un seguro por la mitad de tu apuesta antes de tu primera jugada.');
   }
   room.phase = 'playing';
   clearTurn(room);
@@ -484,6 +656,8 @@ function resetBlackjack(room) {
   for (const p of room.players) {
     p.hand = [];
     p.bet = 0;
+    p.insurance = 0; // Fase 8.4
+    p.split = null; // Fase 8.4
     p.status = 'waiting';
   }
 }
@@ -494,8 +668,11 @@ function takeChips(room, player, amount) {
   player.chips -= paid;
   player.roundBet += paid;
   player.totalBet += paid;
-  if (paid) trackWager(room, player, paid);
+  // El all-in se decide ANTES de acreditar recompensas de retos: trackWager puede
+  // sumar fichas de premio al instante y, si se evaluaba después, el jugador
+  // quedaba "vivo" con fichas caídas del cielo a media mano (mesa trabada).
   if (player.chips === 0) player.allIn = true;
+  if (paid) trackWager(room, player, paid);
   return paid;
 }
 function nextSeat(room, fromIndex, predicate) {
@@ -521,7 +698,14 @@ function setNextPokerTurn(room, afterId) {
 }
 function pokerRoundComplete(room) {
   const actable = actablePokerPlayers(room);
-  if (actable.length <= 1 && livePokerPlayers(room).some(p => p.allIn)) return true;
+  if (!actable.length) return true;
+  // Frente a un all-in, la última persona con fichas CONSERVA su turno si tiene
+  // una apuesta pendiente por responder (igualar, subir o retirarse). Antes la
+  // ronda se cerraba aquí y la mano corría sola al showdown disputando solo las
+  // ciegas, con el excedente del all-in "devuelto" como si fuera una victoria.
+  if (actable.length === 1 && livePokerPlayers(room).some(p => p.allIn)) {
+    return actable[0].roundBet >= room.currentBet;
+  }
   return actable.every(p => p.acted && p.roundBet === room.currentBet);
 }
 function awardSinglePokerWinner(room, player) {
@@ -545,6 +729,8 @@ function awardSinglePokerWinner(room, player) {
   clearTurn(room);
   room.phase = 'showdown';
   player.status = 'winner';
+  tournamentAfterHand(room);
+  releaseBotSeats(room);
 }
 function advancePokerStreet(room) {
   for (const p of handPlayers(room)) {
@@ -552,7 +738,7 @@ function advancePokerStreet(room) {
     p.acted = false;
   }
   room.currentBet = 0;
-  room.minRaise = 20;
+  room.minRaise = room.tournament?.active ? tournamentBlinds(room.tournament.level).big : 20;
   if (room.phase === 'preflop') {
     room.community.push(draw(room), draw(room), draw(room));
     room.phase = 'flop';
@@ -577,16 +763,143 @@ function resolvePokerAfterAction(room, actorId) {
   if (pokerRoundComplete(room)) return advancePokerStreet(room);
   setNextPokerTurn(room, actorId);
 }
+// ---------------- Fase 8.1: TORNEOS SIT & GO DE PÓKER ----------------
+// Todos los sentados pagan una entrada, reciben un stack fijo y juegan con
+// ciegas crecientes hasta que queda un solo jugador, que se lleva el bote.
+// Durante el torneo el saldo real del perfil queda protegido (solo se mueve
+// la entrada al inicio y el premio al final).
+const TOURNAMENT_ENTRY = 200;
+const TOURNAMENT_STACK = 1000;
+const TOURNAMENT_HANDS_PER_LEVEL = 3;
+function tournamentBlinds(level) {
+  const small = 10 * Math.pow(2, Math.min(6, Math.max(1, level) - 1));
+  return { small, big: small * 2 };
+}
+// Cambia las fichas del jugador humano por un stack de torneo independiente del perfil.
+function detachTournamentChips(player, stack) {
+  Object.defineProperty(player, 'chips', { enumerable: true, configurable: true, writable: true, value: stack });
+}
+// Restaura el enlace fichas ⇄ perfil (el saldo real, ya sin la entrada).
+function restoreProfileChips(player) {
+  if (player.isBot) return;
+  const profile = player._profile;
+  Object.defineProperty(player, 'chips', {
+    enumerable: true,
+    configurable: true,
+    get: () => profile.chips,
+    set: value => { profile.chips = Math.max(0, Math.floor(Number(value) || 0)); profiles.touch(profile); }
+  });
+}
+function tournamentAlive(room) {
+  const t = room.tournament;
+  if (!t) return [];
+  return room.players.filter(p => t.entrants.includes(p.id) && !t.eliminated.some(e => e.id === p.id));
+}
+function executeTournamentStart(room, actor) {
+  if (!room || room.game !== 'poker') return actionError('Los torneos solo están disponibles en la mesa de póker.');
+  if (!actor || actor.id !== room.hostId) return actionError('Solo el anfitrión puede iniciar el torneo.');
+  if (room.tournament?.active) return actionError('Ya hay un torneo en curso.');
+  if (!['waiting', 'showdown'].includes(room.phase)) return actionError('Espera a que termine la mano actual.');
+  beginRoundRoster(room);
+  const entrants = room.players.filter(p => p.connected);
+  if (entrants.length < 2) return actionError('Se necesitan al menos 2 jugadores para el torneo.');
+  const poor = entrants.find(p => !p.isBot && p.chips < TOURNAMENT_ENTRY);
+  if (poor) return actionError(`${poor.name} no tiene fichas para la entrada (${TOURNAMENT_ENTRY}).`);
+  for (const p of entrants) {
+    if (p.isBot) p.chips = TOURNAMENT_STACK;
+    else { p.chips -= TOURNAMENT_ENTRY; detachTournamentChips(p, TOURNAMENT_STACK); }
+    p.status = 'waiting';
+  }
+  room.tournament = {
+    active: true, entry: TOURNAMENT_ENTRY, prize: TOURNAMENT_ENTRY * entrants.length,
+    level: 1, handsAtLevel: 0, handsPerLevel: TOURNAMENT_HANDS_PER_LEVEL,
+    entrants: entrants.map(p => p.id), eliminated: [], winnerName: null, startedAt: Date.now()
+  };
+  addSystem(room, `🏆 ¡Comienza el torneo sit & go! Entrada ${TOURNAMENT_ENTRY}, bote ${room.tournament.prize}, stack inicial ${TOURNAMENT_STACK}. Las ciegas suben cada ${TOURNAMENT_HANDS_PER_LEVEL} manos.`);
+  gameEvent(room, 'round', `Torneo iniciado: ${entrants.length} jugadores compiten por ${room.tournament.prize} fichas.`);
+  logEvent('tournament_started', { room: room.code, entrants: entrants.length, prize: room.tournament.prize });
+  return startPoker(room);
+}
+// Marca a un participante como eliminado (por quedarse sin stack o por abandonar la mesa).
+function eliminateEntrant(room, player, viaDeparture = false) {
+  const t = room.tournament;
+  if (!t?.active || !t.entrants.includes(player.id) || t.eliminated.some(e => e.id === player.id)) return;
+  const place = tournamentAlive(room).length;
+  t.eliminated.push({ id: player.id, name: player.name, place });
+  player.status = 'eliminated';
+  if (!player.isBot) restoreProfileChips(player);
+  addSystem(room, `🏆 ${player.name} queda fuera del torneo (${place}.º lugar${viaDeparture ? ', abandonó la mesa' : ''}).`);
+  gameEvent(room, 'loss', `Quedaste en ${place}.º lugar del torneo.`, player.id);
+  if (viaDeparture) {
+    const remaining = tournamentAlive(room).filter(p => p.id !== player.id);
+    if (remaining.length === 1 && !isPokerActive(room)) finishTournament(room, remaining[0]);
+  }
+}
+function finishTournament(room, winner) {
+  const t = room.tournament;
+  if (!t?.active) return;
+  t.active = false;
+  t.winnerName = winner ? winner.name : null;
+  t.finishedAt = Date.now();
+  for (const p of room.players.filter(item => t.entrants.includes(item.id))) {
+    if (!p.isBot) restoreProfileChips(p);
+    if (p.status === 'eliminated' || p.status === 'winner') p.status = 'waiting';
+  }
+  if (winner) {
+    if (winner.isBot) winner.chips += t.prize;
+    else { credit(winner._profile, t.prize, 'Premio del torneo sit & go'); profiles.touch(winner._profile); }
+    addRecentWinner(room, winner, t.prize);
+    addSystem(room, `🏆 ${winner.name} gana el torneo y se lleva las ${t.prize} fichas del bote.`);
+    gameEvent(room, 'win', `¡Campeón del torneo! +${t.prize} fichas.`, winner.id, { amount: t.prize });
+    logEvent('tournament_finished', { room: room.code, winner: winner.name, prize: t.prize, entrants: t.entrants.length });
+  } else {
+    addSystem(room, '🏆 El torneo terminó sin campeón.');
+    logEvent('tournament_finished', { room: room.code, winner: null, prize: t.prize, entrants: t.entrants.length });
+  }
+  releaseBotSeats(room);
+}
+// Al terminar cada mano: procesa eliminaciones, sube ciegas y detecta al campeón.
+function tournamentAfterHand(room) {
+  const t = room.tournament;
+  if (!t?.active) return;
+  const busted = tournamentAlive(room).filter(p => p.chips <= 0);
+  let place = tournamentAlive(room).length;
+  for (const player of busted.sort((a, b) => (a.totalBet || 0) - (b.totalBet || 0))) {
+    t.eliminated.push({ id: player.id, name: player.name, place });
+    player.status = 'eliminated';
+    if (!player.isBot) restoreProfileChips(player);
+    addSystem(room, `🏆 ${player.name} queda eliminado del torneo (${place}.º lugar).`);
+    gameEvent(room, 'loss', `Quedaste en ${place}.º lugar del torneo.`, player.id);
+    place--;
+  }
+  const remaining = tournamentAlive(room);
+  if (remaining.length <= 1) return finishTournament(room, remaining[0] || null);
+  t.handsAtLevel++;
+  if (t.handsAtLevel >= t.handsPerLevel) {
+    t.handsAtLevel = 0;
+    t.level++;
+    const blinds = tournamentBlinds(t.level);
+    addSystem(room, `🏆 Torneo: nivel ${t.level}. Las ciegas suben a ${blinds.small}/${blinds.big}.`);
+    gameEvent(room, 'round', `Ciegas del torneo: ${blinds.small}/${blinds.big}.`);
+  }
+}
+
 function startPoker(room) {
   if (!['waiting', 'showdown'].includes(room.phase)) return actionError('La mano actual todavía no termina.');
-  const eligible = room.players.filter(p => p.connected && p.chips >= 20);
-  if (eligible.length < 2) return actionError('Se necesitan al menos 2 jugadores con 20 fichas.');
+  beginRoundRoster(room);
+  // Fase 8.1: en torneo juegan solo los participantes vivos y las ciegas dependen del nivel.
+  const tourney = room.tournament?.active ? room.tournament : null;
+  const blinds = tourney ? tournamentBlinds(tourney.level) : { small: 10, big: 20 };
+  const eligible = tourney
+    ? tournamentAlive(room).filter(p => p.connected && p.chips > 0)
+    : room.players.filter(p => p.connected && p.chips >= 20);
+  if (eligible.length < 2) return actionError(tourney ? 'El torneo necesita al menos 2 participantes con fichas.' : 'Se necesitan al menos 2 jugadores con 20 fichas.');
   beginSpecialEvent(room);
   room.deck = makeDeck(1);
   room.community = [];
   room.pot = 0;
   room.currentBet = 0;
-  room.minRaise = 20;
+  room.minRaise = blinds.big;
   room.results = [];
   room.handNumber++;
   for (const p of room.players) {
@@ -615,12 +928,12 @@ function startPoker(room) {
   const bbIndex = nextSeat(room, sbIndex, p => eligible.includes(p));
   const sb = room.players[sbIndex];
   const bb = room.players[bbIndex];
-  room.pot += takeChips(room, sb, 10);
-  room.pot += takeChips(room, bb, 20);
+  room.pot += takeChips(room, sb, blinds.small);
+  room.pot += takeChips(room, bb, blinds.big);
   room.currentBet = Math.max(sb.roundBet, bb.roundBet);
   room.phase = 'preflop';
   setNextPokerTurn(room, bb.id);
-  addSystem(room, `Mano ${room.handNumber}. ${dealer.name} reparte; ciegas 10/20.`);
+  addSystem(room, `Mano ${room.handNumber}. ${dealer.name} reparte; ciegas ${blinds.small}/${blinds.big}.${tourney ? ` · 🏆 Torneo nivel ${tourney.level}` : ''}`);
   gameEvent(room, 'round', `Comenzó la mano ${room.handNumber}.`);
   return actionOk();
 }
@@ -631,15 +944,25 @@ function showdownPoker(room) {
   const contributors = handPlayers(room).filter(p => p.totalBet > 0);
   const levels = [...new Set(contributors.map(p => p.totalBet))].sort((a, b) => a - b);
   const awards = new Map();
+  const refunds = new Map();
   let previousLevel = 0;
 
   // Build the main and side pots from each contribution tier. Folded players
   // add chips to a pot, but are never eligible to win it.
   for (const level of levels) {
-    const potAmount = (level - previousLevel) * contributors.filter(p => p.totalBet >= level).length;
+    const tierContributors = contributors.filter(p => p.totalBet >= level);
+    const potAmount = (level - previousLevel) * tierContributors.length;
     previousLevel = level;
+    if (!potAmount) continue;
+    // Apuesta sin igualar: si en este tramo solo puso fichas UNA persona, nadie
+    // lo disputó. Se le devuelve en silencio: no es un bote ganado ni la marca
+    // como ganadora (antes esto hacía "ganar" a una mano perdedora su propio dinero).
+    if (tierContributors.length === 1) {
+      refunds.set(tierContributors[0].id, (refunds.get(tierContributors[0].id) || 0) + potAmount);
+      continue;
+    }
     const eligible = live.filter(p => p.totalBet >= level);
-    if (!potAmount || !eligible.length) continue;
+    if (!eligible.length) continue;
     let best = scored.get(eligible[0].id);
     for (const p of eligible.slice(1)) if (compareScores(scored.get(p.id), best) > 0) best = scored.get(p.id);
     const winners = eligible.filter(p => compareScores(scored.get(p.id), best) === 0);
@@ -653,8 +976,15 @@ function showdownPoker(room) {
 
   // Normally the side-pot total equals room.pot. The fallback keeps every
   // virtual chip accounted for even if a future rule change creates residue.
-  const awarded = [...awards.values()].reduce((sum, amount) => sum + amount, 0);
+  const awarded = [...awards.values()].reduce((sum, amount) => sum + amount, 0)
+    + [...refunds.values()].reduce((sum, amount) => sum + amount, 0);
   if (awarded < room.pot && live.length) awards.set(live[0].id, (awards.get(live[0].id) || 0) + room.pot - awarded);
+  for (const [id, amount] of refunds) {
+    const p = handPlayers(room).find(player => player.id === id);
+    if (!p || !amount) continue;
+    p.chips += amount;
+    addSystem(room, `Se devuelven ${amount} fichas sin igualar a ${p.name}.`);
+  }
   for (const p of live) {
     const amount = awards.get(p.id) || 0;
     if (amount) { p.chips += amount; p.status = 'winner'; }
@@ -662,7 +992,7 @@ function showdownPoker(room) {
   const participants = handPlayers(room);
   const progress = new Map();
   for (const participant of participants) {
-    const baseNet = (awards.get(participant.id) || 0) - participant.totalBet;
+    const baseNet = (awards.get(participant.id) || 0) + (refunds.get(participant.id) || 0) - participant.totalBet;
     progress.set(participant.id, completePlayerRound(room, participant, baseNet));
   }
   room.results = [...awards.entries()].map(([id, amount]) => {
@@ -679,6 +1009,8 @@ function showdownPoker(room) {
   room.pot = 0;
   clearTurn(room);
   room.phase = 'showdown';
+  tournamentAfterHand(room);
+  releaseBotSeats(room);
 }
 
 // ---------------- QUICK SOCIAL GAMES ----------------
@@ -723,6 +1055,7 @@ function resolveQuickRound(room) {
   room.phase = 'results';
   addSystem(room, `${resultLabel(room.game, result)}. Ronda resuelta.`);
   gameEvent(room, 'quick_result', `Resultado: ${resultLabel(room.game, result)}.`);
+  releaseBotSeats(room);
   broadcast(room);
 }
 
@@ -746,6 +1079,7 @@ function executeQuickBet(room, player, { amount, choice } = {}) {
 function executeQuickResolve(room, actor) {
   if (!room || !actor || !isQuickGame(room.game) || actor.id !== room.hostId) return actionError('Solo el anfitrión puede lanzar la ronda.');
   if (room.phase !== 'betting') return actionError('La ronda no está lista.');
+  purgeDepartedPlayers(room);
   if (!room.players.some(item => item.bet > 0 && item.connected)) return actionError('Al menos una persona debe apostar.');
   room.handNumber++;
   room.phase = 'rolling';
@@ -757,6 +1091,7 @@ function executeQuickResolve(room, actor) {
 function executeQuickNew(room, actor) {
   if (!room || !actor || !isQuickGame(room.game) || actor.id !== room.hostId || room.phase !== 'results') return actionError('No se puede abrir otra ronda todavía.');
   resetQuickRound(room);
+  beginRoundRoster(room);
   return actionOk();
 }
 function executeBlackjackBet(room, player, { amount } = {}) {
@@ -777,30 +1112,60 @@ function executeBlackjackStart(room, actor) {
 function executeBlackjackAction(room, player, action) {
   if (!room || !player || room.game !== 'blackjack' || room.phase !== 'playing') return actionError('La ronda de blackjack no está activa.', 'stale');
   if (room.turnId !== player.id) return actionError('Aún no es tu turno.', 'stale');
+  // Fase 8.4: con split, las jugadas aplican a la mano activa (principal primero).
+  const current = bjActiveHandOf(player);
   if (action === 'hit') {
-    player.hand.push(draw(room));
-    const value = blackjackScore(player.hand).value;
-    if (value > 21) { player.status = 'bust'; nextBlackjackTurn(room, player.id); }
-    else if (value === 21) { player.status = 'stand'; nextBlackjackTurn(room, player.id); }
+    current.hand.push(draw(room));
+    const value = blackjackScore(current.hand).value;
+    if (value > 21) bjSetHandDone(room, player, current.which, 'bust');
+    else if (value === 21) bjSetHandDone(room, player, current.which, 'stand');
     else setTurn(room, player.id);
   } else if (action === 'stand') {
-    player.status = 'stand';
-    nextBlackjackTurn(room, player.id);
+    bjSetHandDone(room, player, current.which, 'stand');
   } else if (action === 'double') {
-    if (player.hand.length !== 2 || player.chips < player.bet) return actionError('No puedes doblar esta mano.');
-    const extraBet = player.bet;
+    if (current.hand.length !== 2 || player.chips < current.bet) return actionError('No puedes doblar esta mano.');
+    const extraBet = current.bet;
     player.chips -= extraBet;
-    player.bet *= 2;
+    if (current.which === 'split') player.split.bet *= 2; else player.bet *= 2;
     trackWager(room, player, extraBet);
+    current.hand.push(draw(room));
+    bjSetHandDone(room, player, current.which, blackjackScore(current.hand).value > 21 ? 'bust' : 'stand');
+  } else if (action === 'split') {
+    // Fase 8.4: dividir dos cartas del mismo valor en dos manos independientes.
+    if (player.split) return actionError('Solo puedes dividir una vez por ronda.');
+    if (player.hand.length !== 2 || bjCardValue(player.hand[0]) !== bjCardValue(player.hand[1])) return actionError('Solo puedes dividir dos cartas del mismo valor.');
+    if (player.chips < player.bet) return actionError('Necesitas fichas para igualar tu apuesta en la segunda mano.');
+    player.chips -= player.bet;
+    trackWager(room, player, player.bet);
+    player.split = { bet: player.bet, hand: [player.hand.pop()], active: 'main', mainStatus: 'playing', status: 'playing' };
     player.hand.push(draw(room));
-    player.status = blackjackScore(player.hand).value > 21 ? 'bust' : 'stand';
-    nextBlackjackTurn(room, player.id);
+    player.split.hand.push(draw(room));
+    addSystem(room, `${player.name} divide su mano en dos apuestas de ${player.bet}.`);
+    if (blackjackScore(player.hand).value === 21) bjSetHandDone(room, player, 'main', 'stand');
+    else setTurn(room, player.id);
   } else return actionError('Jugada no válida.');
+  return actionOk();
+}
+// Fase 8.4: seguro por la mitad de la apuesta cuando la casa muestra un as (paga 2:1).
+function executeBlackjackInsurance(room, player) {
+  if (!room || !player || room.game !== 'blackjack' || room.phase !== 'playing') return actionError('El seguro solo se ofrece durante la ronda.');
+  const upcard = room.dealerHand?.[0];
+  if (!upcard || String(upcard).slice(0, -1) !== 'A') return actionError('El seguro solo se ofrece cuando la casa muestra un as.');
+  if (!(player.bet > 0)) return actionError('Necesitas una apuesta activa para asegurar.');
+  if (player.insurance > 0) return actionError('Ya tomaste el seguro en esta ronda.');
+  if (player.hand.length !== 2 || player.split) return actionError('El seguro solo está disponible antes de tu primera jugada.');
+  const cost = Math.ceil(player.bet / 2);
+  if (player.chips < cost) return actionError('No tienes fichas suficientes para el seguro.');
+  player.chips -= cost;
+  player.insurance = cost;
+  trackWager(room, player, cost);
+  addSystem(room, `${player.name} toma un seguro de ${cost} fichas.`);
   return actionOk();
 }
 function executeBlackjackNew(room, actor) {
   if (!room || !actor || room.game !== 'blackjack' || actor.id !== room.hostId || room.phase !== 'results') return actionError('No se puede iniciar otra ronda.');
   resetBlackjack(room);
+  beginRoundRoster(room);
   return actionOk();
 }
 function executePokerStart(room, actor) {
@@ -884,6 +1249,7 @@ function addBotToRoom(room, options = {}) {
 function removeBotFromRoom(room, bot) {
   if (!bot?.isBot) return actionError('Bot no encontrado.');
   if (rosterLocked(room)) return actionError('Espera a que termine la ronda para retirar bots.');
+  eliminateEntrant(room, bot, true); // Fase 8.1: retirar a un bot participante lo elimina del torneo.
   botController?.cancelBot(room.code, bot.id);
   if ((room.game === 'blackjack' || isQuickGame(room.game)) && room.phase === 'betting' && bot.bet > 0) bot.chips += bot.bet;
   room.players = room.players.filter(player => player.id !== bot.id);
@@ -901,12 +1267,83 @@ function scheduleRoomCleanup(room) {
     return;
   }
   if (room._cleanupTimer) return;
-  const delay = room.players.some(player => player.isBot && player.connected) ? BOT_ONLY_ROOM_TTL_MS : 30 * 60 * 1000;
+  // Personas desconectadas conservan su asiento un periodo de gracia (reconexión);
+  // sin ninguna persona real sentada, la mesa se elimina de inmediato (o al TTL legado si AUTO_BOTS está apagado).
+  const humanSeated = room.players.some(player => !player.isBot);
+  const botsSeated = room.players.some(player => player.isBot && player.connected);
+  const delay = humanSeated ? RECONNECT_GRACE_MS : (botsSeated && !AUTO_BOTS ? BOT_ONLY_ROOM_TTL_MS : 0);
   room._cleanupTimer = scheduleRoomTask(room, () => {
     room._cleanupTimer = null;
     const latest = rooms.get(room.code);
     if (latest && !latest.players.some(player => player.connected && !player.isBot)) destroyRoom(room.code);
   }, delay);
+}
+
+// ---------------- CICLO DE VIDA DE MESA (fase 2) ----------------
+// Completa los asientos libres con bots expertos mientras haya personas reales en la mesa.
+function autoFillBots(room) {
+  if (!AUTO_BOTS || !room || rosterLocked(room)) return false;
+  if (room.tournament?.active) return false; // Fase 8.1: sin asientos nuevos durante un torneo.
+  if (!room.players.some(p => !p.isBot && p.connected)) return false;
+  let added = false;
+  while (room.players.length < ROOM_CAPACITY) {
+    const style = AUTO_BOT_STYLES[Math.floor(Math.random() * AUTO_BOT_STYLES.length)];
+    const result = addBotToRoom(room, { difficulty: AUTO_BOT_DIFFICULTY, style });
+    if (!result.ok) break;
+    added = true;
+  }
+  return added;
+}
+// Al terminar la ronda, los bots desocupan sus asientos para que los tomen personas reales.
+function releaseBotSeats(room) {
+  if (!AUTO_BOTS || !room) return false;
+  if (room.tournament?.active) return false; // Fase 8.1: los bots participantes se quedan hasta el final del torneo.
+  const bots = room.players.filter(p => p.isBot);
+  if (!bots.length) return false;
+  for (const bot of bots) botController?.cancelBot(room.code, bot.id);
+  room.players = room.players.filter(p => !p.isBot);
+  if (bots.some(bot => bot.id === room.hostId)) nextConnectedHost(room);
+  addSystem(room, '🤖 Los bots dejaron sus asientos libres para nuevos jugadores.');
+  scheduleRoomCleanup(room);
+  return true;
+}
+// Cuando llega una persona real y la mesa está llena de bots, un bot cede el asiento.
+function makeSeatForHuman(room) {
+  if (!AUTO_BOTS || !room || rosterLocked(room)) return false;
+  if (room.tournament?.active) return false; // Fase 8.1: nadie desplaza a un participante del torneo.
+  const bot = [...room.players].reverse().find(p => p.isBot);
+  if (!bot) return false;
+  botController?.cancelBot(room.code, bot.id);
+  if ((room.game === 'blackjack' || isQuickGame(room.game)) && room.phase === 'betting' && bot.bet > 0) bot.chips += bot.bet;
+  room.players = room.players.filter(p => p.id !== bot.id);
+  if (room.hostId === bot.id) nextConnectedHost(room);
+  addSystem(room, `🤖 ${bot.name} cedió su asiento a una persona real.`);
+  return true;
+}
+// Retira de la mesa a quienes ya no están presentes de verdad (jugadores "fantasma").
+function purgeDepartedPlayers(room) {
+  if (!room) return false;
+  const departed = room.players.filter(p => !p.isBot && !p.connected);
+  if (!departed.length) return false;
+  for (const player of departed) {
+    if ((room.game === 'blackjack' || isQuickGame(room.game)) && room.phase === 'betting' && player.bet > 0) {
+      player.chips += player.bet;
+      player.bet = 0;
+    }
+    eliminateEntrant(room, player, true); // Fase 8.1: los ausentes salen también del torneo.
+    addSystem(room, `${player.name} dejó su asiento libre.`);
+  }
+  room.players = room.players.filter(p => p.isBot || p.connected);
+  if (departed.some(p => p.id === room.hostId)) nextConnectedHost(room);
+  scheduleRoomCleanup(room);
+  return true;
+}
+// Antes de arrancar cualquier ronda: valida presencia real, valida al anfitrión y completa la mesa.
+function beginRoundRoster(room) {
+  purgeDepartedPlayers(room);
+  const host = room.players.find(p => p.id === room.hostId);
+  if (!host || !host.connected || (host.isBot && room.players.some(p => !p.isBot && p.connected))) nextConnectedHost(room);
+  autoFillBots(room);
 }
 
 function removeOrDisconnectPlayer(room, player, leave = false) { 
@@ -926,6 +1363,8 @@ function removeOrDisconnectPlayer(room, player, leave = false) {
     player.status = 'stand';
     nextBlackjackTurn(room, player.id);
   }
+  // Fase 8.1: quien abandona la mesa durante un torneo queda eliminado de él.
+  if (leave) eliminateEntrant(room, player, true);
   if (leave && !isPokerActive(room) && room.phase !== 'playing' && room.phase !== 'rolling') {
     room.players = room.players.filter(p => p.id !== player.id);
   }
@@ -948,27 +1387,32 @@ botController = new BotController({
 });
 
 io.on('connection', socket => {
+  const initialLobby = lobbySnapshot();
   socket.emit('lobby_state', {
-    rooms: lobbySnapshot(),
-    playersOnline: lobbySnapshot().reduce((sum, room) => sum + room.humans, 0)
+    rooms: initialLobby,
+    playersOnline: initialLobby.reduce((sum, room) => sum + room.humans, 0),
+    season: seasonSnapshot()
   });
 
-  socket.on('create_room', ({ name, roomName, game, token, avatar } = {}, ack) => {
+  socket.on('create_room', ({ name, roomName, game, token, avatar, tos } = {}, ack) => {
     name = cleanName(name);
     game = ['poker', 'blackjack', ...Object.keys(QUICK_GAMES)].includes(game) ? game : 'poker';
     if (!name) return ackError(ack, 'Escribe tu nombre.');
     if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
     const player = newPlayer(String(token).slice(0, 80), socket, name, avatar);
+    if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
     const room = createRoom(game, player, socket, roomName);
     socket.data.roomCode = room.code;
     socket.data.playerId = player.id;
     claimPlayerDaily(room, player);
+    autoFillBots(room);
     ackOk(ack, { code: room.code });
+    logEvent('room_created', { room: room.code, game: room.game, host: player.name });
     gameEvent(room, 'joined', `${player.name} creó ${room.name}.`);
     broadcast(room);
   });
 
-  socket.on('join_room', ({ name, code, token, avatar } = {}, ack) => {
+  socket.on('join_room', ({ name, code, token, avatar, tos } = {}, ack) => {
     name = cleanName(name);
     if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
     code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
@@ -976,35 +1420,96 @@ io.on('connection', socket => {
     if (!room) return ackError(ack, 'Esa sala no existe o ya cerró.');
     let player = room.players.find(p => !p.isBot && p.id === String(token).slice(0, 80));
     if (player) {
+      if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
       player.socketId = socket.id;
       player.connected = true;
+      player.lastActiveAt = Date.now();
       profiles.update(player._profile, { name, avatar });
       player.name = player._profile.name;
       player.avatar = player._profile.avatar;
       addSystem(room, `${player.name} volvió a la mesa.`);
     } else {
       if (!name) return ackError(ack, 'Escribe tu nombre.');
-      if (room.players.length >= ROOM_CAPACITY) return ackError(ack, `La mesa está llena (máximo ${ROOM_CAPACITY}).`);
       player = newPlayer(String(token).slice(0, 80), socket, name, avatar);
+      if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
+      // Si la mesa está llena pero hay bots, un bot cede su asiento a la persona real.
+      if (room.players.length >= ROOM_CAPACITY) makeSeatForHuman(room);
+      if (room.players.length >= ROOM_CAPACITY) return ackError(ack, `La mesa está llena (máximo ${ROOM_CAPACITY}).`);
       room.players.push(player);
       addSystem(room, `${player.name} se sentó en la mesa.`);
     }
     socket.join(code);
     socket.data.roomCode = code;
     socket.data.playerId = player.id;
+    // Si estaba en la tribuna, deja de ser espectador al sentarse.
+    if (room.spectators?.some(s => s.id === player.id)) {
+      room.spectators = room.spectators.filter(s => s.id !== player.id);
+      addSystem(room, `👁 ${player.name} pasó de la tribuna a la mesa.`);
+    }
+    delete socket.data.spectatorId;
     if (!room.hostId || room.players.find(item => item.id === room.hostId)?.isBot) room.hostId = player.id;
     scheduleRoomCleanup(room);
+    autoFillBots(room);
     claimPlayerDaily(room, player);
     ackOk(ack, { code, game: room.game });
+    logEvent('player_joined', { room: code, game: room.game, player: player.name });
     gameEvent(room, 'joined', `${player.name} se unió a la sala.`);
     broadcast(room);
   });
 
+  // Fase 8: modo espectador. Cualquiera puede ver una mesa (incluso llena) sin ocupar asiento.
+  // Recibe el mismo estado que un jugador sin identidad en la mesa: todas las manos viajan boca abajo.
+  socket.on('spectate_room', ({ name, code, token, avatar, tos } = {}, ack) => {
+    name = cleanName(name);
+    if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
+    code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+    const room = rooms.get(code);
+    if (!room) return ackError(ack, 'Esa sala no existe o ya cerró.');
+    const id = String(token).slice(0, 80);
+    if (room.players.some(p => !p.isBot && p.id === id)) return ackError(ack, 'Ya tienes asiento en esta mesa: entra como jugador.');
+    if (!name) return ackError(ack, 'Escribe tu nombre.');
+    const profile = profiles.getOrCreate(id, name, avatar);
+    if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
+    room.spectators = room.spectators || [];
+    const existing = room.spectators.find(s => s.id === id);
+    if (existing) {
+      existing.socketId = socket.id;
+      existing.connected = true;
+      existing.name = profile.name;
+      existing.avatar = profile.avatar;
+    } else {
+      if (room.spectators.filter(s => s.connected).length >= 12) return ackError(ack, 'La tribuna de esta mesa está llena.');
+      room.spectators.push({ id, name: profile.name, avatar: profile.avatar, socketId: socket.id, connected: true, joinedAt: Date.now(), _profile: profile });
+      addSystem(room, `👁 ${profile.name} está viendo la mesa.`);
+    }
+    socket.join(code);
+    socket.data.roomCode = code;
+    socket.data.spectatorId = id;
+    delete socket.data.playerId;
+    ackOk(ack, { code, game: room.game });
+    logEvent('spectator_joined', { room: code, game: room.game, spectator: profile.name });
+    broadcast(room);
+  });
+
+  // Fase 9 (QA): límite de frecuencia para mensajes y reacciones — máximo 6 cada 4 s
+  // por conexión, para que nadie pueda inundar la sala con broadcasts.
+  function tooChatty() {
+    const now = Date.now();
+    socket.data.chatTimes = (socket.data.chatTimes || []).filter(time => now - time < 4000);
+    if (socket.data.chatTimes.length >= 6) return true;
+    socket.data.chatTimes.push(now);
+    return false;
+  }
+
   socket.on('chat', ({ text } = {}, ack) => {
     const { room, player } = playerForSocket(socket);
+    if (tooChatty()) return ackError(ack, 'Vas muy rápido: espera un momento para volver a escribir.');
     text = cleanMessage(text);
-    if (!room || !player || !text) return ackError(ack, 'No se pudo enviar.');
-    room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: player.id, name: player.name, text, time: Date.now() });
+    // Fase 8: los espectadores también chatean (se distinguen con el prefijo 👁).
+    const spectator = !player && room ? room.spectators?.find(s => s.id === socket.data.spectatorId && s.connected) : null;
+    if (!room || (!player && !spectator) || !text) return ackError(ack, 'No se pudo enviar.');
+    const author = player || spectator;
+    room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: author.id, name: spectator ? `👁 ${author.name}` : author.name, text, time: Date.now() });
     room.messages = room.messages.slice(-40);
     ackOk(ack);
     broadcast(room);
@@ -1014,6 +1519,7 @@ io.on('connection', socket => {
     const { room, player } = playerForSocket(socket);
     const allowed = ['🔥', '👏', '😂', '🍀', '😱', '💎'];
     if (!room || !player || !allowed.includes(emoji)) return ackError(ack, 'Reacción no válida.');
+    if (tooChatty()) return ackError(ack, 'Vas muy rápido: espera un momento.');
     io.to(room.code).emit('reaction', { playerId: player.id, name: player.name, avatar: player.avatar, emoji, time: Date.now() });
     ackOk(ack);
   });
@@ -1022,6 +1528,7 @@ io.on('connection', socket => {
     const { room, player } = playerForSocket(socket);
     const allowed = ['¡Bien jugado!', '¡Voy con todo!', 'La suerte está de mi lado', 'Otra ronda', 'Esto se pone bueno'];
     if (!room || !player || !allowed.includes(message)) return ackError(ack, 'Mensaje rápido no válido.');
+    if (tooChatty()) return ackError(ack, 'Vas muy rápido: espera un momento.');
     room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: player.id, name: player.name, text: message, quick: true, time: Date.now() });
     room.messages = room.messages.slice(-40);
     ackOk(ack);
@@ -1072,7 +1579,14 @@ io.on('connection', socket => {
     ackResult(ack, result);
     if (result.ok) broadcast(room);
   });
-  for (const [event, action] of [['blackjack_hit', 'hit'], ['blackjack_stand', 'stand'], ['blackjack_double', 'double']]) {
+  // Fase 8.4: seguro cuando la casa muestra un as (no requiere turno propio).
+  socket.on('blackjack_insurance', (_data, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const result = executeBlackjackInsurance(room, player);
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
+  for (const [event, action] of [['blackjack_hit', 'hit'], ['blackjack_stand', 'stand'], ['blackjack_double', 'double'], ['blackjack_split', 'split']]) {
     socket.on(event, (_data, ack) => {
       const { room, player } = playerForSocket(socket);
       const result = executeBlackjackAction(room, player, action);
@@ -1090,6 +1604,13 @@ io.on('connection', socket => {
   socket.on('poker_start', (_data, ack) => {
     const { room, player } = playerForSocket(socket);
     const result = executePokerStart(room, player);
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
+  // Fase 8.1: el anfitrión arranca un torneo sit & go en la mesa de póker.
+  socket.on('tournament_start', (_data, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const result = executeTournamentStart(room, player);
     ackResult(ack, result);
     if (result.ok) broadcast(room);
   });
@@ -1135,15 +1656,9 @@ io.on('connection', socket => {
     if (result.ok) broadcast(room);
   });
 
-  socket.on('rebuy', (_data, ack) => {
-    const { room, player } = playerForSocket(socket);
-    if (!room || isPokerActive(room) || room.phase === 'playing') return ackError(ack, 'Espera a que termine la mano.');
-    if (player.chips >= 200) return ackError(ack, 'La recarga está disponible con menos de 200 fichas.');
-    player.chips = 1000;
-    addSystem(room, `${player.name} recargó sus fichas virtuales.`);
-    ackOk(ack);
-    broadcast(room);
-  });
+  // La recarga de fichas ('rebuy') se eliminó a pedido: las fichas solo entran por
+  // el bono diario, los logros/retos y el reinicio mensual de temporada. Así el
+  // ranking del mes no se puede inflar reponiendo fichas a voluntad.
 
   socket.on('kick_player', ({ playerId } = {}, ack) => {
     const { room, player } = playerForSocket(socket);
@@ -1171,18 +1686,101 @@ io.on('connection', socket => {
       delete socket.data.roomCode;
       delete socket.data.playerId;
       broadcast(room);
+    } else if (room && socket.data.spectatorId) {
+      removeSpectator(room, socket.data.spectatorId);
+      socket.leave(room.code);
+      delete socket.data.roomCode;
+      delete socket.data.spectatorId;
+      broadcast(room);
     }
     ackOk(ack);
   });
 
   socket.on('disconnect', () => {
     const { room, player } = playerForSocket(socket);
+    if (room && !player && socket.data.spectatorId) {
+      const spectator = room.spectators?.find(s => s.id === socket.data.spectatorId);
+      if (spectator && spectator.socketId === socket.id) {
+        removeSpectator(room, spectator.id);
+        broadcast(room);
+      }
+      return;
+    }
     if (!room || !player || player.socketId !== socket.id) return;
     removeOrDisconnectPlayer(room, player, false);
     broadcast(room);
   });
 });
 
+// Fase 2: si el anfitrión lleva HOST_INACTIVITY_MS sin actividad (o se desconectó),
+// la autoridad de la mesa pasa a otra persona real activa. Nunca a un bot.
+const hostInactivitySweep = setInterval(() => {
+  const now = Date.now();
+  for (const room of rooms.values()) {
+    const humans = room.players.filter(p => !p.isBot && p.connected);
+    if (!humans.length) continue;
+    const host = room.players.find(p => p.id === room.hostId);
+    const hostValid = host && !host.isBot && host.connected;
+    if (hostValid && now - host.lastActiveAt <= HOST_INACTIVITY_MS) continue;
+    const candidates = humans
+      .filter(p => p.id !== room.hostId)
+      .filter(p => !hostValid || now - p.lastActiveAt <= HOST_INACTIVITY_MS)
+      .sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+    if (!candidates.length) continue;
+    const next = candidates[0];
+    const previousName = host?.name || 'el anfitrión anterior';
+    room.hostId = next.id;
+    addSystem(room, `👑 ${next.name} ahora dirige la mesa por inactividad de ${previousName}.`);
+    broadcast(room);
+  }
+}, HOST_INACTIVITY_SWEEP_MS);
+hostInactivitySweep.unref?.();
+
+// Fase 8.7: vigila el cambio de mes con el servidor encendido. Al cerrar la
+// temporada, todos los perfiles vuelven a 1000 fichas y se anuncia el podio.
+const seasonSweep = setInterval(() => {
+  const closed = profiles.ensureSeason();
+  if (!closed) return;
+  logEvent('season_reset', { closedMonth: closed.month, players: closed.players, podium: closed.podium });
+  const podiumText = closed.podium.length
+    ? ` Podio de ${closed.month}: ${closed.podium.map((entry, index) => `${['🥇', '🥈', '🥉'][index]} ${entry.name} (${entry.chips})`).join(' · ')}.`
+    : '';
+  for (const room of rooms.values()) {
+    addSystem(room, `📅 ¡Nueva temporada mensual! Todos los saldos se reiniciaron a 1000 fichas.${podiumText}`);
+    broadcast(room);
+  }
+  broadcastLobby();
+}, 5 * 60 * 1000);
+seasonSweep.unref?.();
+
+// Fase 7: apagado limpio. Render envía SIGTERM en cada deploy: guardamos perfiles,
+// avisamos a las mesas y cerramos sockets con gracia para que la reconexión automática
+// del cliente reencuentre la sesión en la nueva instancia.
+let shuttingDown = false;
+function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logEvent('shutdown_start', { signal, rooms: rooms.size });
+  try {
+    for (const room of rooms.values()) {
+      addSystem(room, '🔄 El servidor se está actualizando y se reiniciará en unos segundos. Tus fichas ya están guardadas; conserva esta pestaña para volver a tu asiento.');
+      broadcast(room);
+    }
+  } catch (_) { /* avisar es cortesía; el guardado es lo crítico */ }
+  try { profiles.saveNow(); } catch (_) { /* saveNow ya reporta sus propios errores */ }
+  const forceExit = setTimeout(() => { logEvent('shutdown_forced', {}); process.exit(0); }, 2500);
+  forceExit.unref?.();
+  io.close(() => {
+    server.close(() => {
+      logEvent('shutdown_complete', {});
+      process.exit(0);
+    });
+  });
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Mesa Amiga lista en http://0.0.0.0:${PORT}`);
+  console.log(`MonteCristo lista en http://0.0.0.0:${PORT}`);
+  logEvent('server_listening', { port: Number(PORT), node: process.version, profileStore: profiles.filePath });
 });

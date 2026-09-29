@@ -4,11 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#060b0d" />
-  <meta name="description" content="Mesa Amiga: póker, blackjack, ruleta y minijuegos en vivo con amigos. Fichas 100% virtuales, perfiles, retos y logros." />
-  <title>Mesa Amiga — Casino social</title>
+  <meta name="description" content="MonteCristo: póker, blackjack, ruleta y minijuegos en vivo con amigos. Fichas 100% virtuales, perfiles, retos y logros." />
+  <title>MonteCristo — Casino social</title>
   <link rel="stylesheet" href="/styles.css" />
+  <script>try { if (localStorage.getItem('montecristo-gate-bypass') === '1') document.documentElement.classList.add('gate-bypass'); } catch (e) {}</script>
 </head>
 <body>
+  <!-- Puerta de escritorio: pantallas menores a 1024 px no son compatibles -->
+  <div class="desktop-gate" role="alert" aria-live="assertive">
+    <span class="brand-mark"><span>♠</span></span>
+    <h1>MonteCristo es para computadoras</h1>
+    <p>Este casino social está diseñado exclusivamente para jugarse en una computadora de escritorio o laptop, con una ventana de al menos 1024 píxeles de ancho. Amplía la ventana o vuelve desde tu computadora: la mesa te espera.</p>
+    <button type="button" class="gate-bypass-btn" onclick="document.documentElement.classList.add('gate-bypass');try{localStorage.setItem('montecristo-gate-bypass','1')}catch(e){}">Entrar de todos modos →</button>
+  </div>
   <a class="skip-link" href="#games">Ir a los juegos</a>
   <div class="noise" aria-hidden="true"></div>
   <div class="ambient-grid" aria-hidden="true"></div>
@@ -17,7 +25,7 @@
   <div id="connection-overlay" class="connection-overlay" role="status" aria-live="polite" aria-atomic="true" aria-hidden="false">
     <div class="loader-brand">
       <div class="loader-orbit"><span>♠</span><i></i></div>
-      <div class="loader-wordmark"><b>MESA AMIGA</b><small id="loading-message">CONECTANDO AL CASINO</small></div>
+      <div class="loader-wordmark"><b>MONTECRISTO</b><small id="loading-message">CONECTANDO AL CASINO</small></div>
       <div class="loading-line"><i></i></div>
       <p class="loader-helper"><span></span> Sincronizando fichas y preparando tu mesa</p>
     </div>
@@ -25,9 +33,9 @@
 
   <section id="landing" class="landing">
     <nav class="landing-nav shell">
-      <a class="brand" href="/" aria-label="Mesa Amiga, inicio">
+      <a class="brand" href="/" aria-label="MonteCristo, inicio">
         <span class="brand-mark"><span>♠</span></span>
-        <span class="brand-copy"><b>MESA AMIGA</b><em>SOCIAL CASINO</em></span>
+        <span class="brand-copy"><b>MONTECRISTO</b><em>SOCIAL CASINO</em></span>
       </a>
       <div class="nav-links">
         <a href="#games">Juegos</a>
@@ -87,7 +95,7 @@
 
       <div class="game-grid">
         <article class="game-card poker-card">
-          <img src="/assets/poker-lounge.jpg" alt="Mesa futurista de Texas Hold’em con cartas y fichas" />
+          <img loading="lazy" decoding="async" src="/assets/poker-lounge.jpg" alt="Mesa futurista de Texas Hold’em con cartas y fichas" />
           <div class="game-card-shade"></div>
           <div class="game-badges"><span class="badge live"><i></i> EN VIVO</span><span class="badge">2–6 JUGADORES</span></div>
           <div class="game-info">
@@ -100,7 +108,7 @@
         </article>
 
         <article class="game-card blackjack-card">
-          <img src="/assets/blackjack-lounge.jpg" alt="Mesa moderna de Blackjack con cartas oscuras y fichas" />
+          <img loading="lazy" decoding="async" src="/assets/blackjack-lounge.jpg" alt="Mesa moderna de Blackjack con cartas oscuras y fichas" />
           <div class="game-card-shade"></div>
           <div class="game-badges"><span class="badge hot">POPULAR</span><span class="badge">1–6 JUGADORES</span></div>
           <div class="game-info">
@@ -116,19 +124,28 @@
       <div class="quick-games-heading"><span class="kicker">PARTIDAS RÁPIDAS</span><p>Reglas simples, rondas cortas y resultados perfectos para picar a tus amigos.</p></div>
       <div class="quick-game-grid">
         <article class="quick-game-card roulette-mini">
-          <div class="quick-art" aria-hidden="true"><span class="mini-table-surface roulette-surface"><span class="mini-wheel"><i>0</i></span><i class="mini-table-chip chip-red"></i><i class="mini-table-chip chip-gold"></i></span><b>◉</b></div>
+          <img class="quick-card-media" loading="lazy" decoding="async" src="/assets/roulette-lounge.jpg" alt="Rueda de ruleta elegante en dorado y verde profundo sobre una mesa de fieltro" />
+          <div class="quick-card-shade"></div>
           <div class="quick-game-copy"><span>CLÁSICO SOCIAL</span><h3>Ruleta Nova</h3><p>Rojo, negro, paridad, rango o tu número favorito.</p><div class="quick-meta"><span>◎ 1–6 jugadores</span><span>◷ 3–10 min</span></div></div>
           <button class="btn btn-card" data-open-mode="create" data-game="roulette"><span>Girar con amigos</span><b>→</b></button>
         </article>
         <article class="quick-game-card dice-mini">
-          <div class="quick-art" aria-hidden="true"><span class="mini-table-surface dice-surface"><span class="mini-die">⚄</span><span class="mini-die mini-die-second">⚁</span><i class="mini-table-chip chip-cyan"></i></span><b>✦</b></div>
+          <img class="quick-card-media" loading="lazy" decoding="async" src="/assets/dice-lounge.jpg" alt="Dos dados oscuros con puntos luminosos sobre un paño verde con destellos cósmicos" />
+          <div class="quick-card-shade"></div>
           <div class="quick-game-copy"><span>RIESGO RÁPIDO</span><h3>Dados Cósmicos</h3><p>Predice bajo, alto o clava el número exacto.</p><div class="quick-meta"><span>◎ 1–6 jugadores</span><span>◷ 2–8 min</span></div></div>
           <button class="btn btn-card" data-open-mode="create" data-game="dice"><span>Lanzar los dados</span><b>→</b></button>
         </article>
         <article class="quick-game-card coin-mini">
-          <div class="quick-art" aria-hidden="true"><span class="mini-table-surface coin-surface"><span class="mini-coin">MA</span><i class="coin-shadow"></i><i class="mini-table-chip chip-gold"></i></span><b>◐</b></div>
+          <img class="quick-card-media" loading="lazy" decoding="async" src="/assets/coin-lounge.jpg" alt="Moneda dorada girando en el aire sobre una mesa de fieltro verde" />
+          <div class="quick-card-shade"></div>
           <div class="quick-game-copy"><span>DUELO INSTANTÁNEO</span><h3>Cara o Cruz</h3><p>Una moneda virtual. Dos lados. Mucho pique.</p><div class="quick-meta"><span>◎ 1–6 jugadores</span><span>◷ 1–5 min</span></div></div>
           <button class="btn btn-card" data-open-mode="create" data-game="coinflip"><span>Iniciar un duelo</span><b>→</b></button>
+        </article>
+        <article class="quick-game-card slots-mini">
+          <img class="quick-card-media" loading="lazy" decoding="async" src="/assets/slots-lounge.jpg" alt="Tragamonedas vintage de madera y latón con tres rodillos iluminados sobre una mesa de fieltro verde" />
+          <div class="quick-card-shade"></div>
+          <div class="quick-game-copy"><span>MÁQUINA INSIGNIA</span><h3>Tragamonedas</h3><p>Tres rodillos animados y la tabla de pagos de la casa.</p><div class="quick-meta"><span>◎ 1–6 jugadores</span><span>◷ 1–5 min</span></div></div>
+          <button class="btn btn-card" data-open-mode="create" data-game="slots"><span>Tirar de la palanca</span><b>→</b></button>
         </article>
       </div>
     </section>
@@ -157,10 +174,19 @@
           <button data-room-filter="roulette">Ruleta</button>
           <button data-room-filter="dice">Dados</button>
           <button data-room-filter="coinflip">Cara o cruz</button>
+          <button data-room-filter="slots">Tragamonedas</button>
           <span id="lobby-refresh"><i></i> Actualización en vivo</span>
         </div>
         <div id="live-rooms" class="live-rooms" aria-live="polite">
           <div class="rooms-loading"><i></i><span>Buscando mesas disponibles…</span></div>
+        </div>
+        <div id="season-ranking" class="season-ranking hidden">
+          <div class="ranking-head">
+            <div><span class="kicker">🏅 RANKING DEL MES</span><h3 id="ranking-title">Temporada en curso</h3></div>
+            <small id="ranking-note">Los puntos se reinician el día 1 de cada mes: todos vuelven a 1000 fichas y el bono diario de 100 sigue disponible.</small>
+          </div>
+          <div id="ranking-list" class="ranking-list"></div>
+          <div id="ranking-previous" class="ranking-previous hidden"></div>
         </div>
       </div>
     </section>
@@ -176,8 +202,12 @@
 
     <footer class="landing-footer">
       <div class="shell footer-inner">
-        <a class="brand brand-small" href="/"><span class="brand-mark"><span>♠</span></span><span class="brand-copy"><b>MESA AMIGA</b><em>SOCIAL CASINO</em></span></a>
+        <a class="brand brand-small" href="/"><span class="brand-mark"><span>♠</span></span><span class="brand-copy"><b>MONTECRISTO</b><em>SOCIAL CASINO</em></span></a>
         <p>Entretenimiento social con fichas sin valor monetario.<br/>Juega responsablemente.</p>
+        <nav class="footer-legal" aria-label="Legal">
+          <a href="/terminos">Términos y Condiciones</a>
+          <a href="/terminos#9-aviso-de-privacidad">Aviso de Privacidad</a>
+        </nav>
         <span class="footer-status"><i></i> SERVIDORES OPERATIVOS</span>
       </div>
     </footer>
@@ -225,6 +255,7 @@
             <button type="button" data-select-game="roulette"><span>◉</span><b>Ruleta Nova</b><small>Rondas rápidas</small></button>
             <button type="button" data-select-game="dice"><span>⚄</span><b>Dados Cósmicos</b><small>Bajo, alto o exacto</small></button>
             <button type="button" data-select-game="coinflip"><span>◐</span><b>Cara o Cruz</b><small>Duelo instantáneo</small></button>
+            <button type="button" data-select-game="slots"><span>🎰</span><b>Tragamonedas</b><small>Tres rodillos animados</small></button>
           </div>
         </div>
         <div id="code-field" class="field-group hidden">
@@ -243,7 +274,7 @@
       <button class="modal-close" data-close-profile aria-label="Cerrar">×</button>
       <div class="profile-modal-head">
         <div id="profile-big-avatar" class="profile-big-avatar">🦊</div>
-        <div><span class="kicker">PERFIL DEL JUGADOR</span><h2 id="profile-modal-title">Tu progreso</h2><p>Las fichas son virtuales y no tienen valor monetario.</p></div>
+        <div><span class="kicker">PERFIL DEL JUGADOR</span><h2 id="profile-modal-title">Tu progreso</h2><p>Las fichas son virtuales y no tienen valor monetario. <a class="tos-link" href="/terminos" target="_blank" rel="noopener">Términos y Condiciones</a></p></div>
       </div>
       <form id="profile-form" class="profile-edit-form">
         <div class="form-field"><label for="profile-name-input">Nombre</label><div class="input-wrap"><span>◎</span><input id="profile-name-input" maxlength="18" required /></div></div>
@@ -251,6 +282,10 @@
         <button class="btn btn-primary" type="submit">Guardar perfil</button>
       </form>
       <div id="profile-stats" class="profile-stats"></div>
+      <div class="profile-analytics">
+        <section class="analytics-box"><div class="progress-title"><span>EVOLUCIÓN DEL SALDO</span><small id="balance-chart-note">Tus últimos movimientos</small></div><div id="balance-chart" class="balance-chart" role="img" aria-label="Gráfica de evolución del saldo"></div></section>
+        <section class="analytics-box"><div class="progress-title"><span>HISTORIAL POR JUEGO</span><small>Rondas · victorias · balance</small></div><div id="game-breakdown" class="game-breakdown"></div></section>
+      </div>
       <div class="progress-columns">
         <section><div class="progress-title"><span>RETOS</span><small>Recompensas automáticas</small></div><div id="challenge-list" class="challenge-list"></div></section>
         <section><div class="progress-title"><span>LOGROS</span><small>Colección personal</small></div><div id="achievement-list" class="achievement-list"></div></section>
@@ -260,10 +295,9 @@
   </div>
 
   <section id="room-app" class="room-app hidden">
-    <div id="mobile-backdrop" class="mobile-backdrop"></div>
     <aside class="sidebar">
       <div class="side-top">
-        <a class="brand brand-small" href="#" id="room-logo"><span class="brand-mark"><span>♠</span></span><span class="brand-copy"><b>MESA AMIGA</b><em>EN VIVO</em></span></a>
+        <a class="brand brand-small" href="#" id="room-logo"><span class="brand-mark"><span>♠</span></span><span class="brand-copy"><b>MONTECRISTO</b><em>EN VIVO</em></span></a>
         <button class="icon-btn" id="sound-toggle" aria-label="Activar o desactivar sonido">♪</button>
       </div>
       <div id="profile-card" class="profile-card" role="button" tabindex="0" aria-label="Abrir perfil y progreso"></div>
@@ -298,7 +332,6 @@
 
     <main class="game-main">
       <header class="game-header">
-        <button id="mobile-menu" class="mobile-menu" aria-label="Abrir menú">☰</button>
         <div class="room-identity">
           <div class="game-breadcrumb"><span id="game-name">TEXAS HOLD’EM</span><i></i><b id="phase-label">SALA DE ESPERA</b></div>
           <h2 id="room-title">Mesa privada</h2>
@@ -311,6 +344,7 @@
       </header>
 
       <div class="game-stage">
+        <div id="tournament-banner" class="tournament-banner hidden"></div>
         <div class="table-hud">
           <div id="game-status" class="game-status"></div>
           <div id="turn-clock" class="turn-clock hidden" aria-label="Tiempo restante del turno">
@@ -329,10 +363,47 @@
       <footer class="game-footer">
         <span><i class="shield">✓</i> Sala protegida por enlace</span>
         <span>Las fichas no tienen valor monetario</span>
+        <span class="shortcut-hint">Pulsa <kbd>?</kbd> para ver los atajos de teclado</span>
         <span id="connection-status" class="connection-footer connected"><i></i> Conectado</span>
       </footer>
     </main>
   </section>
+
+  <!-- Leyenda de atajos de teclado (fase 4) -->
+  <div id="shortcut-help" class="shortcut-help hidden" role="dialog" aria-label="Atajos de teclado">
+    <b>ATAJOS DE TECLADO</b>
+    <ul>
+      <li><kbd>F</kbd> Retirarse (póker)</li>
+      <li><kbd>C</kbd> Pasar / Igualar (póker)</li>
+      <li><kbd>R</kbd> Escribir cantidad de subida</li>
+      <li><kbd>A</kbd> All-in (póker)</li>
+      <li><kbd>H</kbd> Pedir carta (blackjack)</li>
+      <li><kbd>S</kbd> Plantarse (blackjack)</li>
+      <li><kbd>D</kbd> Doblar (blackjack)</li>
+      <li><kbd>Enter</kbd> Confirmar apuesta rápida</li>
+      <li><kbd>T</kbd> Escribir en el chat</li>
+      <li><kbd>Esc</kbd> Cerrar paneles</li>
+    </ul>
+    <small>Pulsa <kbd>?</kbd> para mostrar u ocultar esta guía</small>
+  </div>
+
+  <!-- Aceptación obligatoria de Términos y Condiciones (fase 3) -->
+  <div id="tos-modal" class="modal tos-modal hidden" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card tos-modal-card" role="dialog" aria-modal="true" aria-labelledby="tos-modal-title">
+      <div><span class="kicker">ANTES DE JUGAR</span><h2 id="tos-modal-title">Términos y Condiciones</h2></div>
+      <p class="tos-intro">MonteCristo es un casino <b>social y recreativo</b>. Para continuar necesitas aceptar los términos vigentes:</p>
+      <ul class="tos-points">
+        <li><span>🎟️</span> Todas las fichas son <b>virtuales y sin valor monetario</b>: no hay depósitos, pagos, retiros ni premios canjeables.</li>
+        <li><span>🔞</span> Declaras ser <b>mayor de 18 años</b> y usar el sitio bajo tu propia responsabilidad.</li>
+        <li><span>🛡️</span> El operador <b>no responde por usos maliciosos o ilícitos</b> que otros usuarios o terceros hagan de la página.</li>
+        <li><span>📄</span> Tu aceptación se registra con fecha y versión, conforme al Aviso de Privacidad (LFPDPPP).</li>
+      </ul>
+      <a class="tos-full-link" href="/terminos" target="_blank" rel="noopener">Leer los Términos y Condiciones completos ↗</a>
+      <button id="tos-accept" class="btn btn-primary tos-accept" type="button"><b>Acepto los Términos y Condiciones</b></button>
+      <p class="tos-fine">Si no estás de acuerdo, simplemente cierra esta página.</p>
+    </div>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/app.js"></script>

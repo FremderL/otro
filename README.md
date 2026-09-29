@@ -1,4 +1,4 @@
-# Mesa Amiga
+# MonteCristo
 
 Casino social multijugador para jugar con amigos mediante una URL privada. Incluye **Texas Hold’em, Blackjack/21, Ruleta Nova, Dados Cósmicos y Cara o Cruz**.
 
@@ -10,14 +10,25 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Lobby en vivo con filtros por juego, fase y ocupación.
 - Estado autoritativo y sincronizado en tiempo real con Socket.IO.
 - Perfil persistente por dispositivo: nombre, avatar, saldo, victorias, rondas, mayor ganancia, rachas y juegos probados.
+- Estadísticas ampliadas en el perfil: % de victorias, gráfica de evolución del saldo (últimos 60 movimientos, persistidos entre sesiones) e historial de rendimiento por juego con rondas, victorias y balance neto.
 - Clasificación de la sala por saldo y señal visual de cambios de posición.
 - Chat libre, mensajes rápidos y reacciones (`🔥`, `👏`, `😂`, `🍀`, `😱`, `💎`).
 - Historial reciente de ganadores y celebraciones breves para grandes resultados.
 - Retos, logros, recompensas por explorar juegos y bono diario.
 - Eventos especiales aleatorios: jackpot virtual, ganancia x2 y ronda bonus.
 - Migración de anfitrión, reconexión por dispositivo y reembolso de apuestas rápidas abiertas al salir.
+- Torneos sit & go en la mesa de póker: entrada de 200 fichas, stack de torneo de 1000, ciegas que se duplican cada 3 manos, eliminación por lugares y bote completo para el campeón; el saldo real del perfil queda protegido durante el torneo y no hay recompras.
+- Blackjack con seguro y split: seguro por la mitad de la apuesta cuando la casa muestra un as (paga 2:1 contra blackjack natural) y división de pares del mismo valor en dos manos independientes, con doblaje por mano.
+- Ranking mensual en el lobby: top 10 de puntos de la temporada en curso con el podio del mes anterior. Los puntos se reinician el día 1 de cada mes (todos vuelven a 1000 fichas) y el bono diario de 100 se mantiene.
+- Modo espectador: las salas llenas muestran «👁 Ver mesa» en el lobby; hasta 12 espectadores por mesa ven la partida en vivo (con cartas ajenas siempre ocultas), participan en el chat con el prefijo 👁 y pueden tomar asiento cuando se libera un lugar o un bot lo cede.
 - Bots autoritativos configurables por el anfitrión, con cuatro dificultades, cinco estilos y decisiones específicas por juego.
-- Interfaz responsive para computadora y celular, sin animaciones largas que bloqueen la partida.
+- Mesas siempre vivas: los asientos libres se completan automáticamente con bots **expertos** al entrar; los bots ceden su asiento cuando llega una persona real y los desocupan al terminar cada ronda; la autoridad de la mesa migra a una persona real activa tras 1 minuto de inactividad del anfitrión, y las mesas sin personas reales se eliminan.
+- Términos y Condiciones con aceptación obligatoria y versionada (página `/terminos`, redactados para México: naturaleza recreativa, 18+, deslinde de responsabilidad y Aviso de Privacidad LFPDPPP). El servidor rechaza crear o unirse a salas sin la aceptación vigente.
+- Privacidad de cartas garantizada por el servidor: en póker y blackjack cada quien recibe solo sus cartas; las ajenas viajan boca abajo (`XX`) hasta el showdown o los resultados.
+- Atajos de teclado en mesa (`F/C/R/A` en póker, `H/S/D` en blackjack, `Enter` confirma apuestas rápidas, `T` enfoca el chat y `?` muestra la guía) e imágenes originales en las cinco tarjetas del lobby.
+- Ruleta europea completa: paño de apuestas con docenas y columnas, fichas visibles sobre el paño y rueda animada en canvas cuya pelota cae siempre en el número autoritativo del servidor.
+- Tragamonedas MonteCristo: tres rodillos que se detienen en secuencia con los símbolos que decidió el servidor, tabla de pagos visible y símbolo premium ♠.
+- Interfaz exclusiva para computadoras de escritorio y laptops, sin animaciones largas que bloqueen la partida.
 
 ## Experiencia visual y accesibilidad
 
@@ -29,7 +40,11 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Asientos con insignia `🤖 BOT`, dificultad, estilo, estado `Pensando…` y última acción, sin llenar la interfaz de avisos repetidos.
 - En la mesa se priorizan estado de ronda, turno actual, reloj, fichas, apuesta y siguiente acción.
 - Estados visuales para conexión, reconexión, desconexión, carga, foco, selección, deshabilitado, victoria, derrota y recepción de fichas.
-- Tamaños táctiles, navegación por teclado, foco visible, regiones en vivo y soporte para `prefers-reduced-motion`.
+- Navegación por teclado, foco visible, regiones en vivo y soporte para `prefers-reduced-motion`.
+
+## Plataforma soportada
+
+MonteCristo es un sitio **solo para computadoras** (escritorio o laptop). No hay soporte para celulares ni tablets: con ventanas menores a **1024 px de ancho** se muestra una pantalla de bloqueo que invita a volver desde una computadora, con un botón «Entrar de todos modos» (persistido en el navegador) para ventanas estrechas en computadoras, como paneles de vista previa; en ese caso la página se desplaza horizontalmente. Resolución mínima soportada: **1024×720**; diseño óptimo a partir de **1280×800**.
 
 ## Juegos y mecánicas
 
@@ -43,9 +58,12 @@ Apuesta inicial, pedir, plantarse, doblar y pago de Blackjack 3:2. Cada turno di
 
 ### Ruleta Nova
 
+- Paño europeo completo: se apuesta haciendo clic sobre la casilla del paño (números 0–36 y apuestas externas).
 - Rojo, negro, par, impar, 1–18 o 19–36: pago total x2 si acierta.
-- Número exacto de 0 a 36: pago total x36 si acierta.
-- El cero es verde y hace perder las apuestas simples.
+- Docenas (1–12, 13–24, 25–36) y columnas: pago total x3 si acierta.
+- Pleno (número exacto de 0 a 36): pago total x36 si acierta.
+- El cero es verde y hace perder todas las apuestas externas.
+- Rueda europea animada: la pelota desacelera, rebota y cae exactamente en el número decidido por el servidor; se puede saltar la animación y se respeta `prefers-reduced-motion`.
 
 ### Dados Cósmicos
 
@@ -56,7 +74,14 @@ Apuesta inicial, pedir, plantarse, doblar y pago de Blackjack 3:2. Cada turno di
 
 - Cara o cruz: pago total x2.
 
-En los tres juegos rápidos, cada participante confirma una sola apuesta por ronda. Solo el anfitrión inicia el lanzamiento, pero **el servidor genera y liquida el resultado**. La animación de 1,15 segundos solo representa el estado autoritativo y no decide el resultado.
+### Tragamonedas MonteCristo
+
+- Tres rodillos con cinco símbolos ponderados: 🍒 Cereza, 🍀 Trébol, 🔔 Campana, 💎 Diamante y ♠ MonteCristo (premium, el más raro).
+- Tres iguales pagan según el símbolo: 🍒 x5 · 🍀 x8 · 🔔 x12 · 💎 x20 · ♠ x40 (pago total sobre la apuesta).
+- Dos símbolos iguales devuelven la apuesta (x1); tres distintos pierden.
+- Los rodillos giran y se detienen en secuencia (izquierda → centro → derecha) con desaceleración y rebote, mostrando exactamente los símbolos que decidió el servidor; la animación se puede saltar.
+
+En los juegos rápidos, cada participante confirma una sola apuesta por ronda. Solo el anfitrión inicia el lanzamiento, pero **el servidor genera y liquida el resultado**. Las animaciones (incluidas la rueda de la ruleta y los rodillos de la tragamonedas) solo representan el estado autoritativo y nunca deciden el resultado.
 
 ## Bots e IA autoritativa
 
@@ -134,9 +159,11 @@ npm run check
 npm run test:multiplayer
 npm run test:bots
 npm run test:bots:fallback
-# o ejecutar toda la validación:
+# o ejecutar toda la validación (15 suites):
 npm test
 ```
+
+Desde la fase 9, GitHub Actions ejecuta `npm test` en cada push y pull request (`.github/workflows/ci.yml`), la suite incluye un presupuesto de rendimiento (`tests/performance-smoke.js`), un endurecimiento contra entradas maliciosas (`tests/qa-hardening-smoke.js`) y un recorrido de usuario real con navegador simulado (`tests/user-journey-smoke.js`). Los hallazgos y decisiones de la revisión de diseño y QA viven en `REVISION_CALIDAD.md`, y la rutina trimestral de dependencias en `MANTENIMIENTO.md`.
 
 Las pruebas levantan servidores aislados con perfiles temporales. La regresión multicliente valida:
 
@@ -153,6 +180,18 @@ Variables útiles para pruebas y despliegue:
 - `BOT_SPEED_FACTOR`: multiplica las latencias de reacción; usar valores menores que `1` solo en pruebas.
 - `BOT_ONLY_ROOM_TTL_MS`: tiempo antes de eliminar una sala sin personas; por defecto, 5 minutos cuando contiene bots.
 - `BOT_FORCE_DECISION_ERROR=1`: fuerza errores de estrategia para validar el fallback; no debe activarse normalmente.
+- `PROFILE_STORE_PATH`: ruta del archivo de perfiles (en Render, apúntalo al disco persistente, p. ej. `/var/data/profiles.json`).
+- `LOG_JSON=off`: desactiva los logs estructurados JSON por línea (activados por defecto).
+
+## Operación en Render
+
+- `render.yaml` versiona la infraestructura: disco persistente en `/var/data` (los perfiles sobreviven deploys), `PROFILE_STORE_PATH` y health check.
+- `GET /healthz` expone estado, uptime, salas, jugadores humanos y versión de T&C; configurado como *Health Check Path* para deploys sin caída.
+- En cada deploy, Render envía `SIGTERM`: el servidor guarda los perfiles, avisa a las mesas («El servidor se está actualizando…») y cierra los sockets con gracia; la reconexión automática del cliente reencuentra la sesión.
+- Con el plan free (sin disco y con suspensión tras ~15 min), la pantalla de carga muestra «Despertando la sala…» con los reintentos visibles mientras el servicio despierta (~50 s).
+- Los eventos operativos (arranque, salas creadas/destruidas, jugadores, apagado) se registran como JSON por línea para el visor de logs de Render.
+- **Guía de despliegue paso a paso:** [`DESPLIEGUE_RENDER.md`](DESPLIEGUE_RENDER.md) explica cómo aplicar el blueprint `render.yaml` (opción A) o configurar el disco y las variables a mano en el dashboard (opción B), y qué hace cada opción.
+- La prueba `npm run test:ops` verifica el criterio de la fase: dos arranques con el mismo disco no pierden perfiles y `SIGTERM` produce una salida ordenada.
 
 ## Arquitectura
 
@@ -167,7 +206,7 @@ lib/progression.js                Transacciones, estadísticas, retos, logros y 
 lib/quick-games.js                Registro, reglas, cuotas y resultados de minijuegos
 lib/special-events.js             Eventos temporales y bonificaciones
 public/index.html                 Lobby, mesas, panel de bots y componentes sociales
-public/styles.css                 Identidad visual, juegos temáticos y diseño responsive
+public/styles.css                 Identidad visual y juegos temáticos (diseño solo escritorio)
 public/app.js                     Cliente Socket.IO y renderizado de todos los juegos
 public/assets/                     Imágenes locales del lobby
 tests/multiplayer-smoke.js        Regresión autoritativa con varios clientes
@@ -183,4 +222,4 @@ Los perfiles sobreviven reinicios en un archivo JSON, pero las salas, bots y est
 
 ## Uso responsable
 
-Mesa Amiga está diseñado exclusivamente para entretenimiento social con fichas sin valor monetario. No incorpora apuestas con dinero real ni mecanismos de pago.
+MonteCristo está diseñado exclusivamente para entretenimiento social con fichas sin valor monetario. No incorpora apuestas con dinero real ni mecanismos de pago.

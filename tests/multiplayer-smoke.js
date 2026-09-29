@@ -5,13 +5,14 @@ const { spawn } = require('node:child_process');
 const { io } = require('socket.io-client');
 const path = require('node:path');
 const os = require('node:os');
+const { TOS_VERSION } = require('../lib/terms');
 
 const port = 3200 + Math.floor(Math.random() * 500);
 const url = `http://127.0.0.1:${port}`;
-const profilePath = path.join(os.tmpdir(), `mesa-amiga-smoke-${process.pid}.json`);
+const profilePath = path.join(os.tmpdir(), `montecristo-smoke-${process.pid}.json`);
 const server = spawn(process.execPath, ['server.js'], {
   cwd: path.join(__dirname, '..'),
-  env: { ...process.env, PORT: String(port), PROFILE_STORE_PATH: profilePath },
+  env: { ...process.env, PORT: String(port), PROFILE_STORE_PATH: profilePath, AUTO_BOTS: 'off', RECONNECT_GRACE_MS: '400' },
   stdio: ['ignore', 'pipe', 'pipe']
 });
 let serverLog = '';
@@ -60,7 +61,7 @@ async function waitForServer() {
 }
 async function createRoom(socket, game, token, name = 'Anfitrión') {
   socket.latest = null;
-  const response = await emitAck(socket, 'create_room', { name, roomName: `Prueba ${game}`, game, token, avatar: 'robot' });
+  const response = await emitAck(socket, 'create_room', { name, roomName: `Prueba ${game}`, game, token, avatar: 'robot', tos: TOS_VERSION });
   assert.equal(response.ok, true, response.error);
   const state = await waitState(socket, room => room.code === response.code);
   assert.equal(state.game, game);
@@ -69,7 +70,7 @@ async function createRoom(socket, game, token, name = 'Anfitrión') {
 }
 async function joinRoom(socket, code, token, name = 'Invitada') {
   socket.latest = null;
-  const response = await emitAck(socket, 'join_room', { name, code, token, avatar: 'panda' });
+  const response = await emitAck(socket, 'join_room', { name, code, token, avatar: 'panda' , tos: TOS_VERSION });
   assert.equal(response.ok, true, response.error);
   return waitState(socket, room => room.code === code && room.players.some(player => player.id === token));
 }
@@ -92,8 +93,9 @@ async function testRoulette() {
 
   let response = await emitAck(guest, 'quick_resolve');
   assert.equal(response.ok, false, 'un invitado no debe resolver');
-  assert.equal((await emitAck(host, 'quick_bet', { amount: 10, choice: 'red' })).ok, true);
-  assert.equal((await emitAck(guest, 'quick_bet', { amount: 10, choice: 'black' })).ok, true);
+  // Fase 5: cobertura de extremo a extremo de docenas y columnas
+  assert.equal((await emitAck(host, 'quick_bet', { amount: 10, choice: 'd2' })).ok, true);
+  assert.equal((await emitAck(guest, 'quick_bet', { amount: 10, choice: 'c1' })).ok, true);
   response = await emitAck(host, 'quick_resolve');
   assert.equal(response.ok, true, response.error);
   const resolvedHost = await waitState(host, state => state.phase === 'results' && state.handNumber === 1, 7000);
@@ -102,6 +104,11 @@ async function testRoulette() {
   assert.equal(resolvedHost.results.length, 2);
   const hostResult = resolvedHost.results.find(item => item.id === `host-${suffix}`);
   const guestResult = resolvedGuest.results.find(item => item.id === `guest-${suffix}`);
+  const winning = resolvedHost.quickResult.value;
+  // El neto se compara SIN el bono del evento especial aleatorio de la mesa (si lo hubo),
+  // porque ese multiplicador sorpresa se suma al `amount` de quien gana.
+  assert.equal(hostResult.amount - (hostResult.specialBonus || 0), winning >= 13 && winning <= 24 ? 20 : -10, 'la docena 13–24 paga x3');
+  assert.equal(guestResult.amount - (guestResult.specialBonus || 0), winning >= 1 && winning % 3 === 1 ? 20 : -10, 'la columna 1 paga x3');
   assert.equal(resolvedHost.viewerProfile.chips, hostProfileBefore.chips + hostResult.amount + progressionRewards(hostProfileBefore, resolvedHost.viewerProfile), 'contabilidad autoritativa del anfitrión');
   assert.equal(resolvedGuest.viewerProfile.chips, guestProfileBefore.chips + guestResult.amount + progressionRewards(guestProfileBefore, resolvedGuest.viewerProfile), 'contabilidad autoritativa del invitado');
 
@@ -167,9 +174,10 @@ async function testBlackjackRegression() {
     await testRoulette();
     await testQuickSolo('dice', 'n:6');
     await testQuickSolo('coinflip', 'heads');
+    await testQuickSolo('slots', 'spin');
     await testPokerRegression();
     await testBlackjackRegression();
-    console.log('✓ Smoke multicliente: ruleta, dados, cara o cruz, perfil, social, reembolsos, póker y blackjack.');
+    console.log('✓ Smoke multicliente: ruleta, dados, cara o cruz, tragamonedas, perfil, social, reembolsos, póker y blackjack.');
   } catch (error) {
     console.error(error.stack || error);
     console.error(serverLog);

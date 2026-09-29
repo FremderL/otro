@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const os = require('node:os');
+const { TOS_VERSION } = require('../lib/terms');
 const { io } = require('socket.io-client');
 
 const port = 4000 + Math.floor(Math.random() * 200);
@@ -13,10 +14,12 @@ const child = spawn(process.execPath, ['server.js'], {
   env: {
     ...process.env,
     PORT: String(port),
-    PROFILE_STORE_PATH: path.join(os.tmpdir(), `mesa-amiga-fallback-${process.pid}.json`),
+    PROFILE_STORE_PATH: path.join(os.tmpdir(), `montecristo-fallback-${process.pid}.json`),
     BOT_SPEED_FACTOR: '0.02',
     BOT_ONLY_ROOM_TTL_MS: '250',
-    BOT_FORCE_DECISION_ERROR: '1'
+    BOT_FORCE_DECISION_ERROR: '1',
+    AUTO_BOTS: 'off',
+    RECONNECT_GRACE_MS: '250'
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
@@ -63,7 +66,7 @@ async function waitServer() {
       const timer = setTimeout(() => reject(new Error('No conectó')), 4000);
       socket.once('connect', () => { clearTimeout(timer); resolve(); });
     });
-    let response = await emitAck('create_room', { name: 'Fallback', roomName: 'Prueba segura', game: 'roulette', token: `fallback-${Date.now()}`, avatar: 'robot' });
+    let response = await emitAck('create_room', { name: 'Fallback', roomName: 'Prueba segura', game: 'roulette', token: `fallback-${Date.now()}`, avatar: 'robot', tos: TOS_VERSION });
     assert.equal(response.ok, true, response.error);
     await waitState(state => state.code === response.code);
 
