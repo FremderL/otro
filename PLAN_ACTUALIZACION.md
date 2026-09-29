@@ -148,10 +148,14 @@
 
 ## Fase 9 — Calidad continua
 
-1. **CI en GitHub:** `npm test` en cada push/PR (GitHub Actions) antes del auto-deploy de Render.
-2. **Preview environments de Render** por pull request para probar cambios visuales de escritorio.
-3. **Presupuesto de rendimiento:** primera carga < 2 s en escritorio, payloads de Socket.IO auditados por ronda.
-4. **Revisión trimestral** de dependencias (`express`, `socket.io`) y del tamaño del store de perfiles.
+1. ✅ **CI en GitHub:** `npm test` en cada push/PR (GitHub Actions) antes del auto-deploy de Render. *(2026-09-28: `.github/workflows/ci.yml` con Node 22, caché de npm y las 15 suites; activar «Wait for CI» en Render para que el deploy espere el verde.)*
+2. ✅ **Preview environments de Render** por pull request para probar cambios visuales de escritorio. *(2026-09-28: bloque `previews: generation: automatic` en `render.yaml`, con expiración a 3 días y disco nuevo por preview.)*
+3. ✅ **Presupuesto de rendimiento:** primera carga < 2 s en escritorio, payloads de Socket.IO auditados por ronda. *(2026-09-28: gzip + caché de estáticos en el servidor, imágenes del lobby con `loading="lazy"`; `tests/performance-smoke.js` vigila los techos —primera carga 96 KB gzip contra un presupuesto de 300 KB; `lobby_state`/`room_state` < 30 KB—.)*
+4. ✅ **Revisión trimestral** de dependencias (`express`, `socket.io`) y del tamaño del store de perfiles. *(2026-09-28: primera revisión hecha —express 4.22.3, socket.io 4.8.4, `npm audit` en 0— y rutina documentada en `MANTENIMIENTO.md`.)*
+
+**Extras de la fase (pedidos el 2026-09-28):** prueba E2E desde el punto de vista de una usuaria real (`tests/user-journey-smoke.js`), revisión de diseño profesional y auditoría QA adversarial con endurecimiento del chat (`tests/qa-hardening-smoke.js`). Hallazgos y decisiones en `REVISION_CALIDAD.md`.
+
+**Estado (2026-09-28): FASE 9 COMPLETA — plan de actualización terminado (fases 1-9).**
 
 ---
 

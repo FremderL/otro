@@ -1,0 +1,33 @@
+# Fase 9.1 — Calidad continua: npm test en cada push y pull request.
+# Render solo auto-despliega después de que este workflow pase (activar
+# "Wait for CI" en el servicio de Render o proteger la rama main con este check).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Sintaxis + 15 suites de smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias (incluye dev para los tests)
+        run: npm ci --include=dev
+
+      - name: Ejecutar suite completa
+        run: npm test
+        env:
+          LOG_JSON: 'off'

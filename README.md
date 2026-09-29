@@ -159,9 +159,11 @@ npm run check
 npm run test:multiplayer
 npm run test:bots
 npm run test:bots:fallback
-# o ejecutar toda la validación:
+# o ejecutar toda la validación (15 suites):
 npm test
 ```
+
+Desde la fase 9, GitHub Actions ejecuta `npm test` en cada push y pull request (`.github/workflows/ci.yml`), la suite incluye un presupuesto de rendimiento (`tests/performance-smoke.js`), un endurecimiento contra entradas maliciosas (`tests/qa-hardening-smoke.js`) y un recorrido de usuario real con navegador simulado (`tests/user-journey-smoke.js`). Los hallazgos y decisiones de la revisión de diseño y QA viven en `REVISION_CALIDAD.md`, y la rutina trimestral de dependencias en `MANTENIMIENTO.md`.
 
 Las pruebas levantan servidores aislados con perfiles temporales. La regresión multicliente valida:
 

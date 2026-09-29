@@ -9,6 +9,16 @@
 # servicio tras ~15 min de inactividad (despertar tarda ~50 s; la pantalla de carga
 # del cliente ya lo explica). Si usas free, elimina el bloque "disk" y la variable
 # PROFILE_STORE_PATH (los perfiles serán efímeros) o cambia a plan starter.
+# Fase 9.2 — Preview environments por pull request: Render levanta una copia
+# temporal del servicio por cada PR para probar los cambios visuales de escritorio
+# antes de fusionar. La copia usa un disco NUEVO y vacío (los perfiles reales no se
+# tocan) y se destruye sola al cerrar el PR o tras 3 días sin actividad.
+# Requiere plan de equipo/professional en Render; si tu plan no lo admite,
+# Render ignora este bloque sin romper el blueprint.
+previews:
+  generation: automatic
+  expireAfterDays: 3
+
 services:
   - type: web
     name: montecristo

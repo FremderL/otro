@@ -1,4 +1,5 @@
 const express = require('express');
+const compression = require('compression');
 const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
@@ -23,7 +24,11 @@ function logEvent(event, data = {}) {
   try { console.log(JSON.stringify({ time: new Date().toISOString(), event, ...data })); } catch (_) { /* un log nunca debe tumbar el servidor */ }
 }
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Fase 9: presupuesto de rendimiento — gzip para HTML/CSS/JS y caché larga para las
+// imágenes del lobby (tienen nombre estable; si se reemplazan, cambiar el nombre del archivo).
+app.use(compression());
+app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: '7d', immutable: false }));
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '5m' }));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size, botTasks: botController?.tasks.size || 0 }));
 // Fase 7: health check para deploys sin caída en Render (configurado como healthCheckPath en render.yaml).
 app.get('/healthz', (_req, res) => {
@@ -1459,8 +1464,19 @@ io.on('connection', socket => {
     broadcast(room);
   });
 
+  // Fase 9 (QA): límite de frecuencia para mensajes y reacciones — máximo 6 cada 4 s
+  // por conexión, para que nadie pueda inundar la sala con broadcasts.
+  function tooChatty() {
+    const now = Date.now();
+    socket.data.chatTimes = (socket.data.chatTimes || []).filter(time => now - time < 4000);
+    if (socket.data.chatTimes.length >= 6) return true;
+    socket.data.chatTimes.push(now);
+    return false;
+  }
+
   socket.on('chat', ({ text } = {}, ack) => {
     const { room, player } = playerForSocket(socket);
+    if (tooChatty()) return ackError(ack, 'Vas muy rápido: espera un momento para volver a escribir.');
     text = cleanMessage(text);
     // Fase 8: los espectadores también chatean (se distinguen con el prefijo 👁).
     const spectator = !player && room ? room.spectators?.find(s => s.id === socket.data.spectatorId && s.connected) : null;
@@ -1476,6 +1492,7 @@ io.on('connection', socket => {
     const { room, player } = playerForSocket(socket);
     const allowed = ['🔥', '👏', '😂', '🍀', '😱', '💎'];
     if (!room || !player || !allowed.includes(emoji)) return ackError(ack, 'Reacción no válida.');
+    if (tooChatty()) return ackError(ack, 'Vas muy rápido: espera un momento.');
     io.to(room.code).emit('reaction', { playerId: player.id, name: player.name, avatar: player.avatar, emoji, time: Date.now() });
     ackOk(ack);
   });
@@ -1484,6 +1501,7 @@ io.on('connection', socket => {
     const { room, player } = playerForSocket(socket);
     const allowed = ['¡Bien jugado!', '¡Voy con todo!', 'La suerte está de mi lado', 'Otra ronda', 'Esto se pone bueno'];
     if (!room || !player || !allowed.includes(message)) return ackError(ack, 'Mensaje rápido no válido.');
+    if (tooChatty()) return ackError(ack, 'Vas muy rápido: espera un momento.');
     room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: player.id, name: player.name, text: message, quick: true, time: Date.now() });
     room.messages = room.messages.slice(-40);
     ackOk(ack);
