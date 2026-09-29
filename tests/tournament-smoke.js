@@ -109,8 +109,12 @@ async function playHand(sockets, tokens, mode = 'calm') {
   const meHost = state.players.find(p => p.id === hostToken);
   assert.ok(meHost.chips + meHost.roundBet === 1000, `stack de torneo 1000 (fichas ${meHost.chips} + ciega ${meHost.roundBet})`);
 
-  // ---- Sin recompras durante el torneo ----
-  assert.equal((await emitAck(host, 'rebuy')).ok, false, 'rebuy bloqueado en torneo');
+  // ---- Sin recompras: el evento 'rebuy' ya no existe en el servidor ----
+  const rebuyAttempt = await Promise.race([
+    new Promise(resolve => host.emit('rebuy', {}, resolve)),
+    new Promise(resolve => setTimeout(() => resolve('sin-respuesta'), 1500))
+  ]);
+  assert.equal(rebuyAttempt, 'sin-respuesta', 'el servidor ignora por completo la recarga de fichas');
 
   // ---- Tres manos tranquilas → sube el nivel de ciegas ----
   await playHand([host, guest], [hostToken, guestToken], 'calm');

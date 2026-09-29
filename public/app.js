@@ -1212,10 +1212,9 @@
     }
     const canStart = me.isHost && !active;
     const startCopy = room.phase === 'showdown' ? 'Repartir otra mano' : 'Iniciar partida';
-    els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>${active ? 'La acción está en la mesa' : room.phase === 'showdown' ? 'La mano terminó' : 'La mesa está lista'}</b><span>${active ? `Esperando a ${escapeHtml(room.players.find(p => p.id === room.turnId)?.name || 'la siguiente jugada')}…` : me.isHost ? 'Tú controlas el inicio de la próxima mano.' : 'El anfitrión iniciará cuando todos estén listos.'}</span></div><div class="action-buttons">
+    els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>${active ? 'La acción está en la mesa' : room.phase === 'showdown' ? 'La mano terminó' : 'La mesa está lista'}</b><span>${!active && me.chips < 20 && !room.tournament?.active ? 'Te quedaste sin fichas para las ciegas (mínimo 20): mañana recibes tu bono diario de 100 al entrar.' : active ? `Esperando a ${escapeHtml(room.players.find(p => p.id === room.turnId)?.name || 'la siguiente jugada')}…` : me.isHost ? 'Tú controlas el inicio de la próxima mano.' : 'El anfitrión iniciará cuando todos estén listos.'}</span></div><div class="action-buttons">
       ${canStart ? `<button class="game-btn primary" data-event="poker_start">${startCopy}</button>` : ''}
       ${canStart && !room.tournament?.active && room.players.filter(p => p.connected).length >= 2 ? '<button class="game-btn tournament-btn" data-event="tournament_start" title="Entrada 200 fichas · stack 1000 · las ciegas suben cada 3 manos · el ganador se lleva todo">🏆 Iniciar torneo</button>' : ''}
-      ${me.chips < 200 && !active && !room.tournament?.active ? '<button class="game-btn" data-event="rebuy">Recargar fichas</button>' : ''}
       ${room.results?.length ? `<div class="result-strip">${room.results.map(result => `<span class="result-item ${result.amount > 0 ? 'win' : ''}">${escapeHtml(result.name)} <b>${result.amount > 0 ? '+' : ''}${formatDelta(result.amount)}</b></span>`).join('')}</div>` : ''}
       </div></div>`;
   }

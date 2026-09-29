@@ -1629,16 +1629,9 @@ io.on('connection', socket => {
     if (result.ok) broadcast(room);
   });
 
-  socket.on('rebuy', (_data, ack) => {
-    const { room, player } = playerForSocket(socket);
-    if (!room || isPokerActive(room) || room.phase === 'playing') return ackError(ack, 'Espera a que termine la mano.');
-    if (room.tournament?.active) return ackError(ack, 'No hay recompras durante un torneo.');
-    if (player.chips >= 200) return ackError(ack, 'La recarga está disponible con menos de 200 fichas.');
-    player.chips = 1000;
-    addSystem(room, `${player.name} recargó sus fichas virtuales.`);
-    ackOk(ack);
-    broadcast(room);
-  });
+  // La recarga de fichas ('rebuy') se eliminó a pedido: las fichas solo entran por
+  // el bono diario, los logros/retos y el reinicio mensual de temporada. Así el
+  // ranking del mes no se puede inflar reponiendo fichas a voluntad.
 
   socket.on('kick_player', ({ playerId } = {}, ack) => {
     const { room, player } = playerForSocket(socket);

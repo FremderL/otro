@@ -105,8 +105,10 @@ async function testRoulette() {
   const hostResult = resolvedHost.results.find(item => item.id === `host-${suffix}`);
   const guestResult = resolvedGuest.results.find(item => item.id === `guest-${suffix}`);
   const winning = resolvedHost.quickResult.value;
-  assert.equal(hostResult.amount, winning >= 13 && winning <= 24 ? 20 : -10, 'la docena 13–24 paga x3');
-  assert.equal(guestResult.amount, winning >= 1 && winning % 3 === 1 ? 20 : -10, 'la columna 1 paga x3');
+  // El neto se compara SIN el bono del evento especial aleatorio de la mesa (si lo hubo),
+  // porque ese multiplicador sorpresa se suma al `amount` de quien gana.
+  assert.equal(hostResult.amount - (hostResult.specialBonus || 0), winning >= 13 && winning <= 24 ? 20 : -10, 'la docena 13–24 paga x3');
+  assert.equal(guestResult.amount - (guestResult.specialBonus || 0), winning >= 1 && winning % 3 === 1 ? 20 : -10, 'la columna 1 paga x3');
   assert.equal(resolvedHost.viewerProfile.chips, hostProfileBefore.chips + hostResult.amount + progressionRewards(hostProfileBefore, resolvedHost.viewerProfile), 'contabilidad autoritativa del anfitrión');
   assert.equal(resolvedGuest.viewerProfile.chips, guestProfileBefore.chips + guestResult.amount + progressionRewards(guestProfileBefore, resolvedGuest.viewerProfile), 'contabilidad autoritativa del invitado');
 
