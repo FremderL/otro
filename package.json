@@ -7,12 +7,13 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "check": "node --check server.js && node --check public/app.js && node --check lib/poker-evaluator.js && node --check lib/terms.js && node --check lib/bots/catalog.js && node --check lib/bots/decision-engine.js && node --check lib/bots/bot-controller.js && node --check tests/bots-smoke.js && node --check tests/bots-fallback-smoke.js && node --check tests/table-lifecycle-smoke.js",
+    "check": "node --check server.js && node --check public/app.js && node --check lib/poker-evaluator.js && node --check lib/terms.js && node --check lib/bots/catalog.js && node --check lib/bots/decision-engine.js && node --check lib/bots/bot-controller.js && node --check tests/bots-smoke.js && node --check tests/bots-fallback-smoke.js && node --check tests/table-lifecycle-smoke.js && node --check lib/quick-games.js && node --check tests/roulette-unit.js",
+    "test:roulette": "node tests/roulette-unit.js",
     "test:multiplayer": "node tests/multiplayer-smoke.js",
     "test:bots": "node tests/bots-smoke.js",
     "test:bots:fallback": "node tests/bots-fallback-smoke.js",
     "test:lifecycle": "node tests/table-lifecycle-smoke.js",
-    "test": "npm run check && npm run test:multiplayer && npm run test:bots && npm run test:bots:fallback && npm run test:lifecycle"
+    "test": "npm run check && npm run test:roulette && npm run test:multiplayer && npm run test:bots && npm run test:bots:fallback && npm run test:lifecycle"
   },
   "engines": {
     "node": ">=18"

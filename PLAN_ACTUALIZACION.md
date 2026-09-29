@@ -82,9 +82,11 @@
 
 **Entregable en Render:** deploy normal.
 
-## Fase 5 — Ruleta completa con rueda animada
+## Fase 5 — Ruleta completa con rueda animada ✅ COMPLETADA
 
 *Objetivo: transformar Ruleta Nova en una experiencia de ruleta real, no solo botones.*
+
+> **Estado (2026-09-28):** implementada. Paño europeo completo (0–36, rojo/negro, par/impar, 1–18/19–36, docenas y columnas x3) con fichas visibles: la propia al apostar y las de todos —con casillas ganadoras iluminadas— al revelarse la ronda. Rueda europea en canvas con el orden real de casillas: la pelota gira en sentido contrario, desacelera con rebotes y cae exactamente en el número autoritativo del servidor (~6.4 s, botón «Saltar animación» y respeto a `prefers-reduced-motion`). Quien entra a mitad del giro ve el estado ya resuelto. Bots apuestan también a docenas/columnas. Pruebas: `tests/roulette-unit.js` (nueva suite en `npm test`) y cobertura e2e de docenas/columnas en el smoke multijugador. Extra de esta entrega: botón «Entrar de todos modos» en la puerta de escritorio (persistido en `localStorage`) para ventanas estrechas como la vista previa del workspace.
 
 1. **Paño completo de apuestas.** Mesa de ruleta completa (estilo europeo, un solo 0): cuadrícula de números 0–36 con colores reales, apuestas externas (rojo/negro, par/impar, 1–18/19–36, **docenas y columnas**) y fichas colocadas visualmente sobre el paño donde apuesta cada jugador.
 2. **Rueda animada con pelota.** Al lanzar, se muestra la rueda girando y la **pelota recorriéndola con desaceleración realista** (rebotes finales incluidos) hasta detenerse **exactamente en el número que decidió el servidor**. La animación (~6–8 s, con opción de saltar y respeto a `prefers-reduced-motion`) solo **representa** el resultado autoritativo; nunca lo decide el cliente.

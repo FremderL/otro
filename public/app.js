@@ -84,7 +84,8 @@
     selectedAvatar: localStorage.getItem('montecristo-avatar') || 'fox', profileAvatar: localStorage.getItem('montecristo-avatar') || 'fox',
     connection: 'connecting', sound: localStorage.getItem('montecristo-sound') !== 'off',
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
-    lastEventKey: '', clockTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false
+    lastEventKey: '', clockTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false,
+    rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null
   };
 
   if (savedSession && routeCode && savedSession.code === routeCode) {
@@ -360,6 +361,10 @@
     });
   }));
   document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeModal(); closeProfileModal(); toggleShortcutHelp(false); } });
+  // Fase 5: saltar la animación de la ruleta (botón presente en mesa o panel de acciones)
+  document.addEventListener('click', event => {
+    if (event.target.closest && event.target.closest('[data-roulette-skip]') && ui.rouletteSpin) ui.rouletteSpin.skip = true;
+  });
 
   // ---------- Atajos de teclado en mesa (fase 4) ----------
   function toggleShortcutHelp(force) {
@@ -475,6 +480,11 @@
   // ---------- Room state ----------
   socket.on('room_state', room => {
     const wasOutside = !ui.room;
+    const previous = ui.room;
+    // Fase 5: al pasar de 'rolling' a 'results' en ruleta, la rueda anima el resultado autoritativo.
+    if (room.game === 'roulette' && previous && previous.code === room.code && previous.phase === 'rolling' && room.phase === 'results' && room.quickResult && !ui.rouletteSpin) {
+      startRouletteSpin(room.quickResult.value);
+    }
     ui.room = room;
     ui.activeCode = room.code;
     ui.me = room.players.find(player => player.id === deviceToken) || room.players.find(player => player.name === ui.playerName) || null;
@@ -702,15 +712,193 @@
     const labels = {
       red: 'Rojo', black: 'Negro', even: 'Par', odd: 'Impar',
       low: game === 'dice' ? 'Bajo 1–3' : 'Bajo 1–18', high: game === 'dice' ? 'Alto 4–6' : 'Alto 19–36',
-      heads: 'Cara', tails: 'Cruz', locked: 'Apuesta oculta'
+      heads: 'Cara', tails: 'Cruz', locked: 'Apuesta oculta',
+      d1: 'Docena 1–12', d2: 'Docena 13–24', d3: 'Docena 25–36',
+      c1: 'Columna 1', c2: 'Columna 2', c3: 'Columna 3'
     };
     return choice.startsWith?.('n:') ? `Número ${choice.slice(2)}` : (labels[choice] || choice);
   }
+  // ---------- Fase 5: ruleta europea (rueda animada + paño completo) ----------
+  // Orden real de la rueda europea de un solo cero; el resultado siempre lo decide el servidor.
+  const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+  const WHEEL_STEP = Math.PI * 2 / 37;
+  const RED_SET = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+  const WHEEL_BALL_TRACK = 134, WHEEL_BALL_POCKET = 110;
+
+  function drawRouletteWheel(canvas, wheelAngle, ball, hubValue, hubColor) {
+    const dpr = window.devicePixelRatio || 1;
+    const size = 290;
+    if (canvas.width !== Math.round(size * dpr)) { canvas.width = Math.round(size * dpr); canvas.height = Math.round(size * dpr); }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    const cx = size / 2, cy = size / 2;
+    const rOuter = 141, rPocketOut = 128, rPocketIn = 92, rHub = 58;
+    ctx.beginPath(); ctx.arc(cx, cy, rOuter, 0, Math.PI * 2);
+    ctx.fillStyle = '#101c1e'; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(229,189,114,.55)'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, rPocketOut + 4, 0, Math.PI * 2);
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(229,189,114,.22)'; ctx.stroke();
+    for (let i = 0; i < 37; i++) {
+      const number = WHEEL_ORDER[i];
+      const start = wheelAngle + i * WHEEL_STEP - WHEEL_STEP / 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rPocketOut, start, start + WHEEL_STEP);
+      ctx.arc(cx, cy, rPocketIn, start + WHEEL_STEP, start, true);
+      ctx.closePath();
+      ctx.fillStyle = number === 0 ? '#0a6b52' : RED_SET.has(number) ? '#a73e4d' : '#152226';
+      ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(229,189,114,.32)'; ctx.stroke();
+      const mid = start + WHEEL_STEP / 2;
+      ctx.save();
+      ctx.translate(cx + Math.cos(mid) * (rPocketOut - 12), cy + Math.sin(mid) * (rPocketOut - 12));
+      ctx.rotate(mid + Math.PI / 2);
+      ctx.fillStyle = 'rgba(255,255,255,.92)';
+      ctx.font = '700 10px Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(number), 0, 0);
+      ctx.restore();
+    }
+    const hubGradient = ctx.createRadialGradient(cx, cy, 8, cx, cy, rHub);
+    hubGradient.addColorStop(0, '#152a2d'); hubGradient.addColorStop(1, '#0a1315');
+    ctx.beginPath(); ctx.arc(cx, cy, rHub, 0, Math.PI * 2);
+    ctx.fillStyle = hubGradient; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(229,189,114,.5)'; ctx.stroke();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (hubValue != null) {
+      ctx.beginPath(); ctx.arc(cx, cy, 26, 0, Math.PI * 2);
+      ctx.fillStyle = hubColor === 'red' ? '#a73e4d' : hubColor === 'black' ? '#152226' : '#0a6b52';
+      ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = '#d5bc83'; ctx.stroke();
+      ctx.fillStyle = '#ffffff'; ctx.font = '800 22px "Playfair Display", Georgia, serif';
+      ctx.fillText(String(hubValue), cx, cy + 1);
+    } else {
+      ctx.fillStyle = 'rgba(229,189,114,.75)'; ctx.font = '16px serif';
+      ctx.fillText('◆', cx, cy + 1);
+    }
+    if (ball) {
+      const bx = cx + Math.cos(ball.angle) * ball.radius;
+      const by = cy + Math.sin(ball.angle) * ball.radius;
+      ctx.beginPath(); ctx.arc(bx, by, 5.5, 0, Math.PI * 2);
+      ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 6;
+      ctx.fillStyle = '#f4f1e6'; ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(bx - 1.5, by - 1.5, 1.8, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fill();
+    }
+  }
+  function startRouletteSpin(value) {
+    const index = WHEEL_ORDER.indexOf(Number(value));
+    if (index < 0) return;
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const from = ui.rouletteAngle || 0;
+    // Determinista a partir del número del servidor: todos los presentes ven el mismo giro.
+    const wheelEnd = from - Math.PI * 2 * (3 + value % 3) - ((value * 0.37) % 1) * Math.PI * 2;
+    const ballEnd = wheelEnd + index * WHEEL_STEP;
+    const ballStart = ballEnd - Math.PI * 2 * 8;
+    ui.rouletteSpin = { start: performance.now(), duration: reduceMotion ? 0 : 6400, from, wheelEnd, ballStart, ballEnd, value, skip: false };
+    ensureRouletteLoop();
+  }
+  function rouletteSpinFrame(canvas, spin, now) {
+    const progress = spin.skip || spin.duration <= 0 ? 1 : Math.min(1, (now - spin.start) / spin.duration);
+    const easeWheel = 1 - Math.pow(1 - progress, 3);
+    const easeBall = 1 - Math.pow(1 - progress, 2.6);
+    const wheelAngle = spin.from + (spin.wheelEnd - spin.from) * easeWheel;
+    // Rebotes finales: la sacudida se amortigua y desaparece exactamente al aterrizar.
+    const jitter = Math.sin(progress * 30) * Math.pow(1 - progress, 3) * WHEEL_STEP * 1.6;
+    const ballAngle = spin.ballStart + (spin.ballEnd - spin.ballStart) * easeBall + jitter;
+    const dropRaw = Math.min(1, Math.max(0, (progress - 0.62) / 0.3));
+    const drop = dropRaw * dropRaw * (3 - 2 * dropRaw);
+    const hop = Math.abs(Math.sin(progress * 26)) * Math.pow(1 - progress, 2) * 10;
+    const radius = WHEEL_BALL_TRACK - (WHEEL_BALL_TRACK - WHEEL_BALL_POCKET) * drop + (dropRaw > 0 ? hop : 0);
+    drawRouletteWheel(canvas, wheelAngle, { angle: ballAngle, radius }, null);
+    return progress >= 1;
+  }
+  function finishRouletteSpin() {
+    const spin = ui.rouletteSpin;
+    if (!spin) return;
+    ui.rouletteAngle = spin.wheelEnd;
+    ui.rouletteSpin = null;
+    playTone('notice');
+    renderRoom();
+  }
+  function ensureRouletteLoop() {
+    if (ui.rouletteRaf) return;
+    const step = now => {
+      ui.rouletteRaf = null;
+      const room = ui.room;
+      if (!room || room.game !== 'roulette') { ui.rouletteSpin = null; return; }
+      const canvas = document.getElementById('roulette-canvas');
+      const spin = ui.rouletteSpin;
+      let keep = false;
+      if (!canvas) {
+        keep = Boolean(spin); // la mesa se re-renderizó: esperamos al nuevo canvas
+      } else if (spin) {
+        if (rouletteSpinFrame(canvas, spin, now)) finishRouletteSpin();
+        else keep = true;
+      } else if (room.phase === 'rolling') {
+        ui.rouletteAngle = (ui.rouletteAngle || 0) - 0.012;
+        drawRouletteWheel(canvas, ui.rouletteAngle, { angle: now / 240, radius: WHEEL_BALL_TRACK }, null);
+        keep = true;
+      } else {
+        const result = room.quickResult;
+        const index = result ? WHEEL_ORDER.indexOf(result.value) : -1;
+        const restingBall = index >= 0 ? { angle: (ui.rouletteAngle || 0) + index * WHEEL_STEP, radius: WHEEL_BALL_POCKET } : null;
+        drawRouletteWheel(canvas, ui.rouletteAngle || 0, restingBall, result ? result.value : null, result?.color);
+      }
+      if (keep) ui.rouletteRaf = requestAnimationFrame(step);
+    };
+    ui.rouletteRaf = requestAnimationFrame(step);
+  }
+  function winningCells(result) {
+    const cells = new Set([`n:${result.value}`]);
+    const number = result.value;
+    if (number >= 1) {
+      cells.add(number % 2 === 0 ? 'even' : 'odd');
+      cells.add(result.color === 'red' ? 'red' : 'black');
+      cells.add(number <= 18 ? 'low' : 'high');
+      cells.add(number <= 12 ? 'd1' : number <= 24 ? 'd2' : 'd3');
+      cells.add(number % 3 === 1 ? 'c1' : number % 3 === 2 ? 'c2' : 'c3');
+    }
+    return cells;
+  }
+  function rouletteFeltHtml({ interactive = false, chips = null, highlight = null } = {}) {
+    const chipHtml = key => (chips && chips[key] ? chips[key].map(player => `<i class="felt-chip" style="background:${avatarColor(player.id)}" title="${escapeHtml(player.name)}"></i>`).join('') : '');
+    const cell = (key, label, cls, style, title) => {
+      const classes = `felt-cell ${cls}${highlight && highlight.has(key) ? ' hit' : ''}`;
+      return interactive
+        ? `<button type="button" class="${classes}" style="${style}" data-quick-choice="${key}" title="${title}">${label}${chipHtml(key)}</button>`
+        : `<span class="${classes}" style="${style}" title="${title}">${label}${chipHtml(key)}</span>`;
+    };
+    let html = `<div class="roulette-felt${interactive ? '' : ' readonly'}" role="group" aria-label="Paño de apuestas de ruleta europea">`;
+    html += cell('n:0', '0', 'green', 'grid-column:1;grid-row:1/span 3', 'Pleno al 0: pago total x36');
+    for (let number = 1; number <= 36; number++) {
+      const column = 2 + Math.floor((number - 1) / 3);
+      const row = number % 3 === 0 ? 1 : number % 3 === 2 ? 2 : 3;
+      html += cell(`n:${number}`, String(number), RED_SET.has(number) ? 'red' : 'black', `grid-column:${column};grid-row:${row}`, `Pleno al ${number}: pago total x36`);
+    }
+    html += cell('c3', '2:1', 'outside', 'grid-column:14;grid-row:1', 'Columna 3 (3, 6 … 36): pago total x3');
+    html += cell('c2', '2:1', 'outside', 'grid-column:14;grid-row:2', 'Columna 2 (2, 5 … 35): pago total x3');
+    html += cell('c1', '2:1', 'outside', 'grid-column:14;grid-row:3', 'Columna 1 (1, 4 … 34): pago total x3');
+    html += cell('d1', '1.ª 12', 'outside', 'grid-column:2/span 4;grid-row:4', 'Docena 1–12: pago total x3');
+    html += cell('d2', '2.ª 12', 'outside', 'grid-column:6/span 4;grid-row:4', 'Docena 13–24: pago total x3');
+    html += cell('d3', '3.ª 12', 'outside', 'grid-column:10/span 4;grid-row:4', 'Docena 25–36: pago total x3');
+    html += cell('low', '1–18', 'outside', 'grid-column:2/span 2;grid-row:5', 'Bajo 1–18: pago total x2');
+    html += cell('even', 'PAR', 'outside', 'grid-column:4/span 2;grid-row:5', 'Par: pago total x2');
+    html += cell('red', '◆ ROJO', 'outside red-mark', 'grid-column:6/span 2;grid-row:5', 'Rojo: pago total x2');
+    html += cell('black', '◆ NEGRO', 'outside black-mark', 'grid-column:8/span 2;grid-row:5', 'Negro: pago total x2');
+    html += cell('odd', 'IMPAR', 'outside', 'grid-column:10/span 2;grid-row:5', 'Impar: pago total x2');
+    html += cell('high', '19–36', 'outside', 'grid-column:12/span 2;grid-row:5', 'Alto 19–36: pago total x2');
+    return html + '</div>';
+  }
+
   function quickSeat(player, index) {
     const room = ui.room;
     const result = room.results?.find(item => item.id === player.id);
     const choice = quickChoiceLabel(room.game, player.quickChoice);
-    return `<div class="quick-bet-seat ${player.bot?.thinking ? 'bot-thinking' : ''} ${result?.amount > 0 ? 'winner' : ''}" style="--seat:${index}">
+    const suspense = room.game === 'roulette' && ui.rouletteSpin; // sin brillo de ganador hasta que caiga la pelota
+    return `<div class="quick-bet-seat ${player.bot?.thinking ? 'bot-thinking' : ''} ${!suspense && result?.amount > 0 ? 'winner' : ''}" style="--seat:${index}">
       <div class="seat-avatar" style="background:${avatarColor(player.id)}">${avatarEmoji(player.avatar)}</div>
       <div><b>${escapeHtml(player.name)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}</b><span>${player.bot?.thinking ? 'Pensando…' : player.bet ? `◆ ${formatChips(player.bet)} · ${escapeHtml(choice)}` : `${formatChips(player.chips)} fichas`}</span></div>
     </div>`;
@@ -720,7 +908,11 @@
     const rolling = room.phase === 'rolling' ? 'rolling' : '';
     if (room.game === 'roulette') {
       const color = result?.color || '';
-      return `<small>RULETA NOVA · RESULTADO AUTORITATIVO</small><div class="roulette-wheel ${rolling}"><div class="quick-result-number ${color}">${result ? result.value : '◆'}</div></div>${result ? `<div class="quick-result-label">${result.value} · ${color === 'red' ? 'Rojo' : color === 'black' ? 'Negro' : 'Verde'}</div>` : ''}`;
+      const spinning = Boolean(ui.rouletteSpin);
+      const label = spinning
+        ? '<div class="quick-result-label spinning">La pelota está girando…</div>'
+        : result ? `<div class="quick-result-label">${result.value} · ${color === 'red' ? 'Rojo' : color === 'black' ? 'Negro' : 'Verde'}</div>` : '';
+      return `<small>RULETA EUROPEA · RESULTADO AUTORITATIVO</small><div class="roulette-stage"><canvas id="roulette-canvas" width="290" height="290" aria-label="Rueda de ruleta europea"></canvas>${spinning ? '<button type="button" class="game-btn roulette-skip" data-roulette-skip>Saltar animación</button>' : ''}</div>${label}`;
     }
     if (room.game === 'dice') {
       const face = result ? ['⚀','⚁','⚂','⚃','⚄','⚅'][result.value - 1] : '⚄';
@@ -733,6 +925,7 @@
     const room = ui.room;
     const seats = room.players.map(quickSeat).join('');
     els.tableWrap.innerHTML = `<div class="quick-table-shell ${room.game}"><div class="quick-game-core">${quickCore(room)}</div><div class="quick-bets-around">${seats}</div></div>`;
+    if (room.game === 'roulette') ensureRouletteLoop();
   }
   function renderTable() {
     if (ui.room.game === 'poker') renderPokerTable();
@@ -793,13 +986,11 @@
     els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>La casa está en juego</b><span>${current ? `Turno de ${escapeHtml(current.name)}.` : 'Resolviendo la ronda…'}</span></div></div>`;
   }
   function quickChoiceButtons(game) {
-    const options = game === 'roulette'
-      ? [['red','Rojo'],['black','Negro'],['even','Par'],['odd','Impar'],['low','1–18'],['high','19–36']]
-      : game === 'dice' ? [['low','Bajo · 1–3'],['high','Alto · 4–6']] : [['heads','Cara'],['tails','Cruz']];
+    // La ruleta usa su propio paño completo (rouletteFeltHtml); aquí solo dados y moneda.
+    const options = game === 'dice' ? [['low','Bajo · 1–3'],['high','Alto · 4–6']] : [['heads','Cara'],['tails','Cruz']];
     const simplePayout = 'Pago total x2 si aciertas';
     let html = options.map(([value, label]) => `<button class="quick-choice ${value}" type="button" data-quick-choice="${value}" title="${simplePayout}">${label}</button>`).join('');
     if (game === 'dice') html += [1,2,3,4,5,6].map(value => `<button class="quick-choice exact" type="button" data-quick-choice="n:${value}" title="Número exacto: pago total x6">${value}</button>`).join('');
-    if (game === 'roulette') html += '<input id="quick-exact-number" type="number" min="0" max="36" placeholder="N.º exacto" aria-label="Número exacto de ruleta" title="Número exacto: pago total x36">';
     return html;
   }
   function renderQuickActions(room, me) {
@@ -810,12 +1001,14 @@
     if (room.phase === 'betting') {
       const hostLaunch = me.isHost ? '<button class="game-btn primary" data-event="quick_resolve">Lanzar ronda</button>' : '';
       if (me.bet > 0) {
-        els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>Apuesta confirmada: <span>${formatChips(me.bet)}</span> · ${escapeHtml(quickChoiceLabel(room.game, me.quickChoice))}</b><span>La elección queda bloqueada hasta el resultado.</span></div><div class="action-buttons">${hostLaunch || '<span class="waiting-copy"><span>Esperando al anfitrión…</span></span>'}</div></div>`;
+        const myChipFelt = room.game === 'roulette' && me.quickChoice ? `<div class="felt-wrap">${rouletteFeltHtml({ chips: { [me.quickChoice]: [me] } })}</div>` : '';
+        els.actionPanel.innerHTML = `<div class="action-bar ${myChipFelt ? 'roulette-bar' : ''}"><div class="waiting-copy"><b>Apuesta confirmada: <span>${formatChips(me.bet)}</span> · ${escapeHtml(quickChoiceLabel(room.game, me.quickChoice))}</b><span>La elección queda bloqueada hasta el resultado.</span></div>${myChipFelt}<div class="action-buttons">${hostLaunch || '<span class="waiting-copy"><span>Esperando al anfitrión…</span></span>'}</div></div>`;
       } else if (me.chips < 10) {
         els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>Necesitas al menos 10 fichas</b><span>Prueba otro juego o espera una recompensa.</span></div><div class="action-buttons">${hostLaunch}</div></div>`;
       } else {
         const suggested = Math.min(50, me.chips);
-        els.actionPanel.innerHTML = `<div class="action-bar"><div><div class="quick-choice-grid">${quickChoiceButtons(room.game)}</div></div><div class="quick-bet-controls"><input id="quick-bet-amount" type="number" min="10" max="${me.chips}" value="${suggested}" aria-label="Apuesta virtual"><button class="game-btn green" data-quick-bet>Confirmar apuesta</button>${hostLaunch}</div></div>`;
+        const chooser = room.game === 'roulette' ? `<div class="felt-wrap">${rouletteFeltHtml({ interactive: true })}</div>` : `<div><div class="quick-choice-grid">${quickChoiceButtons(room.game)}</div></div>`;
+        els.actionPanel.innerHTML = `<div class="action-bar ${room.game === 'roulette' ? 'roulette-bar' : ''}">${chooser}<div class="quick-bet-controls"><input id="quick-bet-amount" type="number" min="10" max="${me.chips}" value="${suggested}" aria-label="Apuesta virtual"><button class="game-btn green" data-quick-bet>Confirmar apuesta</button>${hostLaunch}</div></div>`;
       }
       return;
     }
@@ -823,8 +1016,20 @@
       els.actionPanel.innerHTML = '<div class="action-bar"><div class="waiting-copy"><b>El azar ya está en movimiento</b><span>El servidor publicará el resultado en un instante.</span></div></div>';
       return;
     }
+    if (room.game === 'roulette' && ui.rouletteSpin) {
+      els.actionPanel.innerHTML = '<div class="action-bar"><div class="waiting-copy"><b>La pelota está girando</b><span>El resultado se revelará cuando caiga en su casilla.</span></div><div class="action-buttons"><button type="button" class="game-btn" data-roulette-skip>Saltar animación</button></div></div>';
+      return;
+    }
     const resultCopy = room.results?.length ? room.results.map(result => `<span class="result-item ${result.amount > 0 ? 'win' : ''}">${escapeHtml(result.name)} <b>${result.amount > 0 ? '+' : ''}${formatDelta(result.amount)}</b></span>`).join('') : '<span class="result-item">Sin apuestas en esta ronda</span>';
-    els.actionPanel.innerHTML = `<div class="action-bar"><div class="result-strip">${resultCopy}</div><div class="action-buttons">${me.isHost ? '<button class="game-btn primary" data-event="quick_new">Abrir nueva ronda</button>' : '<span class="waiting-copy"><span>Esperando al anfitrión…</span></span>'}</div></div>`;
+    let resultsFelt = '';
+    if (room.game === 'roulette' && room.quickResult) {
+      const chips = {};
+      room.players.forEach(player => {
+        if (player.quickChoice && player.quickChoice !== 'locked') (chips[player.quickChoice] = chips[player.quickChoice] || []).push(player);
+      });
+      resultsFelt = `<div class="felt-wrap">${rouletteFeltHtml({ chips, highlight: winningCells(room.quickResult) })}</div>`;
+    }
+    els.actionPanel.innerHTML = `<div class="action-bar ${resultsFelt ? 'roulette-bar' : ''}"><div class="result-strip">${resultCopy}</div>${resultsFelt}<div class="action-buttons">${me.isHost ? '<button class="game-btn primary" data-event="quick_new">Abrir nueva ronda</button>' : '<span class="waiting-copy"><span>Esperando al anfitrión…</span></span>'}</div></div>`;
   }
   function bindActionButtons() {
     $$('[data-event]').forEach(button => button.addEventListener('click', async () => {
@@ -1087,6 +1292,7 @@
     closeProfileModal(); closeBotControls();
     if (notifyServer && ui.room) await emitAck('leave_room');
     clearInterval(ui.clockTimer); clearSession(); ui.room = null; ui.me = null; ui.activeCode = null;
+    ui.rouletteSpin = null; ui.rouletteAngle = 0;
     ui.lastGameSignature = ''; ui.lastChatSignature = ''; ui.previousRanks = new Map(); ui.previousChips = new Map(); ui.lastMeChips = null;
     els.roomApp.classList.add('exiting');
     setTimeout(() => {

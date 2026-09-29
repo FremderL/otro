@@ -93,8 +93,9 @@ async function testRoulette() {
 
   let response = await emitAck(guest, 'quick_resolve');
   assert.equal(response.ok, false, 'un invitado no debe resolver');
-  assert.equal((await emitAck(host, 'quick_bet', { amount: 10, choice: 'red' })).ok, true);
-  assert.equal((await emitAck(guest, 'quick_bet', { amount: 10, choice: 'black' })).ok, true);
+  // Fase 5: cobertura de extremo a extremo de docenas y columnas
+  assert.equal((await emitAck(host, 'quick_bet', { amount: 10, choice: 'd2' })).ok, true);
+  assert.equal((await emitAck(guest, 'quick_bet', { amount: 10, choice: 'c1' })).ok, true);
   response = await emitAck(host, 'quick_resolve');
   assert.equal(response.ok, true, response.error);
   const resolvedHost = await waitState(host, state => state.phase === 'results' && state.handNumber === 1, 7000);
@@ -103,6 +104,9 @@ async function testRoulette() {
   assert.equal(resolvedHost.results.length, 2);
   const hostResult = resolvedHost.results.find(item => item.id === `host-${suffix}`);
   const guestResult = resolvedGuest.results.find(item => item.id === `guest-${suffix}`);
+  const winning = resolvedHost.quickResult.value;
+  assert.equal(hostResult.amount, winning >= 13 && winning <= 24 ? 20 : -10, 'la docena 13–24 paga x3');
+  assert.equal(guestResult.amount, winning >= 1 && winning % 3 === 1 ? 20 : -10, 'la columna 1 paga x3');
   assert.equal(resolvedHost.viewerProfile.chips, hostProfileBefore.chips + hostResult.amount + progressionRewards(hostProfileBefore, resolvedHost.viewerProfile), 'contabilidad autoritativa del anfitrión');
   assert.equal(resolvedGuest.viewerProfile.chips, guestProfileBefore.chips + guestResult.amount + progressionRewards(guestProfileBefore, resolvedGuest.viewerProfile), 'contabilidad autoritativa del invitado');
 

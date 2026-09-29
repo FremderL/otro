@@ -21,6 +21,7 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Términos y Condiciones con aceptación obligatoria y versionada (página `/terminos`, redactados para México: naturaleza recreativa, 18+, deslinde de responsabilidad y Aviso de Privacidad LFPDPPP). El servidor rechaza crear o unirse a salas sin la aceptación vigente.
 - Privacidad de cartas garantizada por el servidor: en póker y blackjack cada quien recibe solo sus cartas; las ajenas viajan boca abajo (`XX`) hasta el showdown o los resultados.
 - Atajos de teclado en mesa (`F/C/R/A` en póker, `H/S/D` en blackjack, `Enter` confirma apuestas rápidas, `T` enfoca el chat y `?` muestra la guía) e imágenes originales en las cinco tarjetas del lobby.
+- Ruleta europea completa: paño de apuestas con docenas y columnas, fichas visibles sobre el paño y rueda animada en canvas cuya pelota cae siempre en el número autoritativo del servidor.
 - Interfaz exclusiva para computadoras de escritorio y laptops, sin animaciones largas que bloqueen la partida.
 
 ## Experiencia visual y accesibilidad
@@ -37,7 +38,7 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 
 ## Plataforma soportada
 
-MonteCristo es un sitio **solo para computadoras** (escritorio o laptop). No hay soporte para celulares ni tablets: con ventanas menores a **1024 px de ancho** se muestra una pantalla de bloqueo que invita a volver desde una computadora. Resolución mínima soportada: **1024×720**; diseño óptimo a partir de **1280×800**.
+MonteCristo es un sitio **solo para computadoras** (escritorio o laptop). No hay soporte para celulares ni tablets: con ventanas menores a **1024 px de ancho** se muestra una pantalla de bloqueo que invita a volver desde una computadora, con un botón «Entrar de todos modos» (persistido en el navegador) para ventanas estrechas en computadoras, como paneles de vista previa; en ese caso la página se desplaza horizontalmente. Resolución mínima soportada: **1024×720**; diseño óptimo a partir de **1280×800**.
 
 ## Juegos y mecánicas
 
@@ -51,9 +52,12 @@ Apuesta inicial, pedir, plantarse, doblar y pago de Blackjack 3:2. Cada turno di
 
 ### Ruleta Nova
 
+- Paño europeo completo: se apuesta haciendo clic sobre la casilla del paño (números 0–36 y apuestas externas).
 - Rojo, negro, par, impar, 1–18 o 19–36: pago total x2 si acierta.
-- Número exacto de 0 a 36: pago total x36 si acierta.
-- El cero es verde y hace perder las apuestas simples.
+- Docenas (1–12, 13–24, 25–36) y columnas: pago total x3 si acierta.
+- Pleno (número exacto de 0 a 36): pago total x36 si acierta.
+- El cero es verde y hace perder todas las apuestas externas.
+- Rueda europea animada: la pelota desacelera, rebota y cae exactamente en el número decidido por el servidor; se puede saltar la animación y se respeta `prefers-reduced-motion`.
 
 ### Dados Cósmicos
 
