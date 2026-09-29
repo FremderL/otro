@@ -1572,6 +1572,30 @@ io.on('connection', socket => {
     broadcast(room);
   });
 
+  // Fase 11.2: login opcional (usuario + contraseña) para recuperar el mismo
+  // perfil desde otra computadora. No reemplaza el modo sin cuenta: solo
+  // vincula credenciales al perfil que ya tiene este dispositivo (mismas
+  // fichas, logros e historial) para poder volver a entrar a él después.
+  socket.on('account_signup', ({ token, name, avatar, username, password, tos } = {}, ack) => {
+    if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
+    const id = String(token).slice(0, 80);
+    // Si el perfil ya existe (lo normal: ya jugó antes) no se le pisa el
+    // nombre con un valor por defecto; getOrCreate solo lo usa si es nuevo.
+    const profile = profiles.getOrCreate(id, cleanName(name) || undefined, avatar);
+    if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
+    const result = profiles.registerAccount(profile, username, password);
+    if (!result.ok) return ackError(ack, result.error);
+    logEvent('account_created', { profileId: profile.id, username: profile.username });
+    ackOk(ack, { profile: publicProgress(profile, true) });
+  });
+
+  socket.on('account_login', ({ username, password } = {}, ack) => {
+    const result = profiles.authenticate(username, password);
+    if (!result.ok) return ackError(ack, result.error);
+    logEvent('account_login', { profileId: result.profile.id, username: result.profile.username });
+    ackOk(ack, { token: result.profile.id, profile: publicProgress(result.profile, true) });
+  });
+
   socket.on('quick_bet', (data = {}, ack) => {
     const { room, player } = playerForSocket(socket);
     const result = executeQuickBet(room, player, data);

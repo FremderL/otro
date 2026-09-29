@@ -30,7 +30,11 @@
     historyDownload: $('#history-download'),
     dailyBonusStatus: $('#daily-bonus-status'), quickChatToggle: $('#quick-chat-toggle'), quickChatMenu: $('#quick-chat-menu'),
     botMenuToggle: $('#bot-menu-toggle'), botControls: $('#bot-controls'), botMenuClose: $('#bot-menu-close'),
-    botDifficulty: $('#bot-difficulty'), botStyle: $('#bot-style'), botAdd: $('#bot-add'), botFill: $('#bot-fill')
+    botDifficulty: $('#bot-difficulty'), botStyle: $('#bot-style'), botAdd: $('#bot-add'), botFill: $('#bot-fill'),
+    accountOpenBtn: $('#account-open-btn'), accountModal: $('#account-modal'), accountForm: $('#account-form'),
+    accountModalTitle: $('#account-modal-title'), accountModalCopy: $('#account-modal-copy'),
+    accountUsername: $('#account-username'), accountPassword: $('#account-password'), accountError: $('#account-error'),
+    accountSubmit: $('#account-submit'), accountSwitch: $('#account-switch')
   };
 
   const PHASES = {
@@ -84,6 +88,7 @@
   });
 
   const ui = {
+    accountMode: 'login',
     modalMode: 'create', selectedGame: 'poker', roomFilter: 'all', lobby: [], playersOnline: 0,
     room: null, me: null, activeCode: null, playerName: localStorage.getItem('montecristo-name') || '',
     selectedAvatar: localStorage.getItem('montecristo-avatar') || 'fox', profileAvatar: localStorage.getItem('montecristo-avatar') || 'fox',
@@ -396,7 +401,7 @@
       item.setAttribute('aria-pressed', String(selected));
     });
   }));
-  document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeModal(); closeProfileModal(); toggleShortcutHelp(false); } });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeModal(); closeProfileModal(); closeAccountModal(); toggleShortcutHelp(false); } });
   // Fases 5 y 6: saltar animaciones (botones presentes en mesa o panel de acciones)
   document.addEventListener('click', event => {
     if (!event.target.closest) return;
@@ -1555,6 +1560,74 @@
       });
     els.gameBreakdown.innerHTML = rows.join('') || '<div class="chart-empty">Prueba los juegos del casino y compara aquí tu rendimiento.</div>';
   }
+  // ---------- Fase 11.2: login opcional (usuario + contraseña) ----------
+  function renderAccountMode() {
+    const isLogin = ui.accountMode === 'login';
+    els.accountModalTitle.textContent = isLogin ? 'Iniciar sesión' : 'Crear cuenta';
+    els.accountModalCopy.textContent = isLogin
+      ? 'Jugar sin cuenta sigue funcionando igual que siempre. Si ya vinculaste un usuario y contraseña a tu perfil, inicia sesión aquí para recuperar tus fichas, logros e historial en esta computadora.'
+      : 'Esto vincula un usuario y contraseña a TU perfil actual de esta computadora (mismas fichas, logros e historial) para que puedas recuperarlo iniciando sesión desde cualquier otra.';
+    els.accountSubmit.innerHTML = `<span class="btn-label">${isLogin ? 'Iniciar sesión' : 'Crear cuenta'}</span>`;
+    els.accountSwitch.textContent = isLogin ? '¿No tienes cuenta todavía? Crear una con mi perfil actual' : '¿Ya tienes cuenta? Iniciar sesión';
+    els.accountPassword.autocomplete = isLogin ? 'current-password' : 'new-password';
+    els.accountError.classList.add('hidden');
+    els.accountError.textContent = '';
+  }
+  function openAccountModal() {
+    ui.accountMode = 'login';
+    renderAccountMode();
+    els.accountForm.reset();
+    els.accountModal.classList.add('open');
+    els.accountModal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    els.accountUsername.focus();
+  }
+  function closeAccountModal() {
+    els.accountModal?.classList.remove('open');
+    els.accountModal?.setAttribute('aria-hidden', 'true');
+    if (!els.modal.classList.contains('open') && !els.profileModal.classList.contains('open')) {
+      document.body.classList.remove('modal-open');
+    }
+  }
+  els.accountOpenBtn?.addEventListener('click', openAccountModal);
+  $$('[data-close-account]').forEach(element => element.addEventListener('click', closeAccountModal));
+  els.accountSwitch?.addEventListener('click', () => {
+    ui.accountMode = ui.accountMode === 'login' ? 'signup' : 'login';
+    renderAccountMode();
+  });
+  els.accountForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const username = els.accountUsername.value.trim();
+    const password = els.accountPassword.value;
+    els.accountError.classList.add('hidden');
+    let response;
+    if (ui.accountMode === 'login') {
+      response = await emitAck('account_login', { username, password }, els.accountSubmit);
+      if (!response.ok) {
+        els.accountError.textContent = response.error || 'No se pudo iniciar sesión.';
+        els.accountError.classList.remove('hidden');
+        return;
+      }
+      localStorage.setItem('montecristo-device', response.token);
+      localStorage.setItem('montecristo-name', response.profile?.name || '');
+      localStorage.setItem('montecristo-avatar', response.profile?.avatar || 'fox');
+      showToast('Sesión iniciada', `Bienvenido de nuevo, ${response.profile?.name || username}.`, 'notice', 3600, '🔑');
+      closeAccountModal();
+      setTimeout(() => location.reload(), 900);
+    } else {
+      response = await emitAck('account_signup', {
+        token: getDeviceToken(), name: ui.playerName, avatar: ui.selectedAvatar, username, password, tos: TOS_VERSION
+      }, els.accountSubmit);
+      if (!response.ok) {
+        els.accountError.textContent = response.error || 'No se pudo crear la cuenta.';
+        els.accountError.classList.remove('hidden');
+        return;
+      }
+      showToast('Cuenta creada', `Ya puedes iniciar sesión como @${username} desde cualquier otra computadora.`, 'notice', 4200, '🔑');
+      closeAccountModal();
+    }
+  });
+
   els.profileCard.addEventListener('click', openProfileModal);
   els.profileCard.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openProfileModal(); } });
   $$('[data-close-profile]').forEach(element => element.addEventListener('click', closeProfileModal));

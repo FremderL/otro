@@ -44,6 +44,7 @@
       </div>
       <div class="nav-actions">
         <span id="nav-connection" class="connection-badge connected"><i></i><span>Conectado</span></span>
+        <button class="btn btn-ghost btn-small" id="account-open-btn"><span class="btn-icon">🔑</span> Iniciar sesión</button>
         <button class="btn btn-ghost btn-small" data-open-mode="join"><span class="btn-icon">⌁</span> Entrar con código</button>
       </div>
     </nav>
@@ -291,6 +292,24 @@
         <section><div class="progress-title"><span>LOGROS</span><small>Colección personal</small></div><div id="achievement-list" class="achievement-list"></div></section>
       </div>
       <div class="profile-reward-note"><span>🎁</span><div><b>Bono diario</b><small id="daily-bonus-status">Se entrega una vez al día al entrar.</small></div></div>
+    </div>
+  </div>
+
+  <div id="account-modal" class="modal account-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-account></div>
+    <div class="modal-card account-modal-card" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
+      <button class="modal-close" data-close-account aria-label="Cerrar">×</button>
+      <span class="kicker">CUENTA (OPCIONAL)</span>
+      <h2 id="account-modal-title">Iniciar sesión</h2>
+      <p id="account-modal-copy">Jugar sin cuenta sigue funcionando igual que siempre. Si ya vinculaste un usuario y contraseña a tu perfil, inicia sesión aquí para recuperar tus fichas, logros e historial en esta computadora.</p>
+      <form id="account-form" class="account-form">
+        <div class="form-field"><label for="account-username">Usuario</label><div class="input-wrap"><span>@</span><input id="account-username" maxlength="20" autocomplete="username" required /></div></div>
+        <div class="form-field"><label for="account-password">Contraseña</label><div class="input-wrap"><span>●</span><input id="account-password" type="password" minlength="6" maxlength="72" autocomplete="current-password" required /></div></div>
+        <p id="account-error" class="account-error hidden"></p>
+        <button class="btn btn-primary btn-full" type="submit" id="account-submit"><span class="btn-label">Iniciar sesión</span></button>
+      </form>
+      <button class="account-switch" id="account-switch" type="button">¿No tienes cuenta todavía? Crear una con mi perfil actual</button>
+      <div class="modal-note"><span>✓</span> Sin correo <i></i><span>✓</span> Solo para recuperar tu mismo perfil</div>
     </div>
   </div>
 
