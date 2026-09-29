@@ -132,7 +132,7 @@
 *Objetivo: crecer el juego sobre la base ya estabilizada.*
 
 1. **Torneos de sala** (sit & go de póker con ciegas crecientes) — el formato brilla en pantallas grandes.
-2. **Estadísticas ampliadas de perfil:** gráficas de saldo por sesión, historial por juego, % de victorias; panel lateral que solo cabe en escritorio.
+2. ✅ **Estadísticas ampliadas de perfil:** gráficas de saldo por sesión, historial por juego, % de victorias; panel lateral que solo cabe en escritorio. *(2026-09-28: el modal de perfil suma «% DE VICTORIAS», una gráfica SVG con la evolución del saldo —últimos 60 movimientos, persistidos en disco— y una tabla de rendimiento por juego con rondas, victorias, % y balance neto. Smoke test: `tests/profile-stats-smoke.js`.)*
 3. ✅ **Espectadores:** entrar a una sala llena en modo observador con chat. *(2026-09-28: tribuna con hasta 12 espectadores por mesa, botón «👁 Ver mesa» en el lobby para salas llenas, chat con prefijo 👁, privacidad intacta —cartas ajenas ocultas y elecciones «locked»—, botón «Tomar asiento» que convierte al espectador en jugador, y limpieza automática al desconectarse. Smoke test: `tests/spectators-smoke.js`.)*
 4. **Nuevas variantes:** blackjack con seguro y split.
 5. **Criterio de aceptación:** cada característica entra por separado con su smoke test correspondiente en `npm test`.

@@ -10,6 +10,7 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Lobby en vivo con filtros por juego, fase y ocupación.
 - Estado autoritativo y sincronizado en tiempo real con Socket.IO.
 - Perfil persistente por dispositivo: nombre, avatar, saldo, victorias, rondas, mayor ganancia, rachas y juegos probados.
+- Estadísticas ampliadas en el perfil: % de victorias, gráfica de evolución del saldo (últimos 60 movimientos, persistidos entre sesiones) e historial de rendimiento por juego con rondas, victorias y balance neto.
 - Clasificación de la sala por saldo y señal visual de cambios de posición.
 - Chat libre, mensajes rápidos y reacciones (`🔥`, `👏`, `😂`, `🍀`, `😱`, `💎`).
 - Historial reciente de ganadores y celebraciones breves para grandes resultados.

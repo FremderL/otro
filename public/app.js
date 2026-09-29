@@ -25,6 +25,7 @@
     profileModal: $('#profile-modal'), profileForm: $('#profile-form'), profileNameInput: $('#profile-name-input'),
     profileAvatarChoice: $('#profile-avatar-choice'), profileBigAvatar: $('#profile-big-avatar'),
     profileStats: $('#profile-stats'), challengeList: $('#challenge-list'), achievementList: $('#achievement-list'),
+    balanceChart: $('#balance-chart'), balanceChartNote: $('#balance-chart-note'), gameBreakdown: $('#game-breakdown'),
     dailyBonusStatus: $('#daily-bonus-status'), quickChatToggle: $('#quick-chat-toggle'), quickChatMenu: $('#quick-chat-menu'),
     botMenuToggle: $('#bot-menu-toggle'), botControls: $('#bot-controls'), botMenuClose: $('#bot-menu-close'),
     botDifficulty: $('#bot-difficulty'), botStyle: $('#bot-style'), botAdd: $('#bot-add'), botFill: $('#bot-fill')
@@ -1396,16 +1397,67 @@
     renderAvatarChoices();
     els.profileStats.innerHTML = [
       ['FICHAS', formatChips(profile.chips), 'gold'], ['VICTORIAS', formatChips(stats.wins), ''],
+      ['% DE VICTORIAS', `${stats.winRate ?? 0}%`, stats.winRate >= 50 ? 'gold' : ''],
       ['RONDAS', formatChips(stats.roundsPlayed), ''], ['MAYOR GANANCIA', `+${formatChips(stats.biggestWin)}`, 'gold'],
       ['APOSTADO', formatChips(stats.totalWagered), ''], ['MEJOR RACHA', formatChips(stats.bestStreak), ''],
       ['JUEGOS PROBADOS', `${formatChips(stats.differentGames)} / 5`, ''], ['DERROTAS', formatChips(stats.losses), '']
     ].map(([label,value,kind]) => `<div class="profile-stat"><small>${label}</small><b class="${kind}">${value}</b></div>`).join('');
+    renderBalanceChart(profile);
+    renderGameBreakdown(profile);
     els.challengeList.innerHTML = (profile.challenges || []).map(item => {
       const percent = Math.min(100, Math.round((item.value || 0) / item.target * 100));
       return `<div class="progress-item ${item.completed ? 'done' : ''}"><span class="progress-icon">${escapeHtml(item.icon)}</span><div class="progress-copy"><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description)} · ${item.value}/${item.target}</small><div class="progress-track"><i style="width:${percent}%"></i></div></div><span class="progress-reward">${item.completed ? '✓' : '+' + item.reward}</span></div>`;
     }).join('') || '<div class="chat-system">Los retos aparecerán al jugar.</div>';
     els.achievementList.innerHTML = (profile.allAchievements || []).map(item => `<div class="progress-item ${item.unlocked ? 'done' : 'locked'}"><span class="progress-icon">${escapeHtml(item.unlocked ? item.icon : '◇')}</span><div class="progress-copy"><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description)}</small></div><span class="progress-reward">${item.unlocked ? '✓' : '+' + item.reward}</span></div>`).join('') || '<div class="chat-system">Aún no hay logros.</div>';
     els.dailyBonusStatus.textContent = profile.dailyBonusClaimed ? 'Bono de hoy recibido · vuelve mañana.' : 'Se entrega una vez al día al entrar.';
+  }
+  // Fase 8.2: gráfica SVG de evolución del saldo (últimos 60 movimientos).
+  function renderBalanceChart(profile) {
+    if (!els.balanceChart) return;
+    const history = profile.balanceHistory || [];
+    if (history.length < 2) {
+      els.balanceChart.innerHTML = '<div class="chart-empty">Juega algunas rondas y aquí verás cómo evoluciona tu saldo.</div>';
+      if (els.balanceChartNote) els.balanceChartNote.textContent = 'Tus últimos movimientos';
+      return;
+    }
+    const values = history.map(point => point.chips);
+    const min = Math.min(...values), max = Math.max(...values);
+    const span = Math.max(1, max - min);
+    const w = 520, h = 130, pad = 8;
+    const step = (w - pad * 2) / (values.length - 1);
+    const points = values.map((value, index) => [pad + index * step, pad + (h - pad * 2) * (1 - (value - min) / span)]);
+    const line = points.map(point => `${point[0].toFixed(1)},${point[1].toFixed(1)}`).join(' ');
+    const area = `${pad},${h - pad} ${line} ${(pad + (values.length - 1) * step).toFixed(1)},${h - pad}`;
+    const rising = values[values.length - 1] >= values[0];
+    const last = points[points.length - 1];
+    els.balanceChart.innerHTML = `
+      <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+        <polygon points="${area}" class="spark-fill ${rising ? 'up' : 'down'}"></polygon>
+        <polyline points="${line}" class="spark-line ${rising ? 'up' : 'down'}"></polyline>
+        <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3.4" class="spark-dot ${rising ? 'up' : 'down'}"></circle>
+      </svg>
+      <div class="chart-legend"><span>MÍN ◆ ${formatChips(min)}</span><span class="${rising ? 'trend-up' : 'trend-down'}">${rising ? '▲' : '▼'} ${formatChips(Math.abs(values[values.length - 1] - values[0]))} en la sesión</span><span>MÁX ◆ ${formatChips(max)}</span></div>`;
+    if (els.balanceChartNote) els.balanceChartNote.textContent = `Últimos ${history.length} movimientos`;
+  }
+  // Fase 8.2: tabla de rendimiento por juego.
+  function renderGameBreakdown(profile) {
+    if (!els.gameBreakdown) return;
+    const gameStats = profile.gameStats || {};
+    const rows = Object.keys(GAME_META)
+      .filter(game => gameStats[game]?.rounds > 0)
+      .map(game => {
+        const entry = gameStats[game];
+        const meta = GAME_META[game];
+        const rate = entry.rounds > 0 ? Math.round(entry.wins / entry.rounds * 100) : 0;
+        const netClass = entry.net > 0 ? 'net-up' : entry.net < 0 ? 'net-down' : '';
+        return `<div class="game-breakdown-row">
+          <span class="gb-game">${meta.icon} ${escapeHtml(meta.name)}</span>
+          <span class="gb-cell">${formatChips(entry.rounds)} ${entry.rounds === 1 ? 'ronda' : 'rondas'}</span>
+          <span class="gb-cell">${formatChips(entry.wins)} ${entry.wins === 1 ? 'victoria' : 'victorias'} · ${rate}%</span>
+          <span class="gb-net ${netClass}">${entry.net > 0 ? '+' : ''}${formatChips(entry.net)}</span>
+        </div>`;
+      });
+    els.gameBreakdown.innerHTML = rows.join('') || '<div class="chart-empty">Prueba los juegos del casino y compara aquí tu rendimiento.</div>';
   }
   els.profileCard.addEventListener('click', openProfileModal);
   els.profileCard.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openProfileModal(); } });
