@@ -151,6 +151,7 @@ function createRoom(game, host, socket, requestedName) {
     results: [],
     quickResult: null,
     recentWinners: [],
+    spectators: [], // Fase 8: espectadores (modo observador con chat)
     specialEvent: quick ? rollSpecialEvent() : null,
     createdAt: Date.now(),
     updatedAt: Date.now()
@@ -242,6 +243,12 @@ function publicRoom(room, viewerId) {
     viewerProfile: (() => {
       const viewer = room.players.find(player => player.id === viewerId);
       return viewer?._profile ? publicProgress(viewer._profile, true) : null;
+    })(),
+    // Fase 8: tribuna de espectadores. El viewer sabe si está observando; nadie ve cartas ajenas.
+    spectators: (room.spectators || []).filter(s => s.connected).map(s => ({ id: s.id, name: s.name, avatar: s.avatar })),
+    viewerSpectator: (() => {
+      const spectator = (room.spectators || []).find(s => s.id === viewerId);
+      return spectator ? { id: spectator.id, name: spectator.name, avatar: spectator.avatar } : null;
     })(),
     avatars: AVATARS,
     botOptions: {
@@ -345,6 +352,9 @@ function publishRoom(room, includeLobby = false) {
     }
     if (player.connected && player.socketId) io.to(player.socketId).emit('room_state', publicRoom(room, player.id));
   }
+  for (const spectator of room.spectators || []) {
+    if (spectator.connected && spectator.socketId) io.to(spectator.socketId).emit('room_state', publicRoom(room, spectator.id));
+  }
   if (includeLobby) broadcastLobby();
 }
 function broadcast(room) {
@@ -371,11 +381,19 @@ function clearRoomTasks(room) {
   room._cleanupTimer = null;
   botController?.cancelRoom(room.code);
 }
+function removeSpectator(room, spectatorId) {
+  const spectator = room.spectators?.find(s => s.id === spectatorId);
+  if (!spectator) return;
+  room.spectators = room.spectators.filter(s => s.id !== spectatorId);
+  addSystem(room, `👁 ${spectator.name} dejó de ver la mesa.`);
+}
 function destroyRoom(code) {
   const room = rooms.get(code);
   if (!room) return false;
   clearRoomTasks(room);
   rooms.delete(code);
+  // Fase 8: avisar a espectadores (y a cualquier socket rezagado) que la mesa cerró.
+  io.to(code).emit('room_closed', { code });
   logEvent('room_destroyed', { room: code, game: room.game, hands: room.handNumber || 0 });
   broadcastLobby();
   return true;
@@ -1128,6 +1146,12 @@ io.on('connection', socket => {
     socket.join(code);
     socket.data.roomCode = code;
     socket.data.playerId = player.id;
+    // Si estaba en la tribuna, deja de ser espectador al sentarse.
+    if (room.spectators?.some(s => s.id === player.id)) {
+      room.spectators = room.spectators.filter(s => s.id !== player.id);
+      addSystem(room, `👁 ${player.name} pasó de la tribuna a la mesa.`);
+    }
+    delete socket.data.spectatorId;
     if (!room.hostId || room.players.find(item => item.id === room.hostId)?.isBot) room.hostId = player.id;
     scheduleRoomCleanup(room);
     autoFillBots(room);
@@ -1138,11 +1162,48 @@ io.on('connection', socket => {
     broadcast(room);
   });
 
+  // Fase 8: modo espectador. Cualquiera puede ver una mesa (incluso llena) sin ocupar asiento.
+  // Recibe el mismo estado que un jugador sin identidad en la mesa: todas las manos viajan boca abajo.
+  socket.on('spectate_room', ({ name, code, token, avatar, tos } = {}, ack) => {
+    name = cleanName(name);
+    if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
+    code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+    const room = rooms.get(code);
+    if (!room) return ackError(ack, 'Esa sala no existe o ya cerró.');
+    const id = String(token).slice(0, 80);
+    if (room.players.some(p => !p.isBot && p.id === id)) return ackError(ack, 'Ya tienes asiento en esta mesa: entra como jugador.');
+    if (!name) return ackError(ack, 'Escribe tu nombre.');
+    const profile = profiles.getOrCreate(id, name, avatar);
+    if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
+    room.spectators = room.spectators || [];
+    const existing = room.spectators.find(s => s.id === id);
+    if (existing) {
+      existing.socketId = socket.id;
+      existing.connected = true;
+      existing.name = profile.name;
+      existing.avatar = profile.avatar;
+    } else {
+      if (room.spectators.filter(s => s.connected).length >= 12) return ackError(ack, 'La tribuna de esta mesa está llena.');
+      room.spectators.push({ id, name: profile.name, avatar: profile.avatar, socketId: socket.id, connected: true, joinedAt: Date.now(), _profile: profile });
+      addSystem(room, `👁 ${profile.name} está viendo la mesa.`);
+    }
+    socket.join(code);
+    socket.data.roomCode = code;
+    socket.data.spectatorId = id;
+    delete socket.data.playerId;
+    ackOk(ack, { code, game: room.game });
+    logEvent('spectator_joined', { room: code, game: room.game, spectator: profile.name });
+    broadcast(room);
+  });
+
   socket.on('chat', ({ text } = {}, ack) => {
     const { room, player } = playerForSocket(socket);
     text = cleanMessage(text);
-    if (!room || !player || !text) return ackError(ack, 'No se pudo enviar.');
-    room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: player.id, name: player.name, text, time: Date.now() });
+    // Fase 8: los espectadores también chatean (se distinguen con el prefijo 👁).
+    const spectator = !player && room ? room.spectators?.find(s => s.id === socket.data.spectatorId && s.connected) : null;
+    if (!room || (!player && !spectator) || !text) return ackError(ack, 'No se pudo enviar.');
+    const author = player || spectator;
+    room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: author.id, name: spectator ? `👁 ${author.name}` : author.name, text, time: Date.now() });
     room.messages = room.messages.slice(-40);
     ackOk(ack);
     broadcast(room);
@@ -1309,12 +1370,26 @@ io.on('connection', socket => {
       delete socket.data.roomCode;
       delete socket.data.playerId;
       broadcast(room);
+    } else if (room && socket.data.spectatorId) {
+      removeSpectator(room, socket.data.spectatorId);
+      socket.leave(room.code);
+      delete socket.data.roomCode;
+      delete socket.data.spectatorId;
+      broadcast(room);
     }
     ackOk(ack);
   });
 
   socket.on('disconnect', () => {
     const { room, player } = playerForSocket(socket);
+    if (room && !player && socket.data.spectatorId) {
+      const spectator = room.spectators?.find(s => s.id === socket.data.spectatorId);
+      if (spectator && spectator.socketId === socket.id) {
+        removeSpectator(room, spectator.id);
+        broadcast(room);
+      }
+      return;
+    }
     if (!room || !player || player.socketId !== socket.id) return;
     removeOrDisconnectPlayer(room, player, false);
     broadcast(room);

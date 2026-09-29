@@ -85,13 +85,15 @@
     connection: 'connecting', sound: localStorage.getItem('montecristo-sound') !== 'off',
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
     lastEventKey: '', clockTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false,
-    rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null
+    rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null,
+    spectating: false
   };
 
   if (savedSession && routeCode && savedSession.code === routeCode) {
     ui.activeCode = routeCode;
     ui.playerName = savedSession.name || ui.playerName;
     ui.selectedAvatar = savedSession.avatar || ui.selectedAvatar;
+    ui.spectating = Boolean(savedSession.spectate);
     ui.shouldResume = Boolean(ui.playerName);
   }
   els.playerName.value = ui.playerName;
@@ -155,7 +157,7 @@
   }
   function saveSession() {
     if (!ui.activeCode || !ui.playerName) return;
-    sessionStorage.setItem('montecristo-session', JSON.stringify({ code: ui.activeCode, name: ui.playerName, avatar: ui.selectedAvatar }));
+    sessionStorage.setItem('montecristo-session', JSON.stringify({ code: ui.activeCode, name: ui.playerName, avatar: ui.selectedAvatar, spectate: ui.spectating }));
   }
   function clearSession() { sessionStorage.removeItem('montecristo-session'); }
   function initials(name) {
@@ -297,8 +299,8 @@
     if (ui.shouldResume && ui.activeCode && ui.playerName) {
       ui.shouldResume = false;
       ui.joining = true;
-      setOverlay(true, 'RECUPERANDO TU ASIENTO');
-      const response = await emitAck('join_room', { name: ui.playerName, code: ui.activeCode, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) });
+      setOverlay(true, ui.spectating ? 'VOLVIENDO A LA TRIBUNA' : 'RECUPERANDO TU ASIENTO');
+      const response = await emitAck(ui.spectating ? 'spectate_room' : 'join_room', { name: ui.playerName, code: ui.activeCode, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) });
       ui.joining = false;
       if (!response.ok) {
         clearSession(); ui.activeCode = null; setOverlay(false);
@@ -334,17 +336,20 @@
     els.playerName.value = ui.playerName || localStorage.getItem('montecristo-name') || '';
     els.roomCode.value = options.code || '';
     els.roomName.value = options.roomName || '';
-    const joining = mode === 'join';
-    els.modalKicker.textContent = joining ? 'UNIRSE A UNA MESA' : 'NUEVA SALA';
-    els.modalTitle.textContent = joining ? 'Toma tu asiento' : 'Prepara la mesa';
-    els.modalSubtitle.textContent = joining
-      ? 'Escribe tu nombre y el código para entrar a la partida en vivo.'
-      : 'Configura tu partida. Podrás invitar a tus amigos cuando entres.';
-    if (els.modalSymbol) els.modalSymbol.textContent = joining ? '⌁' : (GAME_META[ui.selectedGame]?.icon || '♠');
+    const spectating = mode === 'spectate'; // Fase 8: entrar como espectador
+    const joining = mode === 'join' || spectating;
+    els.modalKicker.textContent = spectating ? 'VER UNA MESA' : joining ? 'UNIRSE A UNA MESA' : 'NUEVA SALA';
+    els.modalTitle.textContent = spectating ? 'Entra a la tribuna' : joining ? 'Toma tu asiento' : 'Prepara la mesa';
+    els.modalSubtitle.textContent = spectating
+      ? 'Verás la partida en vivo sin ocupar asiento, con el chat abierto. Nadie ve cartas ajenas.'
+      : joining
+        ? 'Escribe tu nombre y el código para entrar a la partida en vivo.'
+        : 'Configura tu partida. Podrás invitar a tus amigos cuando entres.';
+    if (els.modalSymbol) els.modalSymbol.textContent = spectating ? '👁' : joining ? '⌁' : (GAME_META[ui.selectedGame]?.icon || '♠');
     els.roomNameField.classList.toggle('hidden', joining);
     els.gameChoice.classList.toggle('hidden', joining);
     els.codeField.classList.toggle('hidden', !joining);
-    els.modalSubmit.querySelector('.btn-label').textContent = joining ? 'Entrar a la sala' : 'Crear sala';
+    els.modalSubmit.querySelector('.btn-label').textContent = spectating ? 'Ver la mesa' : joining ? 'Entrar a la sala' : 'Crear sala';
     $$('[data-select-game]').forEach(button => {
       const selected = button.dataset.selectGame === ui.selectedGame;
       button.classList.toggle('active', selected);
@@ -435,20 +440,22 @@
     if (!tosAccepted()) { showTosModal(); return; }
     setButtonLoading(els.modalSubmit, true);
     ui.joining = true;
-    const joining = ui.modalMode === 'join';
+    const spectating = ui.modalMode === 'spectate';
+    const joining = ui.modalMode === 'join' || spectating;
     const code = els.roomCode.value.trim().toUpperCase();
     if (joining && !/^[A-Z0-9]{5}$/.test(code)) {
       setButtonLoading(els.modalSubmit, false); ui.joining = false;
       showToast('Código incompleto', 'Los códigos de sala tienen cinco caracteres.', 'error'); return;
     }
-    setOverlay(true, joining ? 'BUSCANDO TU ASIENTO' : 'ABRIENDO UNA NUEVA MESA');
+    setOverlay(true, spectating ? 'ENTRANDO A LA TRIBUNA' : joining ? 'BUSCANDO TU ASIENTO' : 'ABRIENDO UNA NUEVA MESA');
     const response = joining
-      ? await emitAck('join_room', { name, code, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) })
+      ? await emitAck(spectating ? 'spectate_room' : 'join_room', { name, code, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) })
       : await emitAck('create_room', { name, roomName: els.roomName.value.trim(), game: ui.selectedGame, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) });
     setButtonLoading(els.modalSubmit, false); ui.joining = false;
     if (!response.ok) {
       setOverlay(false); showToast('No se pudo entrar', response.error || 'Intenta de nuevo.', 'error'); return;
     }
+    ui.spectating = spectating;
     ui.activeCode = response.code;
     saveSession(); updateHistory(response.code); closeModal();
     // room_state completes the visual transition.
@@ -485,11 +492,11 @@
         <h3>${escapeHtml(room.name || 'Mesa sin nombre')}</h3><span class="live-room-host">Anfitrión: ${escapeHtml(room.host || '—')}</span>
         <div class="room-capacity-bar" aria-label="Ocupación ${playerTotal} de ${capacity}"><i></i></div>
         <div class="live-room-bottom"><div class="room-occupancy"><div class="room-avatar-stack">${avatars}</div><div><b>${playerTotal} de ${capacity}</b><small>${full ? 'Mesa completa' : `${freeSeats} asiento${freeSeats === 1 ? '' : 's'} libre${freeSeats === 1 ? '' : 's'}`}${room.bots ? ` · 🤖 ${room.bots}` : ''}</small></div></div>
-        <button class="join-live-room" data-live-code="${escapeHtml(room.code)}" aria-label="${full ? 'Sala llena' : `Entrar a ${escapeHtml(room.name || 'la mesa')}`}" ${full ? 'disabled' : ''}>${full ? 'LLENA' : 'Tomar asiento →'}</button></div>
+        <button class="join-live-room${full ? ' spectate-room' : ''}" data-live-code="${escapeHtml(room.code)}" data-live-full="${full ? '1' : ''}" aria-label="${full ? `Ver ${escapeHtml(room.name || 'la mesa')} como espectador` : `Entrar a ${escapeHtml(room.name || 'la mesa')}`}">${full ? '👁 Ver mesa' : 'Tomar asiento →'}</button></div>
       </article>`;
     }).join('');
     observeLobbyCards();
-    $$('[data-live-code]').forEach(button => button.addEventListener('click', () => openModal('join', { code: button.dataset.liveCode })));
+    $$('[data-live-code]').forEach(button => button.addEventListener('click', () => openModal(button.dataset.liveFull ? 'spectate' : 'join', { code: button.dataset.liveCode })));
   }
   $$('[data-room-filter]').forEach(button => {
     button.setAttribute('role', 'tab');
@@ -516,7 +523,8 @@
     }
     ui.room = room;
     ui.activeCode = room.code;
-    ui.me = room.players.find(player => player.id === deviceToken) || room.players.find(player => player.name === ui.playerName) || null;
+    ui.me = room.players.find(player => player.id === deviceToken) || (room.viewerSpectator ? null : room.players.find(player => player.name === ui.playerName)) || null;
+    ui.spectating = Boolean(room.viewerSpectator) && !ui.me; // Fase 8: modo espectador
     if (ui.me) {
       ui.playerName = ui.me.name;
       ui.selectedAvatar = ui.me.avatar || ui.selectedAvatar;
@@ -527,6 +535,13 @@
     if (wasOutside) enterRoom();
     renderRoom();
     setOverlay(false);
+  });
+
+  // Fase 8: la mesa fue cerrada por el servidor (sin jugadores humanos); regresar a la portada.
+  socket.on('room_closed', ({ code } = {}) => {
+    if (!ui.activeCode || ui.activeCode !== code) return;
+    showToast('Mesa cerrada', 'La mesa quedó sin jugadores y fue cerrada.', 'error', 4200);
+    leaveToLobby(false);
   });
 
   function enterRoom() {
@@ -589,7 +604,15 @@
     if (els.botFill) { els.botFill.disabled = locked || full; els.botFill.title = locked ? 'Disponible al terminar la ronda' : full ? 'La mesa está llena' : ''; }
   }
   function renderProfile() {
-    if (!ui.me) { els.profileCard.innerHTML = ''; return; }
+    if (!ui.me) {
+      // Fase 8: tarjeta reducida para espectadores.
+      if (ui.spectating && ui.room?.viewerSpectator) {
+        const spectator = ui.room.viewerSpectator;
+        els.profileCard.innerHTML = `<div class="profile-avatar" style="background:${avatarColor(spectator.id)}">${avatarEmoji(spectator.avatar)}</div>
+          <div class="profile-info"><small>👁 ESPECTADOR</small><b>${escapeHtml(spectator.name || ui.playerName)}</b><span>Viendo la mesa en vivo</span></div>`;
+      } else els.profileCard.innerHTML = '';
+      return;
+    }
     const stats = ui.room?.viewerProfile?.stats || ui.me.stats || {};
     const previous = ui.lastMeChips;
     const delta = previous == null ? 0 : Number(ui.me.chips) - previous;
@@ -630,6 +653,12 @@
         ${player.isHost ? '<span class="host-crown" title="Anfitrión">♛</span>' : ''}${removeControl}
       </div>`;
     }).join('');
+    // Fase 8: tribuna de espectadores conectados.
+    const spectators = room.spectators || [];
+    if (spectators.length) {
+      const names = spectators.map(spectator => escapeHtml(spectator.name)).join(', ');
+      els.playersList.insertAdjacentHTML('beforeend', `<div class="spectators-row" title="Espectadores conectados">👁 Tribuna (${spectators.length}): ${names}</div>`);
+    }
     ui.previousRanks = nextRanks;
     ui.previousChips = new Map(room.players.map(player => [player.id, Number(player.chips)]));
     $$('[data-kick]').forEach(button => button.addEventListener('click', async () => {
@@ -1058,11 +1087,40 @@
   // ---------- Game actions ----------
   function renderActions() {
     const room = ui.room, me = ui.me;
-    if (!me) { els.actionPanel.innerHTML = ''; return; }
+    if (!me) {
+      if (ui.spectating) renderSpectatorActions(room);
+      else els.actionPanel.innerHTML = '';
+      return;
+    }
     if (room.game === 'poker') renderPokerActions(room, me);
     else if (room.game === 'blackjack') renderBlackjackActions(room, me);
     else renderQuickActions(room, me);
     bindActionButtons();
+  }
+  // Fase 8: banner del modo espectador con opción de tomar asiento.
+  function renderSpectatorActions(room) {
+    const capacity = room.botOptions?.capacity || 6;
+    const humanSeats = room.players.filter(player => !player.isBot).length;
+    const canSeat = room.players.length < capacity || room.players.some(player => player.isBot);
+    els.actionPanel.innerHTML = `
+      <div class="action-bar spectator-bar">
+        <div class="waiting-copy"><b>👁 Modo espectador</b><span>Estás viendo la mesa en vivo sin ocupar asiento. Las cartas ajenas permanecen ocultas y puedes usar el chat.</span></div>
+        <div class="action-buttons">
+          ${canSeat
+            ? '<button class="game-btn primary" data-take-seat>Tomar asiento</button>'
+            : `<span class="waiting-copy"><span>La mesa está llena (${humanSeats} jugadores). Se liberará un asiento cuando alguien salga.</span></span>`}
+        </div>
+      </div>`;
+    const seatButton = els.actionPanel.querySelector('[data-take-seat]');
+    if (seatButton) seatButton.addEventListener('click', async () => {
+      setButtonLoading(seatButton, true);
+      const response = await emitAck('join_room', { name: ui.playerName, code: room.code, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) });
+      setButtonLoading(seatButton, false);
+      if (!response.ok) { showToast('Sin asiento disponible', response.error || 'Intenta de nuevo.', 'error'); return; }
+      ui.spectating = false;
+      saveSession();
+      showToast('¡A jugar!', 'Dejaste la tribuna y tomaste un asiento en la mesa.', 'success');
+    });
   }
   function renderPokerActions(room, me) {
     const active = isPokerActive(room);
@@ -1421,7 +1479,7 @@
   async function leaveToLobby(notifyServer = true) {
     closeProfileModal(); closeBotControls();
     if (notifyServer && ui.room) await emitAck('leave_room');
-    clearInterval(ui.clockTimer); clearSession(); ui.room = null; ui.me = null; ui.activeCode = null;
+    clearInterval(ui.clockTimer); clearSession(); ui.room = null; ui.me = null; ui.activeCode = null; ui.spectating = false;
     ui.rouletteSpin = null; ui.rouletteAngle = 0; ui.slotsSpin = null;
     ui.lastGameSignature = ''; ui.lastChatSignature = ''; ui.previousRanks = new Map(); ui.previousChips = new Map(); ui.lastMeChips = null;
     els.roomApp.classList.add('exiting');

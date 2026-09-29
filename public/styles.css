@@ -831,3 +831,10 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
   .reveal-item { opacity: 1; transform: none; }
   .player-row.bot-thinking .player-avatar { animation:none; }
 }
+
+/* ---------- Fase 8: espectadores ---------- */
+.join-live-room.spectate-room { border-color: rgba(212,175,120,.35); color: var(--gold, #d4af78); background: rgba(212,175,120,.07); }
+.join-live-room.spectate-room:hover { color: #14100a; background: var(--gold, #d4af78); }
+.spectators-row { margin-top: 10px; padding: 9px 12px; border: 1px dashed rgba(212,175,120,.3); border-radius: 9px; color: var(--muted-2, #8fa39b); font-size: 10px; letter-spacing: .04em; line-height: 1.5; }
+.action-bar.spectator-bar { border-color: rgba(212,175,120,.28); }
+.action-bar.spectator-bar .waiting-copy b { color: var(--gold, #d4af78); }

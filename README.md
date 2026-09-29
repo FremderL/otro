@@ -16,6 +16,7 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Retos, logros, recompensas por explorar juegos y bono diario.
 - Eventos especiales aleatorios: jackpot virtual, ganancia x2 y ronda bonus.
 - Migración de anfitrión, reconexión por dispositivo y reembolso de apuestas rápidas abiertas al salir.
+- Modo espectador: las salas llenas muestran «👁 Ver mesa» en el lobby; hasta 12 espectadores por mesa ven la partida en vivo (con cartas ajenas siempre ocultas), participan en el chat con el prefijo 👁 y pueden tomar asiento cuando se libera un lugar o un bot lo cede.
 - Bots autoritativos configurables por el anfitrión, con cuatro dificultades, cinco estilos y decisiones específicas por juego.
 - Mesas siempre vivas: los asientos libres se completan automáticamente con bots **expertos** al entrar; los bots ceden su asiento cuando llega una persona real y los desocupan al terminar cada ronda; la autoridad de la mesa migra a una persona real activa tras 1 minuto de inactividad del anfitrión, y las mesas sin personas reales se eliminan.
 - Términos y Condiciones con aceptación obligatoria y versionada (página `/terminos`, redactados para México: naturaleza recreativa, 18+, deslinde de responsabilidad y Aviso de Privacidad LFPDPPP). El servidor rechaza crear o unirse a salas sin la aceptación vigente.
@@ -183,6 +184,7 @@ Variables útiles para pruebas y despliegue:
 - En cada deploy, Render envía `SIGTERM`: el servidor guarda los perfiles, avisa a las mesas («El servidor se está actualizando…») y cierra los sockets con gracia; la reconexión automática del cliente reencuentra la sesión.
 - Con el plan free (sin disco y con suspensión tras ~15 min), la pantalla de carga muestra «Despertando la sala…» con los reintentos visibles mientras el servicio despierta (~50 s).
 - Los eventos operativos (arranque, salas creadas/destruidas, jugadores, apagado) se registran como JSON por línea para el visor de logs de Render.
+- **Guía de despliegue paso a paso:** [`DESPLIEGUE_RENDER.md`](DESPLIEGUE_RENDER.md) explica cómo aplicar el blueprint `render.yaml` (opción A) o configurar el disco y las variables a mano en el dashboard (opción B), y qué hace cada opción.
 - La prueba `npm run test:ops` verifica el criterio de la fase: dos arranques con el mismo disco no pierden perfiles y `SIGTERM` produce una salida ordenada.
 
 ## Arquitectura
