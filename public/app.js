@@ -29,6 +29,7 @@
     sidebar: $('.sidebar'), soundToggle: $('#sound-toggle'),
     specialEventBanner: $('#special-event-banner'), winnerTicker: $('#winner-ticker'), reactionStage: $('#reaction-stage'),
     profileModal: $('#profile-modal'), profileForm: $('#profile-form'), profileNameInput: $('#profile-name-input'),
+    profileAccountStatus: $('#profile-account-status'),
     profileAvatarChoice: $('#profile-avatar-choice'), profileBigAvatar: $('#profile-big-avatar'), profileBadges: $('#profile-badges'),
     profileStats: $('#profile-stats'), rotatingChallengeList: $('#rotating-challenge-list'), challengeList: $('#challenge-list'), achievementList: $('#achievement-list'),
     featuredAchievements: $('#featured-achievements'),
@@ -93,6 +94,26 @@
     hideTosModal();
   });
 
+  // OJO de scope: estas dos constantes deben quedar declaradas ANTES de
+  // `const ui = {...}` (más abajo), porque su inicialización llama a
+  // readAccountSession() ya mismo, de forma síncrona. Si quedaran después,
+  // seguirían siendo válidas por hoisting de las funciones, pero al ser
+  // `const` caerían en zona muerta temporal (TDZ) en el momento de la
+  // llamada — y como readAccountSession() atrapa cualquier excepción para
+  // nunca romper el arranque, ese error quedaría silenciado y la sesión
+  // parecería simplemente "vacía" en cada carga. Ya pasó una vez: por eso
+  // el comentario.
+  const ACCOUNT_SESSION_KEY = 'montecristo-account-session';
+  // Campos públicos permitidos en la sesión de cuenta guardada en localStorage.
+  // OJO: `accountId` es el id del PERFIL de la cuenta (para poder pedir su
+  // perfil público o editarlo desde el lobby); NO es ni reemplaza el token de
+  // dispositivo (`montecristo-device`, usado para jugar sin cuenta) y nunca se
+  // usa como tal en este archivo.
+  const ACCOUNT_SESSION_FIELDS = [
+    'accountId', 'username', 'name', 'avatar', 'chips', 'stats', 'achievements', 'gamesPlayed',
+    'featuredAchievements', 'allAchievements', 'challenges', 'dailyChallenges', 'weeklyChallenges',
+    'gameStats', 'balanceHistory', 'medals', 'championBanner', 'dailyBonusClaimed'
+  ];
   const ui = {
     accountMode: 'login',
     accountSession: readAccountSession(),
@@ -168,8 +189,27 @@
     }
     return token;
   }
+  // Sanitización explícita: a partir del perfil que manda el servidor, arma un
+  // objeto SOLO con campos públicos, listos para persistir en localStorage.
+  // Nunca deja pasar password, passwordHash, tokens ni ningún dato interno,
+  // aunque el backend llegara a agregarlos algún día (lista blanca + borrado
+  // explícito de los campos sensibles conocidos, por defensa en profundidad).
+  function sanitizeProfileForSession(profile) {
+    if (!profile || typeof profile !== 'object') return null;
+    const safe = {};
+    ACCOUNT_SESSION_FIELDS.forEach(key => { if (profile[key] !== undefined) safe[key] = profile[key]; });
+    if (typeof profile.id === 'string' && profile.id) safe.accountId = profile.id;
+    delete safe.password; delete safe.passwordHash; delete safe.token; delete safe.deviceToken; delete safe.transactions;
+    if (!safe.username) return null; // sin username no hay cuenta que recordar
+    return safe;
+  }
   function readAccountSession() {
-    try { return JSON.parse(localStorage.getItem('montecristo-account-session')) || null; } catch { return null; }
+    try {
+      const raw = JSON.parse(localStorage.getItem(ACCOUNT_SESSION_KEY));
+      // Revalida lo leído por la misma sanitización: si alguna versión vieja
+      // del cliente guardó algo sensible, se limpia solo al recargar.
+      return sanitizeProfileForSession(raw);
+    } catch { return null; }
   }
   function renderAccountButton() {
     if (!els.accountOpenBtn) return;
@@ -177,11 +217,58 @@
     els.accountOpenBtn.innerHTML = `<span class="btn-icon">${loggedIn ? '👤' : '🔑'}</span> ${loggedIn ? 'Perfil' : 'Iniciar sesión'}`;
     els.accountOpenBtn.setAttribute('aria-label', loggedIn ? 'Abrir perfil de cuenta' : 'Iniciar sesión');
   }
+  // Persiste (o borra) la sesión de cuenta a partir de un perfil público que
+  // vino del servidor. Es la ÚNICA vía para escribir en ACCOUNT_SESSION_KEY,
+  // así toda la sesión pasa siempre por sanitizeProfileForSession().
   function saveAccountSession(profile) {
-    const safe = { username: profile.username, name: profile.name, avatar: profile.avatar, chips: profile.chips, stats: profile.stats, achievements: profile.achievements, gamesPlayed: profile.gamesPlayed, featuredAchievements: profile.featuredAchievements, allAchievements: profile.allAchievements, challenges: profile.challenges, dailyChallenges: profile.dailyChallenges, weeklyChallenges: profile.weeklyChallenges, gameStats: profile.gameStats, balanceHistory: profile.balanceHistory, medals: profile.medals, championBanner: profile.championBanner, dailyBonusClaimed: profile.dailyBonusClaimed };
+    const safe = sanitizeProfileForSession(profile);
+    if (!safe) return false;
     ui.accountSession = safe;
-    localStorage.setItem('montecristo-account-session', JSON.stringify(safe));
+    localStorage.setItem(ACCOUNT_SESSION_KEY, JSON.stringify(safe));
     renderAccountButton();
+    return true;
+  }
+  // Cierra SOLO la sesión de cuenta: el perfil anónimo local (nombre, avatar,
+  // fichas) vive en el servidor bajo el token de dispositivo y ese token nunca
+  // se toca aquí, así que seguir jugando sin cuenta no pierde nada.
+  function clearAccountSession() {
+    localStorage.removeItem(ACCOUNT_SESSION_KEY);
+    ui.accountSession = null;
+    renderAccountButton();
+  }
+  // ¿La persona está sentada en una mesa (o en la tribuna) ahora mismo? Si es
+  // así, el modal de perfil muestra/edita el perfil de ESA mesa; si no, muestra
+  // la cuenta (si hay sesión iniciada).
+  function inTable() { return Boolean(ui.room?.viewerProfile); }
+  // Perfil que corresponde mostrar en el modal: el de la mesa si hay una, si
+  // no el de la cuenta iniciada. Nunca se sustituye por un objeto de mesa
+  // fabricado a mano: fuera de una mesa, `ui.room` se deja intacto (null).
+  function currentViewerProfile() { return ui.room?.viewerProfile || ui.accountSession || null; }
+  // Si la sesión de cuenta cacheada parece incompleta u obsoleta (falta el id
+  // de la cuenta o las estadísticas), se pide al servidor el perfil público
+  // actualizado en vez de confiar ciegamente en lo que había en localStorage.
+  function isAccountProfileStale(profile) {
+    return !profile || !profile.accountId || !profile.stats;
+  }
+  // Al editar desde una mesa, el perfil editado es el del JUGADOR de esa mesa
+  // (identificado por el token de dispositivo), que puede ser un perfil
+  // anónimo totalmente distinto del de la cuenta con la que se inició sesión.
+  // Solo se refresca la caché de la sesión de cuenta si de verdad se trata del
+  // MISMO perfil (mismo id) — nunca se pisa la cuenta con datos de otro perfil.
+  function syncAccountSessionIfSameProfile(profile) {
+    if (profile && ui.accountSession && profile.id && profile.id === ui.accountSession.accountId) {
+      saveAccountSession(profile);
+    }
+  }
+  async function refreshAccountProfile() {
+    if (!ui.accountSession?.accountId || !socket.connected) return;
+    const response = await emitAck('account_profile', { accountId: ui.accountSession.accountId });
+    // Un fallo (cuenta borrada, servidor ocupado, etc.) NUNCA debe cerrar la
+    // sesión visual por su cuenta: se conserva lo que ya había en caché.
+    if (response.ok && response.profile) {
+      saveAccountSession(response.profile);
+      if (ui.profileOpen && !inTable()) renderProfileModal();
+    }
   }
   function getRouteCode() {
     const match = location.pathname.match(/^\/room\/([A-Z0-9]{5})/i);
@@ -409,6 +496,12 @@
     setColdStartHint(false);
     tryAutoJoinLobbyChat();
     setTimeout(() => { if (!ui.joining) setOverlay(false); }, 350);
+    // Reconectar (o la primera conexión) nunca cambia el botón de cuenta por su
+    // cuenta: si hay sesión cacheada se sigue mostrando "Perfil" de inmediato
+    // (ya ocurrió en el arranque, vía renderAccountButton()); esto solo intenta
+    // refrescar los datos públicos en segundo plano, sin tocar el estado visual
+    // si falla.
+    if (ui.accountSession) refreshAccountProfile();
     if (ui.shouldResume && ui.activeCode && ui.playerName) {
       ui.shouldResume = false;
       ui.joining = true;
@@ -1599,16 +1692,22 @@
   }
 
   // ---------- Profile, social controls and general room controls ----------
+  // El modal de perfil muestra el perfil de la mesa si hay una, o el de la
+  // cuenta iniciada si no (ver currentViewerProfile). Nunca se fabrica un
+  // objeto de mesa falso como sustituto de la sesión de cuenta: fuera de una
+  // mesa, `ui.room` sigue siendo exactamente lo que el servidor mandó (o null).
   function openProfileModal() {
-    const accountProfile = ui.accountSession;
-    if (accountProfile && !ui.room?.viewerProfile) ui.room = { viewerProfile: accountProfile };
-    if (!ui.room?.viewerProfile) return;
+    const profile = currentViewerProfile();
+    if (!profile) return;
     ui.profileOpen = true;
-    ui.profileAvatar = ui.room.viewerProfile.avatar || 'fox';
+    ui.profileAvatar = profile.avatar || 'fox';
     renderProfileModal();
     els.profileModal.classList.add('open');
     els.profileModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
+    // Si se abre desde el lobby (sin mesa) con una cuenta cacheada incompleta
+    // u obsoleta, se pide al servidor el perfil público actualizado.
+    if (!inTable() && isAccountProfileStale(ui.accountSession)) refreshAccountProfile();
   }
   function closeProfileModal() {
     ui.profileOpen = false;
@@ -1617,13 +1716,23 @@
     if (!els.modal.classList.contains('open')) document.body.classList.remove('modal-open');
   }
   function renderProfileModal() {
-    const profile = ui.room?.viewerProfile;
+    const profile = currentViewerProfile();
     if (!profile) return;
     const stats = profile.stats || {};
     els.profileNameInput.value = profile.name || ui.playerName;
     ui.profileAvatar = ui.profileAvatar || profile.avatar;
     els.profileBigAvatar.textContent = avatarEmoji(ui.profileAvatar);
     renderAvatarChoices();
+    // Cuenta: username (si hay) + recordatorio de que jugar sin cuenta sigue
+    // funcionando igual. `profile.username` es un campo público del servidor,
+    // presente tanto en el perfil de mesa como en el de la sesión de cuenta.
+    if (els.profileAccountStatus) {
+      els.profileAccountStatus.textContent = profile.username
+        ? `Cuenta vinculada: @${profile.username}`
+        : 'Sin cuenta vinculada (modo invitado) · la cuenta es opcional.';
+    }
+    // "Cerrar sesión" solo tiene sentido si hay una sesión de cuenta activa.
+    if (els.accountLogout) els.accountLogout.classList.toggle('hidden', !ui.accountSession);
     // Fase 11.4: insignias de fin de temporada (banner único + medallas coleccionables).
     if (els.profileBadges) {
       const chips = [];
@@ -1632,17 +1741,26 @@
       els.profileBadges.innerHTML = chips.join('');
       els.profileBadges.classList.toggle('hidden', !chips.length);
     }
+    const unlockedAchievements = (profile.achievements || []).length;
+    const totalAchievements = (profile.allAchievements || []).length || unlockedAchievements;
     els.profileStats.innerHTML = [
       ['FICHAS', formatChips(profile.chips), 'gold'], ['VICTORIAS', formatChips(stats.wins), ''],
       ['% DE VICTORIAS', `${stats.winRate ?? 0}%`, stats.winRate >= 50 ? 'gold' : ''],
       ['RONDAS', formatChips(stats.roundsPlayed), ''], ['MAYOR GANANCIA', `+${formatChips(stats.biggestWin)}`, 'gold'],
       ['APOSTADO', formatChips(stats.totalWagered), ''], ['MEJOR RACHA', formatChips(stats.bestStreak), ''],
       ['RACHA VÁLIDA', formatChips(stats.eligibleBestStreak ?? stats.bestStreak), 'gold'],
-      ['JUEGOS PROBADOS', `${formatChips(stats.differentGames)} / 6`, ''], ['DERROTAS', formatChips(stats.losses), '']
+      ['JUEGOS PROBADOS', `${formatChips(stats.differentGames)} / 6`, ''], ['DERROTAS', formatChips(stats.losses), ''],
+      ['LOGROS DESBLOQUEADOS', `${unlockedAchievements}/${totalAchievements}`, unlockedAchievements ? 'gold' : '']
     ].map(([label,value,kind]) => `<div class="profile-stat"><small>${label}</small><b class="${kind}">${value}</b></div>`).join('');
     renderBalanceChart(profile);
     // Fase 11.1: descarga del historial completo (no solo lo que cabe en la gráfica).
-    if (els.historyDownload) els.historyDownload.href = `/api/perfil/${encodeURIComponent(getDeviceToken())}/historial`;
+    // Usa el id del perfil que se está mostrando (mesa o cuenta), no siempre el
+    // token de este dispositivo: si se ve el perfil de una cuenta desde el
+    // lobby, el historial descargable debe ser el de esa cuenta.
+    if (els.historyDownload) {
+      const historyId = profile.id || profile.accountId || getDeviceToken();
+      els.historyDownload.href = `/api/perfil/${encodeURIComponent(historyId)}/historial`;
+    }
     renderGameBreakdown(profile);
     const activeChallenges = [...(profile.dailyChallenges || []), ...(profile.weeklyChallenges || [])];
     if (els.rotatingChallengeList) {
@@ -1672,9 +1790,19 @@
         if (next.has(id)) next.delete(id);
         else if (next.size >= 3) return showToast('Vitrina completa', 'Puedes destacar hasta 3 logros.', 'notice');
         else next.add(id);
-        const response = await emitAck('profile_update', { name: profile.name, avatar: profile.avatar, featuredAchievements: [...next] }, button);
-        if (!response.ok) return showToast('No se actualizó la vitrina', response.error, 'error');
-        if (response.profile && ui.room) ui.room.viewerProfile = response.profile;
+        const payload = { name: profile.name, avatar: profile.avatar, featuredAchievements: [...next] };
+        if (!inTable()) payload.accountId = ui.accountSession?.accountId;
+        const response = await emitAck('profile_update', payload, button);
+        if (!response.ok) {
+          // Falla la actualización: se conservan los datos anteriores (no se
+          // toca ui.room ni ui.accountSession) y se avisa con un error claro.
+          return showToast('No se actualizó la vitrina', response.error || 'No se pudo guardar en el servidor. Se conservó tu vitrina anterior.', 'error');
+        }
+        if (response.profile) {
+          if (ui.room) ui.room.viewerProfile = response.profile;
+          if (!inTable()) saveAccountSession(response.profile);
+          else syncAccountSessionIfSameProfile(response.profile);
+        }
         renderProfileModal();
       }));
     }
@@ -1761,11 +1889,12 @@
   els.accountOpenBtn?.addEventListener('click', openAccountModal);
   $$('[data-close-account]').forEach(element => element.addEventListener('click', closeAccountModal));
   els.accountLogout?.addEventListener('click', () => {
-    localStorage.removeItem('montecristo-account-session');
-    ui.accountSession = null;
-    renderAccountButton();
+    // Cierra SOLO la sesión de cuenta: el perfil anónimo local, el token de
+    // dispositivo y las fichas de este dispositivo no se tocan (viven en el
+    // servidor bajo `montecristo-device`, ajeno a esta sesión de cuenta).
+    clearAccountSession();
     closeProfileModal();
-    showToast('Sesión cerrada', 'Puedes seguir jugando sin cuenta.', 'notice', 3000, '🔑');
+    showToast('Sesión cerrada', 'Tu perfil y fichas de este dispositivo siguen intactos. Puedes seguir jugando sin cuenta.', 'notice', 3600, '🔑');
   });
   els.accountSwitch?.addEventListener('click', () => {
     ui.accountMode = ui.accountMode === 'login' ? 'signup' : 'login';
@@ -1776,34 +1905,43 @@
     const username = els.accountUsername.value.trim();
     const password = els.accountPassword.value;
     els.accountError.classList.add('hidden');
-    let response;
     if (ui.accountMode === 'login') {
-      response = await emitAck('account_login', { username, password }, els.accountSubmit);
-      if (!response.ok) {
+      const response = await emitAck('account_login', { username, password }, els.accountSubmit);
+      // Login fallido: NUNCA se guarda sesión y el botón se queda en
+      // "Iniciar sesión" (renderAccountButton no se llama con datos nuevos).
+      if (!response.ok || !response.profile) {
         els.accountError.textContent = response.error || 'No se pudo iniciar sesión.';
         els.accountError.classList.remove('hidden');
         return;
       }
-      saveAccountSession({ ...response.profile, username: response.profile?.username || username });
-      localStorage.setItem('montecristo-name', response.profile?.name || '');
-      localStorage.setItem('montecristo-avatar', response.profile?.avatar || 'fox');
-      showToast('Sesión iniciada', `Bienvenido de nuevo, ${response.profile?.name || username}.`, 'notice', 3600, '🔑');
+      // Importante: NO se guarda response.token como token de dispositivo.
+      // Ese token es el id del PERFIL DE LA CUENTA (puede ser el de otra
+      // computadora); guardarlo como `montecristo-device` mezclaría la
+      // identidad de la cuenta con la del dispositivo y, al cerrar sesión,
+      // dejaría este dispositivo "convertido" en la cuenta ajena en vez de
+      // volver a su perfil anónimo. Solo se guardan los campos públicos del
+      // perfil (sanitizeProfileForSession), bajo su propia clave de sesión.
+      if (!saveAccountSession(response.profile)) {
+        els.accountError.textContent = 'No se pudo iniciar sesión.';
+        els.accountError.classList.remove('hidden');
+        return;
+      }
+      showToast('Sesión iniciada', `Bienvenido de nuevo, ${response.profile.name || username}. Tus datos públicos están disponibles en Perfil.`, 'notice', 3800, '👤');
       closeAccountModal();
-      if (response.profile) ui.room = { ...(ui.room || {}), viewerProfile: ui.accountSession };
-      showToast('Sesión iniciada', 'Tus datos públicos están disponibles en Perfil.', 'notice', 3600, '👤');
+      els.accountPassword.value = '';
     } else {
-      response = await emitAck('account_signup', {
-        token: getDeviceToken(), name: ui.playerName, avatar: ui.selectedAvatar, username, password, tos: TOS_VERSION
+      const response = await emitAck('account_signup', {
+        token: deviceToken, name: ui.playerName, avatar: ui.selectedAvatar, username, password, tos: TOS_VERSION
       }, els.accountSubmit);
-      if (!response.ok) {
+      if (!response.ok || !response.profile) {
         els.accountError.textContent = response.error || 'No se pudo crear la cuenta.';
         els.accountError.classList.remove('hidden');
         return;
       }
-      saveAccountSession({ ...response.profile, username: response.profile?.username || username });
-      ui.room = { ...(ui.room || {}), viewerProfile: ui.accountSession };
-      showToast('Cuenta creada', `Ya puedes iniciar sesión como @${username} desde cualquier otra computadora.`, 'notice', 4200, '👤');
+      saveAccountSession(response.profile);
+      showToast('Cuenta creada', `Ya puedes iniciar sesión como @${response.profile.username || username} desde cualquier otra computadora.`, 'notice', 4200, '👤');
       closeAccountModal();
+      els.accountPassword.value = '';
     }
   });
 
@@ -1814,14 +1952,27 @@
     event.preventDefault();
     const button = event.currentTarget.querySelector('button[type="submit"]');
     const name = els.profileNameInput.value.trim();
-    const response = await emitAck('profile_update', { name, avatar: ui.profileAvatar }, button);
-    if (!response.ok) return showToast('No se guardó el perfil', response.error, 'error');
-    if (response.profile && ui.room) ui.room.viewerProfile = response.profile;
+    const avatar = ui.profileAvatar;
+    const payload = { name, avatar };
+    // Fuera de una mesa, el servidor necesita saber a qué cuenta pertenece la
+    // edición (no hay jugador de mesa que identifique el perfil).
+    if (!inTable()) payload.accountId = ui.accountSession?.accountId;
+    const response = await emitAck('profile_update', payload, button);
+    if (!response.ok) {
+      // Se conservan los datos anteriores (no se toca ui.room/ui.accountSession
+      // ni localStorage) y se muestra un error claro.
+      return showToast('No se guardó el perfil', response.error || 'No se pudo actualizar tu perfil en el servidor. Se conservaron tus datos anteriores.', 'error');
+    }
+    if (response.profile) {
+      if (ui.room) ui.room.viewerProfile = response.profile;
+      if (!inTable()) saveAccountSession(response.profile);
+      else syncAccountSessionIfSameProfile(response.profile);
+    }
     ui.playerName = response.profile?.name || name;
-    ui.selectedAvatar = response.profile?.avatar || ui.profileAvatar;
+    ui.selectedAvatar = response.profile?.avatar || avatar;
     localStorage.setItem('montecristo-name', ui.playerName);
     localStorage.setItem('montecristo-avatar', ui.selectedAvatar);
-    showToast('Perfil actualizado', 'Tu nombre y avatar ya están visibles en la mesa.', 'notice', 3600, avatarEmoji(ui.selectedAvatar));
+    showToast('Perfil actualizado', inTable() ? 'Tu nombre y avatar ya están visibles en la mesa.' : 'Tu perfil se guardó en el servidor.', 'notice', 3600, avatarEmoji(ui.selectedAvatar));
     renderProfileModal();
   });
   $$('[data-reaction]').forEach(button => button.addEventListener('click', async () => {
