@@ -968,3 +968,23 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 @media (max-width: 1080px) {
   .room-app { grid-template-columns: 296px 1fr; }
 }
+
+/* Progresión avanzada: retos rotativos y vitrina personal */
+.featured-achievements-box, .rotating-challenges-box { margin-top: 14px; }
+.featured-achievements { min-height: 40px; display: flex; flex-wrap: wrap; gap: 7px; padding-top: 8px; }
+.featured-achievement { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: rgba(255,255,255,.018); font-size: 9px; transition: .2s; }
+.featured-achievement:hover { color: var(--text); border-color: rgba(82,224,174,.35); background: rgba(82,224,174,.06); }
+.featured-achievement.selected { border-color: rgba(229,189,114,.55); color: var(--gold-2); background: rgba(229,189,114,.08); box-shadow: 0 0 14px rgba(229,189,114,.08); }
+.featured-achievement span { font-size: 15px; }
+.featured-achievement b { font-size: 9px; }
+.featured-empty { padding: 8px 2px; color: var(--muted-2); font-size: 9px; font-style: italic; }
+.rotating-challenge-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 8px; }
+.rotating-challenge { padding: 9px 10px; border: 1px solid rgba(77,219,232,.18); border-radius: 9px; background: linear-gradient(135deg,rgba(77,219,232,.055),rgba(255,255,255,.015)); }
+.rotating-challenge.done { border-color: rgba(82,224,174,.35); background: rgba(82,224,174,.06); }
+.rotating-challenge-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 7px; }
+.rotating-challenge-head > span { color: var(--cyan); font-size: 7px; font-weight: 900; letter-spacing: .1em; }
+.rotating-challenge-head b { overflow: hidden; color: var(--text); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.rotating-challenge-head em { color: var(--gold); font-size: 9px; font-style: normal; font-weight: 850; }
+.rotating-challenge > small { display: block; margin-top: 5px; color: var(--muted); font-size: 8.5px; line-height: 1.35; }
+.rotating-challenge .progress-track { margin-top: 7px; }
+@media (max-width: 1080px) { .rotating-challenge-list { grid-template-columns: 1fr; } }

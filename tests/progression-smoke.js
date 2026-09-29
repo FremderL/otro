@@ -20,6 +20,9 @@ function main() {
   // otorgar el logro difícil y dejarlo visible como medalla de platino.
   profile.stats.currentStreak = 999;
   profile.stats.bestStreak = 999;
+  profile.stats.eligibleTracking = true;
+  profile.stats.eligibleCurrentStreak = 999;
+  profile.stats.eligibleBestStreak = 999;
   const events = recordOutcome(profile, { game: 'coinflip', net: 10 });
   assert.equal(profile.stats.bestStreak, 1000, 'la victoria número mil actualiza la mejor racha');
   assert.ok(profile.achievements.includes('platinum_streak'), 'se desbloquea la medalla de platino');
@@ -30,7 +33,15 @@ function main() {
   assert.equal(platinum.unlocked, true, 'el logro platino se publica como desbloqueado');
   assert.equal(platinum.rarity, 'platino', 'la rareza llega al perfil privado');
   assert.ok(progress.challenges.some(item => item.id === 'platinum_preview'), 'el desafío de camino al platino está disponible');
-  console.log('✅ progression-smoke: nuevos logros, desafíos y medalla de platino OK');
+  assert.equal(progress.dailyChallenges.length, 1, 'hay un desafío diario activo');
+  assert.equal(progress.weeklyChallenges.length, 1, 'hay un desafío semanal activo');
+  assert.ok(progress.dailyChallenges[0].periodKey && progress.weeklyChallenges[0].periodKey, 'los desafíos rotativos tienen periodo');
+
+  const eligibleBefore = profile.stats.eligibleBestStreak;
+  recordOutcome(profile, { game: 'coinflip', net: 10, eligible: false });
+  assert.equal(profile.stats.eligibleBestStreak, eligibleBefore, 'una ronda no elegible no mejora la racha de platino');
+  assert.equal(profile.stats.eligibleCurrentStreak, 0, 'una ronda no elegible corta la racha válida');
+  console.log('✅ progression-smoke: nuevos logros, desafíos rotativos, vitrina y medalla de platino OK');
 }
 
 try {

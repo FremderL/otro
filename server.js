@@ -407,7 +407,12 @@ function completePlayerRound(room, player, net) {
     finalNet += specialBonus;
     gameEvent(room, 'special_reward', `${room.specialEvent.label}: +${specialBonus} fichas.`, player.id, { amount: specialBonus, event: room.specialEvent });
   }
-  const events = recordOutcome(player._profile, { game: room.game, net: finalNet });
+  // Solo las rondas con una apuesta válida de una persona real alimentan la
+  // racha elegible para la medalla de platino; las estadísticas generales
+  // siguen contando también las partidas contra bots.
+  const wagered = room.game === 'poker' ? player.totalBet : player.bet;
+  const eligibleForPlatinum = !player.isBot && Number(wagered) > 0;
+  const events = recordOutcome(player._profile, { game: room.game, net: finalNet, eligible: eligibleForPlatinum });
   if (!player.isBot) profiles.touch(player._profile);
   if (player.isBot && player.botStats) {
     player.botStats.roundsPlayed++;
@@ -1476,7 +1481,7 @@ io.on('connection', socket => {
       player.socketId = socket.id;
       player.connected = true;
       player.lastActiveAt = Date.now();
-      profiles.update(player._profile, { name, avatar });
+      profiles.update(player._profile, { name, avatar, featuredAchievements });
       player.name = player._profile.name;
       player.avatar = player._profile.avatar;
       addSystem(room, `${player.name} volvió a la mesa.`);
@@ -1623,7 +1628,7 @@ io.on('connection', socket => {
     broadcast(room);
   });
 
-  socket.on('profile_update', ({ name, avatar } = {}, ack) => {
+  socket.on('profile_update', ({ name, avatar, featuredAchievements } = {}, ack) => {
     const { room, player } = playerForSocket(socket);
     if (!room || !player) return ackError(ack, 'Perfil no disponible.');
     name = cleanName(name) || player.name;

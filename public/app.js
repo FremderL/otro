@@ -30,7 +30,8 @@
     specialEventBanner: $('#special-event-banner'), winnerTicker: $('#winner-ticker'), reactionStage: $('#reaction-stage'),
     profileModal: $('#profile-modal'), profileForm: $('#profile-form'), profileNameInput: $('#profile-name-input'),
     profileAvatarChoice: $('#profile-avatar-choice'), profileBigAvatar: $('#profile-big-avatar'), profileBadges: $('#profile-badges'),
-    profileStats: $('#profile-stats'), challengeList: $('#challenge-list'), achievementList: $('#achievement-list'),
+    profileStats: $('#profile-stats'), rotatingChallengeList: $('#rotating-challenge-list'), challengeList: $('#challenge-list'), achievementList: $('#achievement-list'),
+    featuredAchievements: $('#featured-achievements'),
     balanceChart: $('#balance-chart'), balanceChartNote: $('#balance-chart-note'), gameBreakdown: $('#game-breakdown'),
     historyDownload: $('#history-download'),
     dailyBonusStatus: $('#daily-bonus-status'), quickChatToggle: $('#quick-chat-toggle'), quickChatMenu: $('#quick-chat-menu'),
@@ -1617,12 +1618,20 @@
       ['% DE VICTORIAS', `${stats.winRate ?? 0}%`, stats.winRate >= 50 ? 'gold' : ''],
       ['RONDAS', formatChips(stats.roundsPlayed), ''], ['MAYOR GANANCIA', `+${formatChips(stats.biggestWin)}`, 'gold'],
       ['APOSTADO', formatChips(stats.totalWagered), ''], ['MEJOR RACHA', formatChips(stats.bestStreak), ''],
+      ['RACHA VÁLIDA', formatChips(stats.eligibleBestStreak ?? stats.bestStreak), 'gold'],
       ['JUEGOS PROBADOS', `${formatChips(stats.differentGames)} / 6`, ''], ['DERROTAS', formatChips(stats.losses), '']
     ].map(([label,value,kind]) => `<div class="profile-stat"><small>${label}</small><b class="${kind}">${value}</b></div>`).join('');
     renderBalanceChart(profile);
     // Fase 11.1: descarga del historial completo (no solo lo que cabe en la gráfica).
     if (els.historyDownload) els.historyDownload.href = `/api/perfil/${encodeURIComponent(getDeviceToken())}/historial`;
     renderGameBreakdown(profile);
+    const activeChallenges = [...(profile.dailyChallenges || []), ...(profile.weeklyChallenges || [])];
+    if (els.rotatingChallengeList) {
+      els.rotatingChallengeList.innerHTML = activeChallenges.map(item => {
+        const percent = Math.min(100, Math.round((item.value || 0) / item.target * 100));
+        return `<div class="rotating-challenge ${item.completed ? 'done' : ''}"><div class="rotating-challenge-head"><span>${escapeHtml(item.periodLabel)}</span><b>${escapeHtml(item.name)}</b><em>${item.completed ? '✓' : item.value + '/' + item.target}</em></div><small>${escapeHtml(item.description)} · ${escapeHtml(item.difficulty)}</small><div class="progress-track"><i style="width:${percent}%"></i></div></div>`;
+      }).join('') || '<div class="chat-system">Los retos activos aparecerán al comenzar una ronda.</div>';
+    }
     els.challengeList.innerHTML = (profile.challenges || []).map(item => {
       const percent = Math.min(100, Math.round((item.value || 0) / item.target * 100));
       const difficulty = item.difficulty ? `<span class="progress-difficulty">${escapeHtml(item.difficulty)}</span>` : '';
@@ -1632,6 +1641,24 @@
       const rarity = item.rarity ? `<span class="progress-rarity ${escapeHtml(item.rarity)}">${escapeHtml(item.rarity)}</span>` : '';
       return `<div class="progress-item ${item.unlocked ? 'done' : 'locked'}"><span class="progress-icon">${escapeHtml(item.unlocked ? item.icon : '◇')}</span><div class="progress-copy"><b>${escapeHtml(item.name)} ${rarity}</b><small>${escapeHtml(item.description)}</small></div><span class="progress-reward">${item.unlocked ? '✓' : '+' + item.reward}</span></div>`;
     }).join('') || '<div class="chat-system">Aún no hay logros.</div>';
+    if (els.featuredAchievements) {
+      const selected = new Set(profile.featuredAchievements || []);
+      const unlocked = (profile.allAchievements || []).filter(item => item.unlocked);
+      els.featuredAchievements.innerHTML = unlocked.length
+        ? unlocked.map(item => `<button type="button" class="featured-achievement ${selected.has(item.id) ? 'selected' : ''}" data-feature-achievement="${escapeHtml(item.id)}" title="${selected.has(item.id) ? 'Quitar de la vitrina' : 'Mostrar en la vitrina'}"><span>${escapeHtml(item.icon)}</span><b>${escapeHtml(item.name)}</b></button>`).join('')
+        : '<small class="featured-empty">Desbloquea un logro para comenzar tu colección.</small>';
+      $$('.featured-achievement').forEach(button => button.addEventListener('click', async () => {
+        const id = button.dataset.featureAchievement;
+        const next = new Set(profile.featuredAchievements || []);
+        if (next.has(id)) next.delete(id);
+        else if (next.size >= 3) return showToast('Vitrina completa', 'Puedes destacar hasta 3 logros.', 'notice');
+        else next.add(id);
+        const response = await emitAck('profile_update', { name: profile.name, avatar: profile.avatar, featuredAchievements: [...next] }, button);
+        if (!response.ok) return showToast('No se actualizó la vitrina', response.error, 'error');
+        if (response.profile && ui.room) ui.room.viewerProfile = response.profile;
+        renderProfileModal();
+      }));
+    }
     els.dailyBonusStatus.textContent = profile.dailyBonusClaimed ? 'Bono de hoy recibido · vuelve mañana.' : 'Se entrega una vez al día al entrar.';
   }
   // Fase 8.2: gráfica SVG de evolución del saldo (últimos 60 movimientos).
