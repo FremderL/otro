@@ -3,7 +3,11 @@ const compression = require('compression');
 const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
-const { ProfileStore, AVATARS, avatarInfo } = require('./lib/profile-store');
+const { AVATARS, avatarInfo } = require('./lib/profile-store');
+// Fase 10.2: DATABASE_URL activa el backend de Postgres (Neon free); sin ella,
+// se mantiene el ProfileStore de archivo JSON de siempre. Ver lib/profile-store-factory.js.
+const { createProfileStore } = require('./lib/profile-store-factory');
+const { HISTORY_LIMITS, INACTIVITY_LIMIT_MS } = require('./lib/profile-store-shared');
 const { credit, recordWager, recordOutcome, claimDailyBonus, publicProgress } = require('./lib/progression');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
 const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
@@ -42,10 +46,32 @@ app.get('/healthz', (_req, res) => {
   });
 });
 app.get('/terminos', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'terminos.html')));
+// Fase 11.1: descarga del historial completo (saldo y transacciones) del propio
+// perfil. El token es el mismo identificador de dispositivo que ya usa el resto
+// de la app (mismo modelo de confianza ya documentado en REVISION_CALIDAD.md:
+// quien tiene el token, tiene acceso a ese perfil); no expone nada de otros.
+app.get('/api/perfil/:token/historial', (req, res) => {
+  const token = String(req.params.token || '').slice(0, 80);
+  const profile = profiles?.profiles?.get(token);
+  if (!profile) return res.status(404).json({ error: 'No se encontró un perfil con ese identificador.' });
+  res.setHeader('Content-Disposition', `attachment; filename="montecristo-historial-${token}.json"`);
+  res.json({
+    exportadoEl: new Date().toISOString(),
+    perfil: { id: profile.id, nombre: profile.name, avatar: profile.avatar, fichas: profile.chips, creadoEl: profile.createdAt },
+    estadisticas: profile.stats,
+    porJuego: profile.gameStats,
+    evolucionDeSaldo: profile.balanceHistory,
+    transacciones: profile.transactions
+  });
+});
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const rooms = new Map();
-const profiles = new ProfileStore(process.env.PROFILE_STORE_PATH);
+// Fase 10.2: se crea de forma asíncrona en bootstrap() (más abajo) para poder
+// esperar la carga inicial de Postgres cuando DATABASE_URL está definida; con
+// el ProfileStore de archivo (caso local y de todos los tests actuales) la
+// espera es instantánea, así que el comportamiento no cambia.
+let profiles;
 let botController = null;
 const ROOM_CAPACITY = 6;
 const BOT_ONLY_ROOM_TTL_MS = Math.max(100, Number(process.env.BOT_ONLY_ROOM_TTL_MS) || 5 * 60 * 1000);
@@ -1546,6 +1572,30 @@ io.on('connection', socket => {
     broadcast(room);
   });
 
+  // Fase 11.2: login opcional (usuario + contraseña) para recuperar el mismo
+  // perfil desde otra computadora. No reemplaza el modo sin cuenta: solo
+  // vincula credenciales al perfil que ya tiene este dispositivo (mismas
+  // fichas, logros e historial) para poder volver a entrar a él después.
+  socket.on('account_signup', ({ token, name, avatar, username, password, tos } = {}, ack) => {
+    if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
+    const id = String(token).slice(0, 80);
+    // Si el perfil ya existe (lo normal: ya jugó antes) no se le pisa el
+    // nombre con un valor por defecto; getOrCreate solo lo usa si es nuevo.
+    const profile = profiles.getOrCreate(id, cleanName(name) || undefined, avatar);
+    if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
+    const result = profiles.registerAccount(profile, username, password);
+    if (!result.ok) return ackError(ack, result.error);
+    logEvent('account_created', { profileId: profile.id, username: profile.username });
+    ackOk(ack, { profile: publicProgress(profile, true) });
+  });
+
+  socket.on('account_login', ({ username, password } = {}, ack) => {
+    const result = profiles.authenticate(username, password);
+    if (!result.ok) return ackError(ack, result.error);
+    logEvent('account_login', { profileId: result.profile.id, username: result.profile.username });
+    ackOk(ack, { token: result.profile.id, profile: publicProgress(result.profile, true) });
+  });
+
   socket.on('quick_bet', (data = {}, ack) => {
     const { room, player } = playerForSocket(socket);
     const result = executeQuickBet(room, player, data);
@@ -1739,14 +1789,30 @@ hostInactivitySweep.unref?.();
 // Fase 8.7: vigila el cambio de mes con el servidor encendido. Al cerrar la
 // temporada, todos los perfiles vuelven a 1000 fichas y se anuncia el podio.
 const seasonSweep = setInterval(() => {
+  if (!profiles) return; // Fase 10.2: red de seguridad si Postgres tardara más de 5 min en responder al arrancar.
+  // Fase 11.4: junto con el cambio de mes, se aprovecha el mismo barrido de 5
+  // min para borrar cuentas sin actividad desde hace ~3 meses (ahorra espacio,
+  // sobre todo en Postgres). No afecta a nadie conectado: si alguien reconecta
+  // después de tanto tiempo sin tocar su perfil, empieza uno nuevo, igual que
+  // un jugador que entra por primera vez.
+  const prunedAccounts = profiles.pruneInactiveAccounts(INACTIVITY_LIMIT_MS);
+  if (prunedAccounts.length) {
+    logEvent('accounts_pruned', { count: prunedAccounts.length, names: prunedAccounts.slice(0, 20).map(entry => entry.name) });
+  }
   const closed = profiles.ensureSeason();
   if (!closed) return;
-  logEvent('season_reset', { closedMonth: closed.month, players: closed.players, podium: closed.podium });
+  logEvent('season_reset', { closedMonth: closed.month, players: closed.players, podium: closed.podium, bannerAwarded: closed.bannerAwarded });
   const podiumText = closed.podium.length
     ? ` Podio de ${closed.month}: ${closed.podium.map((entry, index) => `${['🥇', '🥈', '🥉'][index]} ${entry.name} (${entry.chips})`).join(' · ')}.`
     : '';
+  // Fase 11.4: el banner dorado solo se anuncia la primera vez que alguien lo
+  // gana (closed.bannerAwarded ya viene en false si esa persona ya lo tenía
+  // de una temporada anterior).
+  const bannerText = closed.bannerAwarded && closed.podium[0]
+    ? ` 🎖️ ¡${closed.podium[0].name} se ganó su banner dorado de por vida por terminar en 1er lugar!`
+    : '';
   for (const room of rooms.values()) {
-    addSystem(room, `📅 ¡Nueva temporada mensual! Todos los saldos se reiniciaron a 1000 fichas.${podiumText}`);
+    addSystem(room, `📅 ¡Nueva temporada mensual! Todos los saldos se reiniciaron a 1000 fichas.${podiumText}${bannerText}`);
     broadcast(room);
   }
   broadcastLobby();
@@ -1757,19 +1823,38 @@ seasonSweep.unref?.();
 // avisamos a las mesas y cerramos sockets con gracia para que la reconexión automática
 // del cliente reencuentre la sesión en la nueva instancia.
 let shuttingDown = false;
-function gracefulShutdown(signal) {
+// Fase 10.2: async porque guardar en Postgres es una operación de red (en el
+// backend de archivo, `await profiles.saveNow()` resuelve de inmediato, igual
+// que antes). El temporizador de salida forzada sigue siendo la red de
+// seguridad si la base de datos no responde a tiempo.
+async function gracefulShutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   logEvent('shutdown_start', { signal, rooms: rooms.size });
+  if (!profiles) {
+    // Señal recibida antes de terminar de arrancar (bootstrap() aún esperando
+    // a Postgres/el archivo): no hay nada que guardar todavía.
+    process.exit(0);
+    return;
+  }
   try {
     for (const room of rooms.values()) {
       addSystem(room, '🔄 El servidor se está actualizando y se reiniciará en unos segundos. Tus fichas ya están guardadas; conserva esta pestaña para volver a tu asiento.');
       broadcast(room);
     }
   } catch (_) { /* avisar es cortesía; el guardado es lo crítico */ }
-  try { profiles.saveNow(); } catch (_) { /* saveNow ya reporta sus propios errores */ }
-  const forceExit = setTimeout(() => { logEvent('shutdown_forced', {}); process.exit(0); }, 2500);
+  // Fase 11.3: con Postgres, saveNow() es una llamada de red que puede tardar
+  // unos segundos si la base tuvo que "despertar" justo ahora (p. ej. Neon
+  // escalando desde cero) y además reintenta sola ante fallos transitorios;
+  // le damos más margen que al backend de archivo (donde guardar es
+  // instantáneo). Configurable con SHUTDOWN_GRACE_MS por si algún plan de
+  // hosting necesita ajustarlo.
+  const defaultGraceMs = profiles.backend === 'postgres' ? 10000 : 2500;
+  const envGraceMs = Number(process.env.SHUTDOWN_GRACE_MS);
+  const graceMs = Number.isFinite(envGraceMs) && envGraceMs > 0 ? envGraceMs : defaultGraceMs;
+  const forceExit = setTimeout(() => { logEvent('shutdown_forced', { graceMs }); process.exit(0); }, graceMs);
   forceExit.unref?.();
+  try { await profiles.saveNow(); } catch (_) { /* saveNow ya reporta sus propios errores */ }
   io.close(() => {
     server.close(() => {
       logEvent('shutdown_complete', {});
@@ -1780,7 +1865,31 @@ function gracefulShutdown(signal) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`MonteCristo lista en http://0.0.0.0:${PORT}`);
-  logEvent('server_listening', { port: Number(PORT), node: process.version, profileStore: profiles.filePath });
+// Fase 10.2: se crea el ProfileStore (archivo o Postgres, según DATABASE_URL)
+// y solo cuando está listo se abre el puerto; así ningún socket puede llegar
+// antes de que los perfiles existan en memoria.
+async function bootstrap() {
+  profiles = await createProfileStore(process.env.PROFILE_STORE_PATH);
+  // Fase 11.1: con Postgres, guardar más historial no infla un archivo local
+  // que se reescribe entero en cada guardado (ver nota en profile-store-shared.js),
+  // así que se eleva el techo de puntos de saldo y transacciones conservados.
+  // Con el archivo JSON el techo se queda como siempre (60 / 20).
+  if (profiles.backend === 'postgres') {
+    HISTORY_LIMITS.balance = 2000;
+    HISTORY_LIMITS.transactions = 500;
+  }
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`MonteCristo lista en http://0.0.0.0:${PORT}`);
+    logEvent('server_listening', {
+      port: Number(PORT),
+      node: process.version,
+      profileStore: profiles.filePath,
+      profileBackend: profiles.backend,
+      historyLimits: { ...HISTORY_LIMITS }
+    });
+  });
+}
+bootstrap().catch(error => {
+  console.error('No se pudo iniciar MonteCristo:', error);
+  process.exit(1);
 });

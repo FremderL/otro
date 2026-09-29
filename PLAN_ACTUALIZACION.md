@@ -157,6 +157,49 @@
 
 **Estado (2026-09-28): FASE 9 COMPLETA — plan de actualización terminado (fases 1-9).**
 
+## Fase 10 — Persistencia gratuita sin tarjeta (Postgres opcional) ✅ COMPLETADA
+
+*Objetivo: poder desplegar en el plan FREE de Render (sin blueprint, sin disco, sin tarjeta) sin que los perfiles vuelvan a ser efímeros.*
+
+> **Estado (2026-09-29):** implementada. Nuevo backend de perfiles respaldado en Postgres (`lib/profile-store-pg.js`), pensado para el free tier de Neon (sin tarjeta). Selección automática por variable de entorno: si existe `DATABASE_URL` el servidor usa Postgres; si no, sigue usando `data/profiles.json` exactamente como hasta la fase 9 (cero cambios en local ni en los 16 tests preexistentes). La lógica común a ambos backends (limpieza de perfiles, ranking, alta/edición, reinicio de temporada mensual, bono diario) se extrajo a `lib/profile-store-shared.js` y `lib/profile-store-base.js`, así que Postgres y archivo JSON se comportan de forma idéntica detrás de la misma interfaz (`getOrCreate`, `update`, `top`, `touch`, `seasons`, `ensureSeason`, `saveNow`). El arranque del servidor (`server.js`) ahora espera a que el store esté listo (`await createProfileStore(...)`) antes de abrir el puerto, y el apagado limpio por `SIGTERM` espera el guardado (en disco o en Postgres) antes de cerrar.
+
+1. **`ProfileStore` alternativo en Postgres**, misma interfaz que el de archivo: guarda una foto completa del estado en memoria (perfiles + temporadas) cada vez que hay cambios, igual que hace hoy el archivo JSON, pero en dos tablas (`montecristo_profiles`, `montecristo_seasons`) que el propio servidor crea la primera vez que arranca (sin SQL manual).
+2. **Selección por `DATABASE_URL`**: con la variable definida, usa Postgres y **falla rápido y con un error claro** si la conexión no funciona (no cae en silencio al archivo JSON, para no perder datos sin darse cuenta); sin la variable, todo sigue igual que siempre.
+3. **Script de migración** (`scripts/migrate-profiles-to-postgres.js`, también disponible como `npm run migrate:profiles`) que importa un `data/profiles.json` existente a Postgres, con modo `--dry-run` para previsualizar sin escribir.
+4. **Smoke test nuevo** (`tests/profile-store-pg-smoke.js`, integrado a `npm test`): ejercita el store de Postgres real (mismo código SQL) contra un Postgres simulado en memoria — alta/edición, ranking, persistencia entre "reinicios", reinicio de temporada, compatibilidad con perfiles en formato legado y selección correcta según `DATABASE_URL` — sin necesitar ninguna base de datos. Si además se define `DATABASE_URL_TEST` (una base Postgres/Neon desechable), corre también una ronda real contra esa base y limpia sus propias filas; sin esa variable, esa parte se omite y las 17 suites siguen en verde.
+5. **Guía de despliegue 100% gratis** documentada en `DESPLIEGUE_RENDER.md` («Opción C»): web service Free de Render creado a mano (sin blueprint, sin disco) + base de datos Postgres gratuita de Neon (sin tarjeta), paso a paso, incluyendo dónde pegar `DATABASE_URL` en Render y cómo comprobar que quedó activo.
+6. **Limpieza pre-publicación:** `data/profiles.json` se vació de los perfiles de prueba (queda un archivo válido con `profiles: []`) para no publicar cuentas de desarrollo.
+7. **Criterio de aceptación:** `npm test` (17 suites) en verde sin ninguna base de datos configurada; con `DATABASE_URL` apuntando a un host inválido, el servidor falla al arrancar con un mensaje claro en vez de perder datos en silencio.
+
+**Entregable en Render:** sin cambios para quien ya usa disco persistente (Opción A/B, sin tocar nada); para quien use el plan Free, seguir la Opción C de `DESPLIEGUE_RENDER.md` (variable `DATABASE_URL` apuntando a Neon).
+
+---
+
+## Fase 11 — Aprovechar la base de datos real (planificada, pendiente de implementar)
+
+*Objetivo: con `DATABASE_URL` ya activa en producción (Fase 10), los perfiles dejaron de ser el cuello de botella — ahora se puede construir sobre una base de datos de verdad en vez de un archivo. Cada punto es una entrega independiente, con su propio smoke test, en el orden de prioridad decidido el 2026-09-29.*
+
+1. **Historial y estadísticas sin límite artificial** *(prioridad 1)* ✅ **COMPLETADA (2026-09-29).** Antes, `balanceHistory` se recortaba a los últimos 60 puntos y `transactions` a los últimos 20 en los tres lugares donde se aplicaba el recorte (`cleanProfile`, `ensureSeason` y `credit`/`recordOutcome`). Implementación real (más simple que mover el historial a tablas propias, con el mismo resultado práctico): el techo vive en un solo objeto compartido por referencia, `HISTORY_LIMITS` (`lib/profile-store-shared.js`), que los tres sitios leen en vez de tener el número `20`/`60` repetido. `server.js` lo eleva a un techo generoso (500 transacciones, 2000 puntos de saldo) al arrancar **solo si el backend activo es Postgres** (`profiles.backend === 'postgres'`); con el archivo JSON se queda exactamente igual que siempre, sin ningún cambio de comportamiento.
+   - La gráfica de saldo del modal de perfil ya soportaba cualquier cantidad de puntos sin cambios (su SVG escala solo); ahora sencillamente recibe más historial cuando el backend lo conserva.
+   - Nuevo endpoint `GET /api/perfil/:token/historial` — descarga en JSON de la evolución de saldo, transacciones, estadísticas y desglose por juego completos (mismo modelo de confianza que ya usa el resto de la app: el token es el identificador, igual que para crear o unirse a una sala). Enlace «⬇ Descargar mi historial completo» en el modal de perfil.
+   - **Criterio de aceptación cumplido:** `tests/profile-history-smoke.js` (18ª suite) verifica que el techo compartido se respeta en los tres sitios con el valor por defecto y con uno elevado, que `ensureSeason` también lo respeta, que el endpoint de descarga responde 200 con el historial correcto y 404 para un token desconocido, y que el log de arranque reporta `profileBackend` y `historyLimits` — sin ninguna base de datos configurada y sin regresión en las 17 suites previas.
+2. **Login opcional (usuario + contraseña) para portabilidad de perfil** *(prioridad 2, ampliada el 2026-09-29 de "código de recuperación" a una cuenta completa)*. Hoy la identidad de cada jugador vive únicamente en un token guardado en `localStorage`: aunque el servidor ya no pierde datos (Fase 10), la persona sí pierde el acceso a los suyos si borra el navegador, cambia de computadora o de perfil del sistema operativo. Decisión de producto (2026-09-29): el login es **opcional** — se conserva el acceso instantáneo sin cuenta (pilar del producto) y quien quiera puede vincular usuario+contraseña a su perfil actual para recuperarlo en otra computadora. Sin correo ni verificación (no hay proveedor de envío de correo configurado en este entorno).
+   - Desde el modal de perfil, crear una cuenta (usuario + contraseña) que se vincula al perfil actual del dispositivo (mismas fichas, logros e historial — no se crea uno nuevo).
+   - Contraseña guardada **con hash** (`scrypt` + sal aleatoria, nunca en texto plano), en el mismo perfil, funciona igual con archivo JSON o Postgres.
+   - Pantalla de "Iniciar sesión": el jugador introduce usuario y contraseña desde cualquier computadora; si son correctos, el cliente adopta el `id` de ese perfil como su token de dispositivo — recupera exactamente sus fichas, logros e historial ahí mismo, sin recargar la página.
+   - Protección básica contra fuerza bruta: tras varios intentos fallidos seguidos contra el mismo usuario, un bloqueo temporal persistido en el propio perfil (sobrevive a reinicios).
+   - **Criterio de aceptación:** smoke test que crea una cuenta, "pierde" el token original (como si se cambiara de navegador) e inicia sesión desde uno nuevo recuperando el mismo perfil; usuario repetido y contraseña incorrecta se rechazan con mensajes genéricos (sin filtrar cuál de los dos falló); el bloqueo tras intentos fallidos se prueba y se libera pasado el tiempo de espera.
+3. **Panel de operación / métricas agregadas** *(prioridad 3)*. Con Postgres, las consultas agregadas (jugadores activos por día, fichas totales en circulación, juegos más jugados, perfiles nuevos por semana) son triviales; sobre el archivo JSON eran incómodas de calcular sin cargar todo a memoria y recorrerlo a mano.
+   - Endpoint protegido (p. ej. `/admin/metrics`, con un token compartido en variable de entorno `ADMIN_TOKEN`, nunca expuesto al cliente del juego) con esas métricas en JSON.
+   - Sin panel visual por ahora (fuera de alcance de "solo escritorio para jugar"); el propio operador puede consultarlo con `curl` o pegarlo en una hoja de cálculo.
+   - **Criterio de aceptación:** smoke test que confirma que el endpoint exige el token correcto y devuelve números consistentes con perfiles de prueba conocidos.
+4. **Antiabuso ligado a la base de datos** *(prioridad 4)*. Hoy cualquier límite de creación de salas o perfiles vive en memoria y se reinicia con cada deploy. Con persistencia real, se puede:
+   - Registrar intentos de alta de perfiles por IP/dispositivo en una ventana de tiempo, persistente entre reinicios.
+   - Mantener una lista de dispositivos suspendidos que sobrevive a redeploys.
+   - **Criterio de aceptación:** smoke test que simula creación rápida de perfiles desde el mismo origen y confirma que el límite persiste incluso "reiniciando" el store (como en `tests/profile-store-pg-smoke.js`).
+
+**Entregable en Render:** cada punto se despliega por separado, como manda la regla de una fase = varias entregas pequeñas; ninguno requiere cambios de infraestructura adicionales a los ya hechos en la Fase 10 (`DATABASE_URL` ya activa).
+
 ---
 
 ## Orden y ritmo sugerido
@@ -172,6 +215,8 @@
 | 7 | Robustez en Render | Medio (1–2 iteraciones) | **Alto impacto**: evita pérdida de datos |
 | 8 | Contenido nuevo | Alto (continuo) | Medio |
 | 9 | Calidad continua | Bajo (transversal) | Bajo |
+| 10 | Persistencia gratuita sin tarjeta (Postgres opcional) | Bajo–medio (1 iteración) | **Alto impacto**: evita perder perfiles al usar el plan Free sin disco |
+| 11 | Aprovechar la base de datos real (historial completo, recuperación de perfil, métricas, antiabuso) | Medio (4 iteraciones independientes) | Bajo–medio: cada punto es una entrega aislada, sin tocar infraestructura nueva |
 
 > **Notas de prioridad:**
 > - Si el servicio ya tiene jugadores reales, conviene adelantar el punto 7.1 (persistencia de perfiles) inmediatamente después de la fase 1, porque hoy cada deploy en Render borra `data/profiles.json`.

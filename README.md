@@ -116,7 +116,7 @@ Al retirarse un bot se cancelan sus tareas. Al destruirse una sala se cancelan t
 - Bono diario: **100 fichas**, una vez por día al entrar.
 - Apuesta mínima en Blackjack y juegos rápidos: **10 fichas**.
 - Las fichas apostadas se descuentan en el servidor y los pagos se acreditan tras resolver la ronda.
-- Los perfiles se guardan en `data/profiles.json` mediante escritura diferida y atómica.
+- Los perfiles se guardan en `data/profiles.json` mediante escritura diferida y atómica, o en Postgres (`DATABASE_URL`) si está definida — ver «Persistencia de perfiles» más abajo.
 
 ### Retos
 
@@ -159,11 +159,11 @@ npm run check
 npm run test:multiplayer
 npm run test:bots
 npm run test:bots:fallback
-# o ejecutar toda la validación (15 suites):
+# o ejecutar toda la validación (21 suites):
 npm test
 ```
 
-Desde la fase 9, GitHub Actions ejecuta `npm test` en cada push y pull request (`.github/workflows/ci.yml`), la suite incluye un presupuesto de rendimiento (`tests/performance-smoke.js`), un endurecimiento contra entradas maliciosas (`tests/qa-hardening-smoke.js`) y un recorrido de usuario real con navegador simulado (`tests/user-journey-smoke.js`). Los hallazgos y decisiones de la revisión de diseño y QA viven en `REVISION_CALIDAD.md`, y la rutina trimestral de dependencias en `MANTENIMIENTO.md`.
+Desde la fase 9, GitHub Actions ejecuta `npm test` en cada push y pull request (`.github/workflows/ci.yml`), la suite incluye un presupuesto de rendimiento (`tests/performance-smoke.js`), un endurecimiento contra entradas maliciosas (`tests/qa-hardening-smoke.js`) y un recorrido de usuario real con navegador simulado (`tests/user-journey-smoke.js`). Desde la fase 10 también incluye `tests/profile-store-pg-smoke.js`, que valida el backend de Postgres contra una base simulada (ninguna de las 21 suites necesita una base de datos real para pasar). Los hallazgos y decisiones de la revisión de diseño y QA viven en `REVISION_CALIDAD.md`, y la rutina trimestral de dependencias en `MANTENIMIENTO.md`.
 
 Las pruebas levantan servidores aislados con perfiles temporales. La regresión multicliente valida:
 
@@ -180,18 +180,52 @@ Variables útiles para pruebas y despliegue:
 - `BOT_SPEED_FACTOR`: multiplica las latencias de reacción; usar valores menores que `1` solo en pruebas.
 - `BOT_ONLY_ROOM_TTL_MS`: tiempo antes de eliminar una sala sin personas; por defecto, 5 minutos cuando contiene bots.
 - `BOT_FORCE_DECISION_ERROR=1`: fuerza errores de estrategia para validar el fallback; no debe activarse normalmente.
-- `PROFILE_STORE_PATH`: ruta del archivo de perfiles (en Render, apúntalo al disco persistente, p. ej. `/var/data/profiles.json`).
+- `PROFILE_STORE_PATH`: ruta del archivo de perfiles (en Render, apúntalo al disco persistente, p. ej. `/var/data/profiles.json`). Se ignora si `DATABASE_URL` está definida.
+- `DATABASE_URL`: cadena de conexión Postgres (Fase 10). Si está definida, los perfiles se guardan en Postgres en vez de en el archivo JSON — pensado para el free tier de Neon, que no requiere tarjeta. Ver «Persistencia de perfiles» abajo.
+- `SHUTDOWN_GRACE_MS`: milisegundos que espera el apagado ordenado a que termine el guardado final antes de forzar la salida (Fase 11.3). Por defecto 10000 con Postgres y 2500 con el archivo local; súbelo si tu plan de hosting da poco tiempo de gracia y Neon suele tardar más en responder.
 - `LOG_JSON=off`: desactiva los logs estructurados JSON por línea (activados por defecto).
+
+## Persistencia de perfiles (archivo o Postgres)
+
+MonteCristo soporta dos backends de perfiles detrás de la misma interfaz (`lib/profile-store-factory.js` elige uno según el entorno):
+
+- **Archivo JSON** (por defecto): `data/profiles.json`, con escritura diferida y atómica. Es efímero en el plan free de Render (sin disco).
+- **Postgres** (`lib/profile-store-pg.js`): se activa solo si existe `DATABASE_URL`. Crea sus propias tablas al arrancar (sin SQL manual) y guarda una foto completa del estado (perfiles + temporadas) con la misma cadencia que el archivo. Pensado para el free tier de [Neon](https://neon.tech) (Postgres gratis, sin tarjeta). Si `DATABASE_URL` apunta a algo inválido, el servidor **falla al arrancar con un error claro** en vez de usar el archivo en silencio.
+
+### Resiliencia ante "dormir y despertar" (Fase 11.3)
+
+Tanto Render free (suspende el servicio tras ~15 min sin visitas) como Neon free (escala la base a cero tras inactividad) pueden hacer que el servidor arranque justo cuando Postgres todavía está despertando. Para que eso nunca se traduzca en pérdida o sobrescritura de datos:
+
+- **Al arrancar**, cargar los perfiles reintenta unas cuantas veces con espera creciente si Postgres tarda en responder. Si aun así no logra conectar, el proceso **falla al arrancar** en vez de continuar con la memoria vacía — así Render lo reinicia en vez de arriesgarse a que el próximo guardado sobrescriba perfiles reales con perfiles en blanco.
+- **Cada guardado** (`saveNow()`) reintenta solo ante un fallo transitorio; si Postgres sigue sin responder después de esos reintentos rápidos, el cambio no se descarta: queda programado un reintento en segundo plano que se repite hasta que la base vuelve a estar disponible.
+- **Al apagar** (Render envía `SIGTERM` en cada deploy), el servidor espera el guardado final a Postgres con más margen que con el archivo local (10 s por defecto, configurable con `SHUTDOWN_GRACE_MS`), ya que guardar en Postgres es una llamada de red que puede tardar si la base recién despertó.
+
+La prueba `npm run test:profile-store-pg` simula estos escenarios (fallo transitorio que se recupera solo, y fallo permanente que debe rechazar el arranque) con un Postgres simulado, sin necesitar una base real.
+
+Migrar un `data/profiles.json` existente a Postgres:
+
+```bash
+DATABASE_URL="postgres://usuario:clave@host/db?sslmode=require" node scripts/migrate-profiles-to-postgres.js
+# --dry-run para previsualizar sin escribir
+```
+
+## Historial completo y cuenta opcional (Fase 11)
+
+- **Historial sin límite artificial:** el techo de puntos de saldo/transacciones conservados vive en `HISTORY_LIMITS` (`lib/profile-store-shared.js`). Con el archivo JSON se mantiene en 60/20 como siempre; con Postgres activo, `server.js` lo eleva a 2000/500 al arrancar. `GET /api/perfil/:token/historial` descarga en JSON el historial completo (saldo, transacciones, estadísticas, desglose por juego) del propio perfil — enlace disponible en el modal de perfil.
+- **Login opcional (usuario + contraseña):** el modo instantáneo sin cuenta sigue funcionando exactamente igual. Desde el lobby, cualquiera puede vincular un usuario y contraseña a su perfil actual («Iniciar sesión» → «Crear una con mi perfil actual») y luego recuperarlo completo (fichas, logros, historial) desde cualquier otra computadora iniciando sesión. Sin correo ni verificación por correo (no hay proveedor SMTP en este entorno); la contraseña se guarda con `scrypt` + sal aleatoria (nunca en texto plano), y hay un bloqueo temporal tras varios intentos fallidos seguidos. La recuperación de contraseña olvidada queda fuera de alcance por ahora.
+- **Limpieza de espacio al cerrar la temporada (Fase 11.4):** al cambiar el mes, los puntos de la gráfica de saldo (`balanceHistory`) de la temporada que cierra se descartan por completo — no solo se recortan al techo — y la nueva temporada arranca su propia gráfica desde el saldo reiniciado. El resto del historial (transacciones, estadísticas, logros) no se toca.
+- **Eliminación de cuentas inactivas (Fase 11.4):** cada 5 minutos, junto con la vigilancia del cambio de mes, el servidor borra por completo cualquier perfil sin ninguna actividad desde hace más de ~3 meses (`INACTIVITY_LIMIT_MS` en `lib/profile-store-shared.js`), incluida su fila en Postgres si ese es el backend activo — no solo la copia en memoria. Si esa persona vuelve más adelante, empieza una cuenta nueva, igual que un jugador de primera vez.
+- **Banner dorado y medallas de fin de temporada (Fase 11.4):** quien termina en 1er lugar del ranking mensual recibe un 🎖️ *banner dorado* — un logro único de por vida, no se entrega una segunda vez aunque vuelva a ser líder — y una 🥇 *medalla de oro*, que sí se colecciona (una más por cada temporada ganada). Ambos se muestran junto al nombre en el ranking del lobby y en el perfil propio.
 
 ## Operación en Render
 
-- `render.yaml` versiona la infraestructura: disco persistente en `/var/data` (los perfiles sobreviven deploys), `PROFILE_STORE_PATH` y health check.
+- `render.yaml` versiona la infraestructura: disco persistente en `/var/data` (los perfiles sobreviven deploys), `PROFILE_STORE_PATH` y health check. Pensado para planes de pago (el free de Render no admite discos).
 - `GET /healthz` expone estado, uptime, salas, jugadores humanos y versión de T&C; configurado como *Health Check Path* para deploys sin caída.
-- En cada deploy, Render envía `SIGTERM`: el servidor guarda los perfiles, avisa a las mesas («El servidor se está actualizando…») y cierra los sockets con gracia; la reconexión automática del cliente reencuentra la sesión.
+- En cada deploy, Render envía `SIGTERM`: el servidor guarda los perfiles (en disco o en Postgres, según el backend activo), avisa a las mesas («El servidor se está actualizando…») y cierra los sockets con gracia; la reconexión automática del cliente reencuentra la sesión.
 - Con el plan free (sin disco y con suspensión tras ~15 min), la pantalla de carga muestra «Despertando la sala…» con los reintentos visibles mientras el servicio despierta (~50 s).
 - Los eventos operativos (arranque, salas creadas/destruidas, jugadores, apagado) se registran como JSON por línea para el visor de logs de Render.
-- **Guía de despliegue paso a paso:** [`DESPLIEGUE_RENDER.md`](DESPLIEGUE_RENDER.md) explica cómo aplicar el blueprint `render.yaml` (opción A) o configurar el disco y las variables a mano en el dashboard (opción B), y qué hace cada opción.
-- La prueba `npm run test:ops` verifica el criterio de la fase: dos arranques con el mismo disco no pierden perfiles y `SIGTERM` produce una salida ordenada.
+- **Guía de despliegue paso a paso:** [`DESPLIEGUE_RENDER.md`](DESPLIEGUE_RENDER.md) explica cómo aplicar el blueprint `render.yaml` (opción A), configurar el disco y las variables a mano en el dashboard (opción B), o desplegar **100% gratis sin tarjeta** con Render Free + Neon Free (opción C, Fase 10).
+- La prueba `npm run test:ops` verifica el criterio de la fase 7: dos arranques con el mismo disco no pierden perfiles y `SIGTERM` produce una salida ordenada. La prueba `npm run test:profile-store-pg` (fase 10) hace lo equivalente para el backend de Postgres, con una base simulada.
 
 ## Arquitectura
 

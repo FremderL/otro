@@ -1,6 +1,8 @@
 # Guía de despliegue en Render — MonteCristo
 
-Esta guía explica **las dos formas** de configurar la persistencia de perfiles y el health check en Render, paso a paso, y **qué hace exactamente cada cosa**. Solo necesitas seguir **una** de las dos opciones.
+Esta guía explica **tres formas** de configurar la persistencia de perfiles y el health check en Render, paso a paso, y **qué hace exactamente cada cosa**. Solo necesitas seguir **una** de las tres opciones.
+
+> **¿Vas a usar el plan Free de Render, sin blueprint, sin disco y sin poner una tarjeta?** Ve directo a la sección **«Opción C»** más abajo: web service Free de Render (a mano) + base de datos Postgres gratis en Neon (tampoco pide tarjeta). Las opciones A y B de abajo requieren un **disco persistente**, que **no existe en el plan Free** de Render.
 
 ---
 
@@ -85,7 +87,7 @@ Además configuramos el **Health Check Path** en `/healthz`: Render consulta esa
 
 ---
 
-## ¿Y si me quedo en el plan free?
+## ¿Y si me quedo en el plan free (sin usar Postgres)?
 
 El plan free **no admite discos**, así que los perfiles seguirán siendo efímeros (se pierden en cada deploy o reinicio; los jugadores simplemente vuelven a empezar con 1000 fichas). Además, free **suspende el servicio tras ~15 minutos sin visitas** y despertarlo tarda ~50 segundos — la pantalla de carga del cliente ya lo explica con el mensaje «Despertando la sala…» y los reintentos visibles.
 
@@ -97,15 +99,97 @@ Si usas free con el blueprint, edita `render.yaml` antes de aplicarlo:
 
 El health check en `/healthz` sí funciona en free y conviene dejarlo.
 
+> Si en vez de vivir con perfiles efímeros prefieres que sobrevivan sin pagar nada ni poner una tarjeta, sigue la **Opción C** de abajo: es exactamente este mismo escenario (free, sin blueprint, sin disco) más una base de datos gratuita.
+
+---
+
+## Opción C — 100% gratis: Render free (sin tarjeta) + Neon free (Postgres)
+
+**Qué hace:** en vez de un disco persistente (que Render solo ofrece en planes de pago), los perfiles (fichas, logros, rachas, avatares, temporadas) se guardan en una base de datos **Postgres gratuita de [Neon](https://neon.tech)**. Ni Render Free ni Neon Free piden tarjeta de crédito. El servidor ya trae el soporte: si la variable de entorno `DATABASE_URL` existe, `server.js` usa automáticamente el backend de Postgres (`lib/profile-store-pg.js`); si no existe, sigue usando el archivo JSON de siempre. No hay que tocar una línea de código, solo variables de entorno.
+
+| Pieza | Qué hace |
+|---|---|
+| **Base de datos Neon (free)** | Postgres gestionado, 0.5 GB de almacenamiento, sin tarjeta, no caduca. De sobra para los perfiles de MonteCristo (unos pocos KB por jugador). |
+| **Variable `DATABASE_URL`** | La cadena de conexión que te da Neon. En cuanto el servidor la detecta, guarda y lee los perfiles ahí en vez del disco. |
+| **Web Service Free de Render (a mano)** | Igual que cualquier deploy normal de Node: `npm install` como build, `npm start` como arranque. Sin blueprint, sin disco. |
+
+### C.1 Crear la base de datos en Neon
+
+1. Entra a [neon.tech](https://neon.tech) y crea una cuenta gratuita (con correo o GitHub) — **no pide tarjeta**.
+2. Crea un proyecto nuevo (por ejemplo, `montecristo`). Neon lo aprovisiona en segundos.
+3. En el panel del proyecto, busca la sección **Connection string** (a veces llamada *Connection Details*). Copia la cadena completa: tiene esta forma —
+   ```
+   postgres://usuario:contraseña@ep-algo-12345.us-east-2.aws.neon.tech/neondb?sslmode=require
+   ```
+4. Guarda esa cadena completa: es tu `DATABASE_URL`. (Neon ya incluye `sslmode=require`, que es justo lo que necesita MonteCristo — no hace falta agregar nada más.)
+
+> Neon "duerme" la base tras un rato sin uso (similar al plan free de Render) y despierta sola con la primera consulta, en menos de un segundo casi siempre. No requiere ninguna acción de tu parte.
+
+### C.2 Crear el Web Service en Render (a mano, plan Free)
+
+1. En [dashboard.render.com](https://dashboard.render.com), pulsa **New +** → **Web Service**.
+2. Conecta el repositorio de MonteCristo y la rama que vas a desplegar.
+3. Configura:
+   - **Name:** el que prefieras (por ejemplo, `montecristo`).
+   - **Runtime:** Node.
+   - **Build Command:** `npm install`
+   - **Start Command:** `npm start`
+   - **Instance Type / Plan:** **Free**.
+4. **No** agregues ningún disco (el plan Free no lo permite y no lo necesitamos: los perfiles van a Postgres).
+5. Antes de crear el servicio (o justo después, en la pestaña **Environment**), agrega la variable de entorno con la cadena de Neon:
+   - **Key:** `DATABASE_URL`
+   - **Value:** pega ahí la cadena completa que copiaste en el paso C.1.4 (la de `postgres://usuario:contraseña@...neon.tech/neondb?sslmode=require`).
+6. En **Settings**, define **Health Check Path** como `/healthz`.
+7. Pulsa **Create Web Service** (o **Save Changes** si ya existía). Render instala dependencias, arranca `npm start` y el servidor detecta `DATABASE_URL` automáticamente: crea las tablas que necesita en Neon la primera vez que arranca (no hace falta ejecutar SQL a mano).
+
+### C.3 (Opcional) Migrar los perfiles que ya tuvieras en `data/profiles.json`
+
+Si ya jugaste localmente o en un deploy anterior con disco y quieres conservar esos perfiles, migra el archivo a Neon **antes o después** de crear el servicio (el orden no importa, el script solo agrega/actualiza filas):
+
+```bash
+# Desde tu máquina o el mismo repo, con la cadena de Neon a mano:
+DATABASE_URL="postgres://usuario:contraseña@...neon.tech/neondb?sslmode=require" \
+  node scripts/migrate-profiles-to-postgres.js
+
+# Para ver qué haría sin escribir nada todavía:
+DATABASE_URL="postgres://usuario:contraseña@...neon.tech/neondb?sslmode=require" \
+  node scripts/migrate-profiles-to-postgres.js --dry-run
+```
+
+El script lee `data/profiles.json` (o la ruta que le pases como argumento), limpia cada perfil con las mismas reglas que usa el servidor y lo sube a Postgres. Si la base ya tenía perfiles con el mismo id, los actualiza; si la base ya tenía su propio historial de temporadas, no lo pisa con el del archivo.
+
+> Como este repo se publica limpio (sin jugadores de prueba, ver más abajo), lo normal es que **no** necesites este paso: la base de Neon empieza vacía y los perfiles se crean solos según la gente entra a jugar.
+
+### Cómo comprobar que funcionó (Opción C)
+
+1. **Health check:** `https://TU-SERVICIO.onrender.com/healthz` debe responder `{"status":"ok", ...}`.
+2. **Backend correcto en los logs:** en la pestaña **Logs** de Render busca la línea de arranque:
+   ```json
+   {"event":"server_listening", ..., "profileStore":"postgres://ep-algo-12345.us-east-2.aws.neon.tech/neondb"}
+   ```
+   Si `profileStore` empieza con `postgres://`, Postgres está activo. Si en cambio muestra una ruta de archivo (termina en `.json`), `DATABASE_URL` no llegó: revisa el paso C.2.5 (nombre exacto `DATABASE_URL`, sin espacios de más).
+3. **Persistencia real:** entra al casino, juega una ronda para que cambien tus fichas, y en Render pulsa **Manual Deploy → Deploy latest commit**. Cuando termine, vuelve a entrar: tus fichas y logros deben seguir ahí (antes, con el archivo JSON efímero, se habrían perdido).
+4. **En Neon:** el panel del proyecto tiene un editor SQL (*SQL Editor*) donde puedes correr `SELECT id, data->>'name', data->>'chips' FROM montecristo_profiles;` para ver los perfiles guardados.
+
+### Preguntas frecuentes de la Opción C
+
+- **¿Se pierde algo respecto al disco persistente (Opción A/B)?** No para lo que importa: los perfiles sobreviven igual a deploys y reinicios. Sigue aplicando el arranque en frío del plan Free de Render (~50 s tras 15 min sin visitas) y ahora también el de Neon (¡pero Neon despierta en menos de un segundo, así que no se nota!).
+- **¿Puedo combinarlo con un disco más adelante?** Sí: si algún día pasas a un plan de pago de Render, puedes seguir usando `DATABASE_URL` (Postgres) o volver al archivo con disco — basta con quitar o poner esa variable de entorno, el código ya soporta ambos.
+- **¿Qué pasa si `DATABASE_URL` está mal escrita o Neon no responde?** El servidor **no** cae en silencio al archivo JSON: reintenta un par de veces por si Neon solo está despertando y, si aun así no logra conectar, falla al arrancar con un error claro en los logs (para detectarlo de inmediato en vez de perder datos sin darte cuenta) y Render reinicia el contenedor. Revisa que copiaste la cadena completa, incluido `?sslmode=require`.
+- **¿Y si el servicio se duerme (plan Free) justo mientras alguien está jugando?** El guardado de fichas reintenta solo ante un fallo pasajero de Postgres y, si la base tarda más, sigue reintentando en segundo plano hasta lograrlo — no se pierde el cambio. Al reconectar, el navegador vuelve a pedir el perfil al servidor (con el token guardado en el dispositivo), así que siempre ves el saldo real que quedó guardado en Neon, no uno desactualizado.
+- **¿Hace falta correr SQL a mano en Neon?** No. El servidor crea las tablas (`montecristo_profiles`, `montecristo_seasons`) solo, la primera vez que arranca con `DATABASE_URL` definida.
+
 ---
 
 ## Resumen de decisiones
 
-| | Opción A (blueprint) | Opción B (a mano) |
-|---|---|---|
-| Configuración versionada en Git | ✅ | ❌ |
-| Sirve para un servicio ya existente | ❌ (crea uno nuevo) | ✅ |
-| Disco + variable + health check | Todo automático | Tres pasos manuales |
-| Riesgo de error de tipeo | Bajo | Medio (rutas exactas) |
+| | Opción A (blueprint) | Opción B (a mano) | Opción C (100% gratis) |
+|---|---|---|---|
+| Costo | Requiere plan pago (disco) | Requiere plan pago (disco) | **$0, sin tarjeta** |
+| Dónde viven los perfiles | Disco persistente de Render | Disco persistente de Render | Postgres gratuito (Neon) |
+| Configuración versionada en Git | ✅ | ❌ | ❌ (solo una variable de entorno) |
+| Sirve para un servicio ya existente | ❌ (crea uno nuevo) | ✅ | ✅ |
+| Pasos manuales | Ninguno (aplica blueprint) | Disco + variable + health check | Cuenta en Neon + variable `DATABASE_URL` + health check |
+| Requiere tarjeta de crédito | Sí (plan Starter o superior) | Sí (plan Starter o superior) | **No** |
 
-Cualquiera de las dos deja el sistema igual: perfiles en disco persistente, deploys sin caída y apagado limpio (el servidor ya guarda los perfiles y avisa a las mesas cuando Render envía `SIGTERM`).
+Las tres opciones dejan el sistema funcionalmente igual: perfiles que sobreviven a deploys y reinicios, deploys sin caída (`/healthz`) y apagado limpio (el servidor guarda los perfiles — en disco o en Postgres, según el backend activo — y avisa a las mesas cuando Render envía `SIGTERM`).

@@ -10,8 +10,9 @@ compression 1.8.2 — `npm audit` en 0 vulnerabilidades).
 npm outdated            # ¿qué hay de nuevo?
 npm audit               # ¿hay vulnerabilidades?
 npm audit fix           # parches seguros (no cambia versiones mayores)
-npm update express socket.io socket.io-client compression
-npm test                # 15 suites en verde antes de subir nada
+npm update express socket.io socket.io-client compression pg
+npm test                # 17 suites en verde antes de subir nada (16 no necesitan
+                         # base de datos; la de Postgres corre con un simulado)
 ```
 
 Reglas:
@@ -23,6 +24,12 @@ Reglas:
   (`/socket.io/socket.io.js`), así que servidor y cliente siempre viajan juntos.
 
 ## 2. Tamaño del store de perfiles
+
+Depende de qué backend esté activo (Fase 10): si el log de arranque muestra
+`"profileStore":".../profiles.json"` es el archivo; si muestra
+`"profileStore":"postgres://..."` es Postgres (Neon u otro).
+
+### Archivo JSON (sin `DATABASE_URL`)
 
 El disco de Render es de 1 GB y `profiles.json` crece con cada jugador nuevo.
 
@@ -36,6 +43,21 @@ node -e "const d=require('/var/data/profiles.json');console.log('perfiles:',(d.p
 - Si crece demasiado: los perfiles con `chips` iniciales y sin actividad en
   90 días pueden depurarse (el reinicio mensual de temporada ya renueva los
   saldos, así que borrar inactivos no afecta el ranking).
+
+### Postgres / Neon (con `DATABASE_URL`)
+
+El free tier de Neon da 0.5 GB, muy por encima de lo que ocupan los perfiles
+(unos pocos KB cada uno). Para revisar el tamaño, usa el *SQL Editor* del
+panel de Neon:
+
+```sql
+SELECT count(*) AS perfiles, pg_size_pretty(pg_total_relation_size('montecristo_profiles')) AS tamano
+FROM montecristo_profiles;
+```
+
+- Igual que con el archivo: perfiles inactivos 90+ días se pueden depurar con
+  un `DELETE FROM montecristo_profiles WHERE (data->>'updatedAt')::bigint < ...`
+  si algún día se acerca al límite del free tier — no es necesario hoy.
 
 ## 3. Presupuesto de rendimiento
 

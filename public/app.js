@@ -24,12 +24,17 @@
     sidebar: $('.sidebar'), soundToggle: $('#sound-toggle'),
     specialEventBanner: $('#special-event-banner'), winnerTicker: $('#winner-ticker'), reactionStage: $('#reaction-stage'),
     profileModal: $('#profile-modal'), profileForm: $('#profile-form'), profileNameInput: $('#profile-name-input'),
-    profileAvatarChoice: $('#profile-avatar-choice'), profileBigAvatar: $('#profile-big-avatar'),
+    profileAvatarChoice: $('#profile-avatar-choice'), profileBigAvatar: $('#profile-big-avatar'), profileBadges: $('#profile-badges'),
     profileStats: $('#profile-stats'), challengeList: $('#challenge-list'), achievementList: $('#achievement-list'),
     balanceChart: $('#balance-chart'), balanceChartNote: $('#balance-chart-note'), gameBreakdown: $('#game-breakdown'),
+    historyDownload: $('#history-download'),
     dailyBonusStatus: $('#daily-bonus-status'), quickChatToggle: $('#quick-chat-toggle'), quickChatMenu: $('#quick-chat-menu'),
     botMenuToggle: $('#bot-menu-toggle'), botControls: $('#bot-controls'), botMenuClose: $('#bot-menu-close'),
-    botDifficulty: $('#bot-difficulty'), botStyle: $('#bot-style'), botAdd: $('#bot-add'), botFill: $('#bot-fill')
+    botDifficulty: $('#bot-difficulty'), botStyle: $('#bot-style'), botAdd: $('#bot-add'), botFill: $('#bot-fill'),
+    accountOpenBtn: $('#account-open-btn'), accountModal: $('#account-modal'), accountForm: $('#account-form'),
+    accountModalTitle: $('#account-modal-title'), accountModalCopy: $('#account-modal-copy'),
+    accountUsername: $('#account-username'), accountPassword: $('#account-password'), accountError: $('#account-error'),
+    accountSubmit: $('#account-submit'), accountSwitch: $('#account-switch')
   };
 
   const PHASES = {
@@ -83,6 +88,7 @@
   });
 
   const ui = {
+    accountMode: 'login',
     modalMode: 'create', selectedGame: 'poker', roomFilter: 'all', lobby: [], playersOnline: 0,
     room: null, me: null, activeCode: null, playerName: localStorage.getItem('montecristo-name') || '',
     selectedAvatar: localStorage.getItem('montecristo-avatar') || 'fox', profileAvatar: localStorage.getItem('montecristo-avatar') || 'fox',
@@ -395,7 +401,7 @@
       item.setAttribute('aria-pressed', String(selected));
     });
   }));
-  document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeModal(); closeProfileModal(); toggleShortcutHelp(false); } });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeModal(); closeProfileModal(); closeAccountModal(); toggleShortcutHelp(false); } });
   // Fases 5 y 6: saltar animaciones (botones presentes en mesa o panel de acciones)
   document.addEventListener('click', event => {
     if (!event.target.closest) return;
@@ -493,19 +499,22 @@
     const monthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
     const monthName = monthNames[Number(month) - 1] || season.month;
     $('#ranking-title').textContent = `Temporada de ${monthName} ${year || ''}`.trim();
-    const medals = ['🥇', '🥈', '🥉'];
+    const posIcons = ['🥇', '🥈', '🥉'];
+    // Fase 11.4: junto al nombre, el banner dorado (único, de por vida) y las
+    // medallas de oro (una por cada temporada ganada, se coleccionan).
+    const badgesFor = entry => `${entry.championBanner ? '<span class="ranking-champion-flag" title="Banner dorado de por vida: fue líder de una temporada">🎖️</span>' : ''}${entry.medals ? `<span class="ranking-medals" title="${entry.medals} temporada${entry.medals === 1 ? '' : 's'} ganada${entry.medals === 1 ? '' : 's'}">🥇×${entry.medals}</span>` : ''}`;
     $('#ranking-list').innerHTML = season.ranking.map((entry, index) => `
       <div class="ranking-row ${index === 0 ? 'leader' : ''}">
-        <span class="ranking-pos">${medals[index] || `#${index + 1}`}</span>
+        <span class="ranking-pos">${posIcons[index] || `#${index + 1}`}</span>
         <span class="ranking-avatar">${avatarEmoji(entry.avatar)}</span>
-        <span class="ranking-name">${escapeHtml(entry.name)}</span>
+        <span class="ranking-name">${escapeHtml(entry.name)}${badgesFor(entry)}</span>
         <span class="ranking-wins">${formatChips(entry.wins || 0)} ${entry.wins === 1 ? 'victoria' : 'victorias'}</span>
         <span class="ranking-chips">◆ ${formatChips(entry.chips)}</span>
       </div>`).join('');
     const previousBox = $('#ranking-previous');
     if (season.previous?.podium?.length) {
       previousBox.classList.remove('hidden');
-      previousBox.innerHTML = `<small>PODIO DE ${escapeHtml(season.previous.month)}:</small> ${season.previous.podium.map((entry, index) => `<span>${medals[index] || ''} ${escapeHtml(entry.name)} (◆ ${formatChips(entry.chips)})</span>`).join(' · ')}`;
+      previousBox.innerHTML = `<small>PODIO DE ${escapeHtml(season.previous.month)}:</small> ${season.previous.podium.map((entry, index) => `<span>${posIcons[index] || ''} ${escapeHtml(entry.name)}${badgesFor(entry)} (◆ ${formatChips(entry.chips)})</span>`).join(' · ')}`;
     } else previousBox.classList.add('hidden');
   }
 
@@ -1488,6 +1497,14 @@
     ui.profileAvatar = ui.profileAvatar || profile.avatar;
     els.profileBigAvatar.textContent = avatarEmoji(ui.profileAvatar);
     renderAvatarChoices();
+    // Fase 11.4: insignias de fin de temporada (banner único + medallas coleccionables).
+    if (els.profileBadges) {
+      const chips = [];
+      if (profile.championBanner) chips.push('<span class="profile-badge badge-champion" title="Banner dorado de por vida: fue líder de una temporada">🎖️ Banner dorado</span>');
+      if (profile.medals) chips.push(`<span class="profile-badge badge-medals" title="${profile.medals} temporada${profile.medals === 1 ? '' : 's'} ganada${profile.medals === 1 ? '' : 's'}">🥇 ×${profile.medals}</span>`);
+      els.profileBadges.innerHTML = chips.join('');
+      els.profileBadges.classList.toggle('hidden', !chips.length);
+    }
     els.profileStats.innerHTML = [
       ['FICHAS', formatChips(profile.chips), 'gold'], ['VICTORIAS', formatChips(stats.wins), ''],
       ['% DE VICTORIAS', `${stats.winRate ?? 0}%`, stats.winRate >= 50 ? 'gold' : ''],
@@ -1496,6 +1513,8 @@
       ['JUEGOS PROBADOS', `${formatChips(stats.differentGames)} / 5`, ''], ['DERROTAS', formatChips(stats.losses), '']
     ].map(([label,value,kind]) => `<div class="profile-stat"><small>${label}</small><b class="${kind}">${value}</b></div>`).join('');
     renderBalanceChart(profile);
+    // Fase 11.1: descarga del historial completo (no solo lo que cabe en la gráfica).
+    if (els.historyDownload) els.historyDownload.href = `/api/perfil/${encodeURIComponent(getDeviceToken())}/historial`;
     renderGameBreakdown(profile);
     els.challengeList.innerHTML = (profile.challenges || []).map(item => {
       const percent = Math.min(100, Math.round((item.value || 0) / item.target * 100));
@@ -1552,6 +1571,74 @@
       });
     els.gameBreakdown.innerHTML = rows.join('') || '<div class="chart-empty">Prueba los juegos del casino y compara aquí tu rendimiento.</div>';
   }
+  // ---------- Fase 11.2: login opcional (usuario + contraseña) ----------
+  function renderAccountMode() {
+    const isLogin = ui.accountMode === 'login';
+    els.accountModalTitle.textContent = isLogin ? 'Iniciar sesión' : 'Crear cuenta';
+    els.accountModalCopy.textContent = isLogin
+      ? 'Jugar sin cuenta sigue funcionando igual que siempre. Si ya vinculaste un usuario y contraseña a tu perfil, inicia sesión aquí para recuperar tus fichas, logros e historial en esta computadora.'
+      : 'Esto vincula un usuario y contraseña a TU perfil actual de esta computadora (mismas fichas, logros e historial) para que puedas recuperarlo iniciando sesión desde cualquier otra.';
+    els.accountSubmit.innerHTML = `<span class="btn-label">${isLogin ? 'Iniciar sesión' : 'Crear cuenta'}</span>`;
+    els.accountSwitch.textContent = isLogin ? '¿No tienes cuenta todavía? Crear una con mi perfil actual' : '¿Ya tienes cuenta? Iniciar sesión';
+    els.accountPassword.autocomplete = isLogin ? 'current-password' : 'new-password';
+    els.accountError.classList.add('hidden');
+    els.accountError.textContent = '';
+  }
+  function openAccountModal() {
+    ui.accountMode = 'login';
+    renderAccountMode();
+    els.accountForm.reset();
+    els.accountModal.classList.add('open');
+    els.accountModal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    els.accountUsername.focus();
+  }
+  function closeAccountModal() {
+    els.accountModal?.classList.remove('open');
+    els.accountModal?.setAttribute('aria-hidden', 'true');
+    if (!els.modal.classList.contains('open') && !els.profileModal.classList.contains('open')) {
+      document.body.classList.remove('modal-open');
+    }
+  }
+  els.accountOpenBtn?.addEventListener('click', openAccountModal);
+  $$('[data-close-account]').forEach(element => element.addEventListener('click', closeAccountModal));
+  els.accountSwitch?.addEventListener('click', () => {
+    ui.accountMode = ui.accountMode === 'login' ? 'signup' : 'login';
+    renderAccountMode();
+  });
+  els.accountForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const username = els.accountUsername.value.trim();
+    const password = els.accountPassword.value;
+    els.accountError.classList.add('hidden');
+    let response;
+    if (ui.accountMode === 'login') {
+      response = await emitAck('account_login', { username, password }, els.accountSubmit);
+      if (!response.ok) {
+        els.accountError.textContent = response.error || 'No se pudo iniciar sesión.';
+        els.accountError.classList.remove('hidden');
+        return;
+      }
+      localStorage.setItem('montecristo-device', response.token);
+      localStorage.setItem('montecristo-name', response.profile?.name || '');
+      localStorage.setItem('montecristo-avatar', response.profile?.avatar || 'fox');
+      showToast('Sesión iniciada', `Bienvenido de nuevo, ${response.profile?.name || username}.`, 'notice', 3600, '🔑');
+      closeAccountModal();
+      setTimeout(() => location.reload(), 900);
+    } else {
+      response = await emitAck('account_signup', {
+        token: getDeviceToken(), name: ui.playerName, avatar: ui.selectedAvatar, username, password, tos: TOS_VERSION
+      }, els.accountSubmit);
+      if (!response.ok) {
+        els.accountError.textContent = response.error || 'No se pudo crear la cuenta.';
+        els.accountError.classList.remove('hidden');
+        return;
+      }
+      showToast('Cuenta creada', `Ya puedes iniciar sesión como @${username} desde cualquier otra computadora.`, 'notice', 4200, '🔑');
+      closeAccountModal();
+    }
+  });
+
   els.profileCard.addEventListener('click', openProfileModal);
   els.profileCard.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openProfileModal(); } });
   $$('[data-close-profile]').forEach(element => element.addEventListener('click', closeProfileModal));
