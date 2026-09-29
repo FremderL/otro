@@ -182,6 +182,7 @@ Variables útiles para pruebas y despliegue:
 - `BOT_FORCE_DECISION_ERROR=1`: fuerza errores de estrategia para validar el fallback; no debe activarse normalmente.
 - `PROFILE_STORE_PATH`: ruta del archivo de perfiles (en Render, apúntalo al disco persistente, p. ej. `/var/data/profiles.json`). Se ignora si `DATABASE_URL` está definida.
 - `DATABASE_URL`: cadena de conexión Postgres (Fase 10). Si está definida, los perfiles se guardan en Postgres en vez de en el archivo JSON — pensado para el free tier de Neon, que no requiere tarjeta. Ver «Persistencia de perfiles» abajo.
+- `SHUTDOWN_GRACE_MS`: milisegundos que espera el apagado ordenado a que termine el guardado final antes de forzar la salida (Fase 11.3). Por defecto 10000 con Postgres y 2500 con el archivo local; súbelo si tu plan de hosting da poco tiempo de gracia y Neon suele tardar más en responder.
 - `LOG_JSON=off`: desactiva los logs estructurados JSON por línea (activados por defecto).
 
 ## Persistencia de perfiles (archivo o Postgres)
@@ -190,6 +191,16 @@ MonteCristo soporta dos backends de perfiles detrás de la misma interfaz (`lib/
 
 - **Archivo JSON** (por defecto): `data/profiles.json`, con escritura diferida y atómica. Es efímero en el plan free de Render (sin disco).
 - **Postgres** (`lib/profile-store-pg.js`): se activa solo si existe `DATABASE_URL`. Crea sus propias tablas al arrancar (sin SQL manual) y guarda una foto completa del estado (perfiles + temporadas) con la misma cadencia que el archivo. Pensado para el free tier de [Neon](https://neon.tech) (Postgres gratis, sin tarjeta). Si `DATABASE_URL` apunta a algo inválido, el servidor **falla al arrancar con un error claro** en vez de usar el archivo en silencio.
+
+### Resiliencia ante "dormir y despertar" (Fase 11.3)
+
+Tanto Render free (suspende el servicio tras ~15 min sin visitas) como Neon free (escala la base a cero tras inactividad) pueden hacer que el servidor arranque justo cuando Postgres todavía está despertando. Para que eso nunca se traduzca en pérdida o sobrescritura de datos:
+
+- **Al arrancar**, cargar los perfiles reintenta unas cuantas veces con espera creciente si Postgres tarda en responder. Si aun así no logra conectar, el proceso **falla al arrancar** en vez de continuar con la memoria vacía — así Render lo reinicia en vez de arriesgarse a que el próximo guardado sobrescriba perfiles reales con perfiles en blanco.
+- **Cada guardado** (`saveNow()`) reintenta solo ante un fallo transitorio; si Postgres sigue sin responder después de esos reintentos rápidos, el cambio no se descarta: queda programado un reintento en segundo plano que se repite hasta que la base vuelve a estar disponible.
+- **Al apagar** (Render envía `SIGTERM` en cada deploy), el servidor espera el guardado final a Postgres con más margen que con el archivo local (10 s por defecto, configurable con `SHUTDOWN_GRACE_MS`), ya que guardar en Postgres es una llamada de red que puede tardar si la base recién despertó.
+
+La prueba `npm run test:profile-store-pg` simula estos escenarios (fallo transitorio que se recupera solo, y fallo permanente que debe rechazar el arranque) con un Postgres simulado, sin necesitar una base real.
 
 Migrar un `data/profiles.json` existente a Postgres:
 

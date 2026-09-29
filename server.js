@@ -1816,13 +1816,28 @@ async function gracefulShutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   logEvent('shutdown_start', { signal, rooms: rooms.size });
+  if (!profiles) {
+    // Señal recibida antes de terminar de arrancar (bootstrap() aún esperando
+    // a Postgres/el archivo): no hay nada que guardar todavía.
+    process.exit(0);
+    return;
+  }
   try {
     for (const room of rooms.values()) {
       addSystem(room, '🔄 El servidor se está actualizando y se reiniciará en unos segundos. Tus fichas ya están guardadas; conserva esta pestaña para volver a tu asiento.');
       broadcast(room);
     }
   } catch (_) { /* avisar es cortesía; el guardado es lo crítico */ }
-  const forceExit = setTimeout(() => { logEvent('shutdown_forced', {}); process.exit(0); }, 2500);
+  // Fase 11.3: con Postgres, saveNow() es una llamada de red que puede tardar
+  // unos segundos si la base tuvo que "despertar" justo ahora (p. ej. Neon
+  // escalando desde cero) y además reintenta sola ante fallos transitorios;
+  // le damos más margen que al backend de archivo (donde guardar es
+  // instantáneo). Configurable con SHUTDOWN_GRACE_MS por si algún plan de
+  // hosting necesita ajustarlo.
+  const defaultGraceMs = profiles.backend === 'postgres' ? 10000 : 2500;
+  const envGraceMs = Number(process.env.SHUTDOWN_GRACE_MS);
+  const graceMs = Number.isFinite(envGraceMs) && envGraceMs > 0 ? envGraceMs : defaultGraceMs;
+  const forceExit = setTimeout(() => { logEvent('shutdown_forced', { graceMs }); process.exit(0); }, graceMs);
   forceExit.unref?.();
   try { await profiles.saveNow(); } catch (_) { /* saveNow ya reporta sus propios errores */ }
   io.close(() => {

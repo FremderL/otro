@@ -63,6 +63,37 @@ function createFakePgBackend() {
   return { Pool: FakePool, state };
 }
 
+// Fase 11.3: variante "quisquillosa" del Postgres simulado, que falla las
+// primeras `failTimes` operaciones (conexión o consulta) con un error de
+// conexión típico de una base "despertando" (p. ej. Neon escalando desde
+// cero), y a partir de ahí funciona normal. Sirve para probar los reintentos
+// de _init()/load()/saveNow() sin tocar una base real. Con `failTimes:
+// Infinity` simula una base que nunca responde (fallo permanente).
+function createFlakyFakePgBackend(failTimes = 0) {
+  const state = { profiles: new Map(), seasons: null };
+  let remaining = failTimes;
+  function maybeFail() {
+    if (remaining > 0) {
+      remaining -= 1;
+      const error = new Error('Postgres simulado: fallo transitorio de conexión (base despertando)');
+      error.code = 'ETIMEDOUT';
+      throw error;
+    }
+  }
+  class FakeClient {
+    async query(sql, params) { maybeFail(); return runFakeQuery(state, sql, params); }
+    release() {}
+  }
+  class FakePool {
+    constructor(config) { this.config = config; }
+    on() {}
+    async query(sql, params) { maybeFail(); return runFakeQuery(state, sql, params); }
+    async connect() { maybeFail(); return new FakeClient(); }
+    async end() {}
+  }
+  return { Pool: FakePool, state, stopFailing: () => { remaining = 0; } };
+}
+
 async function withTimeout(promise, ms, label) {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -201,11 +232,110 @@ async function testContraPostgresReal() {
   }
 }
 
+// Fase 11.3: un hipo transitorio al arrancar (p. ej. Neon despertando de
+// escalar a cero justo cuando el propio servicio despierta en Render) no debe
+// hacer que el store arranque vacío en silencio; debe reintentar y cargar los
+// datos reales igual que si no hubiera pasado nada.
+async function testReintentaCargaAlArrancarTrasFalloTransitorio() {
+  const backend = createFlakyFakePgBackend(1); // falla solo la primera operación (crear tablas)
+  const store = new PgProfileStore('postgres://usuario:clave@fake-host/db', { Pool: backend.Pool });
+  // Sembramos un perfil "ya existente" directamente en el estado simulado,
+  // como si otra instancia lo hubiera guardado antes de que este proceso
+  // arrancara.
+  backend.state.profiles.set('viejo-cliente', { data: { id: 'viejo-cliente', name: 'Cliente Viejo', chips: 777, avatar: 'fox' } });
+  await store.ready;
+  const recovered = store.profiles.get('viejo-cliente');
+  assert.ok(recovered, 'el perfil existente se cargó pese al fallo transitorio inicial');
+  assert.equal(recovered.chips, 777, 'los datos reales no se perdieron ni se reemplazaron por un perfil en blanco');
+  await store.close();
+}
+
+// Fase 11.3 (regresión del bug crítico): si Postgres no responde en absoluto
+// durante el arranque (ni tras los reintentos), el store NO debe quedar listo
+// con la memoria vacía -- eso arriesgaría sobrescribir los datos reales de la
+// base con perfiles en blanco en el siguiente guardado. Debe rechazar y dejar
+// que server.js aborte el arranque (bootstrap().catch -> process.exit(1)).
+async function testFalloPermanenteAlArrancarNoDejaStoreVacioListo() {
+  const backend = createFlakyFakePgBackend(Infinity); // nunca responde con éxito
+  await assert.rejects(
+    async () => {
+      const store = new PgProfileStore('postgres://usuario:clave@fake-host/db', { Pool: backend.Pool });
+      await store.ready;
+    },
+    undefined,
+    'con Postgres inalcanzable, ready debe rechazar en vez de quedar listo con el store vacío'
+  );
+}
+
+// Fase 11.3: un guardado que falla por un hipo transitorio (p. ej. Neon
+// despertando) se reintenta solo, sin perder el cambio ni requerir que otro
+// evento dispare un nuevo guardado.
+async function testGuardadoReintentaTrasFalloTransitorio() {
+  const arranque = createFakePgBackend();
+  const store = new PgProfileStore('postgres://usuario:clave@fake-host/db', { Pool: arranque.Pool });
+  await store.ready;
+
+  const profile = store.getOrCreate('jugador-reintento', 'Rita', 'owl');
+  profile.chips = 3210;
+  store.touch(profile);
+  clearTimeout(store.saveTimer); // evita que el debounce normal (180ms) dispare un guardado paralelo al de esta prueba
+
+  // El store ya arrancó; para aislar la prueba al camino de saveNow(),
+  // reemplazamos su pool por uno que falla una sola vez (como un hipo
+  // transitorio de red justo al momento de guardar).
+  const backendConFallo = createFlakyFakePgBackend(1);
+  store.pool = new backendConFallo.Pool();
+  await store.saveNow();
+
+  const guardado = backendConFallo.state.profiles.get('jugador-reintento');
+  assert.ok(guardado, 'el perfil se guardó pese al fallo transitorio en el primer intento');
+  assert.equal(guardado.data.chips, 3210, 'el saldo guardado es el correcto tras el reintento');
+  await store.close();
+}
+
+// Fase 11.3: si un guardado falla más allá de los reintentos rápidos (Postgres
+// realmente caído por unos segundos más), el cambio no se pierde para
+// siempre: se programa un reintento en segundo plano que eventualmente lo
+// completa en cuanto la base vuelve a responder.
+async function testGuardadoConFalloPersistenteProgramaReintentoEnSegundoPlano() {
+  const backend = createFlakyFakePgBackend(0);
+  const store = new PgProfileStore('postgres://usuario:clave@fake-host/db', { Pool: backend.Pool });
+  await store.ready;
+
+  const profile = store.getOrCreate('jugador-persistente', 'Léo', 'panda');
+  profile.chips = 5555;
+  store.touch(profile);
+  clearTimeout(store.saveTimer); // evita que el debounce normal (180ms) dispare un guardado paralelo al de esta prueba
+
+  // Postgres "sigue caído" indefinidamente durante este guardado.
+  const backendCaido = createFlakyFakePgBackend(Infinity);
+  store.pool = new backendCaido.Pool();
+  await store.saveNow(); // no debe lanzar: los fallos ultimos se registran, no se propagan
+
+  assert.ok(!backendCaido.state.profiles.get('jugador-persistente'), 'el guardado aún no se completó mientras la base seguía caída');
+  assert.ok(store._backgroundRetryTimer, 'se programó un reintento en segundo plano en vez de perder el cambio');
+
+  // La base "despierta": simulamos que el siguiente reintento (el que
+  // dispararía el temporizador de fondo) ya puede tener éxito.
+  backendCaido.stopFailing();
+  clearTimeout(store._backgroundRetryTimer);
+  await store.saveNow();
+
+  const guardado = backendCaido.state.profiles.get('jugador-persistente');
+  assert.ok(guardado, 'el guardado se completó en cuanto la base volvió a responder');
+  assert.equal(guardado.data.chips, 5555);
+  await store.close();
+}
+
 async function main() {
   await withTimeout(testCicloDeVidaCompleto(), 5000, 'ciclo de vida con Postgres simulado');
   await withTimeout(testMigracionDeFormatoLegado(), 5000, 'migración de formato legado');
   await withTimeout(testFactorySinDatabaseUrl(), 5000, 'fábrica sin DATABASE_URL');
   await withTimeout(testFactoryConDatabaseUrlEligePostgres(), 8000, 'fábrica con DATABASE_URL inválida');
+  await withTimeout(testReintentaCargaAlArrancarTrasFalloTransitorio(), 8000, 'reintento de carga al arrancar tras fallo transitorio');
+  await withTimeout(testFalloPermanenteAlArrancarNoDejaStoreVacioListo(), 8000, 'fallo permanente al arrancar no deja store vacío listo');
+  await withTimeout(testGuardadoReintentaTrasFalloTransitorio(), 8000, 'guardado reintenta tras fallo transitorio');
+  await withTimeout(testGuardadoConFalloPersistenteProgramaReintentoEnSegundoPlano(), 8000, 'guardado con fallo persistente programa reintento en segundo plano');
   await withTimeout(testContraPostgresReal(), 15000, 'ronda opcional contra Postgres real');
   console.log('✅ profile-store-pg-smoke: alta/edición, ranking, persistencia entre reinicios, temporada, formato legado y selección por DATABASE_URL OK');
 }
