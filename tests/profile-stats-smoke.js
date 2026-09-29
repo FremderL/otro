@@ -106,7 +106,8 @@ async function playRound(socket, choice) {
   // ---- Persistencia: SIGTERM guarda gameStats y balanceHistory en disco ----
   server.kill('SIGTERM');
   assert.equal(await waitExit(server), 0, 'apagado limpio');
-  const saved = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+  const savedData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+  const saved = Array.isArray(savedData) ? savedData : savedData.profiles; // formato con temporadas (fase 8.7)
   const stored = saved.find(item => item.id === token);
   assert.ok(stored, 'perfil persistido');
   assert.equal(stored.gameStats.coinflip.rounds, 2, 'gameStats sobrevive al reinicio');

@@ -222,6 +222,15 @@ function publicRoom(room, viewerId) {
       folded: p.folded,
       allIn: p.allIn,
       quickChoice: p.id === viewerId || room.phase === 'results' ? p.quickChoice : (p.bet > 0 ? 'locked' : null),
+      // Fase 8.4: seguro y mano dividida (la mano ajena viaja boca abajo, como la principal).
+      insurance: p.insurance || 0,
+      split: p.split ? {
+        bet: p.split.bet,
+        active: p.split.active,
+        mainStatus: p.split.mainStatus,
+        status: p.split.status,
+        hand: p.id === viewerId || room.phase === 'results' ? p.split.hand : p.split.hand.map(() => 'XX')
+      } : null,
       isHost: p.id === room.hostId
     })),
     dealerHand: room.game === 'blackjack' && room.phase === 'playing' && room.dealerHand.length > 1
@@ -291,11 +300,20 @@ function lobbySnapshot() {
       createdAt: room.createdAt
     }));
 }
+// Fase 8.6: datos del ranking mensual para el lobby.
+function seasonSnapshot() {
+  return {
+    month: profiles.seasons.current,
+    ranking: profiles.top(10),
+    previous: profiles.seasons.history[profiles.seasons.history.length - 1] || null
+  };
+}
 function broadcastLobby() {
   const list = lobbySnapshot();
   io.emit('lobby_state', {
     rooms: list,
-    playersOnline: list.reduce((sum, room) => sum + room.humans, 0)
+    playersOnline: list.reduce((sum, room) => sum + room.humans, 0),
+    season: seasonSnapshot()
   });
 }
 function gameEvent(room, type, text, playerId = null, meta = {}) {
@@ -476,6 +494,42 @@ function nextConnectedHost(room) {
 }
 
 // ---------------- BLACKJACK ----------------
+// Fase 8.4: valor individual de una carta de blackjack (para validar splits).
+function bjCardValue(card) {
+  const rank = String(card).slice(0, -1);
+  if (rank === 'A') return 11;
+  if (['K', 'Q', 'J'].includes(rank)) return 10;
+  return Number(rank);
+}
+// Fase 8.4: mano activa del jugador (principal o dividida).
+function bjActiveHandOf(player) {
+  if (player.split && player.split.active === 'split') return { hand: player.split.hand, bet: player.split.bet, which: 'split' };
+  return { hand: player.hand, bet: player.bet, which: 'main' };
+}
+// Fase 8.4: cierra una mano y decide si sigue la otra mano del split o el siguiente jugador.
+function bjSetHandDone(room, player, which, status) {
+  if (!player.split) {
+    player.status = status;
+    nextBlackjackTurn(room, player.id);
+    return;
+  }
+  if (which === 'main') player.split.mainStatus = status; else player.split.status = status;
+  if (player.split.mainStatus === 'playing') {
+    player.split.active = 'main';
+    setTurn(room, player.id);
+    return;
+  }
+  if (player.split.status === 'playing') {
+    if (blackjackScore(player.split.hand).value === 21) player.split.status = 'stand';
+    else {
+      player.split.active = 'split';
+      setTurn(room, player.id);
+      return;
+    }
+  }
+  player.status = player.split.mainStatus === 'bust' && player.split.status === 'bust' ? 'bust' : 'stand';
+  nextBlackjackTurn(room, player.id);
+}
 function blackjackScore(hand) {
   let value = 0;
   let aces = 0;
@@ -512,18 +566,35 @@ function finishBlackjack(room) {
   const dealerNatural = room.dealerHand.length === 2 && dealer.value === 21;
   const outcomes = [];
   for (const p of room.players.filter(p => p.bet > 0)) {
-    const score = blackjackScore(p.hand);
-    let label;
+    // Fase 8.4: se evalúa la mano principal y, si existe, la mano dividida.
+    const hands = [{ hand: p.hand, bet: p.bet, status: p.split ? p.split.mainStatus : p.status, natural: p.status === 'blackjack' && !p.split }];
+    if (p.split) hands.push({ hand: p.split.hand, bet: p.split.bet, status: p.split.status, natural: false });
     let payout = 0;
-    if (p.status === 'bust' || score.value > 21) label = 'Pierde';
-    else if (p.status === 'blackjack' && !dealerNatural) { label = 'Blackjack'; payout = p.bet * 2.5; }
-    else if (dealer.value > 21) { label = 'Gana'; payout = p.bet * 2; }
-    else if (score.value > dealer.value) { label = 'Gana'; payout = p.bet * 2; }
-    else if (score.value === dealer.value) { label = 'Empate'; payout = p.bet; }
-    else label = 'Pierde';
+    let totalBet = 0;
+    const labels = [];
+    for (const item of hands) {
+      totalBet += item.bet;
+      const score = blackjackScore(item.hand);
+      let handPayout = 0;
+      let label;
+      if (item.status === 'bust' || score.value > 21) label = 'Pierde';
+      else if (item.natural && !dealerNatural) { label = 'Blackjack'; handPayout = item.bet * 2.5; }
+      else if (dealer.value > 21 || score.value > dealer.value) { label = 'Gana'; handPayout = item.bet * 2; }
+      else if (score.value === dealer.value) { label = 'Empate'; handPayout = item.bet; }
+      else label = 'Pierde';
+      payout += handPayout;
+      labels.push(label);
+    }
+    // Fase 8.4: liquidación del seguro (paga 2:1 si la casa tiene blackjack natural).
+    let insuranceNet = 0;
+    if (p.insurance > 0) {
+      if (dealerNatural) { p.chips += p.insurance * 3; insuranceNet = p.insurance * 2; }
+      else insuranceNet = -p.insurance;
+    }
     p.chips += Math.floor(payout);
-    p.status = label.toLowerCase();
-    const baseAmount = payout ? Math.floor(payout - p.bet) : -p.bet;
+    const label = p.split ? (labels[0] === labels[1] ? `${labels[0]} ×2` : `${labels[0]} / ${labels[1]}`) : labels[0];
+    p.status = Math.floor(payout) + insuranceNet > totalBet ? 'gana' : Math.floor(payout) + insuranceNet === totalBet ? 'empate' : 'pierde';
+    const baseAmount = Math.floor(payout) - totalBet + insuranceNet;
     const { net: amount, specialBonus } = completePlayerRound(room, p, baseAmount);
     outcomes.push({ id: p.id, name: p.name, label, amount, specialBonus });
     addRecentWinner(room, p, amount);
@@ -531,7 +602,7 @@ function finishBlackjack(room) {
   }
   room.results = outcomes;
   room.phase = 'results';
-  const dealerText = dealer.value > 21 ? `La casa se pasó con ${dealer.value}.` : `La casa terminó con ${dealer.value}.`;
+  const dealerText = dealerNatural ? 'La casa tiene blackjack natural.' : dealer.value > 21 ? `La casa se pasó con ${dealer.value}.` : `La casa terminó con ${dealer.value}.`;
   addSystem(room, dealerText);
   releaseBotSeats(room);
 }
@@ -541,17 +612,26 @@ function startBlackjack(room) {
   const playing = room.players.filter(p => p.bet > 0 && p.connected);
   if (!playing.length) return actionError('Al menos una persona debe apostar.');
   beginSpecialEvent(room);
-  room.deck = room.deck.length > 60 ? room.deck : makeDeck(4);
+  // Gancho de pruebas: un mazo fijo permite verificar seguro y split de forma determinista.
+  room.deck = process.env.TEST_BLACKJACK_DECK
+    ? JSON.parse(process.env.TEST_BLACKJACK_DECK).slice().reverse()
+    : (room.deck.length > 60 ? room.deck : makeDeck(4));
   room.dealerHand = [draw(room), draw(room)];
   room.results = [];
   room.handNumber++;
   for (const p of room.players) {
     p.hand = [];
+    p.insurance = 0; // Fase 8.4
+    p.split = null; // Fase 8.4
     if (p.bet > 0 && p.connected) {
       p.hand = [draw(room), draw(room)];
       const score = blackjackScore(p.hand).value;
       p.status = score === 21 ? 'blackjack' : 'playing';
     } else p.status = 'waiting';
+  }
+  // Fase 8.4: si la casa muestra un as, se abre la ventana de seguro.
+  if (String(room.dealerHand[0]).slice(0, -1) === 'A') {
+    addSystem(room, '🛡 La casa muestra un as: puedes tomar un seguro por la mitad de tu apuesta antes de tu primera jugada.');
   }
   room.phase = 'playing';
   clearTurn(room);
@@ -571,6 +651,8 @@ function resetBlackjack(room) {
   for (const p of room.players) {
     p.hand = [];
     p.bet = 0;
+    p.insurance = 0; // Fase 8.4
+    p.split = null; // Fase 8.4
     p.status = 'waiting';
   }
 }
@@ -998,25 +1080,54 @@ function executeBlackjackStart(room, actor) {
 function executeBlackjackAction(room, player, action) {
   if (!room || !player || room.game !== 'blackjack' || room.phase !== 'playing') return actionError('La ronda de blackjack no está activa.', 'stale');
   if (room.turnId !== player.id) return actionError('Aún no es tu turno.', 'stale');
+  // Fase 8.4: con split, las jugadas aplican a la mano activa (principal primero).
+  const current = bjActiveHandOf(player);
   if (action === 'hit') {
-    player.hand.push(draw(room));
-    const value = blackjackScore(player.hand).value;
-    if (value > 21) { player.status = 'bust'; nextBlackjackTurn(room, player.id); }
-    else if (value === 21) { player.status = 'stand'; nextBlackjackTurn(room, player.id); }
+    current.hand.push(draw(room));
+    const value = blackjackScore(current.hand).value;
+    if (value > 21) bjSetHandDone(room, player, current.which, 'bust');
+    else if (value === 21) bjSetHandDone(room, player, current.which, 'stand');
     else setTurn(room, player.id);
   } else if (action === 'stand') {
-    player.status = 'stand';
-    nextBlackjackTurn(room, player.id);
+    bjSetHandDone(room, player, current.which, 'stand');
   } else if (action === 'double') {
-    if (player.hand.length !== 2 || player.chips < player.bet) return actionError('No puedes doblar esta mano.');
-    const extraBet = player.bet;
+    if (current.hand.length !== 2 || player.chips < current.bet) return actionError('No puedes doblar esta mano.');
+    const extraBet = current.bet;
     player.chips -= extraBet;
-    player.bet *= 2;
+    if (current.which === 'split') player.split.bet *= 2; else player.bet *= 2;
     trackWager(room, player, extraBet);
+    current.hand.push(draw(room));
+    bjSetHandDone(room, player, current.which, blackjackScore(current.hand).value > 21 ? 'bust' : 'stand');
+  } else if (action === 'split') {
+    // Fase 8.4: dividir dos cartas del mismo valor en dos manos independientes.
+    if (player.split) return actionError('Solo puedes dividir una vez por ronda.');
+    if (player.hand.length !== 2 || bjCardValue(player.hand[0]) !== bjCardValue(player.hand[1])) return actionError('Solo puedes dividir dos cartas del mismo valor.');
+    if (player.chips < player.bet) return actionError('Necesitas fichas para igualar tu apuesta en la segunda mano.');
+    player.chips -= player.bet;
+    trackWager(room, player, player.bet);
+    player.split = { bet: player.bet, hand: [player.hand.pop()], active: 'main', mainStatus: 'playing', status: 'playing' };
     player.hand.push(draw(room));
-    player.status = blackjackScore(player.hand).value > 21 ? 'bust' : 'stand';
-    nextBlackjackTurn(room, player.id);
+    player.split.hand.push(draw(room));
+    addSystem(room, `${player.name} divide su mano en dos apuestas de ${player.bet}.`);
+    if (blackjackScore(player.hand).value === 21) bjSetHandDone(room, player, 'main', 'stand');
+    else setTurn(room, player.id);
   } else return actionError('Jugada no válida.');
+  return actionOk();
+}
+// Fase 8.4: seguro por la mitad de la apuesta cuando la casa muestra un as (paga 2:1).
+function executeBlackjackInsurance(room, player) {
+  if (!room || !player || room.game !== 'blackjack' || room.phase !== 'playing') return actionError('El seguro solo se ofrece durante la ronda.');
+  const upcard = room.dealerHand?.[0];
+  if (!upcard || String(upcard).slice(0, -1) !== 'A') return actionError('El seguro solo se ofrece cuando la casa muestra un as.');
+  if (!(player.bet > 0)) return actionError('Necesitas una apuesta activa para asegurar.');
+  if (player.insurance > 0) return actionError('Ya tomaste el seguro en esta ronda.');
+  if (player.hand.length !== 2 || player.split) return actionError('El seguro solo está disponible antes de tu primera jugada.');
+  const cost = Math.ceil(player.bet / 2);
+  if (player.chips < cost) return actionError('No tienes fichas suficientes para el seguro.');
+  player.chips -= cost;
+  player.insurance = cost;
+  trackWager(room, player, cost);
+  addSystem(room, `${player.name} toma un seguro de ${cost} fichas.`);
   return actionOk();
 }
 function executeBlackjackNew(room, actor) {
@@ -1244,9 +1355,11 @@ botController = new BotController({
 });
 
 io.on('connection', socket => {
+  const initialLobby = lobbySnapshot();
   socket.emit('lobby_state', {
-    rooms: lobbySnapshot(),
-    playersOnline: lobbySnapshot().reduce((sum, room) => sum + room.humans, 0)
+    rooms: initialLobby,
+    playersOnline: initialLobby.reduce((sum, room) => sum + room.humans, 0),
+    season: seasonSnapshot()
   });
 
   socket.on('create_room', ({ name, roomName, game, token, avatar, tos } = {}, ack) => {
@@ -1421,7 +1534,14 @@ io.on('connection', socket => {
     ackResult(ack, result);
     if (result.ok) broadcast(room);
   });
-  for (const [event, action] of [['blackjack_hit', 'hit'], ['blackjack_stand', 'stand'], ['blackjack_double', 'double']]) {
+  // Fase 8.4: seguro cuando la casa muestra un as (no requiere turno propio).
+  socket.on('blackjack_insurance', (_data, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const result = executeBlackjackInsurance(room, player);
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
+  for (const [event, action] of [['blackjack_hit', 'hit'], ['blackjack_stand', 'stand'], ['blackjack_double', 'double'], ['blackjack_split', 'split']]) {
     socket.on(event, (_data, ack) => {
       const { room, player } = playerForSocket(socket);
       const result = executeBlackjackAction(room, player, action);
@@ -1577,6 +1697,23 @@ const hostInactivitySweep = setInterval(() => {
   }
 }, HOST_INACTIVITY_SWEEP_MS);
 hostInactivitySweep.unref?.();
+
+// Fase 8.7: vigila el cambio de mes con el servidor encendido. Al cerrar la
+// temporada, todos los perfiles vuelven a 1000 fichas y se anuncia el podio.
+const seasonSweep = setInterval(() => {
+  const closed = profiles.ensureSeason();
+  if (!closed) return;
+  logEvent('season_reset', { closedMonth: closed.month, players: closed.players, podium: closed.podium });
+  const podiumText = closed.podium.length
+    ? ` Podio de ${closed.month}: ${closed.podium.map((entry, index) => `${['🥇', '🥈', '🥉'][index]} ${entry.name} (${entry.chips})`).join(' · ')}.`
+    : '';
+  for (const room of rooms.values()) {
+    addSystem(room, `📅 ¡Nueva temporada mensual! Todos los saldos se reiniciaron a 1000 fichas.${podiumText}`);
+    broadcast(room);
+  }
+  broadcastLobby();
+}, 5 * 60 * 1000);
+seasonSweep.unref?.();
 
 // Fase 7: apagado limpio. Render envía SIGTERM en cada deploy: guardamos perfiles,
 // avisamos a las mesas y cerramos sockets con gracia para que la reconexión automática

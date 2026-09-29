@@ -134,13 +134,15 @@
 1. ✅ **Torneos de sala** (sit & go de póker con ciegas crecientes) — el formato brilla en pantallas grandes. *(2026-09-28: el anfitrión inicia el torneo desde la mesa de póker; todos los sentados —humanos y bots— pagan 200 de entrada, reciben un stack de 1000 y juegan con ciegas que se duplican cada 3 manos (10/20 → 20/40 → …). El saldo real del perfil queda protegido durante el torneo; los eliminados quedan clasificados por lugar y el campeón se lleva el bote completo como transacción en su perfil. Sin recompras ni cambios de asientos durante el torneo. Smoke test: `tests/tournament-smoke.js`.)*
 2. ✅ **Estadísticas ampliadas de perfil:** gráficas de saldo por sesión, historial por juego, % de victorias; panel lateral que solo cabe en escritorio. *(2026-09-28: el modal de perfil suma «% DE VICTORIAS», una gráfica SVG con la evolución del saldo —últimos 60 movimientos, persistidos en disco— y una tabla de rendimiento por juego con rondas, victorias, % y balance neto. Smoke test: `tests/profile-stats-smoke.js`.)*
 3. ✅ **Espectadores:** entrar a una sala llena en modo observador con chat. *(2026-09-28: tribuna con hasta 12 espectadores por mesa, botón «👁 Ver mesa» en el lobby para salas llenas, chat con prefijo 👁, privacidad intacta —cartas ajenas ocultas y elecciones «locked»—, botón «Tomar asiento» que convierte al espectador en jugador, y limpieza automática al desconectarse. Smoke test: `tests/spectators-smoke.js`.)*
-4. **Nuevas variantes:** blackjack con seguro y split.
-5. **Criterio de aceptación:** cada característica entra por separado con su smoke test correspondiente en `npm test`.
+4. ✅ **Nuevas variantes:** blackjack con seguro y split. *(2026-09-28: seguro por la mitad de la apuesta cuando la casa muestra un as —paga 2:1 contra blackjack natural, disponible solo antes de la primera jugada— y split de pares del mismo valor en dos manos independientes con apuestas iguales, doblaje por mano, visualización de ambas manos en la mesa y liquidación combinada. Smoke test determinista con mazos fijos: `tests/blackjack-variants-smoke.js`.)*
+5. **Criterio de aceptación:** cada característica entra por separado con su smoke test correspondiente en `npm test`. ✅ Cumplido: 12 suites verdes.
 
 **Ampliación solicitada (2026-09-28):**
 
-6. **Ranking mensual:** tabla de clasificación con las personas con mayor cantidad de puntos (fichas) del mes en curso, visible desde el lobby y actualizada en vivo.
-7. **Reinicio mensual de puntos:** al inicio de cada mes todos los perfiles vuelven a 1000 fichas (con anuncio del cierre de temporada y del podio del mes anterior); el bono diario reclamable de 100 fichas se mantiene como está.
+6. ✅ **Ranking mensual:** tabla de clasificación con las personas con mayor cantidad de puntos (fichas) del mes en curso, visible desde el lobby y actualizada en vivo. *(2026-09-28: panel «🏅 Ranking del mes» bajo las salas abiertas con el top 10 —medallas, victorias y puntos—, el podio de la temporada anterior y la nota del reinicio mensual. Smoke test: `tests/season-smoke.js`.)*
+7. ✅ **Reinicio mensual de puntos:** al inicio de cada mes todos los perfiles vuelven a 1000 fichas (con anuncio del cierre de temporada y del podio del mes anterior); el bono diario reclamable de 100 fichas se mantiene como está. *(2026-09-28: el almacén de perfiles guarda temporadas mensuales —formato retrocompatible con el archivo anterior—, archiva el podio al cerrar el mes, reinicia los saldos a 1000 y lo anuncia en todas las mesas; verificación al cargar, en cada acceso a perfiles y con un barrido cada 5 minutos. Smoke test: `tests/season-smoke.js`.)*
+
+**Estado (2026-09-28): FASE 8 COMPLETA** — torneos, estadísticas ampliadas, espectadores, blackjack con seguro/split, ranking mensual y reinicio de temporada, cada uno con su smoke test en `npm test`.
 
 **Entregable en Render:** deploys independientes por característica.
 

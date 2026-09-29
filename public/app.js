@@ -468,8 +468,40 @@
   socket.on('lobby_state', payload => {
     ui.lobby = Array.isArray(payload?.rooms) ? payload.rooms : [];
     ui.playersOnline = Number(payload?.playersOnline) || 0;
+    ui.season = payload?.season || ui.season || null; // Fase 8.6
     renderLobby();
+    renderSeasonRanking();
   });
+
+  // Fase 8.6: ranking mensual en el lobby (los puntos se reinician cada mes).
+  function renderSeasonRanking() {
+    const panel = $('#season-ranking');
+    if (!panel) return;
+    const season = ui.season;
+    if (!season || !Array.isArray(season.ranking) || !season.ranking.length) {
+      panel.classList.add('hidden');
+      return;
+    }
+    panel.classList.remove('hidden');
+    const [year, month] = String(season.month || '').split('-');
+    const monthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    const monthName = monthNames[Number(month) - 1] || season.month;
+    $('#ranking-title').textContent = `Temporada de ${monthName} ${year || ''}`.trim();
+    const medals = ['🥇', '🥈', '🥉'];
+    $('#ranking-list').innerHTML = season.ranking.map((entry, index) => `
+      <div class="ranking-row ${index === 0 ? 'leader' : ''}">
+        <span class="ranking-pos">${medals[index] || `#${index + 1}`}</span>
+        <span class="ranking-avatar">${avatarEmoji(entry.avatar)}</span>
+        <span class="ranking-name">${escapeHtml(entry.name)}</span>
+        <span class="ranking-wins">${formatChips(entry.wins || 0)} ${entry.wins === 1 ? 'victoria' : 'victorias'}</span>
+        <span class="ranking-chips">◆ ${formatChips(entry.chips)}</span>
+      </div>`).join('');
+    const previousBox = $('#ranking-previous');
+    if (season.previous?.podium?.length) {
+      previousBox.classList.remove('hidden');
+      previousBox.innerHTML = `<small>PODIO DE ${escapeHtml(season.previous.month)}:</small> ${season.previous.podium.map((entry, index) => `<span>${medals[index] || ''} ${escapeHtml(entry.name)} (◆ ${formatChips(entry.chips)})</span>`).join(' · ')}`;
+    } else previousBox.classList.add('hidden');
+  }
 
   function renderLobby() {
     els.liveRoomCount.textContent = ui.lobby.length;
@@ -775,12 +807,22 @@
     const result = room.results?.find(item => item.id === player.id);
     const winner = result?.amount > 0;
     const classes = [player.id === room.turnId ? 'current' : '', winner ? 'winner' : '', player.status === 'bust' || result?.amount < 0 ? 'folded' : '', player.bot?.thinking ? 'bot-thinking' : ''].join(' ');
+    const mainActive = player.id === room.turnId && (!player.split || player.split.active === 'main');
     const cards = player.hand?.map(card => cardHtml(card, true)).join('') || '';
     const score = player.hand?.length && !player.hand.includes('XX') ? blackjackValue(player.hand) : '';
-    const bet = player.bet > 0 ? `<div class="seat-bet"><i></i>${formatChips(player.bet)}</div>` : '';
-    const status = player.id === room.turnId ? (player.id === ui.me?.id ? 'TU TURNO' : 'EN TURNO') : result?.label || (player.status === 'blackjack' ? 'BLACKJACK' : '');
-    return `<div class="table-seat blackjack-seat seat-${index} ${classes}"><div class="seat-cards">${cards}</div><div class="seat-head">
-      <div class="seat-avatar" style="background:${avatarColor(player.id)}">${avatarEmoji(player.avatar)}</div><div class="seat-info"><b>${escapeHtml(player.name)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}</b><span>◆ ${formatChips(player.chips)}</span></div>
+    // Fase 8.4: segunda mano del split y distintivo del seguro.
+    const splitScore = player.split && !player.split.hand.includes('XX') ? blackjackValue(player.split.hand) : '';
+    const splitRow = player.split
+      ? `<div class="seat-cards split-cards ${player.id === room.turnId && player.split.active === 'split' ? 'active-hand' : ''}">${player.split.hand.map(card => cardHtml(card, true)).join('')}${splitScore !== '' ? `<i class="hand-total split-total">${splitScore}</i>` : ''}</div>`
+      : '';
+    const totalBet = (player.bet || 0) + (player.split?.bet || 0);
+    const bet = totalBet > 0 ? `<div class="seat-bet"><i></i>${formatChips(totalBet)}</div>` : '';
+    const insuranceBadge = player.insurance ? '<i class="insurance-badge" title="Seguro tomado">🛡</i>' : '';
+    const status = player.id === room.turnId
+      ? `${player.id === ui.me?.id ? 'TU TURNO' : 'EN TURNO'}${player.split ? ` · MANO ${player.split.active === 'split' ? '2' : '1'}` : ''}`
+      : result?.label || (player.status === 'blackjack' ? 'BLACKJACK' : '');
+    return `<div class="table-seat blackjack-seat seat-${index} ${classes}"><div class="seat-cards ${player.split && mainActive ? 'active-hand' : ''}">${cards}</div>${splitRow}<div class="seat-head">
+      <div class="seat-avatar" style="background:${avatarColor(player.id)}">${avatarEmoji(player.avatar)}</div><div class="seat-info"><b>${escapeHtml(player.name)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}${insuranceBadge}</b><span>◆ ${formatChips(player.chips)}</span></div>
       ${score !== '' ? `<i class="hand-total">${score}</i>` : ''}${status ? `<span class="seat-status">${escapeHtml(status)}</span>` : ''}
       </div>${bet}</div>`;
   }
@@ -1182,8 +1224,14 @@
       return;
     }
     if (room.phase === 'playing' && room.turnId === me.id) {
-      const canDouble = me.hand.length === 2 && me.chips >= me.bet;
-      els.actionPanel.innerHTML = `<div class="action-bar"><div class="action-info"><small>TU MANO</small><b>VALOR <span>${blackjackValue(me.hand)}</span></b></div><div class="action-buttons"><button class="game-btn primary" data-event="blackjack_hit">Pedir carta</button><button class="game-btn green" data-event="blackjack_stand">Plantarse</button><button class="game-btn" data-event="blackjack_double" ${canDouble ? '' : 'disabled'}>Doblar</button></div></div>`;
+      // Fase 8.4: las jugadas aplican a la mano activa; se ofrecen split y seguro cuando corresponde.
+      const onSplitHand = me.split && me.split.active === 'split';
+      const activeHand = onSplitHand ? me.split.hand : me.hand;
+      const activeBet = onSplitHand ? me.split.bet : me.bet;
+      const canDouble = activeHand.length === 2 && me.chips >= activeBet;
+      const canSplit = !me.split && me.hand.length === 2 && bjCardValue(me.hand[0]) === bjCardValue(me.hand[1]) && me.chips >= me.bet;
+      const handLabel = me.split ? (onSplitHand ? 'MANO 2 DE 2' : 'MANO 1 DE 2') : 'TU MANO';
+      els.actionPanel.innerHTML = `<div class="action-bar"><div class="action-info"><small>${handLabel}</small><b>VALOR <span>${blackjackValue(activeHand)}</span></b></div><div class="action-buttons"><button class="game-btn primary" data-event="blackjack_hit">Pedir carta</button><button class="game-btn green" data-event="blackjack_stand">Plantarse</button><button class="game-btn" data-event="blackjack_double" ${canDouble ? '' : 'disabled'}>Doblar</button>${canSplit ? '<button class="game-btn" data-event="blackjack_split" title="Divide tu par en dos manos con apuestas iguales">Dividir</button>' : ''}${insuranceButton(room, me)}</div></div>`;
       return;
     }
     if (room.phase === 'results') {
@@ -1191,7 +1239,20 @@
       return;
     }
     const current = room.players.find(player => player.id === room.turnId);
-    els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>La casa está en juego</b><span>${current ? `Turno de ${escapeHtml(current.name)}.` : 'Resolviendo la ronda…'}</span></div></div>`;
+    els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>La casa está en juego</b><span>${current ? `Turno de ${escapeHtml(current.name)}.` : 'Resolviendo la ronda…'}</span></div>${insuranceButton(room, me) ? `<div class="action-buttons">${insuranceButton(room, me)}</div>` : ''}</div>`;
+  }
+  // Fase 8.4: valor de una carta y botón de seguro (cuando la casa muestra un as).
+  function bjCardValue(card) {
+    const rank = String(card || '').slice(0, -1);
+    if (rank === 'A') return 11;
+    if (['K', 'Q', 'J'].includes(rank)) return 10;
+    return Number(rank);
+  }
+  function insuranceButton(room, me) {
+    const upcard = String(room.dealerHand?.[0] || '');
+    const eligible = room.phase === 'playing' && upcard.slice(0, -1) === 'A' && me.bet > 0 && !me.insurance
+      && me.hand?.length === 2 && !me.split && me.chips >= Math.ceil(me.bet / 2);
+    return eligible ? `<button class="game-btn insurance-btn" data-event="blackjack_insurance" title="Cuesta la mitad de tu apuesta y paga 2:1 si la casa tiene blackjack">🛡 Seguro (${formatChips(Math.ceil(me.bet / 2))})</button>` : '';
   }
   function quickChoiceButtons(game) {
     // La ruleta usa su propio paño completo (rouletteFeltHtml); aquí solo dados y moneda.

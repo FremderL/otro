@@ -113,7 +113,8 @@ function waitExit(child, timeout = 4000) {
   await disconnectPromise;
   assert.ok(server.log.includes('"event":"shutdown_start"') && server.log.includes('"event":"server_listening"'), 'logs estructurados JSON presentes');
   assert.ok(fs.existsSync(profilePath), 'el archivo de perfiles quedó escrito en disco');
-  const saved = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+  const savedData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+  const saved = Array.isArray(savedData) ? savedData : savedData.profiles; // formato con temporadas (fase 8.7)
   assert.ok(saved.some(profile => profile.id === token), 'el perfil del jugador está persistido');
 
   // ---- Segunda "instancia" (deploy 2, mismo disco) ----
