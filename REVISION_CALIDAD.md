@@ -70,6 +70,21 @@ persona nueva se detecta antes de desplegar.
    clases; verifica la **visibilidad real calculada por CSS** (`visibility` y
    `pointer-events`) de los modales, para que un modal invisible vuelva a
    romper la suite y no a las personas.
+0-bis. **Tres bugs del motor de póker** (reportados por un jugador: «mi rival
+   tenía par de reyes, yo carta alta de 10, y ambos ganamos»):
+   - `pokerRoundComplete` cerraba la ronda cuando alguien iba all-in y quedaba
+     una sola persona con fichas, **aunque tuviera una apuesta pendiente por
+     responder**: la mano corría sola al showdown disputando solo las ciegas.
+   - El excedente sin igualar del all-in formaba un «bote lateral» de un solo
+     elegible y su dueño figuraba como **GANADOR de su propio reembolso** (por
+     eso «ganaban» dos manos). Ahora se devuelve en silencio con aviso del
+     sistema («Se devuelven N fichas sin igualar a X») y en los resultados solo
+     aparece quien gana un bote disputado.
+   - `takeChips` acreditaba recompensas de retos ANTES de marcar el all-in: el
+     jugador quedaba «vivo» con fichas caídas del cielo a media mano y la mesa
+     se trababa esperándolo. El all-in se decide ahora antes de acreditar premios.
+   Regresión permanente en `tests/poker-showdown-smoke.js` (verifica con el
+   propio evaluador de manos que solo la mejor mano figure como ganadora).
 1. **Inundación de chat**: no había límite de frecuencia; un cliente podía
    spamear broadcasts a toda la mesa. → Límite de 6 mensajes/reacciones cada
    4 s por conexión, con mensaje amable.

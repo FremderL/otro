@@ -668,8 +668,11 @@ function takeChips(room, player, amount) {
   player.chips -= paid;
   player.roundBet += paid;
   player.totalBet += paid;
-  if (paid) trackWager(room, player, paid);
+  // El all-in se decide ANTES de acreditar recompensas de retos: trackWager puede
+  // sumar fichas de premio al instante y, si se evaluaba después, el jugador
+  // quedaba "vivo" con fichas caídas del cielo a media mano (mesa trabada).
   if (player.chips === 0) player.allIn = true;
+  if (paid) trackWager(room, player, paid);
   return paid;
 }
 function nextSeat(room, fromIndex, predicate) {
@@ -695,7 +698,14 @@ function setNextPokerTurn(room, afterId) {
 }
 function pokerRoundComplete(room) {
   const actable = actablePokerPlayers(room);
-  if (actable.length <= 1 && livePokerPlayers(room).some(p => p.allIn)) return true;
+  if (!actable.length) return true;
+  // Frente a un all-in, la última persona con fichas CONSERVA su turno si tiene
+  // una apuesta pendiente por responder (igualar, subir o retirarse). Antes la
+  // ronda se cerraba aquí y la mano corría sola al showdown disputando solo las
+  // ciegas, con el excedente del all-in "devuelto" como si fuera una victoria.
+  if (actable.length === 1 && livePokerPlayers(room).some(p => p.allIn)) {
+    return actable[0].roundBet >= room.currentBet;
+  }
   return actable.every(p => p.acted && p.roundBet === room.currentBet);
 }
 function awardSinglePokerWinner(room, player) {
@@ -934,15 +944,25 @@ function showdownPoker(room) {
   const contributors = handPlayers(room).filter(p => p.totalBet > 0);
   const levels = [...new Set(contributors.map(p => p.totalBet))].sort((a, b) => a - b);
   const awards = new Map();
+  const refunds = new Map();
   let previousLevel = 0;
 
   // Build the main and side pots from each contribution tier. Folded players
   // add chips to a pot, but are never eligible to win it.
   for (const level of levels) {
-    const potAmount = (level - previousLevel) * contributors.filter(p => p.totalBet >= level).length;
+    const tierContributors = contributors.filter(p => p.totalBet >= level);
+    const potAmount = (level - previousLevel) * tierContributors.length;
     previousLevel = level;
+    if (!potAmount) continue;
+    // Apuesta sin igualar: si en este tramo solo puso fichas UNA persona, nadie
+    // lo disputó. Se le devuelve en silencio: no es un bote ganado ni la marca
+    // como ganadora (antes esto hacía "ganar" a una mano perdedora su propio dinero).
+    if (tierContributors.length === 1) {
+      refunds.set(tierContributors[0].id, (refunds.get(tierContributors[0].id) || 0) + potAmount);
+      continue;
+    }
     const eligible = live.filter(p => p.totalBet >= level);
-    if (!potAmount || !eligible.length) continue;
+    if (!eligible.length) continue;
     let best = scored.get(eligible[0].id);
     for (const p of eligible.slice(1)) if (compareScores(scored.get(p.id), best) > 0) best = scored.get(p.id);
     const winners = eligible.filter(p => compareScores(scored.get(p.id), best) === 0);
@@ -956,8 +976,15 @@ function showdownPoker(room) {
 
   // Normally the side-pot total equals room.pot. The fallback keeps every
   // virtual chip accounted for even if a future rule change creates residue.
-  const awarded = [...awards.values()].reduce((sum, amount) => sum + amount, 0);
+  const awarded = [...awards.values()].reduce((sum, amount) => sum + amount, 0)
+    + [...refunds.values()].reduce((sum, amount) => sum + amount, 0);
   if (awarded < room.pot && live.length) awards.set(live[0].id, (awards.get(live[0].id) || 0) + room.pot - awarded);
+  for (const [id, amount] of refunds) {
+    const p = handPlayers(room).find(player => player.id === id);
+    if (!p || !amount) continue;
+    p.chips += amount;
+    addSystem(room, `Se devuelven ${amount} fichas sin igualar a ${p.name}.`);
+  }
   for (const p of live) {
     const amount = awards.get(p.id) || 0;
     if (amount) { p.chips += amount; p.status = 'winner'; }
@@ -965,7 +992,7 @@ function showdownPoker(room) {
   const participants = handPlayers(room);
   const progress = new Map();
   for (const participant of participants) {
-    const baseNet = (awards.get(participant.id) || 0) - participant.totalBet;
+    const baseNet = (awards.get(participant.id) || 0) + (refunds.get(participant.id) || 0) - participant.totalBet;
     progress.set(participant.id, completePlayerRound(room, participant, baseNet));
   }
   room.results = [...awards.entries()].map(([id, amount]) => {
