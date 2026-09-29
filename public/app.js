@@ -38,7 +38,7 @@
   const GAME_META = {
     poker: { icon: '♠', name: 'TEXAS HOLD’EM' }, blackjack: { icon: '◆', name: 'BLACKJACK' },
     roulette: { icon: '◉', name: 'RULETA NOVA' }, dice: { icon: '⚄', name: 'DADOS CÓSMICOS' },
-    coinflip: { icon: '◐', name: 'CARA O CRUZ' }
+    coinflip: { icon: '◐', name: 'CARA O CRUZ' }, slots: { icon: '🎰', name: 'TRAGAMONEDAS' }
   };
   const AVATARS = [
     { id: 'fox', emoji: '🦊', label: 'Zorro' }, { id: 'tiger', emoji: '🐯', label: 'Tigre' },
@@ -85,7 +85,7 @@
     connection: 'connecting', sound: localStorage.getItem('montecristo-sound') !== 'off',
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
     lastEventKey: '', clockTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false,
-    rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null
+    rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null
   };
 
   if (savedSession && routeCode && savedSession.code === routeCode) {
@@ -216,6 +216,10 @@
     button.setAttribute('aria-busy', String(loading));
   }
   function emitAck(event, payload = {}, button = null) {
+    if (!socket.connected) {
+      showToast('Sin conexión con el servidor', 'La mesa no responde. Si estás en una vista previa, es posible que el servidor esté apagado: pide reactivarlo y recarga la página.', 'error', 6000);
+      return Promise.resolve({ ok: false, error: 'Sin conexión con el servidor.' });
+    }
     if (button) setButtonLoading(button, true);
     return new Promise(resolve => {
       const timer = setTimeout(() => resolve({ ok: false, error: 'La mesa tardó demasiado en responder.' }), 9000);
@@ -361,9 +365,11 @@
     });
   }));
   document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeModal(); closeProfileModal(); toggleShortcutHelp(false); } });
-  // Fase 5: saltar la animación de la ruleta (botón presente en mesa o panel de acciones)
+  // Fases 5 y 6: saltar animaciones (botones presentes en mesa o panel de acciones)
   document.addEventListener('click', event => {
-    if (event.target.closest && event.target.closest('[data-roulette-skip]') && ui.rouletteSpin) ui.rouletteSpin.skip = true;
+    if (!event.target.closest) return;
+    if (event.target.closest('[data-roulette-skip]') && ui.rouletteSpin) ui.rouletteSpin.skip = true;
+    if (event.target.closest('[data-slots-skip]') && ui.slotsSpin) ui.slotsSpin.skip = true;
   });
 
   // ---------- Atajos de teclado en mesa (fase 4) ----------
@@ -481,9 +487,10 @@
   socket.on('room_state', room => {
     const wasOutside = !ui.room;
     const previous = ui.room;
-    // Fase 5: al pasar de 'rolling' a 'results' en ruleta, la rueda anima el resultado autoritativo.
-    if (room.game === 'roulette' && previous && previous.code === room.code && previous.phase === 'rolling' && room.phase === 'results' && room.quickResult && !ui.rouletteSpin) {
-      startRouletteSpin(room.quickResult.value);
+    // Fases 5 y 6: al pasar de 'rolling' a 'results', la animación representa el resultado autoritativo.
+    if (previous && previous.code === room.code && previous.phase === 'rolling' && room.phase === 'results' && room.quickResult) {
+      if (room.game === 'roulette' && !ui.rouletteSpin) startRouletteSpin(room.quickResult.value);
+      if (room.game === 'slots' && !ui.slotsSpin) startSlotsSpin(room.quickResult.reels);
     }
     ui.room = room;
     ui.activeCode = room.code;
@@ -714,7 +721,7 @@
       low: game === 'dice' ? 'Bajo 1–3' : 'Bajo 1–18', high: game === 'dice' ? 'Alto 4–6' : 'Alto 19–36',
       heads: 'Cara', tails: 'Cruz', locked: 'Apuesta oculta',
       d1: 'Docena 1–12', d2: 'Docena 13–24', d3: 'Docena 25–36',
-      c1: 'Columna 1', c2: 'Columna 2', c3: 'Columna 3'
+      c1: 'Columna 1', c2: 'Columna 2', c3: 'Columna 3', spin: 'Giro'
     };
     return choice.startsWith?.('n:') ? `Número ${choice.slice(2)}` : (labels[choice] || choice);
   }
@@ -820,6 +827,7 @@
     if (!spin) return;
     ui.rouletteAngle = spin.wheelEnd;
     ui.rouletteSpin = null;
+    ui.lastGameSignature = ''; // el estado del servidor no cambió: forzamos el repintado del resultado
     playTone('notice');
     renderRoom();
   }
@@ -893,11 +901,93 @@
     return html + '</div>';
   }
 
+  // ---------- Fase 6: Tragamonedas MonteCristo (3 rodillos animados) ----------
+  // El servidor decide los símbolos; la animación solo los representa.
+  const SLOT_META = {
+    cherry: { glyph: '🍒', label: 'Cereza', pay: 5 }, clover: { glyph: '🍀', label: 'Trébol', pay: 8 },
+    bell: { glyph: '🔔', label: 'Campana', pay: 12 }, gem: { glyph: '💎', label: 'Diamante', pay: 20 },
+    monte: { glyph: '♠', label: 'MonteCristo', pay: 40 }
+  };
+  const SLOT_STRIP_SEQ = ['cherry', 'bell', 'clover', 'gem', 'cherry', 'monte', 'clover', 'bell', 'cherry', 'gem', 'clover', 'monte', 'bell', 'cherry', 'clover', 'gem', 'bell', 'monte', 'cherry', 'clover'];
+  const SLOT_CELL = 64, SLOT_REPEATS = 10;
+  function slotStripHtml() {
+    let cells = '';
+    for (let repeat = 0; repeat < SLOT_REPEATS; repeat++) {
+      for (const id of SLOT_STRIP_SEQ) cells += `<div class="slot-cell ${id === 'monte' ? 'premium' : ''}">${SLOT_META[id].glyph}</div>`;
+    }
+    return cells;
+  }
+  function slotOffsetFor(id) {
+    const index = Math.max(0, SLOT_STRIP_SEQ.indexOf(id));
+    return ((SLOT_REPEATS - 2) * SLOT_STRIP_SEQ.length + index) * SLOT_CELL;
+  }
+  function startSlotsSpin(reels) {
+    if (!Array.isArray(reels) || reels.length !== 3) return;
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Paradas en secuencia izquierda → centro → derecha, ~0.9 s entre cada una.
+    ui.slotsSpin = { start: performance.now(), reels, stops: reduceMotion ? [0, 0, 0] : [1700, 2600, 3500], skip: false };
+    ensureSlotsLoop();
+  }
+  function slotsSpinFrame(strips, spin, now) {
+    const elapsed = now - spin.start;
+    let allDone = true;
+    for (let i = 0; i < 3; i++) {
+      const duration = spin.stops[i];
+      const x = spin.skip || duration <= 0 ? 1 : Math.min(1, elapsed / duration);
+      if (x < 1) allDone = false;
+      const target = slotOffsetFor(spin.reels[i]);
+      const ease = 1 - Math.pow(1 - x, 3);
+      const bounce = Math.sin(x * 24) * Math.pow(1 - x, 2) * 26; // rebote amortiguado: 0 exacto al frenar
+      strips[i].style.transform = `translateY(${-(target * ease + bounce)}px)`;
+      strips[i].classList.toggle('blur', x < 0.8);
+    }
+    return allDone;
+  }
+  function finishSlotsSpin() {
+    if (!ui.slotsSpin) return;
+    ui.slotsSpin = null;
+    ui.lastGameSignature = ''; // el estado del servidor no cambió: forzamos el repintado del resultado
+    playTone('notice');
+    renderRoom();
+  }
+  function ensureSlotsLoop() {
+    if (ui.slotsRaf) return;
+    const step = now => {
+      ui.slotsRaf = null;
+      const room = ui.room;
+      if (!room || room.game !== 'slots') { ui.slotsSpin = null; return; }
+      const strips = [0, 1, 2].map(i => document.getElementById(`slot-strip-${i}`));
+      const spin = ui.slotsSpin;
+      let keep = false;
+      if (strips.some(strip => !strip)) {
+        keep = Boolean(spin); // la mesa se re-renderizó: esperamos a las nuevas tiras
+      } else if (spin) {
+        if (slotsSpinFrame(strips, spin, now)) finishSlotsSpin();
+        else keep = true;
+      } else if (room.phase === 'rolling') {
+        const loopPx = SLOT_STRIP_SEQ.length * SLOT_CELL * (SLOT_REPEATS - 2);
+        strips.forEach((strip, i) => {
+          strip.classList.add('blur');
+          strip.style.transform = `translateY(${-((now * (0.9 + i * 0.15)) % loopPx)}px)`;
+        });
+        keep = true;
+      } else {
+        const reels = room.quickResult?.reels || ['monte', 'gem', 'cherry'];
+        strips.forEach((strip, i) => {
+          strip.classList.remove('blur');
+          strip.style.transform = `translateY(${-slotOffsetFor(reels[i])}px)`;
+        });
+      }
+      if (keep) ui.slotsRaf = requestAnimationFrame(step);
+    };
+    ui.slotsRaf = requestAnimationFrame(step);
+  }
+
   function quickSeat(player, index) {
     const room = ui.room;
     const result = room.results?.find(item => item.id === player.id);
     const choice = quickChoiceLabel(room.game, player.quickChoice);
-    const suspense = room.game === 'roulette' && ui.rouletteSpin; // sin brillo de ganador hasta que caiga la pelota
+    const suspense = (room.game === 'roulette' && ui.rouletteSpin) || (room.game === 'slots' && ui.slotsSpin); // sin brillo de ganador hasta que termine la animación
     return `<div class="quick-bet-seat ${player.bot?.thinking ? 'bot-thinking' : ''} ${!suspense && result?.amount > 0 ? 'winner' : ''}" style="--seat:${index}">
       <div class="seat-avatar" style="background:${avatarColor(player.id)}">${avatarEmoji(player.avatar)}</div>
       <div><b>${escapeHtml(player.name)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}</b><span>${player.bot?.thinking ? 'Pensando…' : player.bet ? `◆ ${formatChips(player.bet)} · ${escapeHtml(choice)}` : `${formatChips(player.chips)} fichas`}</span></div>
@@ -914,6 +1004,15 @@
         : result ? `<div class="quick-result-label">${result.value} · ${color === 'red' ? 'Rojo' : color === 'black' ? 'Negro' : 'Verde'}</div>` : '';
       return `<small>RULETA EUROPEA · RESULTADO AUTORITATIVO</small><div class="roulette-stage"><canvas id="roulette-canvas" width="290" height="290" aria-label="Rueda de ruleta europea"></canvas>${spinning ? '<button type="button" class="game-btn roulette-skip" data-roulette-skip>Saltar animación</button>' : ''}</div>${label}`;
     }
+    if (room.game === 'slots') {
+      const spinning = Boolean(ui.slotsSpin);
+      const reels = result?.reels;
+      const label = spinning
+        ? '<div class="quick-result-label spinning">Los rodillos giran…</div>'
+        : reels ? `<div class="quick-result-label">${reels.map(id => SLOT_META[id]?.label || id).join(' · ')}</div>` : '';
+      const paytable = `<div class="slot-paytable" aria-label="Tabla de pagos">${['monte','gem','bell','clover','cherry'].map(id => `<span title="Tres ${SLOT_META[id].label}: pago total x${SLOT_META[id].pay}">${SLOT_META[id].glyph}×3 <b>x${SLOT_META[id].pay}</b></span>`).join('')}<span title="Dos símbolos iguales: recuperas tu apuesta">Par <b>x1</b></span></div>`;
+      return `<small>TRAGAMONEDAS MONTECRISTO · RESULTADO AUTORITATIVO</small><div class="slot-machine"><div class="slot-window">${[0,1,2].map(i => `<div class="slot-reel"><div class="slot-strip" id="slot-strip-${i}">${slotStripHtml()}</div></div>`).join('')}</div>${paytable}</div>${spinning ? '<button type="button" class="game-btn slots-skip" data-slots-skip>Saltar animación</button>' : ''}${label}`;
+    }
     if (room.game === 'dice') {
       const face = result ? ['⚀','⚁','⚂','⚃','⚄','⚅'][result.value - 1] : '⚄';
       return `<small>DADOS CÓSMICOS · RESULTADO AUTORITATIVO</small><div class="dice-stage"><div class="big-die ${rolling}">${face}</div></div>${result ? `<div class="quick-result-label">Dado ${result.value}</div>` : ''}`;
@@ -926,6 +1025,7 @@
     const seats = room.players.map(quickSeat).join('');
     els.tableWrap.innerHTML = `<div class="quick-table-shell ${room.game}"><div class="quick-game-core">${quickCore(room)}</div><div class="quick-bets-around">${seats}</div></div>`;
     if (room.game === 'roulette') ensureRouletteLoop();
+    if (room.game === 'slots') ensureSlotsLoop();
   }
   function renderTable() {
     if (ui.room.game === 'poker') renderPokerTable();
@@ -996,7 +1096,7 @@
   function renderQuickActions(room, me) {
     if (ui.quickGame !== room.game) {
       ui.quickGame = room.game;
-      ui.quickChoice = room.game === 'coinflip' ? 'heads' : 'low';
+      ui.quickChoice = room.game === 'coinflip' ? 'heads' : room.game === 'slots' ? 'spin' : 'low';
     }
     if (room.phase === 'betting') {
       const hostLaunch = me.isHost ? '<button class="game-btn primary" data-event="quick_resolve">Lanzar ronda</button>' : '';
@@ -1007,7 +1107,11 @@
         els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>Necesitas al menos 10 fichas</b><span>Prueba otro juego o espera una recompensa.</span></div><div class="action-buttons">${hostLaunch}</div></div>`;
       } else {
         const suggested = Math.min(50, me.chips);
-        const chooser = room.game === 'roulette' ? `<div class="felt-wrap">${rouletteFeltHtml({ interactive: true })}</div>` : `<div><div class="quick-choice-grid">${quickChoiceButtons(room.game)}</div></div>`;
+        const chooser = room.game === 'roulette'
+          ? `<div class="felt-wrap">${rouletteFeltHtml({ interactive: true })}</div>`
+          : room.game === 'slots'
+            ? '<div class="waiting-copy"><b>🎰 Un giro por ronda</b><span>Confirma tu apuesta virtual y tira de la palanca: la tabla de pagos está en la máquina.</span></div>'
+            : `<div><div class="quick-choice-grid">${quickChoiceButtons(room.game)}</div></div>`;
         els.actionPanel.innerHTML = `<div class="action-bar ${room.game === 'roulette' ? 'roulette-bar' : ''}">${chooser}<div class="quick-bet-controls"><input id="quick-bet-amount" type="number" min="10" max="${me.chips}" value="${suggested}" aria-label="Apuesta virtual"><button class="game-btn green" data-quick-bet>Confirmar apuesta</button>${hostLaunch}</div></div>`;
       }
       return;
@@ -1018,6 +1122,10 @@
     }
     if (room.game === 'roulette' && ui.rouletteSpin) {
       els.actionPanel.innerHTML = '<div class="action-bar"><div class="waiting-copy"><b>La pelota está girando</b><span>El resultado se revelará cuando caiga en su casilla.</span></div><div class="action-buttons"><button type="button" class="game-btn" data-roulette-skip>Saltar animación</button></div></div>';
+      return;
+    }
+    if (room.game === 'slots' && ui.slotsSpin) {
+      els.actionPanel.innerHTML = '<div class="action-bar"><div class="waiting-copy"><b>Los rodillos giran</b><span>Se detendrán uno a uno con los símbolos que decidió el servidor.</span></div><div class="action-buttons"><button type="button" class="game-btn" data-slots-skip>Saltar animación</button></div></div>';
       return;
     }
     const resultCopy = room.results?.length ? room.results.map(result => `<span class="result-item ${result.amount > 0 ? 'win' : ''}">${escapeHtml(result.name)} <b>${result.amount > 0 ? '+' : ''}${formatDelta(result.amount)}</b></span>`).join('') : '<span class="result-item">Sin apuestas en esta ronda</span>';
@@ -1292,7 +1400,7 @@
     closeProfileModal(); closeBotControls();
     if (notifyServer && ui.room) await emitAck('leave_room');
     clearInterval(ui.clockTimer); clearSession(); ui.room = null; ui.me = null; ui.activeCode = null;
-    ui.rouletteSpin = null; ui.rouletteAngle = 0;
+    ui.rouletteSpin = null; ui.rouletteAngle = 0; ui.slotsSpin = null;
     ui.lastGameSignature = ''; ui.lastChatSignature = ''; ui.previousRanks = new Map(); ui.previousChips = new Map(); ui.lastMeChips = null;
     els.roomApp.classList.add('exiting');
     setTimeout(() => {

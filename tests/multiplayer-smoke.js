@@ -172,9 +172,10 @@ async function testBlackjackRegression() {
     await testRoulette();
     await testQuickSolo('dice', 'n:6');
     await testQuickSolo('coinflip', 'heads');
+    await testQuickSolo('slots', 'spin');
     await testPokerRegression();
     await testBlackjackRegression();
-    console.log('✓ Smoke multicliente: ruleta, dados, cara o cruz, perfil, social, reembolsos, póker y blackjack.');
+    console.log('✓ Smoke multicliente: ruleta, dados, cara o cruz, tragamonedas, perfil, social, reembolsos, póker y blackjack.');
   } catch (error) {
     console.error(error.stack || error);
     console.error(serverLog);

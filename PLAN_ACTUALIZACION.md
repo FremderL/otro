@@ -96,9 +96,11 @@
 
 **Entregable en Render:** deploy normal.
 
-## Fase 6 — Tragamonedas MonteCristo
+## Fase 6 — Tragamonedas MonteCristo ✅ COMPLETADA
 
 *Objetivo: sumar un sexto juego insignia con su propia máquina animada.*
+
+> **Estado (2026-09-28):** implementada. Sexto juego rápido `slots` en el motor autoritativo: 5 símbolos con pesos (🍒30 🍀25 🔔20 💎15 ♠10), pagos por tres iguales (x5/x8/x12/x20/x40), par x1 y EV teórico ≈ 0.97. Máquina con gabinete, ventana de tres rodillos que giran y se detienen en secuencia (~0.9 s entre cada uno) con desaceleración, rebote y desenfoque de movimiento, tabla de pagos visible, botón «Saltar animación» y `prefers-reduced-motion`. Tarjeta de lobby con imagen original (misma dirección de arte), opción en el modal de crear, filtro del lobby, bots expertos, reto «Tira de la palanca» y logro de explorador ampliado. Pruebas: `tests/slots-unit.js` (catálogo, pesos, dominio, paytable, EV) + e2e en el smoke multijugador. Corrección incluida: al terminar las animaciones de ruleta/tragamonedas se fuerza el repintado (la firma de estado no cambia) — verificado de extremo a extremo con navegador simulado.
 
 1. **Nuevo juego rápido "Tragamonedas".** Integrado al motor de `quick-games` como los demás: cada participante confirma una apuesta por ronda, el **servidor genera y liquida el resultado** (símbolos por rodillo con pesos definidos), y la animación solo representa ese resultado autoritativo.
 2. **Máquina con tres tiras giratorias.** Diseño visual completo de la máquina (gabinete, ventana de premios, palanca/botón de giro) acorde a la identidad sobria de la fase 4. Las **tres tiras giran y se detienen en secuencia** (izquierda → centro → derecha, ~1 s entre cada una) con desaceleración y un pequeño rebote al frenar, mostrando exactamente los símbolos que decidió el servidor. Respeto a `prefers-reduced-motion` y opción de saltar la animación.

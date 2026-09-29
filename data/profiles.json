@@ -27,5 +27,272 @@
     "flags": {},
     "createdAt": 1787693650573,
     "updatedAt": 1787695672364
+  },
+  {
+    "id": "t-1790647249846",
+    "name": "Prueba",
+    "avatar": "fox",
+    "chips": 1100,
+    "stats": {
+      "roundsPlayed": 0,
+      "wins": 0,
+      "losses": 0,
+      "biggestWin": 0,
+      "totalWagered": 0,
+      "currentStreak": 0,
+      "bestStreak": 0
+    },
+    "gamesPlayed": [],
+    "achievements": [],
+    "challenges": {},
+    "dailyBonusDate": "2026-09-29",
+    "transactions": [
+      {
+        "amount": 100,
+        "reason": "Bono diario",
+        "time": 1790647249847
+      }
+    ],
+    "flags": {
+      "tosVersion": "2026-09-28",
+      "tosAcceptedAt": 1790647249847
+    },
+    "createdAt": 1790647249847,
+    "updatedAt": 1790647252230
+  },
+  {
+    "id": "5e41d475-ee1c-42da-8e71-142059aca0c0",
+    "name": "ProbadorSim",
+    "avatar": "fox",
+    "chips": 1100,
+    "stats": {
+      "roundsPlayed": 0,
+      "wins": 0,
+      "losses": 0,
+      "biggestWin": 0,
+      "totalWagered": 0,
+      "currentStreak": 0,
+      "bestStreak": 0
+    },
+    "gamesPlayed": [],
+    "achievements": [],
+    "challenges": {},
+    "dailyBonusDate": "2026-09-29",
+    "transactions": [
+      {
+        "amount": 100,
+        "reason": "Bono diario",
+        "time": 1790647357010
+      }
+    ],
+    "flags": {
+      "tosVersion": "2026-09-28",
+      "tosAcceptedAt": 1790647357010
+    },
+    "createdAt": 1790647357010,
+    "updatedAt": 1790647360030
+  },
+  {
+    "id": "9104446c-af48-425e-82d1-586c11319c0a",
+    "name": "SlotSim",
+    "avatar": "fox",
+    "chips": 1155,
+    "stats": {
+      "roundsPlayed": 1,
+      "wins": 0,
+      "losses": 1,
+      "biggestWin": 0,
+      "totalWagered": 20,
+      "currentStreak": -1,
+      "bestStreak": 0
+    },
+    "gamesPlayed": [
+      "slots"
+    ],
+    "achievements": [],
+    "challenges": {
+      "try_slots": {
+        "completedAt": 1790647816899,
+        "reward": 75
+      }
+    },
+    "dailyBonusDate": "2026-09-29",
+    "transactions": [
+      {
+        "amount": 100,
+        "reason": "Bono diario",
+        "time": 1790647812313
+      },
+      {
+        "amount": -20,
+        "reason": "Resultado en slots",
+        "time": 1790647816899
+      },
+      {
+        "amount": 75,
+        "reason": "Reto: Tira de la palanca",
+        "time": 1790647816899
+      }
+    ],
+    "flags": {
+      "tosVersion": "2026-09-28",
+      "tosAcceptedAt": 1790647812313
+    },
+    "createdAt": 1790647812313,
+    "updatedAt": 1790647818694
+  },
+  {
+    "id": "b9032210-5d6d-4fc8-ad7e-80d5fa7ed223",
+    "name": "DebugSkip",
+    "avatar": "fox",
+    "chips": 1175,
+    "stats": {
+      "roundsPlayed": 1,
+      "wins": 0,
+      "losses": 0,
+      "biggestWin": 0,
+      "totalWagered": 20,
+      "currentStreak": 0,
+      "bestStreak": 0
+    },
+    "gamesPlayed": [
+      "slots"
+    ],
+    "achievements": [],
+    "challenges": {
+      "try_slots": {
+        "completedAt": 1790647863447,
+        "reward": 75
+      }
+    },
+    "dailyBonusDate": "2026-09-29",
+    "transactions": [
+      {
+        "amount": 100,
+        "reason": "Bono diario",
+        "time": 1790647859460
+      },
+      {
+        "amount": 0,
+        "reason": "Empate en slots",
+        "time": 1790647863447
+      },
+      {
+        "amount": 75,
+        "reason": "Reto: Tira de la palanca",
+        "time": 1790647863447
+      }
+    ],
+    "flags": {
+      "tosVersion": "2026-09-28",
+      "tosAcceptedAt": 1790647859460
+    },
+    "createdAt": 1790647859460,
+    "updatedAt": 1790647870221
+  },
+  {
+    "id": "49c44138-9af8-46da-9a6c-cecfe35d62d6",
+    "name": "DebugSkip",
+    "avatar": "fox",
+    "chips": 1175,
+    "stats": {
+      "roundsPlayed": 1,
+      "wins": 0,
+      "losses": 0,
+      "biggestWin": 0,
+      "totalWagered": 20,
+      "currentStreak": 0,
+      "bestStreak": 0
+    },
+    "gamesPlayed": [
+      "slots"
+    ],
+    "achievements": [],
+    "challenges": {
+      "try_slots": {
+        "completedAt": 1790647906917,
+        "reward": 75
+      }
+    },
+    "dailyBonusDate": "2026-09-29",
+    "transactions": [
+      {
+        "amount": 100,
+        "reason": "Bono diario",
+        "time": 1790647902950
+      },
+      {
+        "amount": 0,
+        "reason": "Empate en slots",
+        "time": 1790647906917
+      },
+      {
+        "amount": 75,
+        "reason": "Reto: Tira de la palanca",
+        "time": 1790647906917
+      }
+    ],
+    "flags": {
+      "tosVersion": "2026-09-28",
+      "tosAcceptedAt": 1790647902950
+    },
+    "createdAt": 1790647902950,
+    "updatedAt": 1790647913706
+  },
+  {
+    "id": "3a133215-1a62-4cd8-8795-8121f7a0f8f6",
+    "name": "RuletaSim",
+    "avatar": "fox",
+    "chips": 1240,
+    "stats": {
+      "roundsPlayed": 1,
+      "wins": 1,
+      "losses": 0,
+      "biggestWin": 40,
+      "totalWagered": 20,
+      "currentStreak": 1,
+      "bestStreak": 1
+    },
+    "gamesPlayed": [
+      "roulette"
+    ],
+    "achievements": [
+      "first_win"
+    ],
+    "challenges": {
+      "win_one": {
+        "completedAt": 1790647937834,
+        "reward": 50
+      }
+    },
+    "dailyBonusDate": "2026-09-29",
+    "transactions": [
+      {
+        "amount": 100,
+        "reason": "Bono diario",
+        "time": 1790647933863
+      },
+      {
+        "amount": 40,
+        "reason": "Ganancia en roulette",
+        "time": 1790647937834
+      },
+      {
+        "amount": 50,
+        "reason": "Logro: Primera victoria",
+        "time": 1790647937834
+      },
+      {
+        "amount": 50,
+        "reason": "Reto: Sabor a victoria",
+        "time": 1790647937834
+      }
+    ],
+    "flags": {
+      "tosVersion": "2026-09-28",
+      "tosAcceptedAt": 1790647933862
+    },
+    "createdAt": 1790647933862,
+    "updatedAt": 1790647945815
   }
 ]

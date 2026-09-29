@@ -106,7 +106,8 @@ function createRoom(game, host, socket, requestedName) {
     blackjack: `Club 21 de ${host.name}`,
     roulette: `Ruleta de ${host.name}`,
     dice: `Dados de ${host.name}`,
-    coinflip: `Duelo de ${host.name}`
+    coinflip: `Duelo de ${host.name}`,
+    slots: `Tragamonedas de ${host.name}`
   };
   const quick = isQuickGame(game);
   const room = {

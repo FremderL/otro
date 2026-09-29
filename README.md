@@ -22,6 +22,7 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Privacidad de cartas garantizada por el servidor: en póker y blackjack cada quien recibe solo sus cartas; las ajenas viajan boca abajo (`XX`) hasta el showdown o los resultados.
 - Atajos de teclado en mesa (`F/C/R/A` en póker, `H/S/D` en blackjack, `Enter` confirma apuestas rápidas, `T` enfoca el chat y `?` muestra la guía) e imágenes originales en las cinco tarjetas del lobby.
 - Ruleta europea completa: paño de apuestas con docenas y columnas, fichas visibles sobre el paño y rueda animada en canvas cuya pelota cae siempre en el número autoritativo del servidor.
+- Tragamonedas MonteCristo: tres rodillos que se detienen en secuencia con los símbolos que decidió el servidor, tabla de pagos visible y símbolo premium ♠.
 - Interfaz exclusiva para computadoras de escritorio y laptops, sin animaciones largas que bloqueen la partida.
 
 ## Experiencia visual y accesibilidad
@@ -68,7 +69,14 @@ Apuesta inicial, pedir, plantarse, doblar y pago de Blackjack 3:2. Cada turno di
 
 - Cara o cruz: pago total x2.
 
-En los tres juegos rápidos, cada participante confirma una sola apuesta por ronda. Solo el anfitrión inicia el lanzamiento, pero **el servidor genera y liquida el resultado**. La animación de 1,15 segundos solo representa el estado autoritativo y no decide el resultado.
+### Tragamonedas MonteCristo
+
+- Tres rodillos con cinco símbolos ponderados: 🍒 Cereza, 🍀 Trébol, 🔔 Campana, 💎 Diamante y ♠ MonteCristo (premium, el más raro).
+- Tres iguales pagan según el símbolo: 🍒 x5 · 🍀 x8 · 🔔 x12 · 💎 x20 · ♠ x40 (pago total sobre la apuesta).
+- Dos símbolos iguales devuelven la apuesta (x1); tres distintos pierden.
+- Los rodillos giran y se detienen en secuencia (izquierda → centro → derecha) con desaceleración y rebote, mostrando exactamente los símbolos que decidió el servidor; la animación se puede saltar.
+
+En los juegos rápidos, cada participante confirma una sola apuesta por ronda. Solo el anfitrión inicia el lanzamiento, pero **el servidor genera y liquida el resultado**. Las animaciones (incluidas la rueda de la ruleta y los rodillos de la tragamonedas) solo representan el estado autoritativo y nunca deciden el resultado.
 
 ## Bots e IA autoritativa
 
