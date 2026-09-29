@@ -175,6 +175,34 @@
 
 ---
 
+## Fase 11 — Aprovechar la base de datos real (planificada, pendiente de implementar)
+
+*Objetivo: con `DATABASE_URL` ya activa en producción (Fase 10), los perfiles dejaron de ser el cuello de botella — ahora se puede construir sobre una base de datos de verdad en vez de un archivo. Cada punto es una entrega independiente, con su propio smoke test, en el orden de prioridad decidido el 2026-09-29.*
+
+1. **Historial y estadísticas sin límite artificial** *(prioridad 1)*. Hoy `balanceHistory` se recorta a los últimos 60 puntos y `transactions` a los últimos 20 porque cada guardado reescribe el perfil completo (archivo JSON o foto completa en Postgres — ver Fase 10). Con Postgres disponible, mover el historial granular a sus propias tablas (p. ej. `montecristo_balance_points`, `montecristo_transactions`) permite:
+   - Guardar **todo** el historial de saldo y transacciones sin recortarlo, sin reescribir el perfil completo en cada punto (solo se inserta la fila nueva).
+   - Ampliar la gráfica de saldo del modal de perfil (hoy últimos 60 movimientos) con selector de rango (semana / mes / temporada / todo el tiempo).
+   - Ofrecer una **descarga del historial propio** (JSON o CSV) desde el modal de perfil — transparencia total sobre las fichas virtuales de cada quien.
+   - El backend de archivo JSON conserva el límite actual (60/20) sin cambios, ya que ahí sí importa el tamaño del archivo; la ampliación aplica solo cuando `DATABASE_URL` está activa, documentado como diferencia intencional entre backends.
+   - **Criterio de aceptación:** smoke test que guarde cientos de puntos de saldo en el backend de Postgres simulado y confirme que ninguno se pierde; la gráfica del perfil sigue funcionando igual quien use el archivo JSON (sin regresión en los 17 tests actuales).
+2. **Código de recuperación de perfil** *(prioridad 2)*. Hoy la identidad de cada jugador vive únicamente en un token guardado en `localStorage`: aunque el servidor ya no pierde datos (Fase 10), la persona sí pierde el acceso a los suyos si borra el navegador, cambia de computadora o de perfil del sistema operativo. Con la base de datos ya confiable, esto se puede resolver:
+   - Al crear el perfil (o bajo demanda desde el modal de perfil), generar un **código de recuperación** legible (p. ej. 8 caracteres alfanuméricos), mostrado una sola vez con aviso de "guárdalo, es la única forma de recuperar tu cuenta".
+   - El código se guarda **con hash** (nunca en texto plano) en el perfil de Postgres.
+   - Nueva pantalla/enlace "Recuperar mi perfil": el jugador introduce el código y el servidor reasigna ese perfil al token del dispositivo actual.
+   - **Criterio de aceptación:** smoke test que simula perder el token original y recuperar el mismo perfil (mismas fichas, logros e historial) con el código; un código incorrecto se rechaza sin filtrar información de otros perfiles.
+3. **Panel de operación / métricas agregadas** *(prioridad 3)*. Con Postgres, las consultas agregadas (jugadores activos por día, fichas totales en circulación, juegos más jugados, perfiles nuevos por semana) son triviales; sobre el archivo JSON eran incómodas de calcular sin cargar todo a memoria y recorrerlo a mano.
+   - Endpoint protegido (p. ej. `/admin/metrics`, con un token compartido en variable de entorno `ADMIN_TOKEN`, nunca expuesto al cliente del juego) con esas métricas en JSON.
+   - Sin panel visual por ahora (fuera de alcance de "solo escritorio para jugar"); el propio operador puede consultarlo con `curl` o pegarlo en una hoja de cálculo.
+   - **Criterio de aceptación:** smoke test que confirma que el endpoint exige el token correcto y devuelve números consistentes con perfiles de prueba conocidos.
+4. **Antiabuso ligado a la base de datos** *(prioridad 4)*. Hoy cualquier límite de creación de salas o perfiles vive en memoria y se reinicia con cada deploy. Con persistencia real, se puede:
+   - Registrar intentos de alta de perfiles por IP/dispositivo en una ventana de tiempo, persistente entre reinicios.
+   - Mantener una lista de dispositivos suspendidos que sobrevive a redeploys.
+   - **Criterio de aceptación:** smoke test que simula creación rápida de perfiles desde el mismo origen y confirma que el límite persiste incluso "reiniciando" el store (como en `tests/profile-store-pg-smoke.js`).
+
+**Entregable en Render:** cada punto se despliega por separado, como manda la regla de una fase = varias entregas pequeñas; ninguno requiere cambios de infraestructura adicionales a los ya hechos en la Fase 10 (`DATABASE_URL` ya activa).
+
+---
+
 ## Orden y ritmo sugerido
 
 | Fase | Alcance | Esfuerzo estimado | Riesgo |
@@ -189,6 +217,7 @@
 | 8 | Contenido nuevo | Alto (continuo) | Medio |
 | 9 | Calidad continua | Bajo (transversal) | Bajo |
 | 10 | Persistencia gratuita sin tarjeta (Postgres opcional) | Bajo–medio (1 iteración) | **Alto impacto**: evita perder perfiles al usar el plan Free sin disco |
+| 11 | Aprovechar la base de datos real (historial completo, recuperación de perfil, métricas, antiabuso) | Medio (4 iteraciones independientes) | Bajo–medio: cada punto es una entrega aislada, sin tocar infraestructura nueva |
 
 > **Notas de prioridad:**
 > - Si el servicio ya tiene jugadores reales, conviene adelantar el punto 7.1 (persistencia de perfiles) inmediatamente después de la fase 1, porque hoy cada deploy en Render borra `data/profiles.json`.
