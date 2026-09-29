@@ -29,5 +29,3 @@ jobs:
 
       - name: Ejecutar suite completa
         run: npm test
-        env:
-          LOG_JSON: 'off'
