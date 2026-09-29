@@ -19,8 +19,8 @@
     chatList: $('#chat-list'), chatForm: $('#chat-form'), chatInput: $('#chat-input'),
     gameStatus: $('#game-status'), turnClock: $('#turn-clock'), clockValue: $('#clock-value'),
     clockPlayer: $('#clock-player'), tableWrap: $('#table-wrap'), actionPanel: $('#action-panel'),
-    toastStack: $('#toast-stack'), roundFlash: $('#round-flash'), mobileMenu: $('#mobile-menu'),
-    mobileBackdrop: $('#mobile-backdrop'), sidebar: $('.sidebar'), soundToggle: $('#sound-toggle'),
+    toastStack: $('#toast-stack'), roundFlash: $('#round-flash'),
+    sidebar: $('.sidebar'), soundToggle: $('#sound-toggle'),
     specialEventBanner: $('#special-event-banner'), winnerTicker: $('#winner-ticker'), reactionStage: $('#reaction-stage'),
     profileModal: $('#profile-modal'), profileForm: $('#profile-form'), profileNameInput: $('#profile-name-input'),
     profileAvatarChoice: $('#profile-avatar-choice'), profileBigAvatar: $('#profile-big-avatar'),
@@ -333,7 +333,7 @@
       item.setAttribute('aria-pressed', String(selected));
     });
   }));
-  document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeModal(); closeProfileModal(); closeMobileMenu(); } });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeModal(); closeProfileModal(); } });
 
   els.form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -459,7 +459,6 @@
     els.playerCount.textContent = `${connectedCount} / 6`;
     els.roomApp.dataset.game = room.game;
     els.roomApp.classList.toggle('my-turn', room.turnId === ui.me?.id);
-    els.mobileMenu.setAttribute('aria-label', `Abrir panel: ${connectedCount} jugador${connectedCount === 1 ? '' : 'es'} conectado${connectedCount === 1 ? '' : 's'}`);
     renderBotControls();
     renderProfile();
     renderPlayers();
@@ -1025,7 +1024,7 @@
   $('#leave-room').addEventListener('click', () => leaveToLobby(true));
   $('#room-logo').addEventListener('click', event => { event.preventDefault(); leaveToLobby(true); });
   async function leaveToLobby(notifyServer = true) {
-    closeMobileMenu(); closeProfileModal(); closeBotControls();
+    closeProfileModal(); closeBotControls();
     if (notifyServer && ui.room) await emitAck('leave_room');
     clearInterval(ui.clockTimer); clearSession(); ui.room = null; ui.me = null; ui.activeCode = null;
     ui.lastGameSignature = ''; ui.lastChatSignature = ''; ui.previousRanks = new Map(); ui.previousChips = new Map(); ui.lastMeChips = null;
@@ -1035,10 +1034,7 @@
       updateHistory(''); window.scrollTo(0, 0);
     }, 280);
   }
-  function openMobileMenu() { els.sidebar.classList.add('open'); els.mobileBackdrop.classList.add('open'); }
-  function closeMobileMenu() { els.sidebar.classList.remove('open'); els.mobileBackdrop.classList.remove('open'); }
-  els.mobileMenu.addEventListener('click', openMobileMenu);
-  els.mobileBackdrop.addEventListener('click', closeMobileMenu);
+
   els.soundToggle.addEventListener('click', () => {
     ui.sound = !ui.sound; localStorage.setItem('montecristo-sound', ui.sound ? 'on' : 'off'); updateSoundButton(); if (ui.sound) playTone('notice');
   });

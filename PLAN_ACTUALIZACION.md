@@ -17,7 +17,7 @@
 
 ---
 
-## Fase 1 — Escritorio como única plataforma (fundación)
+## Fase 1 — Escritorio como única plataforma (fundación) ✅ COMPLETADA
 
 *Objetivo: declarar y aplicar la política "solo computadoras" sin romper nada de lo existente.*
 

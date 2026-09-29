@@ -17,7 +17,7 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Eventos especiales aleatorios: jackpot virtual, ganancia x2 y ronda bonus.
 - Migración de anfitrión, reconexión por dispositivo y reembolso de apuestas rápidas abiertas al salir.
 - Bots autoritativos configurables por el anfitrión, con cuatro dificultades, cinco estilos y decisiones específicas por juego.
-- Interfaz responsive para computadora y celular, sin animaciones largas que bloqueen la partida.
+- Interfaz exclusiva para computadoras de escritorio y laptops, sin animaciones largas que bloqueen la partida.
 
 ## Experiencia visual y accesibilidad
 
@@ -29,7 +29,11 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Asientos con insignia `🤖 BOT`, dificultad, estilo, estado `Pensando…` y última acción, sin llenar la interfaz de avisos repetidos.
 - En la mesa se priorizan estado de ronda, turno actual, reloj, fichas, apuesta y siguiente acción.
 - Estados visuales para conexión, reconexión, desconexión, carga, foco, selección, deshabilitado, victoria, derrota y recepción de fichas.
-- Tamaños táctiles, navegación por teclado, foco visible, regiones en vivo y soporte para `prefers-reduced-motion`.
+- Navegación por teclado, foco visible, regiones en vivo y soporte para `prefers-reduced-motion`.
+
+## Plataforma soportada
+
+MonteCristo es un sitio **solo para computadoras** (escritorio o laptop). No hay soporte para celulares ni tablets: con ventanas menores a **1024 px de ancho** se muestra una pantalla de bloqueo que invita a volver desde una computadora. Resolución mínima soportada: **1024×720**; diseño óptimo a partir de **1280×800**.
 
 ## Juegos y mecánicas
 
@@ -167,7 +171,7 @@ lib/progression.js                Transacciones, estadísticas, retos, logros y 
 lib/quick-games.js                Registro, reglas, cuotas y resultados de minijuegos
 lib/special-events.js             Eventos temporales y bonificaciones
 public/index.html                 Lobby, mesas, panel de bots y componentes sociales
-public/styles.css                 Identidad visual, juegos temáticos y diseño responsive
+public/styles.css                 Identidad visual y juegos temáticos (diseño solo escritorio)
 public/app.js                     Cliente Socket.IO y renderizado de todos los juegos
 public/assets/                     Imágenes locales del lobby
 tests/multiplayer-smoke.js        Regresión autoritativa con varios clientes
