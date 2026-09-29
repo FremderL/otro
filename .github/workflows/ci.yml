@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   test:
-    name: Sintaxis + 17 suites de smoke tests
+    name: Sintaxis + 20 suites de smoke tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

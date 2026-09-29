@@ -159,11 +159,11 @@ npm run check
 npm run test:multiplayer
 npm run test:bots
 npm run test:bots:fallback
-# o ejecutar toda la validación (17 suites):
+# o ejecutar toda la validación (20 suites):
 npm test
 ```
 
-Desde la fase 9, GitHub Actions ejecuta `npm test` en cada push y pull request (`.github/workflows/ci.yml`), la suite incluye un presupuesto de rendimiento (`tests/performance-smoke.js`), un endurecimiento contra entradas maliciosas (`tests/qa-hardening-smoke.js`) y un recorrido de usuario real con navegador simulado (`tests/user-journey-smoke.js`). Desde la fase 10 también incluye `tests/profile-store-pg-smoke.js`, que valida el backend de Postgres contra una base simulada (ninguna de las 17 suites necesita una base de datos real para pasar). Los hallazgos y decisiones de la revisión de diseño y QA viven en `REVISION_CALIDAD.md`, y la rutina trimestral de dependencias en `MANTENIMIENTO.md`.
+Desde la fase 9, GitHub Actions ejecuta `npm test` en cada push y pull request (`.github/workflows/ci.yml`), la suite incluye un presupuesto de rendimiento (`tests/performance-smoke.js`), un endurecimiento contra entradas maliciosas (`tests/qa-hardening-smoke.js`) y un recorrido de usuario real con navegador simulado (`tests/user-journey-smoke.js`). Desde la fase 10 también incluye `tests/profile-store-pg-smoke.js`, que valida el backend de Postgres contra una base simulada (ninguna de las 20 suites necesita una base de datos real para pasar). Los hallazgos y decisiones de la revisión de diseño y QA viven en `REVISION_CALIDAD.md`, y la rutina trimestral de dependencias en `MANTENIMIENTO.md`.
 
 Las pruebas levantan servidores aislados con perfiles temporales. La regresión multicliente valida:
 
@@ -197,6 +197,11 @@ Migrar un `data/profiles.json` existente a Postgres:
 DATABASE_URL="postgres://usuario:clave@host/db?sslmode=require" node scripts/migrate-profiles-to-postgres.js
 # --dry-run para previsualizar sin escribir
 ```
+
+## Historial completo y cuenta opcional (Fase 11)
+
+- **Historial sin límite artificial:** el techo de puntos de saldo/transacciones conservados vive en `HISTORY_LIMITS` (`lib/profile-store-shared.js`). Con el archivo JSON se mantiene en 60/20 como siempre; con Postgres activo, `server.js` lo eleva a 2000/500 al arrancar. `GET /api/perfil/:token/historial` descarga en JSON el historial completo (saldo, transacciones, estadísticas, desglose por juego) del propio perfil — enlace disponible en el modal de perfil.
+- **Login opcional (usuario + contraseña):** el modo instantáneo sin cuenta sigue funcionando exactamente igual. Desde el lobby, cualquiera puede vincular un usuario y contraseña a su perfil actual («Iniciar sesión» → «Crear una con mi perfil actual») y luego recuperarlo completo (fichas, logros, historial) desde cualquier otra computadora iniciando sesión. Sin correo ni verificación por correo (no hay proveedor SMTP en este entorno); la contraseña se guarda con `scrypt` + sal aleatoria (nunca en texto plano), y hay un bloqueo temporal tras varios intentos fallidos seguidos. La recuperación de contraseña olvidada queda fuera de alcance por ahora.
 
 ## Operación en Render
 
