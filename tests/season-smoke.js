@@ -108,6 +108,13 @@ const currentMonth = new Date().toISOString().slice(0, 7);
   assert.equal(lobby2.season.previous.month, '2020-01', 'la temporada cerrada quedó archivada');
   assert.equal(lobby2.season.previous.podium[0].name, 'Veterana', 'el podio anterior registra a la líder');
   assert.equal(lobby2.season.previous.podium[0].chips, 4321, 'con sus puntos de cierre');
+  // ---- Fase 11.4: quien terminó 1er lugar recibe banner dorado (única vez) y una medalla ----
+  assert.equal(lobby2.season.previous.podium[0].championBanner, true, 'la líder de la temporada cerrada recibió el banner dorado');
+  assert.equal(lobby2.season.previous.podium[0].medals, 1, 'y su primera medalla de oro coleccionable');
+  const veteranaInRanking = lobby2.season.ranking.find(entry => entry.name === 'Veterana');
+  assert.ok(veteranaInRanking, 'Veterana sigue en el ranking de la nueva temporada');
+  assert.equal(veteranaInRanking.championBanner, true, 'el banner dorado es de por vida, no se pierde al reiniciarse la temporada');
+  assert.equal(veteranaInRanking.medals, 1, 'la medalla de oro también se conserva entre temporadas');
 
   // ---- El bono diario de 100 se mantiene: perfil nuevo entra con 1000 + 100 ----
   const token2 = `fresh-${Date.now()}`;

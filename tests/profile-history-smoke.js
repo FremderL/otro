@@ -74,7 +74,11 @@ function testEnsureSeasonRespetaTecho() {
     const closed = store.ensureSeason();
     assert.ok(closed, 'ensureSeason cierra la temporada vieja');
     assert.ok(profile.transactions.length <= 3, 'ensureSeason respeta el techo de transacciones');
-    assert.ok(profile.balanceHistory.length <= 3, 'ensureSeason respeta el techo de balance');
+    // Fase 11.4: los puntos de la gráfica de saldo de la temporada que cierra
+    // se descartan por completo (no solo se recortan al techo) para ahorrar
+    // espacio; la nueva temporada arranca su propia gráfica desde cero.
+    assert.equal(profile.balanceHistory.length, 1, 'ensureSeason borra los puntos de la temporada anterior y arranca uno nuevo');
+    assert.equal(profile.balanceHistory[0].chips, 1000, 'el único punto que queda es el saldo recién reiniciado');
   } finally {
     Object.assign(HISTORY_LIMITS, original);
   }

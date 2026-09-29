@@ -7,7 +7,7 @@ const { AVATARS, avatarInfo } = require('./lib/profile-store');
 // Fase 10.2: DATABASE_URL activa el backend de Postgres (Neon free); sin ella,
 // se mantiene el ProfileStore de archivo JSON de siempre. Ver lib/profile-store-factory.js.
 const { createProfileStore } = require('./lib/profile-store-factory');
-const { HISTORY_LIMITS } = require('./lib/profile-store-shared');
+const { HISTORY_LIMITS, INACTIVITY_LIMIT_MS } = require('./lib/profile-store-shared');
 const { credit, recordWager, recordOutcome, claimDailyBonus, publicProgress } = require('./lib/progression');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
 const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
@@ -1790,14 +1790,29 @@ hostInactivitySweep.unref?.();
 // temporada, todos los perfiles vuelven a 1000 fichas y se anuncia el podio.
 const seasonSweep = setInterval(() => {
   if (!profiles) return; // Fase 10.2: red de seguridad si Postgres tardara más de 5 min en responder al arrancar.
+  // Fase 11.4: junto con el cambio de mes, se aprovecha el mismo barrido de 5
+  // min para borrar cuentas sin actividad desde hace ~3 meses (ahorra espacio,
+  // sobre todo en Postgres). No afecta a nadie conectado: si alguien reconecta
+  // después de tanto tiempo sin tocar su perfil, empieza uno nuevo, igual que
+  // un jugador que entra por primera vez.
+  const prunedAccounts = profiles.pruneInactiveAccounts(INACTIVITY_LIMIT_MS);
+  if (prunedAccounts.length) {
+    logEvent('accounts_pruned', { count: prunedAccounts.length, names: prunedAccounts.slice(0, 20).map(entry => entry.name) });
+  }
   const closed = profiles.ensureSeason();
   if (!closed) return;
-  logEvent('season_reset', { closedMonth: closed.month, players: closed.players, podium: closed.podium });
+  logEvent('season_reset', { closedMonth: closed.month, players: closed.players, podium: closed.podium, bannerAwarded: closed.bannerAwarded });
   const podiumText = closed.podium.length
     ? ` Podio de ${closed.month}: ${closed.podium.map((entry, index) => `${['🥇', '🥈', '🥉'][index]} ${entry.name} (${entry.chips})`).join(' · ')}.`
     : '';
+  // Fase 11.4: el banner dorado solo se anuncia la primera vez que alguien lo
+  // gana (closed.bannerAwarded ya viene en false si esa persona ya lo tenía
+  // de una temporada anterior).
+  const bannerText = closed.bannerAwarded && closed.podium[0]
+    ? ` 🎖️ ¡${closed.podium[0].name} se ganó su banner dorado de por vida por terminar en 1er lugar!`
+    : '';
   for (const room of rooms.values()) {
-    addSystem(room, `📅 ¡Nueva temporada mensual! Todos los saldos se reiniciaron a 1000 fichas.${podiumText}`);
+    addSystem(room, `📅 ¡Nueva temporada mensual! Todos los saldos se reiniciaron a 1000 fichas.${podiumText}${bannerText}`);
     broadcast(room);
   }
   broadcastLobby();

@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "check": "node --check server.js && node --check public/app.js && node --check lib/poker-evaluator.js && node --check lib/terms.js && node --check lib/bots/catalog.js && node --check lib/bots/decision-engine.js && node --check lib/bots/bot-controller.js && node --check lib/profile-store.js && node --check lib/profile-store-shared.js && node --check lib/profile-store-base.js && node --check lib/profile-store-pg.js && node --check lib/profile-store-factory.js && node --check scripts/migrate-profiles-to-postgres.js && node --check tests/bots-smoke.js && node --check tests/bots-fallback-smoke.js && node --check tests/table-lifecycle-smoke.js && node --check lib/quick-games.js && node --check tests/roulette-unit.js && node --check tests/slots-unit.js && node --check tests/ops-smoke.js && node --check tests/spectators-smoke.js && node --check tests/profile-stats-smoke.js && node --check tests/tournament-smoke.js && node --check tests/blackjack-variants-smoke.js && node --check tests/season-smoke.js && node --check tests/performance-smoke.js && node --check tests/qa-hardening-smoke.js && node --check tests/user-journey-smoke.js && node --check tests/poker-showdown-smoke.js && node --check tests/profile-store-pg-smoke.js && node --check tests/profile-history-smoke.js && node --check tests/account-login-smoke.js",
+    "check": "node --check server.js && node --check public/app.js && node --check lib/poker-evaluator.js && node --check lib/terms.js && node --check lib/bots/catalog.js && node --check lib/bots/decision-engine.js && node --check lib/bots/bot-controller.js && node --check lib/profile-store.js && node --check lib/profile-store-shared.js && node --check lib/profile-store-base.js && node --check lib/profile-store-pg.js && node --check lib/profile-store-factory.js && node --check scripts/migrate-profiles-to-postgres.js && node --check tests/bots-smoke.js && node --check tests/bots-fallback-smoke.js && node --check tests/table-lifecycle-smoke.js && node --check lib/quick-games.js && node --check tests/roulette-unit.js && node --check tests/slots-unit.js && node --check tests/ops-smoke.js && node --check tests/spectators-smoke.js && node --check tests/profile-stats-smoke.js && node --check tests/tournament-smoke.js && node --check tests/blackjack-variants-smoke.js && node --check tests/season-smoke.js && node --check tests/performance-smoke.js && node --check tests/qa-hardening-smoke.js && node --check tests/user-journey-smoke.js && node --check tests/poker-showdown-smoke.js && node --check tests/profile-store-pg-smoke.js && node --check tests/profile-history-smoke.js && node --check tests/account-login-smoke.js && node --check tests/account-lifecycle-smoke.js",
     "test:roulette": "node tests/roulette-unit.js",
     "test:slots": "node tests/slots-unit.js",
     "test:multiplayer": "node tests/multiplayer-smoke.js",
@@ -18,7 +18,7 @@
     "test:spectators": "node tests/spectators-smoke.js",
     "test:stats": "node tests/profile-stats-smoke.js",
     "test:tournament": "node tests/tournament-smoke.js",
-    "test": "npm run check && npm run test:roulette && npm run test:slots && npm run test:multiplayer && npm run test:bots && npm run test:bots:fallback && npm run test:lifecycle && npm run test:ops && npm run test:spectators && npm run test:stats && npm run test:tournament && npm run test:showdown && npm run test:blackjack && npm run test:season && npm run test:performance && npm run test:qa && npm run test:journey && npm run test:profile-store-pg && npm run test:history && npm run test:account",
+    "test": "npm run check && npm run test:roulette && npm run test:slots && npm run test:multiplayer && npm run test:bots && npm run test:bots:fallback && npm run test:lifecycle && npm run test:ops && npm run test:spectators && npm run test:stats && npm run test:tournament && npm run test:showdown && npm run test:blackjack && npm run test:season && npm run test:performance && npm run test:qa && npm run test:journey && npm run test:profile-store-pg && npm run test:history && npm run test:account && npm run test:account-lifecycle",
     "test:blackjack": "node tests/blackjack-variants-smoke.js",
     "test:season": "node tests/season-smoke.js",
     "test:performance": "node tests/performance-smoke.js",
@@ -28,6 +28,7 @@
     "test:profile-store-pg": "node tests/profile-store-pg-smoke.js",
     "test:history": "node tests/profile-history-smoke.js",
     "test:account": "node tests/account-login-smoke.js",
+    "test:account-lifecycle": "node tests/account-lifecycle-smoke.js",
     "migrate:profiles": "node scripts/migrate-profiles-to-postgres.js"
   },
   "engines": {

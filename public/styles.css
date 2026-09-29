@@ -400,6 +400,11 @@ a { color: inherit; text-decoration: none; }
 .progress-copy b { display:block; font-size:9.5px; }.progress-copy small { display:block; margin-top:3px; color:var(--muted); font-size:8px; line-height:1.35; }
 .progress-reward { color:var(--gold); font-size:8.5px; font-weight:800; }
 .progress-track { height:2px; margin-top:5px; overflow:hidden; border-radius:2px; background:rgba(255,255,255,.06); }.progress-track i { display:block; height:100%; background:var(--mint); }
+.profile-badges { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.profile-badges.hidden { display:none; }
+.profile-badge { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:14px; font-size:9px; font-weight:850; letter-spacing:.04em; }
+.profile-badge.badge-champion { border:1px solid rgba(229,189,114,.45); color:var(--gold-2); background:linear-gradient(90deg,rgba(229,189,114,.1),rgba(229,189,114,.2)); box-shadow:0 0 12px rgba(229,189,114,.15); }
+.profile-badge.badge-medals { border:1px solid rgba(212,175,120,.4); color:var(--gold); background:rgba(212,175,120,.1); }
 .profile-reward-note { min-height:49px; display:flex; align-items:center; gap:10px; margin-top:14px; padding:9px 12px; border:1px solid rgba(229,189,114,.18); border-radius:9px; background:rgba(229,189,114,.04); }
 .profile-reward-note>span { font-size:21px; }.profile-reward-note b { display:block; font-size:9.5px; }.profile-reward-note small { display:block; margin-top:3px; color:var(--muted); font-size:8.5px; }
 
@@ -901,6 +906,8 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 .ranking-row.leader { border-color: rgba(212,175,120,.45); background: rgba(212,175,120,.07); }
 .ranking-pos { font-weight: 900; }
 .ranking-name { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ranking-champion-flag, .ranking-medals { display: inline-flex; align-items: center; margin-left: 5px; font-size: 9px; vertical-align: 1px; }
+.ranking-medals { padding: 0 5px; border: 1px solid rgba(212,175,120,.4); border-radius: 8px; color: var(--gold, #d4af78); background: rgba(212,175,120,.1); font-weight: 900; letter-spacing: 0; }
 .ranking-wins { color: var(--muted-2, #8fa39b); }
 .ranking-chips { font-weight: 900; color: var(--gold, #d4af78); }
 .ranking-previous { margin-top: 11px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,.08); color: var(--muted-2, #8fa39b); font-size: 10px; letter-spacing: .05em; line-height: 1.7; }

@@ -44,6 +44,11 @@ function runFakeQuery(state, sql, params = []) {
     state.seasons = { data: JSON.parse(params[0]) };
     return { rows: [] };
   }
+  // Fase 11.4: DELETE de cuentas eliminadas (inactividad, panel de admin a futuro).
+  if (/^DELETE FROM montecristo_profiles WHERE id = ANY/i.test(text)) {
+    for (const id of params[0]) state.profiles.delete(id);
+    return { rows: [] };
+  }
   throw new Error(`Postgres simulado: consulta no reconocida -> ${text}`);
 }
 
@@ -232,6 +237,34 @@ async function testContraPostgresReal() {
   }
 }
 
+// Fase 11.4: borrar un perfil (deleteProfile / pruneInactiveAccounts) debe
+// borrar también su fila en Postgres, no solo la memoria -- si no, nunca se
+// ahorra el espacio que se buscaba liberar.
+async function testBorradoDeCuentaSePropagaAPostgres() {
+  const backend = createFakePgBackend();
+  const store = new PgProfileStore('postgres://usuario:clave@fake-host/db', { Pool: backend.Pool });
+  await store.ready;
+
+  const activo = store.getOrCreate('cuenta-activa', 'Activa', 'fox');
+  const abandonado = store.getOrCreate('cuenta-abandonada', 'Fantasma', 'owl');
+  await store.saveNow();
+  assert.ok(backend.state.profiles.has('cuenta-abandonada'), 'la cuenta abandonada se guardó primero, como cualquier otra');
+
+  // Simulamos ~4 meses sin actividad y corremos la poda, igual que el barrido
+  // periódico de server.js.
+  abandonado.updatedAt = Date.now() - 120 * 24 * 60 * 60 * 1000;
+  const removed = store.pruneInactiveAccounts(90 * 24 * 60 * 60 * 1000);
+  assert.deepEqual(removed.map(e => e.id), ['cuenta-abandonada'], 'la poda identifica solo a la cuenta inactiva');
+  assert.equal(store.profiles.has('cuenta-abandonada'), false, 'ya no está en memoria');
+
+  await store.saveNow();
+  assert.equal(backend.state.profiles.has('cuenta-abandonada'), false, 'la fila también se borró en Postgres, no solo en memoria');
+  assert.ok(backend.state.profiles.has('cuenta-activa'), 'la cuenta activa no se ve afectada');
+  assert.equal(store._pendingDeletes.size, 0, 'la eliminación pendiente se confirmó y ya no queda por reintentar');
+
+  await store.close();
+}
+
 // Fase 11.3: un hipo transitorio al arrancar (p. ej. Neon despertando de
 // escalar a cero justo cuando el propio servicio despierta en Render) no debe
 // hacer que el store arranque vacío en silencio; debe reintentar y cargar los
@@ -332,6 +365,7 @@ async function main() {
   await withTimeout(testMigracionDeFormatoLegado(), 5000, 'migración de formato legado');
   await withTimeout(testFactorySinDatabaseUrl(), 5000, 'fábrica sin DATABASE_URL');
   await withTimeout(testFactoryConDatabaseUrlEligePostgres(), 8000, 'fábrica con DATABASE_URL inválida');
+  await withTimeout(testBorradoDeCuentaSePropagaAPostgres(), 5000, 'borrado de cuenta inactiva se propaga a Postgres');
   await withTimeout(testReintentaCargaAlArrancarTrasFalloTransitorio(), 8000, 'reintento de carga al arrancar tras fallo transitorio');
   await withTimeout(testFalloPermanenteAlArrancarNoDejaStoreVacioListo(), 8000, 'fallo permanente al arrancar no deja store vacío listo');
   await withTimeout(testGuardadoReintentaTrasFalloTransitorio(), 8000, 'guardado reintenta tras fallo transitorio');
