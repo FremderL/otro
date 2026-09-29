@@ -71,7 +71,8 @@
    - **Estado actual:** en póker el servidor **ya oculta** las cartas ajenas (las envía como `XX` hasta el showdown); en blackjack, en cambio, `server.js` envía todas las manos abiertas a todos los clientes.
    - **Clave técnica:** replicar en blackjack la ocultación **en el servidor** (payload por jugador que nunca incluya cartas ajenas antes del cierre de la ronda), no solo en CSS/cliente, para que sea imposible espiar con las herramientas del navegador.
 3. **UX nativa de escritorio:** atajos de teclado en mesa (`F` fold, `C` check/call, `R` foco en raise, `Enter` confirmar, `T` chat, `Esc` cerrar, `?` leyenda de atajos); tooltips y estados hover ricos (previsualización de pagos en apuestas); layout fijo de tres columnas en sala (clasificación | mesa | chat) sin toggles móviles; menús contextuales con clic derecho.
-4. **Criterio de aceptación:** auditoría de payloads confirmando que ningún cliente recibe cartas ajenas antes del showdown; una mano completa de póker jugable solo con teclado; revisión visual aprobada en 1280×800 y 1920×1080.
+4. **Imágenes de lobby para los juegos rápidos.** Hoy solo Texas Hold'em y Blackjack tienen imagen (`poker-lounge.jpg`, `blackjack-lounge.jpg`); las tarjetas de **Ruleta Nova, Dados Cósmicos y Cara o Cruz** son solo CSS. Crear tres imágenes originales con la misma dirección de arte sobria (rueda de ruleta elegante, dados en ambiente cósmico, moneda dorada al aire), servidas como archivos locales en `public/assets/` (sin CDNs), optimizadas (< 200 KB c/u, mismo encuadre y proporción que las existentes) y con textos `alt` descriptivos.
+5. **Criterio de aceptación:** auditoría de payloads confirmando que ningún cliente recibe cartas ajenas antes del showdown; una mano completa de póker jugable solo con teclado; las cinco tarjetas del lobby con imagen propia y estilo homogéneo; revisión visual aprobada en 1280×800 y 1920×1080.
 
 **Entregable en Render:** deploy normal.
 
@@ -87,7 +88,19 @@
 
 **Entregable en Render:** deploy normal.
 
-## Fase 6 — Robustez operativa en Render
+## Fase 6 — Tragamonedas MonteCristo
+
+*Objetivo: sumar un sexto juego insignia con su propia máquina animada.*
+
+1. **Nuevo juego rápido "Tragamonedas".** Integrado al motor de `quick-games` como los demás: cada participante confirma una apuesta por ronda, el **servidor genera y liquida el resultado** (símbolos por rodillo con pesos definidos), y la animación solo representa ese resultado autoritativo.
+2. **Máquina con tres tiras giratorias.** Diseño visual completo de la máquina (gabinete, ventana de premios, palanca/botón de giro) acorde a la identidad sobria de la fase 4. Las **tres tiras giran y se detienen en secuencia** (izquierda → centro → derecha, ~1 s entre cada una) con desaceleración y un pequeño rebote al frenar, mostrando exactamente los símbolos que decidió el servidor. Respeto a `prefers-reduced-motion` y opción de saltar la animación.
+3. **Tabla de pagos.** Paytable visible en la propia máquina (p. ej. tres iguales: pagos por símbolo; dos iguales: pago menor; símbolo comodín/premium con el pago máximo). Los multiplicadores exactos se calibran para mantener la economía de fichas virtuales alineada con los demás juegos rápidos.
+4. **Integración completa:** tarjeta de lobby con su imagen original (misma dirección de arte de la fase 4.4), soporte de bots expertos y ciclo de vida de mesa (reglas de la fase 2), retos/logros del juego nuevo, y sincronía multijugador (todos ven el mismo giro al mismo tiempo).
+5. **Criterio de aceptación:** los símbolos donde se detienen las tiras coinciden siempre con el resultado del servidor; smoke test del nuevo juego en `npm test` (apuesta, resolución, pagos, reembolsos al salir); animación fluida a 60 fps en un escritorio promedio.
+
+**Entregable en Render:** deploy normal.
+
+## Fase 7 — Robustez operativa en Render
 
 *Objetivo: que el hosting no borre datos ni degrade la experiencia.*
 
@@ -102,7 +115,7 @@
 
 **Entregable en Render:** variables `PROFILE_STORE_PATH` y health check configurados; `render.yaml` (Infrastructure as Code) versionado en el repo.
 
-## Fase 7 — Contenido y retención
+## Fase 8 — Contenido y retención
 
 *Objetivo: crecer el juego sobre la base ya estabilizada.*
 
@@ -114,7 +127,7 @@
 
 **Entregable en Render:** deploys independientes por característica.
 
-## Fase 8 — Calidad continua
+## Fase 9 — Calidad continua
 
 1. **CI en GitHub:** `npm test` en cada push/PR (GitHub Actions) antes del auto-deploy de Render.
 2. **Preview environments de Render** por pull request para probar cambios visuales de escritorio.
@@ -130,14 +143,15 @@
 | 1 | Política solo-escritorio | Bajo (1 iteración) | Bajo |
 | 2 | Mesas, bots expertos y presencia real | Medio (2 iteraciones) | **Alto impacto**: corrige el bug de jugadores fantasma |
 | 3 | Términos y condiciones (México) | Bajo–medio (1 iteración + revisión legal) | **Alto impacto**: cobertura legal |
-| 4 | Rediseño profesional + privacidad de cartas | Medio–alto (2–3 iteraciones) | Medio: la privacidad exige cambios de protocolo |
+| 4 | Rediseño profesional + privacidad de cartas + imágenes de lobby | Medio–alto (2–3 iteraciones) | Medio: la privacidad exige cambios de protocolo |
 | 5 | Ruleta completa animada | Medio (2 iteraciones) | Bajo |
-| 6 | Robustez en Render | Medio (1–2 iteraciones) | **Alto impacto**: evita pérdida de datos |
-| 7 | Contenido nuevo | Alto (continuo) | Medio |
-| 8 | Calidad continua | Bajo (transversal) | Bajo |
+| 6 | Tragamonedas con máquina animada | Medio (2 iteraciones) | Bajo: reutiliza el motor de juegos rápidos |
+| 7 | Robustez en Render | Medio (1–2 iteraciones) | **Alto impacto**: evita pérdida de datos |
+| 8 | Contenido nuevo | Alto (continuo) | Medio |
+| 9 | Calidad continua | Bajo (transversal) | Bajo |
 
 > **Notas de prioridad:**
-> - Si el servicio ya tiene jugadores reales, conviene adelantar el punto 6.1 (persistencia de perfiles) inmediatamente después de la fase 1, porque hoy cada deploy en Render borra `data/profiles.json`.
+> - Si el servicio ya tiene jugadores reales, conviene adelantar el punto 7.1 (persistencia de perfiles) inmediatamente después de la fase 1, porque hoy cada deploy en Render borra `data/profiles.json`.
 > - La corrección de jugadores fantasma (fase 2.2) y la aceptación de términos (fase 3.2) pueden entregarse como parches independientes si se necesitan antes de completar su fase.
 > - El punto 4.2 (privacidad de cartas de blackjack en el servidor) debe hacerse **antes** de cualquier campaña de difusión: mientras las manos de blackjack viajen abiertas en el payload, un usuario técnico puede verlas.
 
