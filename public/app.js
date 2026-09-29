@@ -47,10 +47,36 @@
     { id: 'crown', emoji: '👑', label: 'Corona' }, { id: 'diamond', emoji: '💎', label: 'Diamante' }
   ];
   const SUITS = { S: '♠', H: '♥', D: '♦', C: '♣' };
+  // Debe coincidir con TOS_VERSION en lib/terms.js; al cambiar, se pide aceptar de nuevo.
+  const TOS_VERSION = '2026-09-28';
+  const TOS_KEY = 'montecristo-tos';
   migrateLegacyStorage();
   const deviceToken = getDeviceToken();
   const routeCode = getRouteCode();
   const savedSession = readSession();
+
+  // ---------- Términos y condiciones (aceptación obligatoria) ----------
+  function tosAccepted() { return localStorage.getItem(TOS_KEY) === TOS_VERSION; }
+  function showTosModal() {
+    const modal = document.getElementById('tos-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    modal.querySelector('#tos-accept')?.focus();
+  }
+  function hideTosModal() {
+    const modal = document.getElementById('tos-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
+  }
+  if (!tosAccepted()) showTosModal();
+  document.getElementById('tos-accept')?.addEventListener('click', () => {
+    localStorage.setItem(TOS_KEY, TOS_VERSION);
+    hideTosModal();
+  });
 
   const ui = {
     modalMode: 'create', selectedGame: 'poker', roomFilter: 'all', lobby: [], playersOnline: 0,
@@ -252,7 +278,7 @@
       ui.shouldResume = false;
       ui.joining = true;
       setOverlay(true, 'RECUPERANDO TU ASIENTO');
-      const response = await emitAck('join_room', { name: ui.playerName, code: ui.activeCode, token: deviceToken, avatar: ui.selectedAvatar });
+      const response = await emitAck('join_room', { name: ui.playerName, code: ui.activeCode, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) });
       ui.joining = false;
       if (!response.ok) {
         clearSession(); ui.activeCode = null; setOverlay(false);
@@ -341,6 +367,7 @@
     if (!name) { showToast('Falta tu nombre', 'Dinos cómo aparecerás en la mesa.', 'error'); els.playerName.focus(); return; }
     ui.playerName = name;
     localStorage.setItem('montecristo-name', name);
+    if (!tosAccepted()) { showTosModal(); return; }
     setButtonLoading(els.modalSubmit, true);
     ui.joining = true;
     const joining = ui.modalMode === 'join';
@@ -351,8 +378,8 @@
     }
     setOverlay(true, joining ? 'BUSCANDO TU ASIENTO' : 'ABRIENDO UNA NUEVA MESA');
     const response = joining
-      ? await emitAck('join_room', { name, code, token: deviceToken, avatar: ui.selectedAvatar })
-      : await emitAck('create_room', { name, roomName: els.roomName.value.trim(), game: ui.selectedGame, token: deviceToken, avatar: ui.selectedAvatar });
+      ? await emitAck('join_room', { name, code, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) })
+      : await emitAck('create_room', { name, roomName: els.roomName.value.trim(), game: ui.selectedGame, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) });
     setButtonLoading(els.modalSubmit, false); ui.joining = false;
     if (!response.ok) {
       setOverlay(false); showToast('No se pudo entrar', response.error || 'Intenta de nuevo.', 'error'); return;

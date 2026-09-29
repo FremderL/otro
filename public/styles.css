@@ -28,6 +28,26 @@
 html { scroll-behavior: smooth; background: var(--bg); }
 body { margin: 0; min-width: 1024px; min-height: 100vh; overflow-x: hidden; color: var(--text); background: var(--bg); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
 
+/* Términos y condiciones (fase 3): aceptación obligatoria y enlaces legales */
+.tos-modal { z-index: 1200; }
+.tos-modal.hidden { display: none; }
+.tos-modal .modal-backdrop { cursor: default; }
+.tos-modal-card { max-width: 560px; }
+.tos-intro { margin: 14px 0 6px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.tos-intro b, .tos-points b { color: #e6efec; }
+.tos-points { list-style: none; margin: 12px 0 4px; padding: 0; }
+.tos-points li { display: flex; gap: 10px; align-items: flex-start; margin: 9px 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
+.tos-points li > span { flex: none; font-size: 14px; line-height: 1.4; }
+.tos-full-link { display: inline-block; margin: 10px 0 16px; color: var(--mint); font-size: 11px; font-weight: 700; text-decoration: none; }
+.tos-full-link:hover { text-decoration: underline; }
+.tos-accept { width: 100%; justify-content: center; }
+.tos-fine { margin: 12px 0 0; color: var(--muted-2); font-size: 9px; text-align: center; }
+.footer-legal { display: flex; gap: 18px; }
+.footer-legal a { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .04em; text-decoration: none; transition: color .2s; }
+.footer-legal a:hover { color: var(--mint); }
+.tos-link { color: var(--mint); text-decoration: none; }
+.tos-link:hover { text-decoration: underline; }
+
 /* Puerta de escritorio: MonteCristo solo se juega en computadora (< 1024 px se bloquea) */
 .desktop-gate { display: none; }
 @media (max-width: 1023.98px) {

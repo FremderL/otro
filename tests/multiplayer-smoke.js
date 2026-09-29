@@ -5,6 +5,7 @@ const { spawn } = require('node:child_process');
 const { io } = require('socket.io-client');
 const path = require('node:path');
 const os = require('node:os');
+const { TOS_VERSION } = require('../lib/terms');
 
 const port = 3200 + Math.floor(Math.random() * 500);
 const url = `http://127.0.0.1:${port}`;
@@ -60,7 +61,7 @@ async function waitForServer() {
 }
 async function createRoom(socket, game, token, name = 'Anfitrión') {
   socket.latest = null;
-  const response = await emitAck(socket, 'create_room', { name, roomName: `Prueba ${game}`, game, token, avatar: 'robot' });
+  const response = await emitAck(socket, 'create_room', { name, roomName: `Prueba ${game}`, game, token, avatar: 'robot', tos: TOS_VERSION });
   assert.equal(response.ok, true, response.error);
   const state = await waitState(socket, room => room.code === response.code);
   assert.equal(state.game, game);
@@ -69,7 +70,7 @@ async function createRoom(socket, game, token, name = 'Anfitrión') {
 }
 async function joinRoom(socket, code, token, name = 'Invitada') {
   socket.latest = null;
-  const response = await emitAck(socket, 'join_room', { name, code, token, avatar: 'panda' });
+  const response = await emitAck(socket, 'join_room', { name, code, token, avatar: 'panda' , tos: TOS_VERSION });
   assert.equal(response.ok, true, response.error);
   return waitState(socket, room => room.code === code && room.players.some(player => player.id === token));
 }

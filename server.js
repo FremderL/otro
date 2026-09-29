@@ -9,6 +9,7 @@ const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
 const { HAND_NAMES, compareScores, bestPokerScore } = require('./lib/poker-evaluator');
 const { DIFFICULTIES, STYLES, createBot, publicBot } = require('./lib/bots/catalog');
 const { BotController } = require('./lib/bots/bot-controller');
+const { TOS_VERSION } = require('./lib/terms');
 
 const app = express();
 const server = http.createServer(app);
@@ -17,6 +18,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size, botTasks: botController?.tasks.size || 0 }));
+app.get('/terminos', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'terminos.html')));
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const rooms = new Map();
@@ -142,6 +144,22 @@ function createRoom(game, host, socket, requestedName) {
   socket.join(code);
   return room;
 }
+// Fase 3: la aceptación de Términos y Condiciones es obligatoria para jugar.
+// El cliente envía la versión aceptada; se registra en el perfil (con fecha)
+// para que la constancia sobreviva a limpiezas de localStorage.
+function verifyTosAcceptance(profile, tosVersion) {
+  if (String(tosVersion || '') === TOS_VERSION) {
+    if (profile.flags.tosVersion !== TOS_VERSION) {
+      profile.flags.tosVersion = TOS_VERSION;
+      profile.flags.tosAcceptedAt = Date.now();
+      profiles.touch(profile);
+    }
+    return true;
+  }
+  return profile.flags?.tosVersion === TOS_VERSION;
+}
+const TOS_REQUIRED_MESSAGE = 'Debes aceptar los Términos y Condiciones vigentes para jugar.';
+
 function playerForSocket(socket) {
   const room = rooms.get(socket.data.roomCode);
   if (!room) return {};
@@ -1040,12 +1058,13 @@ io.on('connection', socket => {
     playersOnline: lobbySnapshot().reduce((sum, room) => sum + room.humans, 0)
   });
 
-  socket.on('create_room', ({ name, roomName, game, token, avatar } = {}, ack) => {
+  socket.on('create_room', ({ name, roomName, game, token, avatar, tos } = {}, ack) => {
     name = cleanName(name);
     game = ['poker', 'blackjack', ...Object.keys(QUICK_GAMES)].includes(game) ? game : 'poker';
     if (!name) return ackError(ack, 'Escribe tu nombre.');
     if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
     const player = newPlayer(String(token).slice(0, 80), socket, name, avatar);
+    if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
     const room = createRoom(game, player, socket, roomName);
     socket.data.roomCode = room.code;
     socket.data.playerId = player.id;
@@ -1056,7 +1075,7 @@ io.on('connection', socket => {
     broadcast(room);
   });
 
-  socket.on('join_room', ({ name, code, token, avatar } = {}, ack) => {
+  socket.on('join_room', ({ name, code, token, avatar, tos } = {}, ack) => {
     name = cleanName(name);
     if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
     code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
@@ -1064,6 +1083,7 @@ io.on('connection', socket => {
     if (!room) return ackError(ack, 'Esa sala no existe o ya cerró.');
     let player = room.players.find(p => !p.isBot && p.id === String(token).slice(0, 80));
     if (player) {
+      if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
       player.socketId = socket.id;
       player.connected = true;
       player.lastActiveAt = Date.now();
@@ -1073,10 +1093,11 @@ io.on('connection', socket => {
       addSystem(room, `${player.name} volvió a la mesa.`);
     } else {
       if (!name) return ackError(ack, 'Escribe tu nombre.');
+      player = newPlayer(String(token).slice(0, 80), socket, name, avatar);
+      if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
       // Si la mesa está llena pero hay bots, un bot cede su asiento a la persona real.
       if (room.players.length >= ROOM_CAPACITY) makeSeatForHuman(room);
       if (room.players.length >= ROOM_CAPACITY) return ackError(ack, `La mesa está llena (máximo ${ROOM_CAPACITY}).`);
-      player = newPlayer(String(token).slice(0, 80), socket, name, avatar);
       room.players.push(player);
       addSystem(room, `${player.name} se sentó en la mesa.`);
     }

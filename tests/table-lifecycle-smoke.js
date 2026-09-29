@@ -9,6 +9,7 @@ const { spawn } = require('node:child_process');
 const { io } = require('socket.io-client');
 const path = require('node:path');
 const os = require('node:os');
+const { TOS_VERSION } = require('../lib/terms');
 
 const port = 4000 + Math.floor(Math.random() * 400);
 const url = `http://127.0.0.1:${port}`;
@@ -82,13 +83,28 @@ async function waitForRoomCount(expected, timeout = 6000) {
   throw new Error(`Las salas no llegaron a ${expected} a tiempo.`);
 }
 async function createRoom(socket, game, token, name = 'Persona') {
-  const response = await emitAck(socket, 'create_room', { name, roomName: `${game}-${Date.now()}`, game, token, avatar: 'fox' });
+  const response = await emitAck(socket, 'create_room', { name, roomName: `${game}-${Date.now()}`, game, token, avatar: 'fox', tos: TOS_VERSION });
   assert.equal(response.ok, true, response.error);
   return waitState(socket, state => state.code === response.code);
 }
 
 const bots = state => state.players.filter(player => player.isBot);
 const humans = state => state.players.filter(player => !player.isBot);
+
+async function testTosEnforcement() {
+  // Fase 3: sin aceptar los Términos y Condiciones vigentes no se puede jugar.
+  const socket = connectClient(); await waitFor(socket, 'connect');
+  const rejected = await emitAck(socket, 'create_room', { name: 'SinTerminos', roomName: 'Prohibida', game: 'dice', token: `no-tos-${Date.now()}`, avatar: 'fox' });
+  assert.equal(rejected.ok, false, 'crear sala sin aceptar términos debe fallar');
+  assert.match(rejected.error, /Términos y Condiciones/);
+  const wrongVersion = await emitAck(socket, 'create_room', { name: 'SinTerminos', roomName: 'Prohibida', game: 'dice', token: `old-tos-${Date.now()}`, avatar: 'fox', tos: '2000-01-01' });
+  assert.equal(wrongVersion.ok, false, 'una versión vieja de los términos no basta');
+  const accepted = await emitAck(socket, 'create_room', { name: 'ConTerminos', roomName: 'Permitida', game: 'dice', token: `yes-tos-${Date.now()}`, avatar: 'fox', tos: TOS_VERSION });
+  assert.equal(accepted.ok, true, accepted.error);
+  await emitAck(socket, 'leave_room');
+  socket.disconnect();
+  await waitForRoomCount(0);
+}
 
 async function testAutoFillAndRoundLifecycle() {
   const hostToken = `life-host-${Date.now()}`;
@@ -116,7 +132,7 @@ async function testAutoFillAndRoundLifecycle() {
   // 4) Con la mesa llena de bots, una persona real recibe asiento: un bot lo cede.
   const guestToken = `life-guest-${Date.now()}`;
   const guest = connectClient(); await waitFor(guest, 'connect');
-  const joined = await emitAck(guest, 'join_room', { name: 'Invitado', code: state.code, token: guestToken, avatar: 'owl' });
+  const joined = await emitAck(guest, 'join_room', { name: 'Invitado', code: state.code, token: guestToken, avatar: 'owl' , tos: TOS_VERSION });
   assert.equal(joined.ok, true, 'el bot cede su asiento a la persona real');
   state = await waitState(guest, current => current.players.some(player => player.id === guestToken));
   assert.equal(state.players.length, 6);
@@ -143,7 +159,7 @@ async function testHostInactivityMigration() {
   const host = connectClient(); await waitFor(host, 'connect');
   const state = await createRoom(host, 'coinflip', hostToken, 'Distraído');
   const guest = connectClient(); await waitFor(guest, 'connect');
-  assert.equal((await emitAck(guest, 'join_room', { name: 'Activa', code: state.code, token: guestToken, avatar: 'owl' })).ok, true);
+  assert.equal((await emitAck(guest, 'join_room', { name: 'Activa', code: state.code, token: guestToken, avatar: 'owl' , tos: TOS_VERSION })).ok, true);
 
   // El anfitrión queda inactivo; la persona activa hereda la autoridad (nunca un bot).
   const deadline = Date.now() + 6000;
@@ -179,10 +195,11 @@ async function testPokerAutoFillAndAbandonedRoom() {
 (async () => {
   try {
     await waitForServer();
+    await testTosEnforcement();
     await testAutoFillAndRoundLifecycle();
     await testHostInactivityMigration();
     await testPokerAutoFillAndAbandonedRoom();
-    console.log('✓ Ciclo de vida: autollenado experto, bots que ceden y desocupan, purga de fantasmas, migración por inactividad y limpieza de mesas.');
+    console.log('✓ Ciclo de vida: términos obligatorios, autollenado experto, bots que ceden y desocupan, purga de fantasmas, migración por inactividad y limpieza de mesas.');
     process.exitCode = 0;
   } catch (error) {
     console.error(error);

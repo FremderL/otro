@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const os = require('node:os');
+const { TOS_VERSION } = require('../lib/terms');
 const { io } = require('socket.io-client');
 
 const port = 4000 + Math.floor(Math.random() * 200);
@@ -65,7 +66,7 @@ async function waitServer() {
       const timer = setTimeout(() => reject(new Error('No conectó')), 4000);
       socket.once('connect', () => { clearTimeout(timer); resolve(); });
     });
-    let response = await emitAck('create_room', { name: 'Fallback', roomName: 'Prueba segura', game: 'roulette', token: `fallback-${Date.now()}`, avatar: 'robot' });
+    let response = await emitAck('create_room', { name: 'Fallback', roomName: 'Prueba segura', game: 'roulette', token: `fallback-${Date.now()}`, avatar: 'robot', tos: TOS_VERSION });
     assert.equal(response.ok, true, response.error);
     await waitState(state => state.code === response.code);
 

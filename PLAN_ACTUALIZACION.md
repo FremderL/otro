@@ -45,9 +45,11 @@
 
 **Entregable en Render:** deploy normal. Variable `BOT_ONLY_ROOM_TTL_MS` ajustada en el dashboard o `render.yaml`.
 
-## Fase 3 — Términos y condiciones (cumplimiento legal México)
+## Fase 3 — Términos y condiciones (cumplimiento legal México) ✅ COMPLETADA
 
 *Objetivo: dejar claro el carácter recreativo del sitio y deslindar responsabilidad por usos indebidos, conforme a la legislación mexicana.*
+
+> Implementada: página `/terminos` (T&C + Aviso de Privacidad LFPDPPP), modal de aceptación obligatoria en la primera visita con versionado (`lib/terms.js` ↔ `TOS_VERSION` en `app.js`), registro de la aceptación con fecha y versión en el perfil del servidor, rechazo de `create_room`/`join_room` sin aceptación vigente, y enlaces permanentes en el pie de página y el modal de perfil. Pendiente: revisión del texto por abogado antes del lanzamiento público.
 
 1. **Documento de Términos y Condiciones** (página `/terminos`) redactado para México, que incluya como mínimo:
    - **Naturaleza recreativa:** MonteCristo es un juego social de entretenimiento; todas las fichas son virtuales, sin valor monetario, sin depósitos, retiros, premios ni canjes. Por no mediar apuesta con dinero real, no constituye juego con apuesta en términos de la **Ley Federal de Juegos y Sorteos** y su Reglamento (no requiere permiso de la Secretaría de Gobernación).

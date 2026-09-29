@@ -5,6 +5,7 @@ const { spawn } = require('node:child_process');
 const { io } = require('socket.io-client');
 const path = require('node:path');
 const os = require('node:os');
+const { TOS_VERSION } = require('../lib/terms');
 const { DIFFICULTIES, STYLES, createBot } = require('../lib/bots/catalog');
 const { decide, fallbackDecision } = require('../lib/bots/decision-engine');
 
@@ -62,7 +63,7 @@ async function waitForServer() {
   throw new Error(`El servidor no inició.\n${serverLog}`);
 }
 async function createRoom(socket, game, token) {
-  const response = await emitAck(socket, 'create_room', { name: `Host ${game}`, roomName: `Bots ${game}`, game, token, avatar: 'robot' });
+  const response = await emitAck(socket, 'create_room', { name: `Host ${game}`, roomName: `Bots ${game}`, game, token, avatar: 'robot', tos: TOS_VERSION });
   assert.equal(response.ok, true, response.error);
   return waitState(socket, room => room.code === response.code);
 }
@@ -109,7 +110,7 @@ async function testQuickBots() {
   await Promise.all([waitFor(host, 'connect'), waitFor(guest, 'connect')]);
   const room = await createRoom(host, 'roulette', `quick-host-${Date.now()}`);
   const guestToken = `guest-${Date.now()}`;
-  let response = await emitAck(guest, 'join_room', { name: 'Invitada', code: room.code, token: guestToken, avatar: 'panda' });
+  let response = await emitAck(guest, 'join_room', { name: 'Invitada', code: room.code, token: guestToken, avatar: 'panda' , tos: TOS_VERSION });
   assert.equal(response.ok, true, response.error);
   await waitState(host, state => state.players.length === 2);
   response = await emitAck(guest, 'bot_add', { difficulty: 'expert', style: 'aggressive' });
@@ -164,7 +165,7 @@ async function testBlackjackBots() {
   await createRoom(host, 'blackjack', `blackjack-host-${Date.now()}`);
   let response = await emitAck(host, 'bot_fill', { difficulty: 'hard', style: 'balanced' });
   assert.equal(response.ok, true, response.error); assert.equal(response.botIds.length, 5);
-  let state = await waitState(host, current => current.players.filter(player => player.isBot).every(player => player.bet > 0), 5000);
+  let state = await waitState(host, current => current.players.filter(player => player.isBot).length === 5 && current.players.filter(player => player.isBot).every(player => player.bet > 0), 5000);
   assert.equal(state.players.length, 6);
   assert.equal((await emitAck(host, 'blackjack_start')).ok, true);
   state = await waitState(host, current => current.phase === 'results', 5000);
