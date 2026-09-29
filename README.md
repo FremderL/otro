@@ -19,6 +19,8 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Bots autoritativos configurables por el anfitrión, con cuatro dificultades, cinco estilos y decisiones específicas por juego.
 - Mesas siempre vivas: los asientos libres se completan automáticamente con bots **expertos** al entrar; los bots ceden su asiento cuando llega una persona real y los desocupan al terminar cada ronda; la autoridad de la mesa migra a una persona real activa tras 1 minuto de inactividad del anfitrión, y las mesas sin personas reales se eliminan.
 - Términos y Condiciones con aceptación obligatoria y versionada (página `/terminos`, redactados para México: naturaleza recreativa, 18+, deslinde de responsabilidad y Aviso de Privacidad LFPDPPP). El servidor rechaza crear o unirse a salas sin la aceptación vigente.
+- Privacidad de cartas garantizada por el servidor: en póker y blackjack cada quien recibe solo sus cartas; las ajenas viajan boca abajo (`XX`) hasta el showdown o los resultados.
+- Atajos de teclado en mesa (`F/C/R/A` en póker, `H/S/D` en blackjack, `Enter` confirma apuestas rápidas, `T` enfoca el chat y `?` muestra la guía) e imágenes originales en las cinco tarjetas del lobby.
 - Interfaz exclusiva para computadoras de escritorio y laptops, sin animaciones largas que bloqueen la partida.
 
 ## Experiencia visual y accesibilidad

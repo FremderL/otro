@@ -178,6 +178,52 @@ async function testHostInactivityMigration() {
   await waitForRoomCount(0);
 }
 
+async function testBlackjackCardPrivacy() {
+  // Fase 4: cada quien ve solo sus cartas; las ajenas viajan como 'XX' hasta los resultados.
+  const hostToken = `bj-host-${Date.now()}`;
+  const guestToken = `bj-guest-${Date.now()}`;
+  const host = connectClient(); await waitFor(host, 'connect');
+  let state = await createRoom(host, 'blackjack', hostToken, 'Croupier');
+  const guest = connectClient(); await waitFor(guest, 'connect');
+  assert.equal((await emitAck(guest, 'join_room', { name: 'Curiosa', code: state.code, token: guestToken, avatar: 'owl', tos: TOS_VERSION })).ok, true);
+
+  assert.equal((await emitAck(host, 'blackjack_bet', { amount: 20 })).ok, true);
+  assert.equal((await emitAck(guest, 'blackjack_bet', { amount: 20 })).ok, true);
+  await waitState(host, current => current.players.filter(player => player.isBot).every(player => player.bet > 0));
+  assert.equal((await emitAck(host, 'blackjack_start')).ok, true);
+  state = await waitState(host, current => current.phase === 'playing');
+
+  const mine = state.players.find(player => player.id === hostToken);
+  assert.ok(mine.hand.length === 2 && mine.hand.every(card => card !== 'XX'), 'veo mis propias cartas');
+  for (const other of state.players.filter(player => player.id !== hostToken && player.hand.length)) {
+    assert.ok(other.hand.every(card => card === 'XX'), `las cartas de ${other.name} están boca abajo para mí`);
+  }
+  assert.equal(state.dealerHand[1], 'XX', 'la casa oculta su segunda carta durante la ronda');
+  const guestView = await waitState(guest, current => current.phase === 'playing');
+  const guestOwn = guestView.players.find(player => player.id === guestToken);
+  if (guestOwn.hand.length) assert.ok(guestOwn.hand.every(card => card !== 'XX'), 'el invitado ve sus propias cartas');
+
+  // Jugar la ronda: cada humano se planta en su turno; los bots actúan solos.
+  const deadline = Date.now() + 9000;
+  while (Date.now() < deadline) {
+    const current = host.latest;
+    if (current.phase === 'results') break;
+    if (current.turnId === hostToken) await emitAck(host, 'blackjack_stand');
+    else if (current.turnId === guestToken) await emitAck(guest, 'blackjack_stand');
+    await delay(120);
+  }
+  state = await waitState(host, current => current.phase === 'results');
+  for (const player of state.players.filter(item => item.hand.length)) {
+    assert.ok(player.hand.every(card => card !== 'XX'), 'en los resultados se revelan todas las manos');
+  }
+  assert.ok(state.dealerHand.every(card => card !== 'XX'), 'la casa revela su mano al final');
+
+  await emitAck(guest, 'leave_room');
+  await emitAck(host, 'leave_room');
+  host.disconnect(); guest.disconnect();
+  await waitForRoomCount(0);
+}
+
 async function testPokerAutoFillAndAbandonedRoom() {
   const hostToken = `poker-host-${Date.now()}`;
   const host = connectClient(); await waitFor(host, 'connect');
@@ -198,8 +244,9 @@ async function testPokerAutoFillAndAbandonedRoom() {
     await testTosEnforcement();
     await testAutoFillAndRoundLifecycle();
     await testHostInactivityMigration();
+    await testBlackjackCardPrivacy();
     await testPokerAutoFillAndAbandonedRoom();
-    console.log('✓ Ciclo de vida: términos obligatorios, autollenado experto, bots que ceden y desocupan, purga de fantasmas, migración por inactividad y limpieza de mesas.');
+    console.log('✓ Ciclo de vida: términos obligatorios, autollenado experto, bots que ceden y desocupan, purga de fantasmas, migración por inactividad, privacidad de cartas y limpieza de mesas.');
     process.exitCode = 0;
   } catch (error) {
     console.error(error);

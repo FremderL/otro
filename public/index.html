@@ -122,17 +122,20 @@
       <div class="quick-games-heading"><span class="kicker">PARTIDAS RÁPIDAS</span><p>Reglas simples, rondas cortas y resultados perfectos para picar a tus amigos.</p></div>
       <div class="quick-game-grid">
         <article class="quick-game-card roulette-mini">
-          <div class="quick-art" aria-hidden="true"><span class="mini-table-surface roulette-surface"><span class="mini-wheel"><i>0</i></span><i class="mini-table-chip chip-red"></i><i class="mini-table-chip chip-gold"></i></span><b>◉</b></div>
+          <img class="quick-card-media" src="/assets/roulette-lounge.jpg" alt="Rueda de ruleta elegante en dorado y verde profundo sobre una mesa de fieltro" />
+          <div class="quick-card-shade"></div>
           <div class="quick-game-copy"><span>CLÁSICO SOCIAL</span><h3>Ruleta Nova</h3><p>Rojo, negro, paridad, rango o tu número favorito.</p><div class="quick-meta"><span>◎ 1–6 jugadores</span><span>◷ 3–10 min</span></div></div>
           <button class="btn btn-card" data-open-mode="create" data-game="roulette"><span>Girar con amigos</span><b>→</b></button>
         </article>
         <article class="quick-game-card dice-mini">
-          <div class="quick-art" aria-hidden="true"><span class="mini-table-surface dice-surface"><span class="mini-die">⚄</span><span class="mini-die mini-die-second">⚁</span><i class="mini-table-chip chip-cyan"></i></span><b>✦</b></div>
+          <img class="quick-card-media" src="/assets/dice-lounge.jpg" alt="Dos dados oscuros con puntos luminosos sobre un paño verde con destellos cósmicos" />
+          <div class="quick-card-shade"></div>
           <div class="quick-game-copy"><span>RIESGO RÁPIDO</span><h3>Dados Cósmicos</h3><p>Predice bajo, alto o clava el número exacto.</p><div class="quick-meta"><span>◎ 1–6 jugadores</span><span>◷ 2–8 min</span></div></div>
           <button class="btn btn-card" data-open-mode="create" data-game="dice"><span>Lanzar los dados</span><b>→</b></button>
         </article>
         <article class="quick-game-card coin-mini">
-          <div class="quick-art" aria-hidden="true"><span class="mini-table-surface coin-surface"><span class="mini-coin">MA</span><i class="coin-shadow"></i><i class="mini-table-chip chip-gold"></i></span><b>◐</b></div>
+          <img class="quick-card-media" src="/assets/coin-lounge.jpg" alt="Moneda dorada girando en el aire sobre una mesa de fieltro verde" />
+          <div class="quick-card-shade"></div>
           <div class="quick-game-copy"><span>DUELO INSTANTÁNEO</span><h3>Cara o Cruz</h3><p>Una moneda virtual. Dos lados. Mucho pique.</p><div class="quick-meta"><span>◎ 1–6 jugadores</span><span>◷ 1–5 min</span></div></div>
           <button class="btn btn-card" data-open-mode="create" data-game="coinflip"><span>Iniciar un duelo</span><b>→</b></button>
         </article>
@@ -337,10 +340,29 @@
       <footer class="game-footer">
         <span><i class="shield">✓</i> Sala protegida por enlace</span>
         <span>Las fichas no tienen valor monetario</span>
+        <span class="shortcut-hint">Pulsa <kbd>?</kbd> para ver los atajos de teclado</span>
         <span id="connection-status" class="connection-footer connected"><i></i> Conectado</span>
       </footer>
     </main>
   </section>
+
+  <!-- Leyenda de atajos de teclado (fase 4) -->
+  <div id="shortcut-help" class="shortcut-help hidden" role="dialog" aria-label="Atajos de teclado">
+    <b>ATAJOS DE TECLADO</b>
+    <ul>
+      <li><kbd>F</kbd> Retirarse (póker)</li>
+      <li><kbd>C</kbd> Pasar / Igualar (póker)</li>
+      <li><kbd>R</kbd> Escribir cantidad de subida</li>
+      <li><kbd>A</kbd> All-in (póker)</li>
+      <li><kbd>H</kbd> Pedir carta (blackjack)</li>
+      <li><kbd>S</kbd> Plantarse (blackjack)</li>
+      <li><kbd>D</kbd> Doblar (blackjack)</li>
+      <li><kbd>Enter</kbd> Confirmar apuesta rápida</li>
+      <li><kbd>T</kbd> Escribir en el chat</li>
+      <li><kbd>Esc</kbd> Cerrar paneles</li>
+    </ul>
+    <small>Pulsa <kbd>?</kbd> para mostrar u ocultar esta guía</small>
+  </div>
 
   <!-- Aceptación obligatoria de Términos y Condiciones (fase 3) -->
   <div id="tos-modal" class="modal tos-modal hidden" aria-hidden="true">

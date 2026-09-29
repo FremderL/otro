@@ -359,7 +359,39 @@
       item.setAttribute('aria-pressed', String(selected));
     });
   }));
-  document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeModal(); closeProfileModal(); } });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeModal(); closeProfileModal(); toggleShortcutHelp(false); } });
+
+  // ---------- Atajos de teclado en mesa (fase 4) ----------
+  function toggleShortcutHelp(force) {
+    const panel = document.getElementById('shortcut-help');
+    if (!panel) return;
+    const show = typeof force === 'boolean' ? force : panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !show);
+  }
+  function pressButton(selector) {
+    const element = document.querySelector(selector);
+    if (element && !element.disabled) { element.click(); return true; }
+    return false;
+  }
+  document.addEventListener('keydown', event => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.target;
+    if (target && target.id === 'raise-amount' && event.key === 'Enter') { event.preventDefault(); pressButton('[data-poker-action="raise"]'); return; }
+    if (target && target.id === 'quick-bet-amount' && event.key === 'Enter') { event.preventDefault(); pressButton('[data-quick-bet]'); return; }
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+    if (event.key === '?') { event.preventDefault(); toggleShortcutHelp(); return; }
+    if (!ui.room) return;
+    const key = event.key.toLowerCase();
+    if (key === 'f') pressButton('[data-poker-action="fold"]');
+    else if (key === 'c') { if (!pressButton('[data-poker-action="check"]')) pressButton('[data-poker-action="call"]'); }
+    else if (key === 'r') { const input = document.getElementById('raise-amount'); if (input) { event.preventDefault(); input.focus(); input.select?.(); } }
+    else if (key === 'a') pressButton('[data-poker-action="allin"]');
+    else if (key === 'h') pressButton('[data-event="blackjack_hit"]');
+    else if (key === 's') pressButton('[data-event="blackjack_stand"]');
+    else if (key === 'd') pressButton('[data-event="blackjack_double"]');
+    else if (key === 'enter') pressButton('[data-quick-bet]');
+    else if (key === 't') { if (els.chatInput) { event.preventDefault(); els.chatInput.focus(); } }
+  });
 
   els.form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -649,7 +681,7 @@
     const winner = result?.amount > 0;
     const classes = [player.id === room.turnId ? 'current' : '', winner ? 'winner' : '', player.status === 'bust' || result?.amount < 0 ? 'folded' : '', player.bot?.thinking ? 'bot-thinking' : ''].join(' ');
     const cards = player.hand?.map(card => cardHtml(card, true)).join('') || '';
-    const score = player.hand?.length ? blackjackValue(player.hand) : '';
+    const score = player.hand?.length && !player.hand.includes('XX') ? blackjackValue(player.hand) : '';
     const bet = player.bet > 0 ? `<div class="seat-bet"><i></i>${formatChips(player.bet)}</div>` : '';
     const status = player.id === room.turnId ? (player.id === ui.me?.id ? 'TU TURNO' : 'EN TURNO') : result?.label || (player.status === 'blackjack' ? 'BLACKJACK' : '');
     return `<div class="table-seat blackjack-seat seat-${index} ${classes}"><div class="seat-cards">${cards}</div><div class="seat-head">
@@ -764,9 +796,10 @@
     const options = game === 'roulette'
       ? [['red','Rojo'],['black','Negro'],['even','Par'],['odd','Impar'],['low','1–18'],['high','19–36']]
       : game === 'dice' ? [['low','Bajo · 1–3'],['high','Alto · 4–6']] : [['heads','Cara'],['tails','Cruz']];
-    let html = options.map(([value, label]) => `<button class="quick-choice ${value}" type="button" data-quick-choice="${value}">${label}</button>`).join('');
-    if (game === 'dice') html += [1,2,3,4,5,6].map(value => `<button class="quick-choice exact" type="button" data-quick-choice="n:${value}">${value}</button>`).join('');
-    if (game === 'roulette') html += '<input id="quick-exact-number" type="number" min="0" max="36" placeholder="N.º exacto" aria-label="Número exacto de ruleta">';
+    const simplePayout = 'Pago total x2 si aciertas';
+    let html = options.map(([value, label]) => `<button class="quick-choice ${value}" type="button" data-quick-choice="${value}" title="${simplePayout}">${label}</button>`).join('');
+    if (game === 'dice') html += [1,2,3,4,5,6].map(value => `<button class="quick-choice exact" type="button" data-quick-choice="n:${value}" title="Número exacto: pago total x6">${value}</button>`).join('');
+    if (game === 'roulette') html += '<input id="quick-exact-number" type="number" min="0" max="36" placeholder="N.º exacto" aria-label="Número exacto de ruleta" title="Número exacto: pago total x36">';
     return html;
   }
   function renderQuickActions(room, me) {

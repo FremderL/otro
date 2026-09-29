@@ -66,9 +66,11 @@
 
 **Entregable en Render:** deploy normal (ruta estática `/terminos` servida por Express).
 
-## Fase 4 — Rediseño profesional, privacidad de cartas y UX de escritorio
+## Fase 4 — Rediseño profesional, privacidad de cartas y UX de escritorio ✅ COMPLETADA (núcleo)
 
 *Objetivo: un tono visual profesional y serio, con información privada realmente privada.*
+
+> Implementado: privacidad de cartas de blackjack **en el servidor** (manos ajenas viajan como `XX` hasta los resultados; la casa ya ocultaba su segunda carta; póker ya estaba protegido), imágenes de lobby originales para Ruleta Nova, Dados Cósmicos y Cara o Cruz (misma dirección de arte, < 200 KB, locales), atajos de teclado en mesa (`F/C/R/A` póker, `H/S/D` blackjack, `Enter` apuesta rápida, `T` chat, `?` leyenda, `Esc` cerrar) y previsualización de pagos en las apuestas rápidas. Pendiente para iteraciones futuras: menús contextuales con clic derecho y una pasada de sobriedad más profunda del tema visual.
 
 1. **Rediseño visual sobrio.** Refinar la identidad hacia un casino elegante: paleta contenida (grafito profundo, dorado discreto, un solo acento), tipografía seria y jerarquía clara; reducir emojis decorativos, brillos y ruido visual en lobby, tarjetas y mesa; microinteracciones breves y discretas.
 2. **Privacidad de cartas en Póker y Blackjack.** Cada usuario ve **únicamente sus propias cartas**; las de los demás se muestran boca abajo hasta el showdown (póker) o el cierre de la ronda (blackjack, salvo la carta visible del crupier).

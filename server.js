@@ -187,8 +187,11 @@ function publicRoom(room, viewerId) {
       connected: p.connected,
       isBot: Boolean(p.isBot),
       bot: publicBot(p),
+      // Privacidad de cartas (fase 4): cada quien ve solo su mano.
+      // Blackjack: las manos ajenas van boca abajo hasta los resultados.
+      // Póker: boca abajo hasta el showdown (solo manos vivas se muestran).
       hand: room.game === 'blackjack'
-        ? p.hand
+        ? (p.id === viewerId || room.phase === 'results' ? p.hand : p.hand.map(() => 'XX'))
         : (p.id === viewerId || (room.phase === 'showdown' && !p.folded) ? p.hand : p.hand.map(() => 'XX')),
       bet: p.bet,
       roundBet: p.roundBet,
