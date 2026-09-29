@@ -58,6 +58,18 @@ persona nueva se detecta antes de desplegar.
 
 ### Corregido en esta entrega
 
+0. **Bug crítico de UX — «Crear sala» no hacía nada** (reportado por el usuario
+   en la vista previa): en un navegador nuevo (sin Términos aceptados en
+   localStorage), el botón «Crear sala» llamaba a `showTosModal()`… pero esa
+   función nunca añadía la clase `open`, y la regla base `.modal` deja los
+   modales con `opacity:0; visibility:hidden`. Resultado: el modal de T&C se
+   «mostraba» invisible y la persona quedaba atrapada sin ninguna reacción
+   visible. Corregido (`showTosModal`/`hideTosModal` ahora gestionan `open`),
+   con un toast adicional «Falta un paso» al intentar entrar sin aceptar.
+   Lección aplicada al E2E: `tests/user-journey-smoke.js` ya no se fía de las
+   clases; verifica la **visibilidad real calculada por CSS** (`visibility` y
+   `pointer-events`) de los modales, para que un modal invisible vuelva a
+   romper la suite y no a las personas.
 1. **Inundación de chat**: no había límite de frecuencia; un cliente podía
    spamear broadcasts a toda la mesa. → Límite de 6 mensajes/reacciones cada
    4 s por conexión, con mensaje amable.

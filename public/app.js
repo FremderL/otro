@@ -63,6 +63,7 @@
     const modal = document.getElementById('tos-modal');
     if (!modal) return;
     modal.classList.remove('hidden');
+    modal.classList.add('open'); // sin 'open', la regla base .modal lo deja invisible
     modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
     modal.querySelector('#tos-accept')?.focus();
@@ -71,6 +72,7 @@
     const modal = document.getElementById('tos-modal');
     if (!modal) return;
     modal.classList.add('hidden');
+    modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('modal-open');
   }
@@ -439,7 +441,11 @@
     if (!name) { showToast('Falta tu nombre', 'Dinos cómo aparecerás en la mesa.', 'error'); els.playerName.focus(); return; }
     ui.playerName = name;
     localStorage.setItem('montecristo-name', name);
-    if (!tosAccepted()) { showTosModal(); return; }
+    if (!tosAccepted()) {
+      showToast('Falta un paso', 'Acepta los Términos y Condiciones para entrar a la mesa.', 'error', 5000);
+      showTosModal();
+      return;
+    }
     setButtonLoading(els.modalSubmit, true);
     ui.joining = true;
     const spectating = ui.modalMode === 'spectate';

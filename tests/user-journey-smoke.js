@@ -76,13 +76,20 @@ async function main() {
   assert.ok(doc.documentElement.classList.contains('gate-bypass'), 'El bypass del aviso de escritorio quedó activo');
 
   // 2) Términos y Condiciones obligatorios: el modal aparece solo y se acepta con un clic.
+  //    OJO: no basta con mirar clases — se verifica la VISIBILIDAD REAL calculada por CSS,
+  //    porque un modal "mostrado" por JS pero invisible deja a la persona sin salida
+  //    (bug real encontrado en la fase 9: showTosModal no añadía la clase `open`).
   const tosModal = doc.getElementById('tos-modal');
   assert.ok(tosModal && !tosModal.classList.contains('hidden'), 'El modal de T&C aparece en la primera visita');
+  const tosStyle = window.getComputedStyle(tosModal);
+  assert.equal(tosStyle.visibility, 'visible', 'El modal de T&C es VISIBLE de verdad (visibility)');
+  assert.equal(tosStyle.pointerEvents, 'auto', 'El modal de T&C recibe clics (pointer-events)');
   click(doc, '#tos-accept');
-  await until(() => tosModal.classList.contains('hidden') || tosModal.getAttribute('aria-hidden') === 'true', 'que se cierre el modal de T&C', 4000);
+  await until(() => window.getComputedStyle(tosModal).visibility === 'hidden', 'que se cierre (de verdad) el modal de T&C', 4000);
 
-  // 3) Crea una mesa de ruleta desde la tarjeta del lobby.
+  // 3) Crea una mesa de ruleta desde la tarjeta del lobby (modal visible de verdad).
   click(doc, '[data-open-mode="create"][data-game="roulette"]');
+  await until(() => window.getComputedStyle(doc.getElementById('join-modal')).visibility === 'visible', 'que el modal de crear sala sea visible', 4000);
   const nameInput = await until(() => doc.getElementById('player-name'), 'el campo de nombre');
   nameInput.value = 'Viajera';
   doc.getElementById('room-name').value = 'Ruta E2E';
