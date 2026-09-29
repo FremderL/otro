@@ -27,6 +27,7 @@
     profileAvatarChoice: $('#profile-avatar-choice'), profileBigAvatar: $('#profile-big-avatar'),
     profileStats: $('#profile-stats'), challengeList: $('#challenge-list'), achievementList: $('#achievement-list'),
     balanceChart: $('#balance-chart'), balanceChartNote: $('#balance-chart-note'), gameBreakdown: $('#game-breakdown'),
+    historyDownload: $('#history-download'),
     dailyBonusStatus: $('#daily-bonus-status'), quickChatToggle: $('#quick-chat-toggle'), quickChatMenu: $('#quick-chat-menu'),
     botMenuToggle: $('#bot-menu-toggle'), botControls: $('#bot-controls'), botMenuClose: $('#bot-menu-close'),
     botDifficulty: $('#bot-difficulty'), botStyle: $('#bot-style'), botAdd: $('#bot-add'), botFill: $('#bot-fill')
@@ -1496,6 +1497,8 @@
       ['JUEGOS PROBADOS', `${formatChips(stats.differentGames)} / 5`, ''], ['DERROTAS', formatChips(stats.losses), '']
     ].map(([label,value,kind]) => `<div class="profile-stat"><small>${label}</small><b class="${kind}">${value}</b></div>`).join('');
     renderBalanceChart(profile);
+    // Fase 11.1: descarga del historial completo (no solo lo que cabe en la gráfica).
+    if (els.historyDownload) els.historyDownload.href = `/api/perfil/${encodeURIComponent(getDeviceToken())}/historial`;
     renderGameBreakdown(profile);
     els.challengeList.innerHTML = (profile.challenges || []).map(item => {
       const percent = Math.min(100, Math.round((item.value || 0) / item.target * 100));

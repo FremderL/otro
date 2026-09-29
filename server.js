@@ -7,6 +7,7 @@ const { AVATARS, avatarInfo } = require('./lib/profile-store');
 // Fase 10.2: DATABASE_URL activa el backend de Postgres (Neon free); sin ella,
 // se mantiene el ProfileStore de archivo JSON de siempre. Ver lib/profile-store-factory.js.
 const { createProfileStore } = require('./lib/profile-store-factory');
+const { HISTORY_LIMITS } = require('./lib/profile-store-shared');
 const { credit, recordWager, recordOutcome, claimDailyBonus, publicProgress } = require('./lib/progression');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
 const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
@@ -45,6 +46,24 @@ app.get('/healthz', (_req, res) => {
   });
 });
 app.get('/terminos', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'terminos.html')));
+// Fase 11.1: descarga del historial completo (saldo y transacciones) del propio
+// perfil. El token es el mismo identificador de dispositivo que ya usa el resto
+// de la app (mismo modelo de confianza ya documentado en REVISION_CALIDAD.md:
+// quien tiene el token, tiene acceso a ese perfil); no expone nada de otros.
+app.get('/api/perfil/:token/historial', (req, res) => {
+  const token = String(req.params.token || '').slice(0, 80);
+  const profile = profiles?.profiles?.get(token);
+  if (!profile) return res.status(404).json({ error: 'No se encontró un perfil con ese identificador.' });
+  res.setHeader('Content-Disposition', `attachment; filename="montecristo-historial-${token}.json"`);
+  res.json({
+    exportadoEl: new Date().toISOString(),
+    perfil: { id: profile.id, nombre: profile.name, avatar: profile.avatar, fichas: profile.chips, creadoEl: profile.createdAt },
+    estadisticas: profile.stats,
+    porJuego: profile.gameStats,
+    evolucionDeSaldo: profile.balanceHistory,
+    transacciones: profile.transactions
+  });
+});
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const rooms = new Map();
@@ -1797,9 +1816,23 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 // antes de que los perfiles existan en memoria.
 async function bootstrap() {
   profiles = await createProfileStore(process.env.PROFILE_STORE_PATH);
+  // Fase 11.1: con Postgres, guardar más historial no infla un archivo local
+  // que se reescribe entero en cada guardado (ver nota en profile-store-shared.js),
+  // así que se eleva el techo de puntos de saldo y transacciones conservados.
+  // Con el archivo JSON el techo se queda como siempre (60 / 20).
+  if (profiles.backend === 'postgres') {
+    HISTORY_LIMITS.balance = 2000;
+    HISTORY_LIMITS.transactions = 500;
+  }
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`MonteCristo lista en http://0.0.0.0:${PORT}`);
-    logEvent('server_listening', { port: Number(PORT), node: process.version, profileStore: profiles.filePath });
+    logEvent('server_listening', {
+      port: Number(PORT),
+      node: process.version,
+      profileStore: profiles.filePath,
+      profileBackend: profiles.backend,
+      historyLimits: { ...HISTORY_LIMITS }
+    });
   });
 }
 bootstrap().catch(error => {
