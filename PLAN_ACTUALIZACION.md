@@ -13,6 +13,7 @@
 - 5 juegos (Texas Hold'em, Blackjack, Ruleta Nova, Dados Cósmicos, Cara o Cruz), bots, perfiles persistentes en `data/profiles.json`, retos, logros y eventos especiales.
 - CSS con ~11 media queries móviles que serán retiradas (fase 1).
 - Suite de smoke tests (`npm test`) en verde.
+- **Bug conocido:** al salir un usuario de la mesa, a veces sigue apareciendo como presente (jugador "fantasma"). Se corrige en la fase 2.
 
 ---
 
@@ -28,19 +29,65 @@
 
 **Entregable en Render:** deploy normal, sin cambios de configuración.
 
-## Fase 2 — Experiencia nativa de escritorio
+## Fase 2 — Ciclo de vida de mesas, bots automáticos y presencia real
 
-*Objetivo: convertir la restricción en ventaja usando teclado, mouse y espacio.*
+*Objetivo: que las mesas siempre se sientan vivas, que los bots cedan el lugar a personas reales y que la presencia de cada jugador sea 100 % confiable.*
 
-1. **Atajos de teclado en mesa:** `F` fold, `C` check/call, `R` foco en raise, `Enter` confirmar apuesta, `T` foco en chat, `Esc` cerrar modales. Leyenda de atajos visible con `?`.
-2. **Estados hover ricos:** tooltips en cartas, fichas, insignias de bots y logros; previsualización de pago al pasar el mouse sobre las apuestas de ruleta/dados.
-3. **Layout de tres columnas fijo en sala** (clasificación | mesa | chat) sin colapsos: con ≥1280 px todo es visible simultáneamente, sin toggles pensados para móvil.
-4. **Menús contextuales** (clic derecho sobre un asiento: ver perfil, reaccionar) y scroll fino en historial de chat/ganadores.
-5. **Criterio de aceptación:** una mano completa de póker jugable solo con teclado; ningún panel oculto tras toggles en ≥1280 px.
+1. **Autollenado con bots expertos.** Al entrar un usuario a una mesa con asientos libres, el servidor completa automáticamente los asientos vacíos con bots en dificultad **experto**. El anfitrión ya no necesita agregarlos a mano (los controles manuales de bots quedan como ajuste opcional).
+2. **Corrección de jugadores "fantasma".** Auditar todo el flujo de salida (botón salir, cierre de pestaña, pérdida de conexión, timeout de reconexión): el asiento debe liberarse y difundirse a todos los clientes de inmediato. Un solo camino de salida en el servidor (`removePlayer`) para evitar estados divergentes.
+3. **Validación de presencia al iniciar partida.** Antes de arrancar cada partida/ronda, el servidor valida el estatus real de cada jugador sentado (socket vivo + latido reciente): quien ya salió se retira del asiento antes de repartir. La misma validación aplica al dueño de la mesa.
+4. **Migración de autoridad por inactividad.** Si el anfitrión lleva **1 minuto sin actividad** en la mesa (sin acciones, apuestas ni latidos), la autoridad pasa automáticamente a otra **persona real** de la mesa (nunca a un bot). Se anuncia el cambio en el chat de la mesa.
+5. **Bots que ceden el asiento.** Al terminar las rondas de la mesa (fase de resultados), los asientos ocupados por bots se **vacían automáticamente** para que queden disponibles para usuarios reales; si al iniciar la siguiente ronda siguen libres, se vuelven a llenar con bots expertos (regla 1).
+6. **Eliminación de mesas sin humanos.** Si en una mesa no queda ninguna persona real, la mesa se elimina de inmediato (hoy existe un TTL de 5 minutos para salas solo-bots vía `BOT_ONLY_ROOM_TTL_MS`; se reduce a eliminación inmediata o TTL de segundos).
+7. **Criterio de aceptación:** smoke tests nuevos que cubran: entrada → autollenado experto; salida abrupta → asiento liberado en < 5 s en todos los clientes; anfitrión inactivo 60 s → autoridad migrada a humano; fin de ronda → asientos de bots vacíos; última persona sale → mesa eliminada.
+
+**Entregable en Render:** deploy normal. Variable `BOT_ONLY_ROOM_TTL_MS` ajustada en el dashboard o `render.yaml`.
+
+## Fase 3 — Términos y condiciones (cumplimiento legal México)
+
+*Objetivo: dejar claro el carácter recreativo del sitio y deslindar responsabilidad por usos indebidos, conforme a la legislación mexicana.*
+
+1. **Documento de Términos y Condiciones** (página `/terminos`) redactado para México, que incluya como mínimo:
+   - **Naturaleza recreativa:** MonteCristo es un juego social de entretenimiento; todas las fichas son virtuales, sin valor monetario, sin depósitos, retiros, premios ni canjes. Por no mediar apuesta con dinero real, no constituye juego con apuesta en términos de la **Ley Federal de Juegos y Sorteos** y su Reglamento (no requiere permiso de la Secretaría de Gobernación).
+   - **Edad mínima** (18 años) y declaración del usuario de que usa el sitio bajo su propia responsabilidad.
+   - **Deslinde de responsabilidad:** el operador no responde por usos maliciosos, ilícitos o no autorizados de la página por parte de terceros o usuarios (fraude entre usuarios, suplantación, uso del chat para fines ilícitos, intentos de monetizar fichas fuera de la plataforma, etc.), conforme a los límites permitidos por el **Código Civil Federal** y la **Ley Federal de Protección al Consumidor**.
+   - **Conducta prohibida** y facultad de suspender cuentas/dispositivos que la infrinjan.
+   - **Aviso de privacidad** conforme a la **LFPDPPP** (Ley Federal de Protección de Datos Personales en Posesión de los Particulares): qué se guarda (nombre de jugador, avatar, token de dispositivo, estadísticas), finalidad, y medios para ejercer derechos ARCO.
+   - Propiedad intelectual, jurisdicción y tribunales competentes (Estados Unidos Mexicanos), y política de modificaciones.
+2. **Aceptación obligatoria.** Modal de aceptación en la primera visita (y en cada cambio de versión de los términos): el usuario **no puede crear ni entrar a salas sin aceptar**. La aceptación se guarda con versión y fecha (`montecristo-tos-accepted`) y se refleja también en el perfil del servidor para que sobreviva a limpiezas de `localStorage`.
+3. **Enlaces permanentes** a Términos y Aviso de Privacidad en el pie de página y en el modal de perfil.
+4. **Criterio de aceptación:** sin aceptación registrada no se puede jugar; el texto es accesible desde cualquier pantalla; el versionado fuerza re-aceptación al actualizar los términos.
+
+> ⚠️ **Nota:** el texto legal debe ser revisado por un abogado mexicano antes de publicarse; el plan cubre la estructura, la implementación técnica y las referencias normativas, no sustituye asesoría legal.
+
+**Entregable en Render:** deploy normal (ruta estática `/terminos` servida por Express).
+
+## Fase 4 — Rediseño profesional, privacidad de cartas y UX de escritorio
+
+*Objetivo: un tono visual profesional y serio, con información privada realmente privada.*
+
+1. **Rediseño visual sobrio.** Refinar la identidad hacia un casino elegante: paleta contenida (grafito profundo, dorado discreto, un solo acento), tipografía seria y jerarquía clara; reducir emojis decorativos, brillos y ruido visual en lobby, tarjetas y mesa; microinteracciones breves y discretas.
+2. **Privacidad de cartas en Póker y Blackjack.** Cada usuario ve **únicamente sus propias cartas**; las de los demás se muestran boca abajo hasta el showdown (póker) o el cierre de la ronda (blackjack, salvo la carta visible del crupier).
+   - **Estado actual:** en póker el servidor **ya oculta** las cartas ajenas (las envía como `XX` hasta el showdown); en blackjack, en cambio, `server.js` envía todas las manos abiertas a todos los clientes.
+   - **Clave técnica:** replicar en blackjack la ocultación **en el servidor** (payload por jugador que nunca incluya cartas ajenas antes del cierre de la ronda), no solo en CSS/cliente, para que sea imposible espiar con las herramientas del navegador.
+3. **UX nativa de escritorio:** atajos de teclado en mesa (`F` fold, `C` check/call, `R` foco en raise, `Enter` confirmar, `T` chat, `Esc` cerrar, `?` leyenda de atajos); tooltips y estados hover ricos (previsualización de pagos en apuestas); layout fijo de tres columnas en sala (clasificación | mesa | chat) sin toggles móviles; menús contextuales con clic derecho.
+4. **Criterio de aceptación:** auditoría de payloads confirmando que ningún cliente recibe cartas ajenas antes del showdown; una mano completa de póker jugable solo con teclado; revisión visual aprobada en 1280×800 y 1920×1080.
 
 **Entregable en Render:** deploy normal.
 
-## Fase 3 — Robustez operativa en Render
+## Fase 5 — Ruleta completa con rueda animada
+
+*Objetivo: transformar Ruleta Nova en una experiencia de ruleta real, no solo botones.*
+
+1. **Paño completo de apuestas.** Mesa de ruleta completa (estilo europeo, un solo 0): cuadrícula de números 0–36 con colores reales, apuestas externas (rojo/negro, par/impar, 1–18/19–36, **docenas y columnas**) y fichas colocadas visualmente sobre el paño donde apuesta cada jugador.
+2. **Rueda animada con pelota.** Al lanzar, se muestra la rueda girando y la **pelota recorriéndola con desaceleración realista** (rebotes finales incluidos) hasta detenerse **exactamente en el número que decidió el servidor**. La animación (~6–8 s, con opción de saltar y respeto a `prefers-reduced-motion`) solo **representa** el resultado autoritativo; nunca lo decide el cliente.
+3. **Sincronía multijugador.** Todos los presentes ven la misma animación al mismo tiempo (semilla/timestamp del servidor); quien entra a mitad del giro ve el estado ya resuelto.
+4. **Pagos y liquidación.** Extender el motor de `quick-games` con los nuevos tipos de apuesta (docenas y columnas pagan x3) y sus pruebas.
+5. **Criterio de aceptación:** el número donde cae la pelota coincide siempre con el resultado del servidor; smoke test de los nuevos tipos de apuesta; rendimiento fluido (60 fps en canvas/CSS transform) en un escritorio promedio.
+
+**Entregable en Render:** deploy normal.
+
+## Fase 6 — Robustez operativa en Render
 
 *Objetivo: que el hosting no borre datos ni degrade la experiencia.*
 
@@ -55,19 +102,19 @@
 
 **Entregable en Render:** variables `PROFILE_STORE_PATH` y health check configurados; `render.yaml` (Infrastructure as Code) versionado en el repo.
 
-## Fase 4 — Contenido y retención
+## Fase 7 — Contenido y retención
 
 *Objetivo: crecer el juego sobre la base ya estabilizada.*
 
 1. **Torneos de sala** (sit & go de póker con ciegas crecientes) — el formato brilla en pantallas grandes.
 2. **Estadísticas ampliadas de perfil:** gráficas de saldo por sesión, historial por juego, % de victorias; panel lateral que solo cabe en escritorio.
 3. **Espectadores:** entrar a una sala llena en modo observador con chat.
-4. **Nuevas variantes:** ruleta con apuestas a docenas/columnas, blackjack con seguro y split.
+4. **Nuevas variantes:** blackjack con seguro y split.
 5. **Criterio de aceptación:** cada característica entra por separado con su smoke test correspondiente en `npm test`.
 
 **Entregable en Render:** deploys independientes por característica.
 
-## Fase 5 — Calidad continua
+## Fase 8 — Calidad continua
 
 1. **CI en GitHub:** `npm test` en cada push/PR (GitHub Actions) antes del auto-deploy de Render.
 2. **Preview environments de Render** por pull request para probar cambios visuales de escritorio.
@@ -81,16 +128,22 @@
 | Fase | Alcance | Esfuerzo estimado | Riesgo |
 |------|---------|-------------------|--------|
 | 1 | Política solo-escritorio | Bajo (1 iteración) | Bajo |
-| 2 | UX nativa de escritorio | Medio (2–3 iteraciones) | Bajo |
-| 3 | Robustez en Render | Medio (1–2 iteraciones) | **Alto impacto**: evita pérdida de datos |
-| 4 | Contenido nuevo | Alto (continuo) | Medio |
-| 5 | Calidad continua | Bajo (transversal) | Bajo |
+| 2 | Mesas, bots expertos y presencia real | Medio (2 iteraciones) | **Alto impacto**: corrige el bug de jugadores fantasma |
+| 3 | Términos y condiciones (México) | Bajo–medio (1 iteración + revisión legal) | **Alto impacto**: cobertura legal |
+| 4 | Rediseño profesional + privacidad de cartas | Medio–alto (2–3 iteraciones) | Medio: la privacidad exige cambios de protocolo |
+| 5 | Ruleta completa animada | Medio (2 iteraciones) | Bajo |
+| 6 | Robustez en Render | Medio (1–2 iteraciones) | **Alto impacto**: evita pérdida de datos |
+| 7 | Contenido nuevo | Alto (continuo) | Medio |
+| 8 | Calidad continua | Bajo (transversal) | Bajo |
 
-> **Nota:** si el servicio ya tiene jugadores reales, conviene adelantar el punto 3.1 (persistencia de perfiles) inmediatamente después de la fase 1, porque hoy cada deploy en Render borra `data/profiles.json`.
+> **Notas de prioridad:**
+> - Si el servicio ya tiene jugadores reales, conviene adelantar el punto 6.1 (persistencia de perfiles) inmediatamente después de la fase 1, porque hoy cada deploy en Render borra `data/profiles.json`.
+> - La corrección de jugadores fantasma (fase 2.2) y la aceptación de términos (fase 3.2) pueden entregarse como parches independientes si se necesitan antes de completar su fase.
+> - El punto 4.2 (privacidad de cartas de blackjack en el servidor) debe hacerse **antes** de cualquier campaña de difusión: mientras las manos de blackjack viajen abiertas en el payload, un usuario técnico puede verlas.
 
 ## Reglas del proceso incremental
 
 - Una fase = una o más entregas pequeñas; **nunca** se mezclan fases en un mismo deploy.
 - Antes de cada deploy: `npm test` en verde y prueba manual en 1280×800 y 1920×1080.
 - Todo cambio de configuración de Render queda documentado en `render.yaml` dentro del repo.
-- Las fichas siguen siendo 100 % virtuales: ninguna fase introduce pagos ni dinero real.
+- Las fichas siguen siendo 100 % virtuales: ninguna fase introduce pagos ni dinero real; los Términos y Condiciones de la fase 3 lo declaran expresamente.
