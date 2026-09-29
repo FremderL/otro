@@ -3,7 +3,7 @@ const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
 const { ProfileStore, AVATARS, avatarInfo } = require('./lib/profile-store');
-const { recordWager, recordOutcome, claimDailyBonus, publicProgress } = require('./lib/progression');
+const { credit, recordWager, recordOutcome, claimDailyBonus, publicProgress } = require('./lib/progression');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
 const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
 const { HAND_NAMES, compareScores, bestPokerScore } = require('./lib/poker-evaluator');
@@ -112,6 +112,7 @@ function newPlayer(id, socket, name, avatar) {
   Object.defineProperty(player, '_profile', { value: profile, enumerable: false });
   Object.defineProperty(player, 'chips', {
     enumerable: true,
+    configurable: true, // Fase 8.1: los torneos intercambian temporalmente el saldo real por un stack de torneo.
     get: () => profile.chips,
     set: value => { profile.chips = Math.max(0, Math.floor(Number(value) || 0)); profiles.touch(profile); }
   });
@@ -152,6 +153,7 @@ function createRoom(game, host, socket, requestedName) {
     quickResult: null,
     recentWinners: [],
     spectators: [], // Fase 8: espectadores (modo observador con chat)
+    tournament: null, // Fase 8.1: torneo sit & go (solo póker)
     specialEvent: quick ? rollSpecialEvent() : null,
     createdAt: Date.now(),
     updatedAt: Date.now()
@@ -244,6 +246,19 @@ function publicRoom(room, viewerId) {
       const viewer = room.players.find(player => player.id === viewerId);
       return viewer?._profile ? publicProgress(viewer._profile, true) : null;
     })(),
+    // Fase 8.1: estado del torneo sit & go (si existe).
+    tournament: room.tournament ? {
+      active: room.tournament.active,
+      entry: room.tournament.entry,
+      prize: room.tournament.prize,
+      level: room.tournament.level,
+      blinds: tournamentBlinds(room.tournament.level),
+      handsAtLevel: room.tournament.handsAtLevel,
+      handsPerLevel: room.tournament.handsPerLevel,
+      remaining: room.tournament.active ? tournamentAlive(room).length : 0,
+      eliminated: room.tournament.eliminated.slice(-6),
+      winnerName: room.tournament.winnerName || null
+    } : null,
     // Fase 8: tribuna de espectadores. El viewer sabe si está observando; nadie ve cartas ajenas.
     spectators: (room.spectators || []).filter(s => s.connected).map(s => ({ id: s.id, name: s.name, avatar: s.avatar })),
     viewerSpectator: (() => {
@@ -617,6 +632,7 @@ function awardSinglePokerWinner(room, player) {
   clearTurn(room);
   room.phase = 'showdown';
   player.status = 'winner';
+  tournamentAfterHand(room);
   releaseBotSeats(room);
 }
 function advancePokerStreet(room) {
@@ -625,7 +641,7 @@ function advancePokerStreet(room) {
     p.acted = false;
   }
   room.currentBet = 0;
-  room.minRaise = 20;
+  room.minRaise = room.tournament?.active ? tournamentBlinds(room.tournament.level).big : 20;
   if (room.phase === 'preflop') {
     room.community.push(draw(room), draw(room), draw(room));
     room.phase = 'flop';
@@ -650,17 +666,143 @@ function resolvePokerAfterAction(room, actorId) {
   if (pokerRoundComplete(room)) return advancePokerStreet(room);
   setNextPokerTurn(room, actorId);
 }
+// ---------------- Fase 8.1: TORNEOS SIT & GO DE PÓKER ----------------
+// Todos los sentados pagan una entrada, reciben un stack fijo y juegan con
+// ciegas crecientes hasta que queda un solo jugador, que se lleva el bote.
+// Durante el torneo el saldo real del perfil queda protegido (solo se mueve
+// la entrada al inicio y el premio al final).
+const TOURNAMENT_ENTRY = 200;
+const TOURNAMENT_STACK = 1000;
+const TOURNAMENT_HANDS_PER_LEVEL = 3;
+function tournamentBlinds(level) {
+  const small = 10 * Math.pow(2, Math.min(6, Math.max(1, level) - 1));
+  return { small, big: small * 2 };
+}
+// Cambia las fichas del jugador humano por un stack de torneo independiente del perfil.
+function detachTournamentChips(player, stack) {
+  Object.defineProperty(player, 'chips', { enumerable: true, configurable: true, writable: true, value: stack });
+}
+// Restaura el enlace fichas ⇄ perfil (el saldo real, ya sin la entrada).
+function restoreProfileChips(player) {
+  if (player.isBot) return;
+  const profile = player._profile;
+  Object.defineProperty(player, 'chips', {
+    enumerable: true,
+    configurable: true,
+    get: () => profile.chips,
+    set: value => { profile.chips = Math.max(0, Math.floor(Number(value) || 0)); profiles.touch(profile); }
+  });
+}
+function tournamentAlive(room) {
+  const t = room.tournament;
+  if (!t) return [];
+  return room.players.filter(p => t.entrants.includes(p.id) && !t.eliminated.some(e => e.id === p.id));
+}
+function executeTournamentStart(room, actor) {
+  if (!room || room.game !== 'poker') return actionError('Los torneos solo están disponibles en la mesa de póker.');
+  if (!actor || actor.id !== room.hostId) return actionError('Solo el anfitrión puede iniciar el torneo.');
+  if (room.tournament?.active) return actionError('Ya hay un torneo en curso.');
+  if (!['waiting', 'showdown'].includes(room.phase)) return actionError('Espera a que termine la mano actual.');
+  beginRoundRoster(room);
+  const entrants = room.players.filter(p => p.connected);
+  if (entrants.length < 2) return actionError('Se necesitan al menos 2 jugadores para el torneo.');
+  const poor = entrants.find(p => !p.isBot && p.chips < TOURNAMENT_ENTRY);
+  if (poor) return actionError(`${poor.name} no tiene fichas para la entrada (${TOURNAMENT_ENTRY}).`);
+  for (const p of entrants) {
+    if (p.isBot) p.chips = TOURNAMENT_STACK;
+    else { p.chips -= TOURNAMENT_ENTRY; detachTournamentChips(p, TOURNAMENT_STACK); }
+    p.status = 'waiting';
+  }
+  room.tournament = {
+    active: true, entry: TOURNAMENT_ENTRY, prize: TOURNAMENT_ENTRY * entrants.length,
+    level: 1, handsAtLevel: 0, handsPerLevel: TOURNAMENT_HANDS_PER_LEVEL,
+    entrants: entrants.map(p => p.id), eliminated: [], winnerName: null, startedAt: Date.now()
+  };
+  addSystem(room, `🏆 ¡Comienza el torneo sit & go! Entrada ${TOURNAMENT_ENTRY}, bote ${room.tournament.prize}, stack inicial ${TOURNAMENT_STACK}. Las ciegas suben cada ${TOURNAMENT_HANDS_PER_LEVEL} manos.`);
+  gameEvent(room, 'round', `Torneo iniciado: ${entrants.length} jugadores compiten por ${room.tournament.prize} fichas.`);
+  logEvent('tournament_started', { room: room.code, entrants: entrants.length, prize: room.tournament.prize });
+  return startPoker(room);
+}
+// Marca a un participante como eliminado (por quedarse sin stack o por abandonar la mesa).
+function eliminateEntrant(room, player, viaDeparture = false) {
+  const t = room.tournament;
+  if (!t?.active || !t.entrants.includes(player.id) || t.eliminated.some(e => e.id === player.id)) return;
+  const place = tournamentAlive(room).length;
+  t.eliminated.push({ id: player.id, name: player.name, place });
+  player.status = 'eliminated';
+  if (!player.isBot) restoreProfileChips(player);
+  addSystem(room, `🏆 ${player.name} queda fuera del torneo (${place}.º lugar${viaDeparture ? ', abandonó la mesa' : ''}).`);
+  gameEvent(room, 'loss', `Quedaste en ${place}.º lugar del torneo.`, player.id);
+  if (viaDeparture) {
+    const remaining = tournamentAlive(room).filter(p => p.id !== player.id);
+    if (remaining.length === 1 && !isPokerActive(room)) finishTournament(room, remaining[0]);
+  }
+}
+function finishTournament(room, winner) {
+  const t = room.tournament;
+  if (!t?.active) return;
+  t.active = false;
+  t.winnerName = winner ? winner.name : null;
+  t.finishedAt = Date.now();
+  for (const p of room.players.filter(item => t.entrants.includes(item.id))) {
+    if (!p.isBot) restoreProfileChips(p);
+    if (p.status === 'eliminated' || p.status === 'winner') p.status = 'waiting';
+  }
+  if (winner) {
+    if (winner.isBot) winner.chips += t.prize;
+    else { credit(winner._profile, t.prize, 'Premio del torneo sit & go'); profiles.touch(winner._profile); }
+    addRecentWinner(room, winner, t.prize);
+    addSystem(room, `🏆 ${winner.name} gana el torneo y se lleva las ${t.prize} fichas del bote.`);
+    gameEvent(room, 'win', `¡Campeón del torneo! +${t.prize} fichas.`, winner.id, { amount: t.prize });
+    logEvent('tournament_finished', { room: room.code, winner: winner.name, prize: t.prize, entrants: t.entrants.length });
+  } else {
+    addSystem(room, '🏆 El torneo terminó sin campeón.');
+    logEvent('tournament_finished', { room: room.code, winner: null, prize: t.prize, entrants: t.entrants.length });
+  }
+  releaseBotSeats(room);
+}
+// Al terminar cada mano: procesa eliminaciones, sube ciegas y detecta al campeón.
+function tournamentAfterHand(room) {
+  const t = room.tournament;
+  if (!t?.active) return;
+  const busted = tournamentAlive(room).filter(p => p.chips <= 0);
+  let place = tournamentAlive(room).length;
+  for (const player of busted.sort((a, b) => (a.totalBet || 0) - (b.totalBet || 0))) {
+    t.eliminated.push({ id: player.id, name: player.name, place });
+    player.status = 'eliminated';
+    if (!player.isBot) restoreProfileChips(player);
+    addSystem(room, `🏆 ${player.name} queda eliminado del torneo (${place}.º lugar).`);
+    gameEvent(room, 'loss', `Quedaste en ${place}.º lugar del torneo.`, player.id);
+    place--;
+  }
+  const remaining = tournamentAlive(room);
+  if (remaining.length <= 1) return finishTournament(room, remaining[0] || null);
+  t.handsAtLevel++;
+  if (t.handsAtLevel >= t.handsPerLevel) {
+    t.handsAtLevel = 0;
+    t.level++;
+    const blinds = tournamentBlinds(t.level);
+    addSystem(room, `🏆 Torneo: nivel ${t.level}. Las ciegas suben a ${blinds.small}/${blinds.big}.`);
+    gameEvent(room, 'round', `Ciegas del torneo: ${blinds.small}/${blinds.big}.`);
+  }
+}
+
 function startPoker(room) {
   if (!['waiting', 'showdown'].includes(room.phase)) return actionError('La mano actual todavía no termina.');
   beginRoundRoster(room);
-  const eligible = room.players.filter(p => p.connected && p.chips >= 20);
-  if (eligible.length < 2) return actionError('Se necesitan al menos 2 jugadores con 20 fichas.');
+  // Fase 8.1: en torneo juegan solo los participantes vivos y las ciegas dependen del nivel.
+  const tourney = room.tournament?.active ? room.tournament : null;
+  const blinds = tourney ? tournamentBlinds(tourney.level) : { small: 10, big: 20 };
+  const eligible = tourney
+    ? tournamentAlive(room).filter(p => p.connected && p.chips > 0)
+    : room.players.filter(p => p.connected && p.chips >= 20);
+  if (eligible.length < 2) return actionError(tourney ? 'El torneo necesita al menos 2 participantes con fichas.' : 'Se necesitan al menos 2 jugadores con 20 fichas.');
   beginSpecialEvent(room);
   room.deck = makeDeck(1);
   room.community = [];
   room.pot = 0;
   room.currentBet = 0;
-  room.minRaise = 20;
+  room.minRaise = blinds.big;
   room.results = [];
   room.handNumber++;
   for (const p of room.players) {
@@ -689,12 +831,12 @@ function startPoker(room) {
   const bbIndex = nextSeat(room, sbIndex, p => eligible.includes(p));
   const sb = room.players[sbIndex];
   const bb = room.players[bbIndex];
-  room.pot += takeChips(room, sb, 10);
-  room.pot += takeChips(room, bb, 20);
+  room.pot += takeChips(room, sb, blinds.small);
+  room.pot += takeChips(room, bb, blinds.big);
   room.currentBet = Math.max(sb.roundBet, bb.roundBet);
   room.phase = 'preflop';
   setNextPokerTurn(room, bb.id);
-  addSystem(room, `Mano ${room.handNumber}. ${dealer.name} reparte; ciegas 10/20.`);
+  addSystem(room, `Mano ${room.handNumber}. ${dealer.name} reparte; ciegas ${blinds.small}/${blinds.big}.${tourney ? ` · 🏆 Torneo nivel ${tourney.level}` : ''}`);
   gameEvent(room, 'round', `Comenzó la mano ${room.handNumber}.`);
   return actionOk();
 }
@@ -753,6 +895,7 @@ function showdownPoker(room) {
   room.pot = 0;
   clearTurn(room);
   room.phase = 'showdown';
+  tournamentAfterHand(room);
   releaseBotSeats(room);
 }
 
@@ -963,6 +1106,7 @@ function addBotToRoom(room, options = {}) {
 function removeBotFromRoom(room, bot) {
   if (!bot?.isBot) return actionError('Bot no encontrado.');
   if (rosterLocked(room)) return actionError('Espera a que termine la ronda para retirar bots.');
+  eliminateEntrant(room, bot, true); // Fase 8.1: retirar a un bot participante lo elimina del torneo.
   botController?.cancelBot(room.code, bot.id);
   if ((room.game === 'blackjack' || isQuickGame(room.game)) && room.phase === 'betting' && bot.bet > 0) bot.chips += bot.bet;
   room.players = room.players.filter(player => player.id !== bot.id);
@@ -996,6 +1140,7 @@ function scheduleRoomCleanup(room) {
 // Completa los asientos libres con bots expertos mientras haya personas reales en la mesa.
 function autoFillBots(room) {
   if (!AUTO_BOTS || !room || rosterLocked(room)) return false;
+  if (room.tournament?.active) return false; // Fase 8.1: sin asientos nuevos durante un torneo.
   if (!room.players.some(p => !p.isBot && p.connected)) return false;
   let added = false;
   while (room.players.length < ROOM_CAPACITY) {
@@ -1009,6 +1154,7 @@ function autoFillBots(room) {
 // Al terminar la ronda, los bots desocupan sus asientos para que los tomen personas reales.
 function releaseBotSeats(room) {
   if (!AUTO_BOTS || !room) return false;
+  if (room.tournament?.active) return false; // Fase 8.1: los bots participantes se quedan hasta el final del torneo.
   const bots = room.players.filter(p => p.isBot);
   if (!bots.length) return false;
   for (const bot of bots) botController?.cancelBot(room.code, bot.id);
@@ -1021,6 +1167,7 @@ function releaseBotSeats(room) {
 // Cuando llega una persona real y la mesa está llena de bots, un bot cede el asiento.
 function makeSeatForHuman(room) {
   if (!AUTO_BOTS || !room || rosterLocked(room)) return false;
+  if (room.tournament?.active) return false; // Fase 8.1: nadie desplaza a un participante del torneo.
   const bot = [...room.players].reverse().find(p => p.isBot);
   if (!bot) return false;
   botController?.cancelBot(room.code, bot.id);
@@ -1040,6 +1187,7 @@ function purgeDepartedPlayers(room) {
       player.chips += player.bet;
       player.bet = 0;
     }
+    eliminateEntrant(room, player, true); // Fase 8.1: los ausentes salen también del torneo.
     addSystem(room, `${player.name} dejó su asiento libre.`);
   }
   room.players = room.players.filter(p => p.isBot || p.connected);
@@ -1072,6 +1220,8 @@ function removeOrDisconnectPlayer(room, player, leave = false) {
     player.status = 'stand';
     nextBlackjackTurn(room, player.id);
   }
+  // Fase 8.1: quien abandona la mesa durante un torneo queda eliminado de él.
+  if (leave) eliminateEntrant(room, player, true);
   if (leave && !isPokerActive(room) && room.phase !== 'playing' && room.phase !== 'rolling') {
     room.players = room.players.filter(p => p.id !== player.id);
   }
@@ -1292,6 +1442,13 @@ io.on('connection', socket => {
     ackResult(ack, result);
     if (result.ok) broadcast(room);
   });
+  // Fase 8.1: el anfitrión arranca un torneo sit & go en la mesa de póker.
+  socket.on('tournament_start', (_data, ack) => {
+    const { room, player } = playerForSocket(socket);
+    const result = executeTournamentStart(room, player);
+    ackResult(ack, result);
+    if (result.ok) broadcast(room);
+  });
   socket.on('poker_action', (data = {}, ack) => {
     const { room, player } = playerForSocket(socket);
     const result = executePokerAction(room, player, data);
@@ -1337,6 +1494,7 @@ io.on('connection', socket => {
   socket.on('rebuy', (_data, ack) => {
     const { room, player } = playerForSocket(socket);
     if (!room || isPokerActive(room) || room.phase === 'playing') return ackError(ack, 'Espera a que termine la mano.');
+    if (room.tournament?.active) return ackError(ack, 'No hay recompras durante un torneo.');
     if (player.chips >= 200) return ackError(ack, 'La recarga está disponible con menos de 200 fichas.');
     player.chips = 1000;
     addSystem(room, `${player.name} recargó sus fichas virtuales.`);

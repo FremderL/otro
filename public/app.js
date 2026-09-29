@@ -15,6 +15,7 @@
     liveRooms: $('#live-rooms'), liveRoomCount: $('#live-room-count'), onlinePlayerCount: $('#online-player-count'),
     heroOnlineCount: $('#hero-online-count'), lobbyRefresh: $('#lobby-refresh'),
     gameName: $('#game-name'), phaseLabel: $('#phase-label'), roomTitle: $('#room-title'), headerCode: $('#header-code'),
+    tournamentBanner: $('#tournament-banner'),
     profileCard: $('#profile-card'), playersList: $('#players-list'), playerCount: $('#player-count'),
     chatList: $('#chat-list'), chatForm: $('#chat-form'), chatInput: $('#chat-input'),
     gameStatus: $('#game-status'), turnClock: $('#turn-clock'), clockValue: $('#clock-value'),
@@ -579,9 +580,10 @@
     renderChat();
     renderStatus();
     renderSocialMeta();
+    renderTournamentBanner(room);
     if (ui.profileOpen) renderProfileModal();
     const gameSignature = JSON.stringify([
-      room.game, room.phase, room.turnId, room.turnDeadline, room.dealerHand, room.community, room.pot,
+      room.game, room.phase, room.turnId, room.turnDeadline, room.dealerHand, room.community, room.pot, room.tournament,
       room.currentBet, room.minRaise, room.dealerIndex, room.handNumber, room.results, room.quickResult, room.specialEvent,
       room.players.map(p => [p.id, p.name, p.avatar, p.chips, p.hand, p.bet, p.quickChoice, p.roundBet, p.totalBet, p.status, p.folded, p.allIn, p.connected, p.isBot, p.bot?.thinking, p.bot?.lastActionAt])
     ]);
@@ -590,6 +592,30 @@
       renderTable(); renderActions();
     }
     updateClock();
+  }
+  // Fase 8.1: banner del torneo sit & go sobre la mesa.
+  function renderTournamentBanner(room) {
+    if (!els.tournamentBanner) return;
+    const t = room.tournament;
+    if (!t || (!t.active && !t.winnerName)) {
+      els.tournamentBanner.classList.add('hidden');
+      els.tournamentBanner.innerHTML = '';
+      return;
+    }
+    els.tournamentBanner.classList.remove('hidden');
+    if (t.active) {
+      const handsLeft = Math.max(1, t.handsPerLevel - t.handsAtLevel);
+      els.tournamentBanner.innerHTML = `
+        <span class="tb-title">🏆 TORNEO SIT &amp; GO</span>
+        <span class="tb-item">Nivel <b>${t.level}</b> · Ciegas <b>${formatChips(t.blinds.small)}/${formatChips(t.blinds.big)}</b></span>
+        <span class="tb-item">Bote <b class="tb-gold">◆ ${formatChips(t.prize)}</b></span>
+        <span class="tb-item"><b>${t.remaining}</b> en juego</span>
+        <span class="tb-item">Ciegas suben en <b>${handsLeft}</b> ${handsLeft === 1 ? 'mano' : 'manos'}</span>`;
+    } else {
+      els.tournamentBanner.innerHTML = `
+        <span class="tb-title">🏆 TORNEO TERMINADO</span>
+        <span class="tb-item">Campeón: <b>${escapeHtml(t.winnerName)}</b> · Se llevó <b class="tb-gold">◆ ${formatChips(t.prize)}</b></span>`;
+    }
   }
   function renderBotControls() {
     const room = ui.room;
@@ -638,7 +664,7 @@
       const botThinking = Boolean(player.isBot && player.bot?.thinking);
       const recentBotAction = player.isBot && player.bot?.lastAction && Date.now() - Number(player.bot.lastActionAt || 0) < 4500;
       const bet = room.game === 'poker' ? player.roundBet : player.bet;
-      const status = !player.connected ? 'Desconectado' : botThinking ? 'Pensando…' : recentBotAction ? player.bot.lastAction : isTurn ? 'Pensando…' : player.status === 'winner' ? 'Ganador' : player.status === 'lost' ? 'Ronda perdida' : player.status === 'folded' ? 'Se retiró' : player.allIn ? 'All-in' : `${formatChips(player.chips)} fichas`;
+      const status = !player.connected ? 'Desconectado' : player.status === 'eliminated' ? '🏆 Eliminado del torneo' : botThinking ? 'Pensando…' : recentBotAction ? player.bot.lastAction : isTurn ? 'Pensando…' : player.status === 'winner' ? 'Ganador' : player.status === 'lost' ? 'Ronda perdida' : player.status === 'folded' ? 'Se retiró' : player.allIn ? 'All-in' : `${formatChips(player.chips)} fichas`;
       const oldChips = ui.previousChips.get(player.id);
       const chipsClass = oldChips != null && player.chips > oldChips ? 'chips-up' : oldChips != null && player.chips < oldChips ? 'chips-down' : '';
       const botBadge = player.isBot ? '<span class="bot-badge">🤖 BOT</span>' : '';
@@ -1140,7 +1166,8 @@
     const startCopy = room.phase === 'showdown' ? 'Repartir otra mano' : 'Iniciar partida';
     els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>${active ? 'La acción está en la mesa' : room.phase === 'showdown' ? 'La mano terminó' : 'La mesa está lista'}</b><span>${active ? `Esperando a ${escapeHtml(room.players.find(p => p.id === room.turnId)?.name || 'la siguiente jugada')}…` : me.isHost ? 'Tú controlas el inicio de la próxima mano.' : 'El anfitrión iniciará cuando todos estén listos.'}</span></div><div class="action-buttons">
       ${canStart ? `<button class="game-btn primary" data-event="poker_start">${startCopy}</button>` : ''}
-      ${me.chips < 200 && !active ? '<button class="game-btn" data-event="rebuy">Recargar fichas</button>' : ''}
+      ${canStart && !room.tournament?.active && room.players.filter(p => p.connected).length >= 2 ? '<button class="game-btn tournament-btn" data-event="tournament_start" title="Entrada 200 fichas · stack 1000 · las ciegas suben cada 3 manos · el ganador se lleva todo">🏆 Iniciar torneo</button>' : ''}
+      ${me.chips < 200 && !active && !room.tournament?.active ? '<button class="game-btn" data-event="rebuy">Recargar fichas</button>' : ''}
       ${room.results?.length ? `<div class="result-strip">${room.results.map(result => `<span class="result-item ${result.amount > 0 ? 'win' : ''}">${escapeHtml(result.name)} <b>${result.amount > 0 ? '+' : ''}${formatDelta(result.amount)}</b></span>`).join('')}</div>` : ''}
       </div></div>`;
   }

@@ -17,6 +17,7 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Retos, logros, recompensas por explorar juegos y bono diario.
 - Eventos especiales aleatorios: jackpot virtual, ganancia x2 y ronda bonus.
 - Migración de anfitrión, reconexión por dispositivo y reembolso de apuestas rápidas abiertas al salir.
+- Torneos sit & go en la mesa de póker: entrada de 200 fichas, stack de torneo de 1000, ciegas que se duplican cada 3 manos, eliminación por lugares y bote completo para el campeón; el saldo real del perfil queda protegido durante el torneo y no hay recompras.
 - Modo espectador: las salas llenas muestran «👁 Ver mesa» en el lobby; hasta 12 espectadores por mesa ven la partida en vivo (con cartas ajenas siempre ocultas), participan en el chat con el prefijo 👁 y pueden tomar asiento cuando se libera un lugar o un bot lo cede.
 - Bots autoritativos configurables por el anfitrión, con cuatro dificultades, cinco estilos y decisiones específicas por juego.
 - Mesas siempre vivas: los asientos libres se completan automáticamente con bots **expertos** al entrar; los bots ceden su asiento cuando llega una persona real y los desocupan al terminar cada ronda; la autoridad de la mesa migra a una persona real activa tras 1 minuto de inactividad del anfitrión, y las mesas sin personas reales se eliminan.

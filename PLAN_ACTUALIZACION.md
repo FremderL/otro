@@ -131,11 +131,16 @@
 
 *Objetivo: crecer el juego sobre la base ya estabilizada.*
 
-1. **Torneos de sala** (sit & go de póker con ciegas crecientes) — el formato brilla en pantallas grandes.
+1. ✅ **Torneos de sala** (sit & go de póker con ciegas crecientes) — el formato brilla en pantallas grandes. *(2026-09-28: el anfitrión inicia el torneo desde la mesa de póker; todos los sentados —humanos y bots— pagan 200 de entrada, reciben un stack de 1000 y juegan con ciegas que se duplican cada 3 manos (10/20 → 20/40 → …). El saldo real del perfil queda protegido durante el torneo; los eliminados quedan clasificados por lugar y el campeón se lleva el bote completo como transacción en su perfil. Sin recompras ni cambios de asientos durante el torneo. Smoke test: `tests/tournament-smoke.js`.)*
 2. ✅ **Estadísticas ampliadas de perfil:** gráficas de saldo por sesión, historial por juego, % de victorias; panel lateral que solo cabe en escritorio. *(2026-09-28: el modal de perfil suma «% DE VICTORIAS», una gráfica SVG con la evolución del saldo —últimos 60 movimientos, persistidos en disco— y una tabla de rendimiento por juego con rondas, victorias, % y balance neto. Smoke test: `tests/profile-stats-smoke.js`.)*
 3. ✅ **Espectadores:** entrar a una sala llena en modo observador con chat. *(2026-09-28: tribuna con hasta 12 espectadores por mesa, botón «👁 Ver mesa» en el lobby para salas llenas, chat con prefijo 👁, privacidad intacta —cartas ajenas ocultas y elecciones «locked»—, botón «Tomar asiento» que convierte al espectador en jugador, y limpieza automática al desconectarse. Smoke test: `tests/spectators-smoke.js`.)*
 4. **Nuevas variantes:** blackjack con seguro y split.
 5. **Criterio de aceptación:** cada característica entra por separado con su smoke test correspondiente en `npm test`.
+
+**Ampliación solicitada (2026-09-28):**
+
+6. **Ranking mensual:** tabla de clasificación con las personas con mayor cantidad de puntos (fichas) del mes en curso, visible desde el lobby y actualizada en vivo.
+7. **Reinicio mensual de puntos:** al inicio de cada mes todos los perfiles vuelven a 1000 fichas (con anuncio del cierre de temporada y del podio del mes anterior); el bono diario reclamable de 100 fichas se mantiene como está.
 
 **Entregable en Render:** deploys independientes por característica.
 
