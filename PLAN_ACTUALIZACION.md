@@ -157,6 +157,22 @@
 
 **Estado (2026-09-28): FASE 9 COMPLETA — plan de actualización terminado (fases 1-9).**
 
+## Fase 10 — Persistencia gratuita sin tarjeta (Postgres opcional) ✅ COMPLETADA
+
+*Objetivo: poder desplegar en el plan FREE de Render (sin blueprint, sin disco, sin tarjeta) sin que los perfiles vuelvan a ser efímeros.*
+
+> **Estado (2026-09-29):** implementada. Nuevo backend de perfiles respaldado en Postgres (`lib/profile-store-pg.js`), pensado para el free tier de Neon (sin tarjeta). Selección automática por variable de entorno: si existe `DATABASE_URL` el servidor usa Postgres; si no, sigue usando `data/profiles.json` exactamente como hasta la fase 9 (cero cambios en local ni en los 16 tests preexistentes). La lógica común a ambos backends (limpieza de perfiles, ranking, alta/edición, reinicio de temporada mensual, bono diario) se extrajo a `lib/profile-store-shared.js` y `lib/profile-store-base.js`, así que Postgres y archivo JSON se comportan de forma idéntica detrás de la misma interfaz (`getOrCreate`, `update`, `top`, `touch`, `seasons`, `ensureSeason`, `saveNow`). El arranque del servidor (`server.js`) ahora espera a que el store esté listo (`await createProfileStore(...)`) antes de abrir el puerto, y el apagado limpio por `SIGTERM` espera el guardado (en disco o en Postgres) antes de cerrar.
+
+1. **`ProfileStore` alternativo en Postgres**, misma interfaz que el de archivo: guarda una foto completa del estado en memoria (perfiles + temporadas) cada vez que hay cambios, igual que hace hoy el archivo JSON, pero en dos tablas (`montecristo_profiles`, `montecristo_seasons`) que el propio servidor crea la primera vez que arranca (sin SQL manual).
+2. **Selección por `DATABASE_URL`**: con la variable definida, usa Postgres y **falla rápido y con un error claro** si la conexión no funciona (no cae en silencio al archivo JSON, para no perder datos sin darse cuenta); sin la variable, todo sigue igual que siempre.
+3. **Script de migración** (`scripts/migrate-profiles-to-postgres.js`, también disponible como `npm run migrate:profiles`) que importa un `data/profiles.json` existente a Postgres, con modo `--dry-run` para previsualizar sin escribir.
+4. **Smoke test nuevo** (`tests/profile-store-pg-smoke.js`, integrado a `npm test`): ejercita el store de Postgres real (mismo código SQL) contra un Postgres simulado en memoria — alta/edición, ranking, persistencia entre "reinicios", reinicio de temporada, compatibilidad con perfiles en formato legado y selección correcta según `DATABASE_URL` — sin necesitar ninguna base de datos. Si además se define `DATABASE_URL_TEST` (una base Postgres/Neon desechable), corre también una ronda real contra esa base y limpia sus propias filas; sin esa variable, esa parte se omite y las 17 suites siguen en verde.
+5. **Guía de despliegue 100% gratis** documentada en `DESPLIEGUE_RENDER.md` («Opción C»): web service Free de Render creado a mano (sin blueprint, sin disco) + base de datos Postgres gratuita de Neon (sin tarjeta), paso a paso, incluyendo dónde pegar `DATABASE_URL` en Render y cómo comprobar que quedó activo.
+6. **Limpieza pre-publicación:** `data/profiles.json` se vació de los perfiles de prueba (queda un archivo válido con `profiles: []`) para no publicar cuentas de desarrollo.
+7. **Criterio de aceptación:** `npm test` (17 suites) en verde sin ninguna base de datos configurada; con `DATABASE_URL` apuntando a un host inválido, el servidor falla al arrancar con un mensaje claro en vez de perder datos en silencio.
+
+**Entregable en Render:** sin cambios para quien ya usa disco persistente (Opción A/B, sin tocar nada); para quien use el plan Free, seguir la Opción C de `DESPLIEGUE_RENDER.md` (variable `DATABASE_URL` apuntando a Neon).
+
 ---
 
 ## Orden y ritmo sugerido
@@ -172,6 +188,7 @@
 | 7 | Robustez en Render | Medio (1–2 iteraciones) | **Alto impacto**: evita pérdida de datos |
 | 8 | Contenido nuevo | Alto (continuo) | Medio |
 | 9 | Calidad continua | Bajo (transversal) | Bajo |
+| 10 | Persistencia gratuita sin tarjeta (Postgres opcional) | Bajo–medio (1 iteración) | **Alto impacto**: evita perder perfiles al usar el plan Free sin disco |
 
 > **Notas de prioridad:**
 > - Si el servicio ya tiene jugadores reales, conviene adelantar el punto 7.1 (persistencia de perfiles) inmediatamente después de la fase 1, porque hoy cada deploy en Render borra `data/profiles.json`.

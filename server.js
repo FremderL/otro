@@ -3,7 +3,10 @@ const compression = require('compression');
 const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
-const { ProfileStore, AVATARS, avatarInfo } = require('./lib/profile-store');
+const { AVATARS, avatarInfo } = require('./lib/profile-store');
+// Fase 10.2: DATABASE_URL activa el backend de Postgres (Neon free); sin ella,
+// se mantiene el ProfileStore de archivo JSON de siempre. Ver lib/profile-store-factory.js.
+const { createProfileStore } = require('./lib/profile-store-factory');
 const { credit, recordWager, recordOutcome, claimDailyBonus, publicProgress } = require('./lib/progression');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
 const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
@@ -45,7 +48,11 @@ app.get('/terminos', (_req, res) => res.sendFile(path.join(__dirname, 'public', 
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const rooms = new Map();
-const profiles = new ProfileStore(process.env.PROFILE_STORE_PATH);
+// Fase 10.2: se crea de forma asíncrona en bootstrap() (más abajo) para poder
+// esperar la carga inicial de Postgres cuando DATABASE_URL está definida; con
+// el ProfileStore de archivo (caso local y de todos los tests actuales) la
+// espera es instantánea, así que el comportamiento no cambia.
+let profiles;
 let botController = null;
 const ROOM_CAPACITY = 6;
 const BOT_ONLY_ROOM_TTL_MS = Math.max(100, Number(process.env.BOT_ONLY_ROOM_TTL_MS) || 5 * 60 * 1000);
@@ -1739,6 +1746,7 @@ hostInactivitySweep.unref?.();
 // Fase 8.7: vigila el cambio de mes con el servidor encendido. Al cerrar la
 // temporada, todos los perfiles vuelven a 1000 fichas y se anuncia el podio.
 const seasonSweep = setInterval(() => {
+  if (!profiles) return; // Fase 10.2: red de seguridad si Postgres tardara más de 5 min en responder al arrancar.
   const closed = profiles.ensureSeason();
   if (!closed) return;
   logEvent('season_reset', { closedMonth: closed.month, players: closed.players, podium: closed.podium });
@@ -1757,7 +1765,11 @@ seasonSweep.unref?.();
 // avisamos a las mesas y cerramos sockets con gracia para que la reconexión automática
 // del cliente reencuentre la sesión en la nueva instancia.
 let shuttingDown = false;
-function gracefulShutdown(signal) {
+// Fase 10.2: async porque guardar en Postgres es una operación de red (en el
+// backend de archivo, `await profiles.saveNow()` resuelve de inmediato, igual
+// que antes). El temporizador de salida forzada sigue siendo la red de
+// seguridad si la base de datos no responde a tiempo.
+async function gracefulShutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   logEvent('shutdown_start', { signal, rooms: rooms.size });
@@ -1767,9 +1779,9 @@ function gracefulShutdown(signal) {
       broadcast(room);
     }
   } catch (_) { /* avisar es cortesía; el guardado es lo crítico */ }
-  try { profiles.saveNow(); } catch (_) { /* saveNow ya reporta sus propios errores */ }
   const forceExit = setTimeout(() => { logEvent('shutdown_forced', {}); process.exit(0); }, 2500);
   forceExit.unref?.();
+  try { await profiles.saveNow(); } catch (_) { /* saveNow ya reporta sus propios errores */ }
   io.close(() => {
     server.close(() => {
       logEvent('shutdown_complete', {});
@@ -1780,7 +1792,17 @@ function gracefulShutdown(signal) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`MonteCristo lista en http://0.0.0.0:${PORT}`);
-  logEvent('server_listening', { port: Number(PORT), node: process.version, profileStore: profiles.filePath });
+// Fase 10.2: se crea el ProfileStore (archivo o Postgres, según DATABASE_URL)
+// y solo cuando está listo se abre el puerto; así ningún socket puede llegar
+// antes de que los perfiles existan en memoria.
+async function bootstrap() {
+  profiles = await createProfileStore(process.env.PROFILE_STORE_PATH);
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`MonteCristo lista en http://0.0.0.0:${PORT}`);
+    logEvent('server_listening', { port: Number(PORT), node: process.version, profileStore: profiles.filePath });
+  });
+}
+bootstrap().catch(error => {
+  console.error('No se pudo iniciar MonteCristo:', error);
+  process.exit(1);
 });
