@@ -16,8 +16,26 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: true, credentials: true } });
 const PORT = process.env.PORT || 3000;
 
+// Fase 7: logs estructurados (JSON por línea) para el visor de logs de Render. LOG_JSON=off los desactiva.
+const LOG_JSON = process.env.LOG_JSON !== 'off';
+function logEvent(event, data = {}) {
+  if (!LOG_JSON) return;
+  try { console.log(JSON.stringify({ time: new Date().toISOString(), event, ...data })); } catch (_) { /* un log nunca debe tumbar el servidor */ }
+}
+
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size, botTasks: botController?.tasks.size || 0 }));
+// Fase 7: health check para deploys sin caída en Render (configurado como healthCheckPath en render.yaml).
+app.get('/healthz', (_req, res) => {
+  res.json({
+    status: 'ok',
+    uptimeSeconds: Math.floor(process.uptime()),
+    rooms: rooms.size,
+    humanPlayers: [...rooms.values()].reduce((sum, room) => sum + room.players.filter(p => !p.isBot && p.connected).length, 0),
+    botTasks: botController?.tasks.size || 0,
+    tosVersion: TOS_VERSION
+  });
+});
 app.get('/terminos', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'terminos.html')));
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
@@ -358,6 +376,7 @@ function destroyRoom(code) {
   if (!room) return false;
   clearRoomTasks(room);
   rooms.delete(code);
+  logEvent('room_destroyed', { room: code, game: room.game, hands: room.handNumber || 0 });
   broadcastLobby();
   return true;
 }
@@ -1075,6 +1094,7 @@ io.on('connection', socket => {
     claimPlayerDaily(room, player);
     autoFillBots(room);
     ackOk(ack, { code: room.code });
+    logEvent('room_created', { room: room.code, game: room.game, host: player.name });
     gameEvent(room, 'joined', `${player.name} creó ${room.name}.`);
     broadcast(room);
   });
@@ -1113,6 +1133,7 @@ io.on('connection', socket => {
     autoFillBots(room);
     claimPlayerDaily(room, player);
     ackOk(ack, { code, game: room.game });
+    logEvent('player_joined', { room: code, game: room.game, player: player.name });
     gameEvent(room, 'joined', `${player.name} se unió a la sala.`);
     broadcast(room);
   });
@@ -1324,6 +1345,34 @@ const hostInactivitySweep = setInterval(() => {
 }, HOST_INACTIVITY_SWEEP_MS);
 hostInactivitySweep.unref?.();
 
+// Fase 7: apagado limpio. Render envía SIGTERM en cada deploy: guardamos perfiles,
+// avisamos a las mesas y cerramos sockets con gracia para que la reconexión automática
+// del cliente reencuentre la sesión en la nueva instancia.
+let shuttingDown = false;
+function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logEvent('shutdown_start', { signal, rooms: rooms.size });
+  try {
+    for (const room of rooms.values()) {
+      addSystem(room, '🔄 El servidor se está actualizando y se reiniciará en unos segundos. Tus fichas ya están guardadas; conserva esta pestaña para volver a tu asiento.');
+      broadcast(room);
+    }
+  } catch (_) { /* avisar es cortesía; el guardado es lo crítico */ }
+  try { profiles.saveNow(); } catch (_) { /* saveNow ya reporta sus propios errores */ }
+  const forceExit = setTimeout(() => { logEvent('shutdown_forced', {}); process.exit(0); }, 2500);
+  forceExit.unref?.();
+  io.close(() => {
+    server.close(() => {
+      logEvent('shutdown_complete', {});
+      process.exit(0);
+    });
+  });
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`MonteCristo lista en http://0.0.0.0:${PORT}`);
+  logEvent('server_listening', { port: Number(PORT), node: process.version, profileStore: profiles.filePath });
 });

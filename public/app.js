@@ -276,8 +276,23 @@
     });
   }
 
+  // Fase 7: arranque en frío de Render — el plan free suspende el servicio tras ~15 min
+  // de inactividad y despertar tarda ~50 s. La pantalla de carga lo explica con reintentos visibles.
+  const loaderHelper = document.querySelector('.loader-helper');
+  const defaultLoaderHelp = loaderHelper ? loaderHelper.innerHTML : '';
+  function setColdStartHint(active, attempt = 0) {
+    if (!loaderHelper) return;
+    loaderHelper.innerHTML = active
+      ? `<span></span> El hosting puede tardar hasta un minuto en despertar tras un rato sin visitas.${attempt > 1 ? ` Reintento ${attempt}…` : ' Gracias por la paciencia.'}`
+      : defaultLoaderHelp;
+  }
+  setTimeout(() => {
+    if (!socket.connected) { setOverlay(true, 'DESPERTANDO LA SALA…'); setColdStartHint(true); }
+  }, 8000);
+
   socket.on('connect', async () => {
     setConnection('connected');
+    setColdStartHint(false);
     setTimeout(() => { if (!ui.joining) setOverlay(false); }, 350);
     if (ui.shouldResume && ui.activeCode && ui.playerName) {
       ui.shouldResume = false;
@@ -298,9 +313,16 @@
     setConnection('disconnected');
     if (ui.room) showToast('Conexión interrumpida', 'Intentaremos devolverte a la mesa automáticamente.', 'error', 5000);
   });
-  socket.io.on('reconnect_attempt', () => {
+  socket.io.on('reconnect_attempt', attempt => {
     setConnection('reconnecting');
-    if (ui.room || ui.activeCode) { ui.shouldResume = true; setOverlay(true, 'RECONECTANDO CON LA MESA'); }
+    if (ui.room || ui.activeCode) {
+      ui.shouldResume = true;
+      setOverlay(true, attempt > 1 ? 'DESPERTANDO LA SALA…' : 'RECONECTANDO CON LA MESA');
+      if (attempt > 1) setColdStartHint(true, attempt);
+    } else if (attempt > 1) {
+      setOverlay(true, 'DESPERTANDO LA SALA…');
+      setColdStartHint(true, attempt);
+    }
   });
   socket.io.on('reconnect_failed', () => { setConnection('disconnected'); setOverlay(false); });
   socket.on('connect_error', () => { setConnection('reconnecting'); });

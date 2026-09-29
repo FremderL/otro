@@ -110,9 +110,11 @@
 
 **Entregable en Render:** deploy normal.
 
-## Fase 7 — Robustez operativa en Render
+## Fase 7 — Robustez operativa en Render ✅ COMPLETADA
 
 *Objetivo: que el hosting no borre datos ni degrade la experiencia.*
+
+> **Estado (2026-09-28):** implementada. `render.yaml` versionado (disco persistente en `/var/data`, `PROFILE_STORE_PATH`, health check y plan starter, con nota para free); `GET /healthz` con uptime/salas/jugadores/versión de T&C; apagado limpio con `SIGTERM` (guardado de perfiles, aviso «El servidor se está actualizando…» a todas las mesas y cierre con gracia, con salida forzada a los 2.5 s como red de seguridad); pantalla de carga con «Despertando la sala…» y reintentos visibles para el arranque en frío del plan free; logs estructurados JSON por línea (`LOG_JSON=off` para desactivarlos). Nueva suite `tests/ops-smoke.js` en `npm test`: verifica `/healthz`, el aviso a mesas, la salida ordenada, los logs JSON y que dos arranques con el mismo disco conservan los perfiles. Acción manual en Render: aplicar el blueprint (o crear el disco y la variable a mano) — las salas siguen siendo en memoria por diseño.
 
 1. **Persistencia real de perfiles.** El disco de Render es **efímero**: `data/profiles.json` se pierde en cada deploy/reinicio. Acciones:
    - Contratar un **Persistent Disk** de Render montado (p. ej. en `/var/data`) y apuntar `PROFILE_STORE_PATH=/var/data/profiles.json`, **o** migrar el `ProfileStore` a una base gestionada (Render PostgreSQL o Redis) detrás de la misma interfaz.

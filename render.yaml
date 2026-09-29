@@ -1,0 +1,29 @@
+# Fase 7 — Infraestructura como código para Render.
+#
+# Con este blueprint, Render crea el servicio con:
+#   · Disco persistente montado en /var/data → los perfiles sobreviven deploys y reinicios.
+#   · PROFILE_STORE_PATH apuntando al disco (el código ya lee esta variable).
+#   · Health check en /healthz → deploys sin caída (zero-downtime).
+#
+# NOTA sobre el plan free: el plan free NO admite discos persistentes y suspende el
+# servicio tras ~15 min de inactividad (despertar tarda ~50 s; la pantalla de carga
+# del cliente ya lo explica). Si usas free, elimina el bloque "disk" y la variable
+# PROFILE_STORE_PATH (los perfiles serán efímeros) o cambia a plan starter.
+services:
+  - type: web
+    name: montecristo
+    runtime: node
+    plan: starter
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: PROFILE_STORE_PATH
+        value: /var/data/profiles.json
+      - key: NODE_ENV
+        value: production
+    disk:
+      name: montecristo-datos
+      mountPath: /var/data
+      sizeGB: 1

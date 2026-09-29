@@ -173,6 +173,17 @@ Variables útiles para pruebas y despliegue:
 - `BOT_SPEED_FACTOR`: multiplica las latencias de reacción; usar valores menores que `1` solo en pruebas.
 - `BOT_ONLY_ROOM_TTL_MS`: tiempo antes de eliminar una sala sin personas; por defecto, 5 minutos cuando contiene bots.
 - `BOT_FORCE_DECISION_ERROR=1`: fuerza errores de estrategia para validar el fallback; no debe activarse normalmente.
+- `PROFILE_STORE_PATH`: ruta del archivo de perfiles (en Render, apúntalo al disco persistente, p. ej. `/var/data/profiles.json`).
+- `LOG_JSON=off`: desactiva los logs estructurados JSON por línea (activados por defecto).
+
+## Operación en Render
+
+- `render.yaml` versiona la infraestructura: disco persistente en `/var/data` (los perfiles sobreviven deploys), `PROFILE_STORE_PATH` y health check.
+- `GET /healthz` expone estado, uptime, salas, jugadores humanos y versión de T&C; configurado como *Health Check Path* para deploys sin caída.
+- En cada deploy, Render envía `SIGTERM`: el servidor guarda los perfiles, avisa a las mesas («El servidor se está actualizando…») y cierra los sockets con gracia; la reconexión automática del cliente reencuentra la sesión.
+- Con el plan free (sin disco y con suspensión tras ~15 min), la pantalla de carga muestra «Despertando la sala…» con los reintentos visibles mientras el servicio despierta (~50 s).
+- Los eventos operativos (arranque, salas creadas/destruidas, jugadores, apagado) se registran como JSON por línea para el visor de logs de Render.
+- La prueba `npm run test:ops` verifica el criterio de la fase: dos arranques con el mismo disco no pierden perfiles y `SIGTERM` produce una salida ordenada.
 
 ## Arquitectura
 
