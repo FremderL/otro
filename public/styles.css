@@ -399,6 +399,10 @@ a { color: inherit; text-decoration: none; }
 .progress-icon { width:30px; height:30px; display:grid; place-items:center; border-radius:8px; background:rgba(255,255,255,.045); font-size:14px; }
 .progress-copy b { display:block; font-size:9.5px; }.progress-copy small { display:block; margin-top:3px; color:var(--muted); font-size:8px; line-height:1.35; }
 .progress-reward { color:var(--gold); font-size:8.5px; font-weight:800; }
+.progress-rarity, .progress-difficulty { display:inline-flex; align-items:center; margin-left:5px; padding:2px 5px; border:1px solid rgba(255,255,255,.12); border-radius:7px; color:var(--muted-2); font-size:7px; font-style:normal; font-weight:800; letter-spacing:.05em; text-transform:uppercase; vertical-align:1px; }
+.progress-rarity.platino { border-color:rgba(185,226,255,.65); color:#b9e2ff; background:linear-gradient(90deg,rgba(111,185,232,.12),rgba(222,246,255,.18)); box-shadow:0 0 10px rgba(121,197,246,.16); }
+.progress-rarity.oro { border-color:rgba(229,189,114,.45); color:var(--gold-2); background:rgba(229,189,114,.08); }
+.progress-difficulty { color:var(--cyan); border-color:rgba(77,219,232,.2); }
 .progress-track { height:2px; margin-top:5px; overflow:hidden; border-radius:2px; background:rgba(255,255,255,.06); }.progress-track i { display:block; height:100%; background:var(--mint); }
 .profile-badges { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
 .profile-badges.hidden { display:none; }

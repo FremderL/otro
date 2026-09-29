@@ -1617,7 +1617,7 @@
       ['% DE VICTORIAS', `${stats.winRate ?? 0}%`, stats.winRate >= 50 ? 'gold' : ''],
       ['RONDAS', formatChips(stats.roundsPlayed), ''], ['MAYOR GANANCIA', `+${formatChips(stats.biggestWin)}`, 'gold'],
       ['APOSTADO', formatChips(stats.totalWagered), ''], ['MEJOR RACHA', formatChips(stats.bestStreak), ''],
-      ['JUEGOS PROBADOS', `${formatChips(stats.differentGames)} / 5`, ''], ['DERROTAS', formatChips(stats.losses), '']
+      ['JUEGOS PROBADOS', `${formatChips(stats.differentGames)} / 6`, ''], ['DERROTAS', formatChips(stats.losses), '']
     ].map(([label,value,kind]) => `<div class="profile-stat"><small>${label}</small><b class="${kind}">${value}</b></div>`).join('');
     renderBalanceChart(profile);
     // Fase 11.1: descarga del historial completo (no solo lo que cabe en la gráfica).
@@ -1625,9 +1625,13 @@
     renderGameBreakdown(profile);
     els.challengeList.innerHTML = (profile.challenges || []).map(item => {
       const percent = Math.min(100, Math.round((item.value || 0) / item.target * 100));
-      return `<div class="progress-item ${item.completed ? 'done' : ''}"><span class="progress-icon">${escapeHtml(item.icon)}</span><div class="progress-copy"><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description)} · ${item.value}/${item.target}</small><div class="progress-track"><i style="width:${percent}%"></i></div></div><span class="progress-reward">${item.completed ? '✓' : '+' + item.reward}</span></div>`;
+      const difficulty = item.difficulty ? `<span class="progress-difficulty">${escapeHtml(item.difficulty)}</span>` : '';
+      return `<div class="progress-item ${item.completed ? 'done' : ''}"><span class="progress-icon">${escapeHtml(item.icon)}</span><div class="progress-copy"><b>${escapeHtml(item.name)} ${difficulty}</b><small>${escapeHtml(item.description)} · ${item.value}/${item.target}</small><div class="progress-track"><i style="width:${percent}%"></i></div></div><span class="progress-reward">${item.completed ? '✓' : '+' + item.reward}</span></div>`;
     }).join('') || '<div class="chat-system">Los retos aparecerán al jugar.</div>';
-    els.achievementList.innerHTML = (profile.allAchievements || []).map(item => `<div class="progress-item ${item.unlocked ? 'done' : 'locked'}"><span class="progress-icon">${escapeHtml(item.unlocked ? item.icon : '◇')}</span><div class="progress-copy"><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description)}</small></div><span class="progress-reward">${item.unlocked ? '✓' : '+' + item.reward}</span></div>`).join('') || '<div class="chat-system">Aún no hay logros.</div>';
+    els.achievementList.innerHTML = (profile.allAchievements || []).map(item => {
+      const rarity = item.rarity ? `<span class="progress-rarity ${escapeHtml(item.rarity)}">${escapeHtml(item.rarity)}</span>` : '';
+      return `<div class="progress-item ${item.unlocked ? 'done' : 'locked'}"><span class="progress-icon">${escapeHtml(item.unlocked ? item.icon : '◇')}</span><div class="progress-copy"><b>${escapeHtml(item.name)} ${rarity}</b><small>${escapeHtml(item.description)}</small></div><span class="progress-reward">${item.unlocked ? '✓' : '+' + item.reward}</span></div>`;
+    }).join('') || '<div class="chat-system">Aún no hay logros.</div>';
     els.dailyBonusStatus.textContent = profile.dailyBonusClaimed ? 'Bono de hoy recibido · vuelve mañana.' : 'Se entrega una vez al día al entrar.';
   }
   // Fase 8.2: gráfica SVG de evolución del saldo (últimos 60 movimientos).
