@@ -7,17 +7,20 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "check": "node --check server.js && node --check public/app.js && node --check lib/poker-evaluator.js && node --check lib/bots/catalog.js && node --check lib/bots/decision-engine.js && node --check lib/bots/bot-controller.js && node --check tests/bots-smoke.js && node --check tests/bots-fallback-smoke.js",
+    "check": "node --check server.js && node --check public/app.js && node --check lib/poker-evaluator.js && node --check lib/profile-store.js && node --check lib/postgres-profile-store.js && node --check scripts/migrate-profiles.js && node --check lib/bots/catalog.js && node --check lib/bots/decision-engine.js && node --check lib/bots/bot-controller.js && node --check tests/bots-smoke.js && node --check tests/bots-fallback-smoke.js && node --check tests/profile-store-smoke.js",
     "test:multiplayer": "node tests/multiplayer-smoke.js",
     "test:bots": "node tests/bots-smoke.js",
     "test:bots:fallback": "node tests/bots-fallback-smoke.js",
-    "test": "npm run check && npm run test:multiplayer && npm run test:bots && npm run test:bots:fallback"
+    "test:profiles": "node tests/profile-store-smoke.js",
+    "migrate:profiles": "node scripts/migrate-profiles.js",
+    "test": "npm run check && npm run test:multiplayer && npm run test:bots && npm run test:bots:fallback && npm run test:profiles"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "express": "^4.21.2",
+    "pg": "^8.23.0",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {

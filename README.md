@@ -91,7 +91,7 @@ Al retirarse un bot se cancelan sus tareas. Al destruirse una sala se cancelan t
 - Bono diario: **100 fichas**, una vez por día al entrar.
 - Apuesta mínima en Blackjack y juegos rápidos: **10 fichas**.
 - Las fichas apostadas se descuentan en el servidor y los pagos se acreditan tras resolver la ronda.
-- Los perfiles se guardan en `data/profiles.json` mediante escritura diferida y atómica.
+- Los perfiles se guardan en `data/profiles.json` mediante escritura diferida y atómica cuando no existe `DATABASE_URL`; con `DATABASE_URL` se usa PostgreSQL (Neon Free).
 
 ### Retos
 
@@ -162,7 +162,9 @@ lib/poker-evaluator.js             Evaluación de manos reutilizada por juego e 
 lib/bots/catalog.js                Perfiles, dificultades, estilos y serialización de bots
 lib/bots/decision-engine.js        Estrategias independientes y fallbacks por juego
 lib/bots/bot-controller.js         Planificación, revalidación, cancelación y recuperación
-lib/profile-store.js              Perfiles persistentes y catálogo de avatares
+lib/profile-store.js              Selector JSON/PostgreSQL, perfiles y catálogo de avatares
+lib/postgres-profile-store.js      Adaptador PostgreSQL para Neon y guardado en SIGTERM
+scripts/migrate-profiles.js         Importación de data/profiles.json a PostgreSQL
 lib/progression.js                Transacciones, estadísticas, retos, logros y bono diario
 lib/quick-games.js                Registro, reglas, cuotas y resultados de minijuegos
 lib/special-events.js             Eventos temporales y bonificaciones

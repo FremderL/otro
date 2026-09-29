@@ -1183,6 +1183,18 @@ io.on('connection', socket => {
   });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Mesa Amiga lista en http://0.0.0.0:${PORT}`);
+profiles.ready.then(() => {
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Mesa Amiga lista en http://0.0.0.0:${PORT}`);
+  });
+}).catch(error => {
+  console.error('No se pudo abrir el almacén de perfiles:', error.message);
+  process.exitCode = 1;
 });
+
+async function closeProfileStore() {
+  if (typeof profiles.close === 'function') await profiles.close();
+  else profiles.saveNow();
+}
+process.once('SIGTERM', () => closeProfileStore().finally(() => server.close(() => process.exit(0))));
+process.once('SIGINT', () => closeProfileStore().finally(() => server.close(() => process.exit(0))));
