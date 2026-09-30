@@ -123,7 +123,7 @@
     connection: 'connecting', sound: localStorage.getItem('montecristo-sound') !== 'off', notifications: localStorage.getItem('montecristo-notifications') !== 'off',
     lobbyChat: { joined: false, joining: false, open: false, messages: [], unread: 0 },
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
-    lastEventKey: '', clockTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false,
+    lastEventKey: '', clockTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false, profileNameDirty: false,
     rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null,
     spectating: false
   };
@@ -244,12 +244,11 @@
   // no el de la cuenta iniciada. Nunca se sustituye por un objeto de mesa
   // fabricado a mano: fuera de una mesa, `ui.room` se deja intacto (null).
   function currentViewerProfile() { return ui.room?.viewerProfile || ui.accountSession || null; }
-  // Si la sesión de cuenta cacheada parece incompleta u obsoleta (falta el id
-  // de la cuenta o las estadísticas), se pide al servidor el perfil público
-  // actualizado en vez de confiar ciegamente en lo que había en localStorage.
-  function isAccountProfileStale(profile) {
-    return !profile || !profile.accountId || !profile.stats;
-  }
+  // La sesión de cuenta cacheada en localStorage es una INSTANTÁNEA: puede
+  // quedar vieja si el perfil cambió después (rondas jugadas en esta u otra
+  // computadora, renombrado al entrar a una mesa, bonos…). Por eso el modal
+  // del lobby la pinta para responder al instante pero SIEMPRE pide después
+  // el perfil público actualizado al servidor (ver openProfileModal).
   // Al editar desde una mesa, el perfil editado es el del JUGADOR de esa mesa
   // (identificado por el token de dispositivo), que puede ser un perfil
   // anónimo totalmente distinto del de la cuenta con la que se inició sesión.
@@ -1646,6 +1645,11 @@
   socket.on('profile_event', payload => {
     if (payload?.profile && ui.room) {
       ui.room.viewerProfile = payload.profile;
+      // La caché de la sesión de cuenta también adopta los cambios (fichas de
+      // recompensas, renombrado…), para que el perfil del lobby no muestre
+      // datos de antes al salir de la mesa. syncAccountSessionIfSameProfile
+      // solo actúa si es el MISMO perfil de la cuenta.
+      syncAccountSessionIfSameProfile(payload.profile);
       if (ui.me) { ui.me.chips = payload.profile.chips; ui.me.avatar = payload.profile.avatar; ui.me.name = payload.profile.name; }
       renderProfile();
       if (ui.profileOpen) renderProfileModal();
@@ -1714,17 +1718,26 @@
     const profile = currentViewerProfile();
     if (!profile) return;
     ui.profileOpen = true;
+    ui.profileNameDirty = false;
     ui.profileAvatar = profile.avatar || 'fox';
     renderProfileModal();
     els.profileModal.classList.add('open');
     els.profileModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
-    // Si se abre desde el lobby (sin mesa) con una cuenta cacheada incompleta
-    // u obsoleta, se pide al servidor el perfil público actualizado.
-    if (!inTable() && isAccountProfileStale(ui.accountSession)) refreshAccountProfile();
+    // Fuera de una mesa, la caché de localStorage puede haber quedado vieja
+    // (rondas jugadas aquí o desde otro dispositivo, nombre cambiado al entrar
+    // a una mesa, bono diario…). Se pide SIEMPRE el perfil público actualizado
+    // al servidor: el modal pinta la caché al instante y, si el servidor trae
+    // algo distinto, se vuelve a renderizar con los datos frescos (sin pisar
+    // una edición en curso — ver el guard de profileNameDirty en
+    // renderProfileModal). Antes solo se refrescaba si faltaban campos, y el
+    // perfil del lobby se quedaba con el nombre y los puntos de antes hasta
+    // que la persona volvía a guardar.
+    if (!inTable()) refreshAccountProfile();
   }
   function closeProfileModal() {
     ui.profileOpen = false;
+    ui.profileNameDirty = false;
     els.profileModal?.classList.remove('open');
     els.profileModal?.setAttribute('aria-hidden', 'true');
     if (!els.modal.classList.contains('open')) document.body.classList.remove('modal-open');
@@ -1733,7 +1746,11 @@
     const profile = currentViewerProfile();
     if (!profile) return;
     const stats = profile.stats || {};
-    els.profileNameInput.value = profile.name || ui.playerName;
+    // Un refresco en segundo plano (refreshAccountProfile o un profile_event
+    // de la mesa) puede llegar mientras la persona ya escribió un nombre
+    // nuevo: nunca se pisa su edición en curso. El guardado sigue siendo
+    // explícito, con el botón del formulario.
+    if (!ui.profileNameDirty) els.profileNameInput.value = profile.name || ui.playerName;
     ui.profileAvatar = ui.profileAvatar || profile.avatar;
     els.profileBigAvatar.textContent = avatarEmoji(ui.profileAvatar);
     renderAvatarChoices();
@@ -1962,6 +1979,9 @@
   els.profileCard.addEventListener('click', openProfileModal);
   els.profileCard.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openProfileModal(); } });
   $$('[data-close-profile]').forEach(element => element.addEventListener('click', closeProfileModal));
+  // Marca la edición en curso del nombre para que los refrescos en segundo
+  // plano no sobrescriban lo que la persona está escribiendo.
+  els.profileNameInput.addEventListener('input', () => { ui.profileNameDirty = true; });
   els.profileForm.addEventListener('submit', async event => {
     event.preventDefault();
     const button = event.currentTarget.querySelector('button[type="submit"]');
@@ -1984,6 +2004,7 @@
     }
     ui.playerName = response.profile?.name || name;
     ui.selectedAvatar = response.profile?.avatar || avatar;
+    ui.profileNameDirty = false; // lo guardado ya es el estado actual: se puede volver a pintar desde el perfil
     localStorage.setItem('montecristo-name', ui.playerName);
     localStorage.setItem('montecristo-avatar', ui.selectedAvatar);
     showToast('Perfil actualizado', inTable() ? 'Tu nombre y avatar ya están visibles en la mesa.' : 'Tu perfil se guardó en el servidor.', 'notice', 3600, avatarEmoji(ui.selectedAvatar));
@@ -2043,6 +2064,12 @@
   $('#room-logo').addEventListener('click', event => { event.preventDefault(); leaveToLobby(true); });
   async function leaveToLobby(notifyServer = true) {
     closeProfileModal(); closeBotControls();
+    // Al salir de la mesa, la caché de la sesión de cuenta adopta el último
+    // estado conocido del perfil (si es el mismo de la cuenta): nombre y
+    // fichas tal como quedaron tras jugar. Sin esto, el perfil del lobby
+    // seguía mostrando los datos de cuando se inició sesión hasta volver a
+    // guardar (bug reportado: "entré a mi perfil y no se actualizó").
+    syncAccountSessionIfSameProfile(ui.room?.viewerProfile);
     if (notifyServer && ui.room) await emitAck('leave_room');
     clearInterval(ui.clockTimer); clearSession(); ui.room = null; ui.me = null; ui.activeCode = null; ui.spectating = false;
     ui.rouletteSpin = null; ui.rouletteAngle = 0; ui.slotsSpin = null;
