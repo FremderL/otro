@@ -107,13 +107,13 @@ function assertNoPasswordHash(payload, label) {
   const owner = connectClient();
   await waitFor(owner, 'connect');
   const created = await emitAck(owner, 'create_room', { name: 'Ana', roomName: 'Mesa de auditoría', game: 'coinflip', token: deviceToken, avatar: 'fox', tos: TOS_VERSION });
-  assert.equal(created.ok, true, created.error);
+  assert.equal(created.ok, true, created.error || 'create_room debe funcionar');
   await waitState(owner, s => s.code === created.code, 'sala creada');
 
   const username = `aud${Date.now()}`.slice(0, 20);
   const password = 'clave-super-segura-1';
   const signup = await emitAck(owner, 'account_signup', { token: deviceToken, username, password, tos: TOS_VERSION });
-  assert.equal(signup.ok, true, signup.error);
+  assert.equal(signup.ok, true, signup.error || 'account_signup debe funcionar');
   assert.equal(signup.profile.username, username, 'el signup devuelve el username vinculado');
   assert.ok(signup.profile.stats, 'el signup devuelve estadísticas públicas');
   assertNoPasswordHash(signup, 'account_signup');
@@ -126,7 +126,7 @@ function assertNoPasswordHash(payload, label) {
   assertNoPasswordHash(badLogin, 'account_login fallido');
 
   const login = await emitAck(loginSocket, 'account_login', { username, password });
-  assert.equal(login.ok, true, login.error);
+  assert.equal(login.ok, true, login.error || 'account_login debe funcionar');
   assert.equal(login.profile.username, username, 'login devuelve el username');
   assert.ok(login.profile.stats, 'login devuelve estadísticas públicas (para el modal de perfil)');
   assert.ok(Array.isArray(login.profile.achievements), 'login devuelve la lista de logros desbloqueados');
@@ -148,7 +148,7 @@ function assertNoPasswordHash(payload, label) {
   const verifySocket = connectClient();
   await waitFor(verifySocket, 'connect');
   const reLogin = await emitAck(verifySocket, 'account_login', { username, password });
-  assert.equal(reLogin.ok, true, reLogin.error);
+  assert.equal(reLogin.ok, true, reLogin.error || 'el re-login debe funcionar');
   assert.equal(reLogin.profile.name, 'Ana editada lobby', 'el nombre editado desde el lobby persistió en el servidor');
   assert.equal(reLogin.profile.avatar, 'owl', 'el avatar editado desde el lobby persistió en el servidor');
 
@@ -157,8 +157,17 @@ function assertNoPasswordHash(payload, label) {
   // una (50/50 por ronda; unos pocos intentos bastan para no depender del azar).
   let unlocked = null;
   for (let attempt = 0; attempt < 25 && !unlocked; attempt++) {
-    assert.equal((await emitAck(owner, 'quick_bet', { amount: 10, choice: 'heads' })).ok, true);
-    assert.equal((await emitAck(owner, 'quick_resolve')).ok, true);
+    if (attempt > 0) {
+      // Cada ronda deja la mesa en fase "results"; hay que reabrirla (fase
+      // "betting") antes de poder apostar de nuevo. Sin esto, a partir del
+      // segundo intento quick_bet siempre falla ("Las apuestas rápidas no
+      // están abiertas."), y el test fallaría ~50% de las veces según si la
+      // primera ronda se ganó o se perdió.
+      assert.equal((await emitAck(owner, 'quick_new')).ok, true, 'reabrir la mesa para un nuevo intento');
+      await waitState(owner, s => s.phase === 'betting', 'mesa reabierta para un nuevo intento');
+    }
+    assert.equal((await emitAck(owner, 'quick_bet', { amount: 10, choice: 'heads' })).ok, true, 'apuesta aceptada');
+    assert.equal((await emitAck(owner, 'quick_resolve')).ok, true, 'ronda resuelta');
     await waitState(owner, s => s.phase === 'results', 'ronda resuelta para desbloquear logros');
     const afterRound = await emitAck(verifySocket, 'account_login', { username, password });
     unlocked = (afterRound.profile.allAchievements || []).find(item => item.unlocked) || null;
@@ -167,7 +176,7 @@ function assertNoPasswordHash(payload, label) {
   const featuredUpdate = await emitAck(lobbySocket, 'profile_update', {
     name: 'Ana editada lobby', avatar: 'owl', featuredAchievements: [unlocked.id], accountId
   });
-  assert.equal(featuredUpdate.ok, true, featuredUpdate.error);
+  assert.equal(featuredUpdate.ok, true, featuredUpdate.error || 'guardar featuredAchievements debe funcionar');
   assert.deepEqual(featuredUpdate.profile.featuredAchievements, [unlocked.id], 'la vitrina de logros se guarda en la respuesta');
   const reCheck = await emitAck(verifySocket, 'account_login', { username, password });
   assert.deepEqual(reCheck.profile.featuredAchievements, [unlocked.id], 'la vitrina de logros persiste en el servidor tras re-loguear');
@@ -193,7 +202,7 @@ function assertNoPasswordHash(payload, label) {
 
   // === 5) account_profile: refresca una cuenta vinculada, pero no expone perfiles anónimos ===
   const refreshed = await emitAck(verifySocket, 'account_profile', { accountId });
-  assert.equal(refreshed.ok, true, refreshed.error);
+  assert.equal(refreshed.ok, true, refreshed.error || 'account_profile debe funcionar para una cuenta vinculada');
   assert.equal(refreshed.profile.username, username);
   assertNoPasswordHash(refreshed, 'account_profile');
 
@@ -205,7 +214,7 @@ function assertNoPasswordHash(payload, label) {
 
   // === 6) Editar DESDE una mesa también sigue persistiendo (camino original) ===
   const tableEdit = await emitAck(owner, 'profile_update', { name: 'Ana de la mesa', avatar: 'panda' });
-  assert.equal(tableEdit.ok, true, tableEdit.error);
+  assert.equal(tableEdit.ok, true, tableEdit.error || 'editar desde la mesa debe funcionar');
   await waitState(owner, s => s.viewerProfile?.name === 'Ana de la mesa', 'el nombre editado desde la mesa se refleja en room_state');
   const reLoginAfterTableEdit = await emitAck(verifySocket, 'account_login', { username, password });
   assert.equal(reLoginAfterTableEdit.profile.name, 'Ana de la mesa', 'la edición hecha DESDE la mesa también persistió en el perfil de la cuenta (es el mismo perfil)');
