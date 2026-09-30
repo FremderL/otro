@@ -1628,15 +1628,44 @@ io.on('connection', socket => {
     broadcast(room);
   });
 
-  socket.on('profile_update', ({ name, avatar, featuredAchievements } = {}, ack) => {
+  // Edita nombre/avatar/logros destacados del perfil. Funciona en dos contextos:
+  //  - Sentado en una mesa: edita el perfil del jugador de esa mesa (como siempre).
+  //  - Desde el lobby, sin mesa: solo si el socket manda `accountId` (el id del
+  //    perfil vinculado a la cuenta con la que se inició sesión) Y ese perfil
+  //    tiene una cuenta real (username) vinculada — así no se puede editar un
+  //    perfil anónimo ajeno adivinando su id de dispositivo. Sin uno de los dos
+  //    contextos, no hay perfil que editar.
+  socket.on('profile_update', ({ name, avatar, featuredAchievements, accountId } = {}, ack) => {
     const { room, player } = playerForSocket(socket);
-    if (!room || !player) return ackError(ack, 'Perfil no disponible.');
-    name = cleanName(name) || player.name;
-    profiles.update(player._profile, { name, avatar });
-    player.name = player._profile.name;
-    player.avatar = player._profile.avatar;
-    ackOk(ack, { profile: publicProgress(player._profile, true) });
-    broadcast(room);
+    let targetProfile = player ? player._profile : null;
+    if (!targetProfile && accountId) {
+      const candidate = profiles.profiles.get(String(accountId).slice(0, 80));
+      if (candidate && candidate.username) targetProfile = candidate;
+    }
+    if (!targetProfile) return ackError(ack, 'Perfil no disponible.');
+    name = cleanName(name) || targetProfile.name;
+    // Fase de auditoría de cuentas: featuredAchievements se aceptaba en el payload
+    // pero nunca se pasaba a profiles.update(), así que la vitrina de logros no
+    // se guardaba de verdad. Se corrige aquí.
+    profiles.update(targetProfile, { name, avatar, featuredAchievements });
+    if (player) {
+      player.name = player._profile.name;
+      player.avatar = player._profile.avatar;
+    }
+    ackOk(ack, { profile: publicProgress(targetProfile, true) });
+    if (room) broadcast(room);
+  });
+
+  // Refresca el perfil público de una cuenta ya vinculada (username presente).
+  // Pensado para que el cliente renueve su caché local de sesión de cuenta
+  // (p. ej. tras reconectar o si el perfil cacheado quedó incompleto/obsoleto)
+  // sin tener que volver a pedir la contraseña. Solo expone campos públicos
+  // (los mismos que devuelve publicProgress): nunca passwordHash.
+  socket.on('account_profile', ({ accountId } = {}, ack) => {
+    const id = String(accountId || '').slice(0, 80);
+    const profile = id ? profiles.profiles.get(id) : null;
+    if (!profile || !profile.username) return ackError(ack, 'No se encontró la cuenta.');
+    ackOk(ack, { profile: publicProgress(profile, true) });
   });
 
   // Fase 11.2: login opcional (usuario + contraseña) para recuperar el mismo

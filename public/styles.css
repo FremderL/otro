@@ -382,6 +382,7 @@ a { color: inherit; text-decoration: none; }
 .profile-modal-head { display:flex; align-items:center; gap:17px; padding-bottom:18px; border-bottom:1px solid var(--line); }
 .profile-big-avatar { width:67px; height:67px; flex:none; display:grid; place-items:center; border:1px solid rgba(82,224,174,.3); border-radius:18px; background:linear-gradient(145deg,rgba(82,224,174,.12),rgba(255,255,255,.02)); box-shadow:var(--glow); font-size:35px; }
 .profile-modal-head h2 { margin:5px 0 3px; }.profile-modal-head p { margin:0; color:var(--muted); font-size:9.5px; }
+.profile-account-status { margin-top:4px !important; font-weight:600; color:var(--gold, #e5bd72) !important; }
 .profile-edit-form { display:grid; grid-template-columns:1fr 1.8fr auto; gap:10px; align-items:end; margin:18px 0; }
 .profile-edit-form .btn { min-height:47px; }
 .profile-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:18px 0; }
