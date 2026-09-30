@@ -321,6 +321,11 @@ function playerForSocket(socket) {
   if (player) player.lastActiveAt = Date.now();
   return { room, player };
 }
+function syncSocketLobbyIdentity(socket, profile) {
+  if (!profile || socket.data.lobbyChat?.id !== profile.id) return;
+  socket.data.lobbyChat.name = profile.name;
+  socket.data.lobbyChat.avatar = profile.avatar;
+}
 function isPokerActive(room) {
   return ['preflop', 'flop', 'turn', 'river'].includes(room.phase);
 }
@@ -440,13 +445,25 @@ function seasonSnapshot() {
     previous: profiles.seasons.history[profiles.seasons.history.length - 1] || null
   };
 }
+// Presencia real del casino: incluye a quien está explorando el lobby, jugando
+// o mirando una mesa. El cálculo anterior sumaba solo humanos sentados en salas,
+// por eso el contador decía 0 aunque hubiera varias personas en el lobby y no
+// cambiaba hasta que alguien creaba una mesa. El cliente manda su token de
+// dispositivo en el handshake para que dos pestañas de la misma persona cuenten
+// una sola vez; clientes antiguos/sockets de pruebas tienen un fallback único.
+function onlinePlayerCount() {
+  const devices = new Set();
+  for (const socket of io.of('/').sockets.values()) {
+    const token = String(socket.handshake?.auth?.deviceToken || '').trim().slice(0, 80);
+    devices.add(token ? `device:${token}` : `socket:${socket.id}`);
+  }
+  return devices.size;
+}
+function lobbyStateSnapshot() {
+  return { rooms: lobbySnapshot(), playersOnline: onlinePlayerCount(), season: seasonSnapshot() };
+}
 function broadcastLobby() {
-  const list = lobbySnapshot();
-  io.emit('lobby_state', {
-    rooms: list,
-    playersOnline: list.reduce((sum, room) => sum + room.humans, 0),
-    season: seasonSnapshot()
-  });
+  io.emit('lobby_state', lobbyStateSnapshot());
 }
 function gameEvent(room, type, text, playerId = null, meta = {}) {
   const event = { type, text, playerId, time: Date.now(), ...meta };
@@ -1557,12 +1574,10 @@ io.on('connection', socket => {
   // socket.on (que protege lo que se registra después): si armar el snapshot
   // fallara, la excepción subiría a uncaughtException. Mismo tratamiento.
   try {
-    const initialLobby = lobbySnapshot();
-    socket.emit('lobby_state', {
-      rooms: initialLobby,
-      playersOnline: initialLobby.reduce((sum, room) => sum + room.humans, 0),
-      season: seasonSnapshot()
-    });
+    // El socket ya pertenece al namespace en este punto. Se publica a TODOS:
+    // quien acaba de entrar recibe su snapshot y quienes ya estaban conectados
+    // ven subir el contador inmediatamente, aun cuando nadie esté en una mesa.
+    broadcastLobby();
   } catch (error) {
     console.error('[HANDLER_ERROR] evento=connection (snapshot inicial):', error);
   }
@@ -1577,6 +1592,7 @@ io.on('connection', socket => {
     if (createIssue) return ackError(ack, createIssue);
     const player = newPlayer(String(token).slice(0, 80), socket, name, avatar);
     if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
+    syncSocketLobbyIdentity(socket, player._profile);
     const room = createRoom(game, player, socket, roomName);
     socket.data.roomCode = room.code;
     socket.data.playerId = player.id;
@@ -1632,6 +1648,7 @@ io.on('connection', socket => {
       room.players.push(player);
       addSystem(room, `${player.name} se sentó en la mesa.`);
     }
+    syncSocketLobbyIdentity(socket, player._profile);
     socket.join(code);
     socket.data.roomCode = code;
     socket.data.playerId = player.id;
@@ -1669,6 +1686,7 @@ io.on('connection', socket => {
     if (spectateNameIssue) return ackError(ack, spectateNameIssue);
     const profile = profiles.getOrCreate(id, name, avatar);
     if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
+    syncSocketLobbyIdentity(socket, profile);
     room.spectators = room.spectators || [];
     const existing = room.spectators.find(s => s.id === id);
     if (existing) {
@@ -1804,6 +1822,7 @@ io.on('connection', socket => {
     // pero nunca se pasaba a profiles.update(), así que la vitrina de logros no
     // se guardaba de verdad. Se corrige aquí.
     profiles.update(targetProfile, { name, avatar, featuredAchievements });
+    syncSocketLobbyIdentity(socket, targetProfile);
     if (player) {
       player.name = player._profile.name;
       player.avatar = player._profile.avatar;
@@ -2016,11 +2035,17 @@ io.on('connection', socket => {
         removeSpectator(room, spectator.id);
         broadcast(room);
       }
-      return;
+    } else if (room && player && player.socketId === socket.id) {
+      removeOrDisconnectPlayer(room, player, false);
+      broadcast(room);
     }
-    if (!room || !player || player.socketId !== socket.id) return;
-    removeOrDisconnectPlayer(room, player, false);
-    broadcast(room);
+    // `disconnect` ocurre también para visitantes que nunca entraron a una
+    // mesa. Se difiere un tick para contar cuando el namespace ya retiró por
+    // completo el socket y publicar el descenso a quienes siguen conectados.
+    setImmediate(() => {
+      try { broadcastLobby(); }
+      catch (error) { console.error('[HANDLER_ERROR] evento=disconnect (presencia):', error); }
+    });
   });
 });
 
