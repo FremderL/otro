@@ -135,8 +135,18 @@ function me(state, token) { return state.players.find(p => p.id === token); }
   // Mano 1 doblada llega a 21 y empata con la casa; la mano 2 doblada pierde (−100).
   assert.equal(result.amount, -100, 'empate en la mano doblada a 21 y pérdida en la otra (−100)');
   assert.equal(result.label, 'Empate / Pierde', 'etiqueta por mano del split');
-  // 900 + retos completados en esta ronda (3 rondas jugadas +75, 250 apostadas +75).
-  assert.equal(state.viewerProfile.chips, 1050, 'saldo 1000 − 100 + 150 de retos');
+  // Además de "juega 3 rondas" (+75) y "apuesta 250 fichas" (+75), el reto
+  // diario/semanal ROTATIVO (elegido por hash de la fecha real, ver
+  // lib/progression.js) puede completarse también con estas mismas acciones
+  // según el día en que corra el test (p. ej. si hoy tocó "juega 3 rondas
+  // hoy"). En vez de asumir un monto fijo de "retos" (lo que hace este test
+  // flaky ~1 de cada 5 días), se suman los movimientos "Logro:"/"Reto:" que
+  // de verdad aparecen en el historial del perfil.
+  const rewardsRound3 = (state.viewerProfile.transactions || [])
+    .filter(tx => /^(Logro|Reto)/.test(tx.reason))
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  assert.ok(rewardsRound3 >= 150, 'al menos los dos retos fijos de "3 rondas" y "250 fichas" se completaron (≥ +150)');
+  assert.equal(state.viewerProfile.chips, 1000 - 100 + rewardsRound3, 'saldo 1000 − 100 + retos/logros realmente otorgados');
   socket.disconnect();
   server.kill('SIGKILL');
   await new Promise(r => setTimeout(r, 300));
@@ -165,7 +175,7 @@ function me(state, token) { return state.players.find(p => p.id === token); }
   assert.equal(result2.label, 'Gana ×2', 'etiqueta combinada de las dos manos');
   // 1200 + bono especial (si lo hubo) + recompensas de logros/retos disparadas por la victoria.
   const rewards = (state2.viewerProfile.transactions || [])
-    .filter(tx => /^(Logro|Reto):/.test(tx.reason))
+    .filter(tx => /^(Logro|Reto)/.test(tx.reason))
     .reduce((sum, tx) => sum + tx.amount, 0);
   assert.ok(rewards >= 100, 'la primera victoria dispara logro y reto (≥ +100)');
   assert.equal(state2.viewerProfile.chips, 1200 + bonus + rewards, 'saldo 1100 + 100 + bonos y recompensas');
