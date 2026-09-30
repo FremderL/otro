@@ -346,7 +346,14 @@
     }
     if (button) setButtonLoading(button, true);
     return new Promise(resolve => {
-      const timer = setTimeout(() => resolve({ ok: false, error: 'La mesa tardó demasiado en responder.' }), 9000);
+      // Auditoría: al agotarse la espera, el botón también debe rehabilitarse.
+      // Antes solo se rehabilitaba dentro del callback del ack, así que si el
+      // servidor nunca respondía (exactamente lo que pasaba cuando el proceso
+      // moría por un error), "Guardar" se quedaba deshabilitado para siempre.
+      const timer = setTimeout(() => {
+        if (button) setButtonLoading(button, false);
+        resolve({ ok: false, error: 'La mesa tardó demasiado en responder.' });
+      }, 9000);
       socket.emit(event, payload, response => {
         clearTimeout(timer);
         if (button) setButtonLoading(button, false);
@@ -509,7 +516,14 @@
       const response = await emitAck(ui.spectating ? 'spectate_room' : 'join_room', { name: ui.playerName, code: ui.activeCode, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) });
       ui.joining = false;
       if (!response.ok) {
-        clearSession(); ui.activeCode = null; setOverlay(false);
+        // La mesa ya no existe en el servidor (p. ej. el servicio se reinició
+        // mientras dormía la conexión). Antes solo se borraba la sesión guardada
+        // pero NO ui.room: quedaba una "mesa fantasma" en pantalla desde la que
+        // se podía abrir el perfil, y cualquier edición (nombre o vitrina de
+        // logros) respondía "Perfil no disponible." porque el servidor ya no
+        // tiene a nadie sentado ahí. Se sale a la landing como leaveToLobby.
+        leaveToLobby(false);
+        setOverlay(false);
         showToast('No pudimos recuperar la mesa', response.error, 'error');
         openModal('join', { code: routeCode });
       }
