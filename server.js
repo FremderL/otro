@@ -28,6 +28,23 @@ function logEvent(event, data = {}) {
   try { console.log(JSON.stringify({ time: new Date().toISOString(), event, ...data })); } catch (_) { /* un log nunca debe tumbar el servidor */ }
 }
 
+// Última red de seguridad a nivel proceso (refuerzo de la auditoría; las
+// envolturas específicas están en socket.on, scheduleRoomTask, los barridos
+// y el controlador de bots). Razón: las mesas viven en memoria — cuando un
+// solo error tumbaba el proceso, se borraban TODAS las partidas en curso del
+// casino y todos los jugadores quedaban fuera (ocurrió en producción con un
+// ReferenceError). Aquí el servidor se queda vivo, con el error registrado
+// con stack completo para revisarlo; perder una mesa rara es mejor que
+// perderlas todas.
+process.on('uncaughtException', error => {
+  console.error('[CRITICO] Excepción no capturada (el servidor sigue vivo):', error);
+  logEvent('uncaught_exception', { message: String(error?.message || error) });
+});
+process.on('unhandledRejection', reason => {
+  console.error('[CRITICO] Promesa rechazada sin capturar (el servidor sigue vivo):', reason);
+  logEvent('unhandled_rejection', { message: String(reason?.message || reason) });
+});
+
 // Fase 9: presupuesto de rendimiento — gzip para HTML/CSS/JS y caché larga para las
 // imágenes del lobby (tienen nombre estable; si se reemplazan, cambiar el nombre del archivo).
 app.use(compression());
@@ -461,7 +478,17 @@ function scheduleRoomTask(room, callback, delay) {
   let timer = null;
   timer = setTimeout(() => {
     room._timers.delete(timer);
-    callback();
+    // Auditoría (misma clase que el ReferenceError que tumbó el casino): estas
+    // tareas ejecutan lógica de juego fuera de cualquier handler de socket
+    // (auto-jugadas por tiempo agotado, resolución de rondas rápidas y
+    // limpieza de mesas). Sin esta envoltura, cualquier excepción aquí subía
+    // directa a uncaughtException y mataba el proceso con TODAS las mesas.
+    try {
+      callback();
+    } catch (error) {
+      console.error(`[ROOM_TASK_ERROR] mesa=${room.code} juego=${room.game}:`, error);
+      logEvent('room_task_error', { room: room.code, game: room.game, message: String(error?.message || error) });
+    }
   }, Math.max(0, delay));
   timer.unref?.();
   room._timers.add(timer);
@@ -1444,12 +1471,43 @@ botController = new BotController({
 });
 
 io.on('connection', socket => {
-  const initialLobby = lobbySnapshot();
-  socket.emit('lobby_state', {
-    rooms: initialLobby,
-    playersOnline: initialLobby.reduce((sum, room) => sum + room.humans, 0),
-    season: seasonSnapshot()
+  // Red de seguridad: un error dentro de CUALQUIER handler de eventos no debe
+  // tumbar el proceso completo. Las salas viven en memoria, así que una sola
+  // excepción no capturada (ya pasó con un ReferenceError en join_room al
+  // referenciar una variable inexistente) borraba todas las mesas en curso y
+  // desconectaba a todo el casino. Con esta envoltura, el handler que falla
+  // queda registrado en el log y su cliente recibe un ack de error claro en
+  // vez de una espera eterna; el resto de la partida sigue funcionando.
+  const onRaw = socket.on.bind(socket);
+  const reportHandlerError = (event, error, ack) => {
+    console.warn(`[HANDLER_ERROR] evento=${event}:`, error);
+    if (typeof ack === 'function') ackError(ack, 'Ocurrió un error inesperado. Intenta de nuevo.');
+  };
+  socket.on = (event, handler) => onRaw(event, function (...args) {
+    const ack = typeof args[args.length - 1] === 'function' ? args[args.length - 1] : null;
+    try {
+      const result = handler.apply(this, args);
+      if (result && typeof result.catch === 'function') result.catch(error => reportHandlerError(event, error, ack));
+      return result;
+    } catch (error) {
+      reportHandlerError(event, error, ack);
+      return undefined;
+    }
   });
+
+  // El callback de conexión en sí tampoco está cubierto por la envoltura de
+  // socket.on (que protege lo que se registra después): si armar el snapshot
+  // fallara, la excepción subiría a uncaughtException. Mismo tratamiento.
+  try {
+    const initialLobby = lobbySnapshot();
+    socket.emit('lobby_state', {
+      rooms: initialLobby,
+      playersOnline: initialLobby.reduce((sum, room) => sum + room.humans, 0),
+      season: seasonSnapshot()
+    });
+  } catch (error) {
+    console.error('[HANDLER_ERROR] evento=connection (snapshot inicial):', error);
+  }
 
   socket.on('create_room', ({ name, roomName, game, token, avatar, tos } = {}, ack) => {
     name = cleanName(name);
@@ -1481,7 +1539,13 @@ io.on('connection', socket => {
       player.socketId = socket.id;
       player.connected = true;
       player.lastActiveAt = Date.now();
-      profiles.update(player._profile, { name, avatar, featuredAchievements });
+      // OJO: aquí solo se actualizan nombre/avatar. Este evento nunca recibe
+      // featuredAchievements; referenciarla igual era un ReferenceError que
+      // tumbaba TODO el proceso (sin handler de uncaughtException) cada vez
+      // que un jugador ya sentado volvía a entrar con su mismo token
+      // (recarga de página o reconexión automática), borrando de memoria
+      // todas las mesas y dejando a todos con "Perfil no disponible.".
+      profiles.update(player._profile, { name, avatar });
       player.name = player._profile.name;
       player.avatar = player._profile.avatar;
       addSystem(room, `${player.name} volvió a la mesa.`);
@@ -1863,21 +1927,31 @@ io.on('connection', socket => {
 const hostInactivitySweep = setInterval(() => {
   const now = Date.now();
   for (const room of rooms.values()) {
-    const humans = room.players.filter(p => !p.isBot && p.connected);
-    if (!humans.length) continue;
-    const host = room.players.find(p => p.id === room.hostId);
-    const hostValid = host && !host.isBot && host.connected;
-    if (hostValid && now - host.lastActiveAt <= HOST_INACTIVITY_MS) continue;
-    const candidates = humans
-      .filter(p => p.id !== room.hostId)
-      .filter(p => !hostValid || now - p.lastActiveAt <= HOST_INACTIVITY_MS)
-      .sort((a, b) => b.lastActiveAt - a.lastActiveAt);
-    if (!candidates.length) continue;
-    const next = candidates[0];
-    const previousName = host?.name || 'el anfitrión anterior';
-    room.hostId = next.id;
-    addSystem(room, `👑 ${next.name} ahora dirige la mesa por inactividad de ${previousName}.`);
-    broadcast(room);
+    // Auditoría: este barrido corre en un setInterval, fuera de cualquier
+    // envoltura: una excepción aquí (p. ej. dentro de broadcast) subía a
+    // uncaughtException y tumbaba el casino completo. El try/catch es por
+    // mesa: una mesa que falla no frena la migración de las demás ni el
+    // siguiente barrido.
+    try {
+      const humans = room.players.filter(p => !p.isBot && p.connected);
+      if (!humans.length) continue;
+      const host = room.players.find(p => p.id === room.hostId);
+      const hostValid = host && !host.isBot && host.connected;
+      if (hostValid && now - host.lastActiveAt <= HOST_INACTIVITY_MS) continue;
+      const candidates = humans
+        .filter(p => p.id !== room.hostId)
+        .filter(p => !hostValid || now - p.lastActiveAt <= HOST_INACTIVITY_MS)
+        .sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+      if (!candidates.length) continue;
+      const next = candidates[0];
+      const previousName = host?.name || 'el anfitrión anterior';
+      room.hostId = next.id;
+      addSystem(room, `👑 ${next.name} ahora dirige la mesa por inactividad de ${previousName}.`);
+      broadcast(room);
+    } catch (error) {
+      console.error(`[SWEEP_ERROR] migracion-anfitrion mesa=${room.code}:`, error);
+      logEvent('host_sweep_error', { room: room.code, game: room.game, message: String(error?.message || error) });
+    }
   }
 }, HOST_INACTIVITY_SWEEP_MS);
 hostInactivitySweep.unref?.();
@@ -1886,32 +1960,40 @@ hostInactivitySweep.unref?.();
 // temporada, todos los perfiles vuelven a 1000 fichas y se anuncia el podio.
 const seasonSweep = setInterval(() => {
   if (!profiles) return; // Fase 10.2: red de seguridad si Postgres tardara más de 5 min en responder al arrancar.
-  // Fase 11.4: junto con el cambio de mes, se aprovecha el mismo barrido de 5
-  // min para borrar cuentas sin actividad desde hace ~3 meses (ahorra espacio,
-  // sobre todo en Postgres). No afecta a nadie conectado: si alguien reconecta
-  // después de tanto tiempo sin tocar su perfil, empieza uno nuevo, igual que
-  // un jugador que entra por primera vez.
-  const prunedAccounts = profiles.pruneInactiveAccounts(INACTIVITY_LIMIT_MS);
-  if (prunedAccounts.length) {
-    logEvent('accounts_pruned', { count: prunedAccounts.length, names: prunedAccounts.slice(0, 20).map(entry => entry.name) });
+  // Auditoría: igual que el barrido de anfitriones, un error aquí mataba el
+  // proceso entero (setInterval sin envoltura). Se prefiere perder UN barrido
+  // y reintentar en 5 minutos a tumbar el casino en plena temporada.
+  try {
+    // Fase 11.4: junto con el cambio de mes, se aprovecha el mismo barrido de 5
+    // min para borrar cuentas sin actividad desde hace ~3 meses (ahorra espacio,
+    // sobre todo en Postgres). No afecta a nadie conectado: si alguien reconecta
+    // después de tanto tiempo sin tocar su perfil, empieza uno nuevo, igual que
+    // un jugador que entra por primera vez.
+    const prunedAccounts = profiles.pruneInactiveAccounts(INACTIVITY_LIMIT_MS);
+    if (prunedAccounts.length) {
+      logEvent('accounts_pruned', { count: prunedAccounts.length, names: prunedAccounts.slice(0, 20).map(entry => entry.name) });
+    }
+    const closed = profiles.ensureSeason();
+    if (!closed) return;
+    logEvent('season_reset', { closedMonth: closed.month, players: closed.players, podium: closed.podium, bannerAwarded: closed.bannerAwarded });
+    const podiumText = closed.podium.length
+      ? ` Podio de ${closed.month}: ${closed.podium.map((entry, index) => `${['🥇', '🥈', '🥉'][index]} ${entry.name} (${entry.chips})`).join(' · ')}.`
+      : '';
+    // Fase 11.4: el banner dorado solo se anuncia la primera vez que alguien lo
+    // gana (closed.bannerAwarded ya viene en false si esa persona ya lo tenía
+    // de una temporada anterior).
+    const bannerText = closed.bannerAwarded && closed.podium[0]
+      ? ` 🎖️ ¡${closed.podium[0].name} se ganó su banner dorado de por vida por terminar en 1er lugar!`
+      : '';
+    for (const room of rooms.values()) {
+      addSystem(room, `📅 ¡Nueva temporada mensual! Todos los saldos se reiniciaron a 1000 fichas.${podiumText}${bannerText}`);
+      broadcast(room);
+    }
+    broadcastLobby();
+  } catch (error) {
+    console.error('[SWEEP_ERROR] cierre-de-temporada:', error);
+    logEvent('season_sweep_error', { message: String(error?.message || error) });
   }
-  const closed = profiles.ensureSeason();
-  if (!closed) return;
-  logEvent('season_reset', { closedMonth: closed.month, players: closed.players, podium: closed.podium, bannerAwarded: closed.bannerAwarded });
-  const podiumText = closed.podium.length
-    ? ` Podio de ${closed.month}: ${closed.podium.map((entry, index) => `${['🥇', '🥈', '🥉'][index]} ${entry.name} (${entry.chips})`).join(' · ')}.`
-    : '';
-  // Fase 11.4: el banner dorado solo se anuncia la primera vez que alguien lo
-  // gana (closed.bannerAwarded ya viene en false si esa persona ya lo tenía
-  // de una temporada anterior).
-  const bannerText = closed.bannerAwarded && closed.podium[0]
-    ? ` 🎖️ ¡${closed.podium[0].name} se ganó su banner dorado de por vida por terminar en 1er lugar!`
-    : '';
-  for (const room of rooms.values()) {
-    addSystem(room, `📅 ¡Nueva temporada mensual! Todos los saldos se reiniciaron a 1000 fichas.${podiumText}${bannerText}`);
-    broadcast(room);
-  }
-  broadcastLobby();
 }, 5 * 60 * 1000);
 seasonSweep.unref?.();
 
