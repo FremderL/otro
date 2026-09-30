@@ -139,6 +139,11 @@ async function testCicloDeVidaCompleto() {
   assert.equal(ranking[0].name, 'Beto', 'el ranking ordena por fichas');
   assert.equal(ranking[1].name, 'Ana María');
 
+  // Unicidad global de nombres: mismo método heredado que usa el archivo.
+  assert.equal(store.findProfileByName('ana maría')?.id, 'jugador-1', 'findProfileByName compara normalizado');
+  assert.equal(store.findProfileByName('BETO', 'jugador-2'), null, 'exceptId excluye al propio perfil');
+  assert.equal(store.findProfileByName('Nadie'), null, 'un nombre libre devuelve null');
+
   // "Reinicio del servidor": una segunda instancia del store, contra la misma
   // base simulada, debe recuperar exactamente lo guardado (persistencia real).
   const store2 = new PgProfileStore('postgres://usuario:clave@fake-host/db', { Pool: backend.Pool });

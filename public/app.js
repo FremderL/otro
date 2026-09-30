@@ -123,8 +123,8 @@
     connection: 'connecting', sound: localStorage.getItem('montecristo-sound') !== 'off', notifications: localStorage.getItem('montecristo-notifications') !== 'off',
     lobbyChat: { joined: false, joining: false, open: false, messages: [], unread: 0 },
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
-    lastEventKey: '', clockTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false,
-    rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null,
+    lastEventKey: '', clockTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false, profileNameDirty: false,
+    rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null, resultQueue: [],
     spectating: false
   };
 
@@ -244,12 +244,11 @@
   // no el de la cuenta iniciada. Nunca se sustituye por un objeto de mesa
   // fabricado a mano: fuera de una mesa, `ui.room` se deja intacto (null).
   function currentViewerProfile() { return ui.room?.viewerProfile || ui.accountSession || null; }
-  // Si la sesión de cuenta cacheada parece incompleta u obsoleta (falta el id
-  // de la cuenta o las estadísticas), se pide al servidor el perfil público
-  // actualizado en vez de confiar ciegamente en lo que había en localStorage.
-  function isAccountProfileStale(profile) {
-    return !profile || !profile.accountId || !profile.stats;
-  }
+  // La sesión de cuenta cacheada en localStorage es una INSTANTÁNEA: puede
+  // quedar vieja si el perfil cambió después (rondas jugadas en esta u otra
+  // computadora, renombrado al entrar a una mesa, bonos…). Por eso el modal
+  // del lobby la pinta para responder al instante pero SIEMPRE pide después
+  // el perfil público actualizado al servidor (ver openProfileModal).
   // Al editar desde una mesa, el perfil editado es el del JUGADOR de esa mesa
   // (identificado por el token de dispositivo), que puede ser un perfil
   // anónimo totalmente distinto del de la cuenta con la que se inició sesión.
@@ -800,6 +799,11 @@
       if (room.game === 'slots' && !ui.slotsSpin) startSlotsSpin(room.quickResult.reels);
     }
     ui.room = room;
+    // Red de seguridad: si llegó el estado de resultados pero esta mesa no
+    // está animando el descubrimiento (otro juego, o una reconexión directa
+    // en fase de resultados), los avisos retenidos se muestran ya — no hay
+    // animación que esperar.
+    if (ui.resultQueue.length && !quickResultHold()) flushResultQueue();
     ui.activeCode = room.code;
     ui.me = room.players.find(player => player.id === deviceToken) || (room.viewerSpectator ? null : room.players.find(player => player.name === ui.playerName)) || null;
     ui.spectating = Boolean(room.viewerSpectator) && !ui.me; // Fase 8: modo espectador
@@ -1196,6 +1200,9 @@
     ui.lastGameSignature = ''; // el estado del servidor no cambió: forzamos el repintado del resultado
     playTone('notice');
     renderRoom();
+    // Momento del descubrimiento: los avisos retenidos (resultado, victoria,
+    // premios) se muestran ahora que la pelota ya cayó.
+    flushResultQueue();
   }
   function ensureRouletteLoop() {
     if (ui.rouletteRaf) return;
@@ -1315,6 +1322,9 @@
     ui.lastGameSignature = ''; // el estado del servidor no cambió: forzamos el repintado del resultado
     playTone('notice');
     renderRoom();
+    // Momento del descubrimiento: los avisos retenidos se muestran ahora que
+    // los rodillos se detuvieron.
+    flushResultQueue();
   }
   function ensureSlotsLoop() {
     if (ui.slotsRaf) return;
@@ -1624,42 +1634,68 @@
     if (key === ui.lastEventKey) return;
     ui.lastEventKey = key;
     if (event.type === 'bot_action' && !event.fallback) return;
-    const map = {
-      joined: ['Nuevo jugador', '◎', 'notice'], left: ['Jugador desconectado', '←', 'notice'],
-      round: ['Nueva ronda', '♠', 'round'], turn: ['Es tu turno', '◷', 'turn'],
-      timeout: ['Tiempo agotado', '!', 'error'], win: ['Victoria', '◆', 'win'],
-      loss: ['Fin de la ronda', '×', 'loss'], push: ['Empate', '=', 'notice'],
-      roll: ['Resultado en camino', '◉', 'round'], quick_result: ['Ronda resuelta', '✦', 'notice'],
-      bot_joined: ['Bot en la mesa', '🤖', 'notice'], bot_action: ['Jugada del bot', '🤖', 'notice'],
-      special: ['Evento especial', '✦', 'achievement'], special_reward: ['Premio especial', '💎', 'reward']
+    const present = () => {
+      const map = {
+        joined: ['Nuevo jugador', '◎', 'notice'], left: ['Jugador desconectado', '←', 'notice'],
+        round: ['Nueva ronda', '♠', 'round'], turn: ['Es tu turno', '◷', 'turn'],
+        timeout: ['Tiempo agotado', '!', 'error'], win: ['Victoria', '◆', 'win'],
+        loss: ['Fin de la ronda', '×', 'loss'], push: ['Empate', '=', 'notice'],
+        roll: ['Resultado en camino', '◉', 'round'], quick_result: ['Ronda resuelta', '✦', 'notice'],
+        bot_joined: ['Bot en la mesa', '🤖', 'notice'], bot_action: ['Jugada del bot', '🤖', 'notice'],
+        special: ['Evento especial', '✦', 'achievement'], special_reward: ['Premio especial', '💎', 'reward']
+      };
+      const [title, icon, kind] = map[event.type] || ['Mesa actualizada', '•', 'notice'];
+      showToast(title, event.text, kind, ['turn', 'win', 'loss', 'special'].includes(event.type) ? 5500 : 3500, icon, ['achievement', 'reward'].includes(kind));
+      playTone(kind === 'achievement' || kind === 'reward' ? 'win' : kind);
+      if (event.type === 'round') showRoundFlash(event.text);
+      if (event.type === 'turn') showRoundFlash('Tu turno');
+      if (event.type === 'roll') showRoundFlash('¡En juego!');
+      if (event.type === 'quick_result') showRoundFlash(event.text);
+      if (event.type === 'win') celebrate();
+      if (event.type === 'loss') lossEffect();
     };
-    const [title, icon, kind] = map[event.type] || ['Mesa actualizada', '•', 'notice'];
-    showToast(title, event.text, kind, ['turn', 'win', 'loss', 'special'].includes(event.type) ? 5500 : 3500, icon, ['achievement', 'reward'].includes(kind));
-    playTone(kind === 'achievement' || kind === 'reward' ? 'win' : kind);
-    if (event.type === 'round') showRoundFlash(event.text);
-    if (event.type === 'turn') showRoundFlash('Tu turno');
-    if (event.type === 'roll') showRoundFlash('¡En juego!');
-    if (event.type === 'quick_result') showRoundFlash(event.text);
-    if (event.type === 'win') celebrate();
-    if (event.type === 'loss') lossEffect();
+    // Ruleta y tragamonedas: la ronda ya se resolvió en el servidor pero la
+    // animación del resultado sigue en curso; el aviso espera al
+    // descubrimiento (fin natural de la animación o «Saltar animación»).
+    if (['win', 'loss', 'push', 'quick_result', 'special_reward'].includes(event.type)) announceGameResult(present);
+    else present();
   });
   socket.on('profile_event', payload => {
     if (payload?.profile && ui.room) {
       ui.room.viewerProfile = payload.profile;
+      // La caché de la sesión de cuenta también adopta los cambios (fichas de
+      // recompensas, renombrado…), para que el perfil del lobby no muestre
+      // datos de antes al salir de la mesa. syncAccountSessionIfSameProfile
+      // solo actúa si es el MISMO perfil de la cuenta.
+      syncAccountSessionIfSameProfile(payload.profile);
       if (ui.me) { ui.me.chips = payload.profile.chips; ui.me.avatar = payload.profile.avatar; ui.me.name = payload.profile.name; }
       renderProfile();
       if (ui.profileOpen) renderProfileModal();
     }
     (payload?.events || []).forEach(event => {
-      const kind = event.type === 'achievement' ? 'achievement' : event.type === 'challenge' ? 'challenge' : 'reward';
-      showToast(event.type === 'challenge' ? 'Reto completado' : event.type === 'achievement' ? 'Logro desbloqueado' : event.name, `${event.name}${event.reward ? ` · +${event.reward} fichas` : ''}`, kind, 6500, event.icon, true);
-      playTone('win');
+      // Los premios de la ronda (logros, retos, bonos) dependen del resultado:
+      // en ruleta y tragamonedas se revelan junto con el descubrimiento, no
+      // mientras la rueda o los rodillos siguen girando.
+      announceGameResult(() => {
+        const kind = event.type === 'achievement' ? 'achievement' : event.type === 'challenge' ? 'challenge' : 'reward';
+        showToast(event.type === 'challenge' ? 'Reto completado' : event.type === 'achievement' ? 'Logro desbloqueado' : event.name, `${event.name}${event.reward ? ` · +${event.reward} fichas` : ''}`, kind, 6500, event.icon, true);
+        playTone('win');
+      });
     });
   });
   socket.on('social_event', event => {
     if (!event?.text) return;
-    showToast(event.type === 'big_win' ? '¡Gran resultado!' : 'Celebración en la mesa', event.text, event.type === 'big_win' ? 'reward' : 'achievement', 5600, event.icon || '✦', true);
-    if (event.type === 'big_win') { celebrate(); showRoundFlash(`+${formatChips(event.amount)} fichas`); }
+    if (event.type === 'big_win') {
+      // La gran ganancia también es parte del descubrimiento en ruleta y
+      // tragamonedas: espera a que termine la animación.
+      announceGameResult(() => {
+        showToast('¡Gran resultado!', event.text, 'reward', 5600, event.icon || '✦', true);
+        celebrate();
+        showRoundFlash(`+${formatChips(event.amount)} fichas`);
+      });
+      return;
+    }
+    showToast('Celebración en la mesa', event.text, 'achievement', 5600, event.icon || '✦', true);
   });
   socket.on('reaction', event => showFloatingReaction(event));
   socket.on('removed', payload => {
@@ -1705,6 +1741,31 @@
     els.roomApp.classList.add('loss'); setTimeout(() => els.roomApp.classList.remove('loss'), 700);
   }
 
+  // ---------- Avisos de resultado diferidos (ruleta y tragamonedas) ----------
+  // El servidor resuelve la ronda mientras la rueda o los rodillos siguen
+  // girando. Para no revelar el resultado antes de tiempo, los avisos que
+  // dependen de él (toasts de victoria/derrota/ronda resuelta, premios,
+  // destello de ronda y fanfarrias) se RETIENEN hasta que la animación
+  // termine — de forma natural o con el botón «Saltar animación» — y se
+  // muestran todos juntos en el momento del descubrimiento. En los demás
+  // juegos (y fuera de estas dos mesas) se muestran de inmediato, como siempre.
+  function quickResultHold() {
+    const room = ui.room;
+    if (!room || (room.game !== 'roulette' && room.game !== 'slots')) return false;
+    // Fase 'rolling': los eventos de resultado llegan justo ANTES de la
+    // room_state que arranca la animación, así que la retención ya aplica.
+    return Boolean(ui.rouletteSpin || ui.slotsSpin) || room.phase === 'rolling';
+  }
+  function announceGameResult(announce) {
+    if (typeof announce !== 'function') return;
+    if (quickResultHold()) ui.resultQueue.push(announce);
+    else announce();
+  }
+  function flushResultQueue() {
+    const queue = ui.resultQueue.splice(0, ui.resultQueue.length);
+    for (const announce of queue) announce();
+  }
+
   // ---------- Profile, social controls and general room controls ----------
   // El modal de perfil muestra el perfil de la mesa si hay una, o el de la
   // cuenta iniciada si no (ver currentViewerProfile). Nunca se fabrica un
@@ -1714,17 +1775,26 @@
     const profile = currentViewerProfile();
     if (!profile) return;
     ui.profileOpen = true;
+    ui.profileNameDirty = false;
     ui.profileAvatar = profile.avatar || 'fox';
     renderProfileModal();
     els.profileModal.classList.add('open');
     els.profileModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
-    // Si se abre desde el lobby (sin mesa) con una cuenta cacheada incompleta
-    // u obsoleta, se pide al servidor el perfil público actualizado.
-    if (!inTable() && isAccountProfileStale(ui.accountSession)) refreshAccountProfile();
+    // Fuera de una mesa, la caché de localStorage puede haber quedado vieja
+    // (rondas jugadas aquí o desde otro dispositivo, nombre cambiado al entrar
+    // a una mesa, bono diario…). Se pide SIEMPRE el perfil público actualizado
+    // al servidor: el modal pinta la caché al instante y, si el servidor trae
+    // algo distinto, se vuelve a renderizar con los datos frescos (sin pisar
+    // una edición en curso — ver el guard de profileNameDirty en
+    // renderProfileModal). Antes solo se refrescaba si faltaban campos, y el
+    // perfil del lobby se quedaba con el nombre y los puntos de antes hasta
+    // que la persona volvía a guardar.
+    if (!inTable()) refreshAccountProfile();
   }
   function closeProfileModal() {
     ui.profileOpen = false;
+    ui.profileNameDirty = false;
     els.profileModal?.classList.remove('open');
     els.profileModal?.setAttribute('aria-hidden', 'true');
     if (!els.modal.classList.contains('open')) document.body.classList.remove('modal-open');
@@ -1733,7 +1803,11 @@
     const profile = currentViewerProfile();
     if (!profile) return;
     const stats = profile.stats || {};
-    els.profileNameInput.value = profile.name || ui.playerName;
+    // Un refresco en segundo plano (refreshAccountProfile o un profile_event
+    // de la mesa) puede llegar mientras la persona ya escribió un nombre
+    // nuevo: nunca se pisa su edición en curso. El guardado sigue siendo
+    // explícito, con el botón del formulario.
+    if (!ui.profileNameDirty) els.profileNameInput.value = profile.name || ui.playerName;
     ui.profileAvatar = ui.profileAvatar || profile.avatar;
     els.profileBigAvatar.textContent = avatarEmoji(ui.profileAvatar);
     renderAvatarChoices();
@@ -1962,6 +2036,9 @@
   els.profileCard.addEventListener('click', openProfileModal);
   els.profileCard.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openProfileModal(); } });
   $$('[data-close-profile]').forEach(element => element.addEventListener('click', closeProfileModal));
+  // Marca la edición en curso del nombre para que los refrescos en segundo
+  // plano no sobrescriban lo que la persona está escribiendo.
+  els.profileNameInput.addEventListener('input', () => { ui.profileNameDirty = true; });
   els.profileForm.addEventListener('submit', async event => {
     event.preventDefault();
     const button = event.currentTarget.querySelector('button[type="submit"]');
@@ -1984,6 +2061,7 @@
     }
     ui.playerName = response.profile?.name || name;
     ui.selectedAvatar = response.profile?.avatar || avatar;
+    ui.profileNameDirty = false; // lo guardado ya es el estado actual: se puede volver a pintar desde el perfil
     localStorage.setItem('montecristo-name', ui.playerName);
     localStorage.setItem('montecristo-avatar', ui.selectedAvatar);
     showToast('Perfil actualizado', inTable() ? 'Tu nombre y avatar ya están visibles en la mesa.' : 'Tu perfil se guardó en el servidor.', 'notice', 3600, avatarEmoji(ui.selectedAvatar));
@@ -2043,9 +2121,15 @@
   $('#room-logo').addEventListener('click', event => { event.preventDefault(); leaveToLobby(true); });
   async function leaveToLobby(notifyServer = true) {
     closeProfileModal(); closeBotControls();
+    // Al salir de la mesa, la caché de la sesión de cuenta adopta el último
+    // estado conocido del perfil (si es el mismo de la cuenta): nombre y
+    // fichas tal como quedaron tras jugar. Sin esto, el perfil del lobby
+    // seguía mostrando los datos de cuando se inició sesión hasta volver a
+    // guardar (bug reportado: "entré a mi perfil y no se actualizó").
+    syncAccountSessionIfSameProfile(ui.room?.viewerProfile);
     if (notifyServer && ui.room) await emitAck('leave_room');
     clearInterval(ui.clockTimer); clearSession(); ui.room = null; ui.me = null; ui.activeCode = null; ui.spectating = false;
-    ui.rouletteSpin = null; ui.rouletteAngle = 0; ui.slotsSpin = null;
+    ui.rouletteSpin = null; ui.rouletteAngle = 0; ui.slotsSpin = null; ui.resultQueue = [];
     ui.lastGameSignature = ''; ui.lastChatSignature = ''; ui.previousRanks = new Map(); ui.previousChips = new Map(); ui.lastMeChips = null;
     els.roomApp.classList.add('exiting');
     setTimeout(() => {
