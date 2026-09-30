@@ -7,7 +7,7 @@ const { AVATARS, avatarInfo } = require('./lib/profile-store');
 // Fase 10.2: DATABASE_URL activa el backend de Postgres (Neon free); sin ella,
 // se mantiene el ProfileStore de archivo JSON de siempre. Ver lib/profile-store-factory.js.
 const { createProfileStore } = require('./lib/profile-store-factory');
-const { HISTORY_LIMITS, INACTIVITY_LIMIT_MS } = require('./lib/profile-store-shared');
+const { HISTORY_LIMITS, INACTIVITY_LIMIT_MS, normalizeDisplayName } = require('./lib/profile-store-shared');
 const { credit, recordWager, recordOutcome, claimDailyBonus, publicProgress } = require('./lib/progression');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
 const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
@@ -133,14 +133,16 @@ function cleanMessage(value) {
   return censorProfanity(cleaned);
 }
 // ---- Validación de nombres de personas (mesas, chat del casino, cuentas) ----
-// Dos reglas solicitadas en la auditoría de pulido:
+// Reglas solicitadas en la auditoría de pulido:
 //  1) Sin palabras ofensivas: la misma lista que censura el chat, también
 //     tras quitar separadores intercalados ("gil_ipollas", "pen.dejo").
-//  2) Sin duplicados dentro de un mismo espacio (una mesa o el chat del
-//     casino): la autoría de cada jugada y mensaje debe ser inequívoca. La
-//     comparación ignora mayúsculas y espacios extra. No hay unicidad global
-//     a propósito: los perfiles viven por dispositivo y dos personas pueden
-//     llamarse igual en mesas distintas sin confundir a nadie.
+//  2) UNICIDAD GLOBAL: un nombre le pertenece a un solo perfil en todo el
+//     casino (ver findProfileByName en lib/profile-store-base.js). Dentro de
+//     una mesa se aplica además el chequeo local (jugadores, tribuna y bots
+//     sentados ahí) para dar un error más específico y cubrir a los bots,
+//     que no viven en el registro de perfiles. La comparación ignora
+//     mayúsculas y espacios extra (normalizeDisplayName), igual en ambos
+//     niveles, para que las dos reglas nunca discrepen.
 function nameHasProfanity(value) {
   const raw = String(value || '');
   if (PROFANITY_TEST.test(raw)) return true;
@@ -152,24 +154,37 @@ function displayNameIssue(name) {
   return null;
 }
 function sameDisplayName(a, b) {
-  const normalize = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
-  return Boolean(a) && Boolean(b) && normalize(a) === normalize(b);
+  const normalized = normalizeDisplayName(a);
+  return Boolean(normalized) && normalized === normalizeDisplayName(b);
 }
 function roomNameTaken(room, name, exceptId = null) {
   if (!room || !name) return false;
   if (room.players.some(p => p.id !== exceptId && sameDisplayName(p.name, name))) return true;
   return (room.spectators || []).some(s => s.connected && s.id !== exceptId && sameDisplayName(s.name, name));
 }
-function seatNameIssue(room, name, exceptId = null) {
-  return displayNameIssue(name)
-    || (roomNameTaken(room, name, exceptId) ? 'Ese nombre ya está en uso en esta mesa. Elige otro.' : null);
+// Validación completa de un nombre de persona: sin groserías, sin duplicar el
+// nombre de nadie en la mesa indicada (si hay) y sin duplicar el de NINGÚN
+// otro perfil del casino, esté donde esté. `exceptId` es el perfil de quien
+// pide el nombre: renombrarse al propio nombre nunca se rechaza.
+function nameIssue(name, { room = null, exceptId = null } = {}) {
+  const offensive = displayNameIssue(name);
+  if (offensive) return offensive;
+  if (room && roomNameTaken(room, name, exceptId)) return 'Ese nombre ya está en uso en esta mesa. Elige otro.';
+  if (profiles.findProfileByName(name, exceptId)) return 'Ese nombre ya lo usa otra persona en el casino. Elige otro.';
+  return null;
 }
-function lobbyChatNameTaken(name, exceptId = null) {
-  if (!name) return false;
-  for (const [, s] of io.sockets.sockets) {
-    if (s.data?.lobbyChat && s.data.lobbyChat.id !== exceptId && sameDisplayName(s.data.lobbyChat.name, name)) return true;
+// Mesa (si hay) donde este perfil está sentado o mirando ahora mismo. Se usa
+// para validar renombrados que llegan FUERA de una mesa (editar la cuenta
+// desde el lobby, crear cuenta, apodo del chat): el nombre nuevo tampoco
+// puede chocar con los de ESA mesa — por ejemplo, un bot sentado en ella,
+// que no aparece en el registro global de perfiles.
+function roomOfProfile(profile) {
+  if (!profile) return null;
+  for (const room of rooms.values()) {
+    if (room.players.some(p => p._profile === profile)) return room;
+    if ((room.spectators || []).some(s => s._profile === profile)) return room;
   }
-  return false;
+  return null;
 }
 function duplicateMessageWithinWindow(socket, channel, text) {
   const now = Date.now();
@@ -1556,9 +1571,10 @@ io.on('connection', socket => {
     name = cleanName(name);
     game = ['poker', 'blackjack', ...Object.keys(QUICK_GAMES)].includes(game) ? game : 'poker';
     if (!name) return ackError(ack, 'Escribe tu nombre.');
-    const nameIssue = displayNameIssue(name);
-    if (nameIssue) return ackError(ack, nameIssue);
     if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
+    // Unicidad global del nombre (excepto el perfil propio de este dispositivo).
+    const createIssue = nameIssue(name, { exceptId: String(token).slice(0, 80) });
+    if (createIssue) return ackError(ack, createIssue);
     const player = newPlayer(String(token).slice(0, 80), socket, name, avatar);
     if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
     const room = createRoom(game, player, socket, roomName);
@@ -1583,10 +1599,10 @@ io.on('connection', socket => {
       if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
       // Reingreso: el nombre se valida solo si trae uno nuevo (sin nombre
       // conserva el que ya tenía). Nunca puede robarle el nombre a otra
-      // persona sentada o mirando esta misma mesa.
+      // persona: ni en esta mesa ni en todo el casino.
       if (name) {
-        const nameIssue = seatNameIssue(room, name, player.id);
-        if (nameIssue) return ackError(ack, nameIssue);
+        const rejoinIssue = nameIssue(name, { room, exceptId: player.id });
+        if (rejoinIssue) return ackError(ack, rejoinIssue);
       }
       player.socketId = socket.id;
       player.connected = true;
@@ -1604,9 +1620,10 @@ io.on('connection', socket => {
     } else {
       if (!name) return ackError(ack, 'Escribe tu nombre.');
       // exceptId = su propio token: quien viene de la tribuna a tomar asiento
-      // conserva su nombre sin chocar con su propia entrada de espectadora.
-      const nameIssue = seatNameIssue(room, name, String(token).slice(0, 80));
-      if (nameIssue) return ackError(ack, nameIssue);
+      // conserva su nombre sin chocar con su propia entrada de espectadora,
+      // y el nombre debe estar libre en el casino entero, no solo en la mesa.
+      const seatIssue = nameIssue(name, { room, exceptId: String(token).slice(0, 80) });
+      if (seatIssue) return ackError(ack, seatIssue);
       player = newPlayer(String(token).slice(0, 80), socket, name, avatar);
       if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
       // Si la mesa está llena pero hay bots, un bot cede su asiento a la persona real.
@@ -1646,8 +1663,9 @@ io.on('connection', socket => {
     if (room.players.some(p => !p.isBot && p.id === id)) return ackError(ack, 'Ya tienes asiento en esta mesa: entra como jugador.');
     if (!name) return ackError(ack, 'Escribe tu nombre.');
     // La tribuna comparte el chat y los avisos de la mesa: el apodo tampoco
-    // puede duplicar el de nadie en esta mesa (jugadores u otros espectadores).
-    const spectateNameIssue = seatNameIssue(room, name, id);
+    // puede duplicar el de nadie en esta mesa (jugadores u otros espectadores)
+    // ni el de ningún otro perfil del casino.
+    const spectateNameIssue = nameIssue(name, { room, exceptId: id });
     if (spectateNameIssue) return ackError(ack, spectateNameIssue);
     const profile = profiles.getOrCreate(id, name, avatar);
     if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
@@ -1706,10 +1724,11 @@ io.on('connection', socket => {
     if (!id) return ackError(ack, 'No se pudo identificar este dispositivo.');
     if (!name) return ackError(ack, 'Elige un apodo para entrar al chat del casino.');
     // El apodo del chat es la identidad de quien habla: ni ofensivo ni igual
-    // al de otra persona conectada al chat en este momento (mismo dispositivo
-    // en otra pestaña sí puede, es la misma persona).
-    const lobbyIssue = displayNameIssue(name)
-      || (lobbyChatNameTaken(name, id) ? 'Ese apodo ya está en uso en el chat del casino. Elige otro.' : null);
+    // al de otra persona del casino (la unicidad global cubre a todas las
+    // personas conectadas al chat: todas tienen perfil). Renombrar el perfil
+    // también se valida contra la mesa donde esté sentado, si hay una.
+    const chatProfile = profiles.profiles.get(id);
+    const lobbyIssue = nameIssue(name, { room: roomOfProfile(chatProfile), exceptId: id });
     if (lobbyIssue) return ackError(ack, lobbyIssue);
     const profile = profiles.getOrCreate(id, name);
     if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
@@ -1774,11 +1793,13 @@ io.on('connection', socket => {
     }
     if (!targetProfile) return ackError(ack, 'Perfil no disponible.');
     name = cleanName(name) || targetProfile.name;
-    // El nombre elegido se valida siempre: sin palabras ofensivas y, si quien
-    // edita está sentado en una mesa, sin duplicar el nombre de otra persona
-    // ahí (jugadores o tribuna).
-    const nameIssue = room && player ? seatNameIssue(room, name, player.id) : displayNameIssue(name);
-    if (nameIssue) return ackError(ack, nameIssue);
+    // El nombre elegido se valida siempre: sin palabras ofensivas, libre en
+    // el casino entero y, si el perfil está sentado en una mesa (desde esta
+    // conexión o desde otra), sin duplicar el nombre de nadie en ESA mesa
+    // (por ejemplo, un bot sentado en ella).
+    const targetRoom = room && player ? room : roomOfProfile(targetProfile);
+    const renameIssue = nameIssue(name, { room: targetRoom, exceptId: targetProfile.id });
+    if (renameIssue) return ackError(ack, renameIssue);
     // Fase de auditoría de cuentas: featuredAchievements se aceptaba en el payload
     // pero nunca se pasaba a profiles.update(), así que la vitrina de logros no
     // se guardaba de verdad. Se corrige aquí.
@@ -1810,12 +1831,15 @@ io.on('connection', socket => {
   socket.on('account_signup', ({ token, name, avatar, username, password, tos } = {}, ack) => {
     if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
     const id = String(token).slice(0, 80);
-    // El nombre con el que se crea la cuenta también se revisa: es el que se
-    // mostrará en mesas y rankings.
+    // El nombre con el que se crea la cuenta también se revisa (es el que se
+    // mostrará en mesas y rankings): sin groserías y libre en el casino. Si
+    // el perfil ya está sentado en una mesa, tampoco puede chocar con los
+    // nombres de esa mesa (p. ej. un bot).
     const candidateName = cleanName(name);
     if (candidateName) {
-      const nameIssue = displayNameIssue(candidateName);
-      if (nameIssue) return ackError(ack, nameIssue);
+      const existing = profiles.profiles.get(id);
+      const signupIssue = nameIssue(candidateName, { room: roomOfProfile(existing), exceptId: id });
+      if (signupIssue) return ackError(ack, signupIssue);
     }
     // Si el perfil ya existe (lo normal: ya jugó antes) no se le pisa el
     // nombre con un valor por defecto; getOrCreate solo lo usa si es nuevo.

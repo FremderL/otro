@@ -146,8 +146,11 @@ async function testPokerRegression() {
   const host = connectClient(), guest = connectClient();
   await Promise.all([waitFor(host, 'connect'), waitFor(guest, 'connect')]);
   const suffix = `${Date.now()}-${Math.random()}`;
-  const room = await createRoom(host, 'poker', `poker-host-${suffix}`);
-  await joinRoom(guest, room.code, `poker-guest-${suffix}`);
+  // Nombres explícitos: con la unicidad global de nombres del casino, dos
+  // perfiles distintos no pueden llamarse igual (los otros tests de este
+  // archivo ya usan «Anfitrión»/«Invitada» con otros tokens).
+  const room = await createRoom(host, 'poker', `poker-host-${suffix}`, 'Anfitriona póker');
+  await joinRoom(guest, room.code, `poker-guest-${suffix}`, 'Invitada póker');
   await waitState(host, state => state.players.length === 2);
   const response = await emitAck(host, 'poker_start');
   assert.equal(response.ok, true, response.error);
@@ -159,7 +162,7 @@ async function testPokerRegression() {
 async function testBlackjackRegression() {
   const host = connectClient();
   await waitFor(host, 'connect');
-  await createRoom(host, 'blackjack', `blackjack-${Date.now()}-${Math.random()}`);
+  await createRoom(host, 'blackjack', `blackjack-${Date.now()}-${Math.random()}`, 'Anfitrión del 21');
   assert.equal((await emitAck(host, 'blackjack_bet', { amount: 10 })).ok, true);
   const response = await emitAck(host, 'blackjack_start');
   assert.equal(response.ok, true, response.error);

@@ -97,7 +97,7 @@ async function testTosEnforcement() {
   const rejected = await emitAck(socket, 'create_room', { name: 'SinTerminos', roomName: 'Prohibida', game: 'dice', token: `no-tos-${Date.now()}`, avatar: 'fox' });
   assert.equal(rejected.ok, false, 'crear sala sin aceptar términos debe fallar');
   assert.match(rejected.error, /Términos y Condiciones/);
-  const wrongVersion = await emitAck(socket, 'create_room', { name: 'SinTerminos', roomName: 'Prohibida', game: 'dice', token: `old-tos-${Date.now()}`, avatar: 'fox', tos: '2000-01-01' });
+  const wrongVersion = await emitAck(socket, 'create_room', { name: 'TosAntigua', roomName: 'Prohibida', game: 'dice', token: `old-tos-${Date.now()}`, avatar: 'fox', tos: '2000-01-01' });
   assert.equal(wrongVersion.ok, false, 'una versión vieja de los términos no basta');
   const accepted = await emitAck(socket, 'create_room', { name: 'ConTerminos', roomName: 'Permitida', game: 'dice', token: `yes-tos-${Date.now()}`, avatar: 'fox', tos: TOS_VERSION });
   assert.equal(accepted.ok, true, accepted.error);
