@@ -7,7 +7,7 @@ const { AVATARS, avatarInfo } = require('./lib/profile-store');
 // Fase 10.2: DATABASE_URL activa el backend de Postgres (Neon free); sin ella,
 // se mantiene el ProfileStore de archivo JSON de siempre. Ver lib/profile-store-factory.js.
 const { createProfileStore } = require('./lib/profile-store-factory');
-const { HISTORY_LIMITS, INACTIVITY_LIMIT_MS, normalizeDisplayName } = require('./lib/profile-store-shared');
+const { HISTORY_LIMITS, INACTIVITY_LIMIT_MS, CASINO_TIME_ZONE, normalizeDisplayName } = require('./lib/profile-store-shared');
 const { credit, recordWager, recordOutcome, claimDailyBonus, publicProgress } = require('./lib/progression');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
 const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
@@ -59,6 +59,8 @@ app.get('/healthz', (_req, res) => {
     rooms: rooms.size,
     humanPlayers: [...rooms.values()].reduce((sum, room) => sum + room.players.filter(p => !p.isBot && p.connected).length, 0),
     botTasks: botController?.tasks.size || 0,
+    seasonMonth: profiles?.seasons?.current || null,
+    casinoTimeZone: CASINO_TIME_ZONE,
     tosVersion: TOS_VERSION
   });
 });
@@ -437,12 +439,27 @@ function lobbySnapshot() {
       createdAt: room.createdAt
     }));
 }
-// Fase 8.6: datos del ranking mensual para el lobby.
+// Fase 8.6: datos del ranking mensual para el lobby. El historial persistido
+// guarda ids internos para poder auditar/reparar una premiación, pero esos ids
+// de dispositivo nunca se exponen al navegador.
+function publicSeasonRecord(record) {
+  if (!record) return null;
+  return {
+    month: record.month,
+    players: record.players,
+    closedAt: record.closedAt || null,
+    timeZone: record.timeZone || CASINO_TIME_ZONE,
+    podium: (record.podium || []).map(({ name, avatar, chips, medals, championBanner }) => ({
+      name, avatar, chips, medals: medals || 0, championBanner: Boolean(championBanner)
+    }))
+  };
+}
 function seasonSnapshot() {
   return {
     month: profiles.seasons.current,
+    timeZone: CASINO_TIME_ZONE,
     ranking: profiles.top(10),
-    previous: profiles.seasons.history[profiles.seasons.history.length - 1] || null
+    previous: publicSeasonRecord(profiles.seasons.history[profiles.seasons.history.length - 1])
   };
 }
 // Presencia real del casino: incluye a quien está explorando el lobby, jugando
@@ -2102,15 +2119,25 @@ const seasonSweep = setInterval(() => {
     }
     const closed = profiles.ensureSeason();
     if (!closed) return;
-    logEvent('season_reset', { closedMonth: closed.month, players: closed.players, podium: closed.podium, bannerAwarded: closed.bannerAwarded });
-    const podiumText = closed.podium.length
-      ? ` Podio de ${closed.month}: ${closed.podium.map((entry, index) => `${['🥇', '🥈', '🥉'][index]} ${entry.name} (${entry.chips})`).join(' · ')}.`
+    if (closed.type === 'repair') {
+      logEvent('season_calendar_repaired', closed);
+      for (const room of rooms.values()) {
+        addSystem(room, `📅 Calendario corregido: la temporada ${closed.toMonth} continúa hasta la medianoche de ${CASINO_TIME_ZONE}.`);
+        broadcast(room);
+      }
+      broadcastLobby();
+      return;
+    }
+    const publicClosed = publicSeasonRecord(closed);
+    logEvent('season_reset', { closedMonth: closed.month, players: closed.players, podium: publicClosed.podium, bannerAwarded: closed.bannerAwarded, timeZone: closed.timeZone });
+    const podiumText = publicClosed.podium.length
+      ? ` Podio de ${closed.month}: ${publicClosed.podium.map((entry, index) => `${['🥇', '🥈', '🥉'][index]} ${entry.name} (${entry.chips})`).join(' · ')}.`
       : '';
     // Fase 11.4: el banner dorado solo se anuncia la primera vez que alguien lo
     // gana (closed.bannerAwarded ya viene en false si esa persona ya lo tenía
     // de una temporada anterior).
-    const bannerText = closed.bannerAwarded && closed.podium[0]
-      ? ` 🎖️ ¡${closed.podium[0].name} se ganó su banner dorado de por vida por terminar en 1er lugar!`
+    const bannerText = closed.bannerAwarded && publicClosed.podium[0]
+      ? ` 🎖️ ¡${publicClosed.podium[0].name} se ganó su banner dorado de por vida por terminar en 1er lugar!`
       : '';
     for (const room of rooms.values()) {
       addSystem(room, `📅 ¡Nueva temporada mensual! Todos los saldos se reiniciaron a 1000 fichas.${podiumText}${bannerText}`);
@@ -2175,6 +2202,10 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 // antes de que los perfiles existan en memoria.
 async function bootstrap() {
   profiles = await createProfileStore(process.env.PROFILE_STORE_PATH);
+  if (profiles.lastSeasonRepair) {
+    console.warn(`Calendario de temporada corregido: ${profiles.lastSeasonRepair.fromMonth} → ${profiles.lastSeasonRepair.toMonth} (${CASINO_TIME_ZONE}).`);
+    logEvent('season_calendar_repaired', profiles.lastSeasonRepair);
+  }
   // Fase 11.1: con Postgres, guardar más historial no infla un archivo local
   // que se reescribe entero en cada guardado (ver nota en profile-store-shared.js),
   // así que se eleva el techo de puntos de saldo y transacciones conservados.
@@ -2190,6 +2221,7 @@ async function bootstrap() {
       node: process.version,
       profileStore: profiles.filePath,
       profileBackend: profiles.backend,
+      casinoTimeZone: CASINO_TIME_ZONE,
       historyLimits: { ...HISTORY_LIMITS }
     });
   });

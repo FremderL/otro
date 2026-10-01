@@ -20,7 +20,7 @@
 
 const assert = require('node:assert/strict');
 const { BaseProfileStore } = require('../lib/profile-store-base');
-const { cleanProfile, INACTIVITY_LIMIT_MS } = require('../lib/profile-store-shared');
+const { cleanProfile, monthKey, CASINO_TIME_ZONE, INACTIVITY_LIMIT_MS } = require('../lib/profile-store-shared');
 
 class MemStore extends BaseProfileStore {
   load() {}
@@ -96,11 +96,55 @@ function testBannerUnicoYMedallasColeccionables() {
   assert.equal(campeona.medals, 2, 'pero sí se suma una medalla de oro más (coleccionable)');
 }
 
+function testCalendarioLocalYReparacionDeCierrePrematuro() {
+  assert.equal(CASINO_TIME_ZONE, 'America/Mexico_City', 'Ciudad de México es la zona operativa predeterminada');
+  assert.equal(monthKey(new Date('2026-10-01T01:00:00Z')), '2026-09', 'a la 01:00 UTC todavía es 30 de septiembre en México');
+  assert.equal(monthKey(new Date('2026-10-01T06:00:01Z')), '2026-10', 'octubre comienza al llegar la medianoche de México');
+
+  const store = new MemStore();
+  const premiadaPorError = addProfile(store, { id: 'prematura', name: 'Prematura', chips: 0 });
+  premiadaPorError.medals = 1;
+  premiadaPorError.championBanner = true;
+  premiadaPorError.transactions.push({ amount: 0, reason: 'Nueva temporada 2026-10: saldo reiniciado a 1000', time: 1 });
+  const liderReal = addProfile(store, { id: 'lider-real', name: 'Líder real', chips: 1800, stats: { wins: 5 } });
+  liderReal.transactions.push({ amount: 0, reason: 'Nueva temporada 2026-10: saldo reiniciado a 1000', time: 1 });
+  const empatada = addProfile(store, { id: 'empatada', name: 'Empatada', chips: 1800, stats: { wins: 2 } });
+  empatada.transactions.push({ amount: 0, reason: 'Nueva temporada 2026-10: saldo reiniciado a 1000', time: 1 });
+  store.seasons = {
+    current: '2026-10',
+    // Formato histórico afectado: todavía no guardaba ids internos.
+    history: [{
+      month: '2026-09', bannerAwarded: true,
+      podium: [{ name: premiadaPorError.name, chips: 2500 }]
+    }]
+  };
+
+  const repair = store.ensureSeason(new Date('2026-10-01T01:00:00Z'));
+  assert.equal(repair.type, 'repair', 'un mes futuro se repara, nunca se cierra otra temporada hacia atrás');
+  assert.equal(store.seasons.current, '2026-09', 'septiembre vuelve a quedar activo hasta la medianoche local');
+  assert.equal(store.seasons.history.length, 0, 'se elimina el cierre prematuro del historial');
+  assert.equal(premiadaPorError.medals, 0, 'se retira la medalla entregada por el cierre prematuro');
+  assert.equal(premiadaPorError.championBanner, false, 'se retira el banner entregado por el cierre prematuro');
+  assert.equal(premiadaPorError.chips, 0, 'la reparación no fabrica ni vuelve a reiniciar fichas');
+  assert.equal(liderReal.chips, 1800, 'se conserva el ranking que las personas ven antes del cierre real');
+  assert.equal(liderReal.transactions.some(tx => tx.reason.includes('Nueva temporada 2026-10')), false, 'se quita la transacción administrativa adelantada');
+  assert.equal(store.top(1)[0].name, liderReal.name, 'el mismo orden visible se usa para decidir a la persona ganadora');
+
+  const closed = store.ensureSeason(new Date('2026-10-01T06:00:01Z'));
+  assert.equal(closed.type, 'closed', 'la temporada sí cierra al llegar la medianoche de México');
+  assert.equal(closed.winnerId, liderReal.id, 'el id premiado coincide con el primer lugar visible');
+  assert.equal(closed.podium[0].name, liderReal.name, 'el podio archivado coincide con la persona premiada');
+  assert.equal(closed.podium[0].profileId, liderReal.id, 'el historial nuevo conserva el id interno para futuras auditorías');
+  assert.equal(liderReal.medals, 1, 'el líder real recibe la medalla');
+  assert.equal(liderReal.championBanner, true, 'el líder real recibe el banner dorado');
+}
+
 function main() {
   testDeleteProfile();
   testPruneInactiveAccounts();
   testBannerUnicoYMedallasColeccionables();
-  console.log('✅ account-lifecycle-smoke: borrado de cuentas, poda por inactividad (~3 meses), banner dorado único y medallas coleccionables OK');
+  testCalendarioLocalYReparacionDeCierrePrematuro();
+  console.log('✅ account-lifecycle-smoke: cuentas, calendario local, reparación de temporada y premios consistentes OK');
 }
 
 try {
