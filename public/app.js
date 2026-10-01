@@ -46,7 +46,8 @@
     featuredAchievements: $('#featured-achievements'),
     balanceChart: $('#balance-chart'), balanceChartNote: $('#balance-chart-note'), gameBreakdown: $('#game-breakdown'),
     historyDownload: $('#history-download'),
-    dailyBonusStatus: $('#daily-bonus-status'), quickChatToggle: $('#quick-chat-toggle'), quickChatMenu: $('#quick-chat-menu'),
+    dailyBonusStatus: $('#daily-bonus-status'), dailyBonusCountdown: $('#daily-bonus-countdown'),
+    quickChatToggle: $('#quick-chat-toggle'), quickChatMenu: $('#quick-chat-menu'),
     botMenuToggle: $('#bot-menu-toggle'), botControls: $('#bot-controls'), botMenuClose: $('#bot-menu-close'),
     botDifficulty: $('#bot-difficulty'), botStyle: $('#bot-style'), botAdd: $('#bot-add'), botFill: $('#bot-fill'),
     accountOpenBtn: $('#account-open-btn'), accountModal: $('#account-modal'), accountForm: $('#account-form'),
@@ -121,7 +122,7 @@
   const ACCOUNT_SESSION_FIELDS = [
     'accountId', 'username', 'name', 'avatar', 'chips', 'stats', 'achievements', 'gamesPlayed',
     'featuredAchievements', 'allAchievements', 'challenges', 'dailyChallenges', 'weeklyChallenges',
-    'gameStats', 'balanceHistory', 'medals', 'championBanner', 'dailyBonusClaimed'
+    'gameStats', 'balanceHistory', 'medals', 'championBanner', 'dailyBonusClaimed', 'dailyBonusAvailableAt'
   ];
   const ui = {
     accountMode: 'login',
@@ -132,7 +133,7 @@
     connection: 'connecting', sound: localStorage.getItem('montecristo-sound') !== 'off', notifications: localStorage.getItem('montecristo-notifications') !== 'off',
     lobbyChat: { joined: false, joining: false, open: false, messages: [], unread: 0 },
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
-    lastEventKey: '', clockTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false, profileNameDirty: false,
+    lastEventKey: '', clockTimer: null, dailyBonusTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false, profileNameDirty: false,
     rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null, resultQueue: [],
     spectating: false
   };
@@ -1790,6 +1791,44 @@
   }
 
   // ---------- Profile, social controls and general room controls ----------
+  function stopDailyBonusCountdown() {
+    clearInterval(ui.dailyBonusTimer);
+    ui.dailyBonusTimer = null;
+  }
+  function formatDailyBonusCountdown(milliseconds) {
+    const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor(seconds % 3600 / 60);
+    const remainder = seconds % 60;
+    return [hours, minutes, remainder].map(value => String(value).padStart(2, '0')).join(':');
+  }
+  function renderDailyBonusCountdown(profile) {
+    if (!els.dailyBonusStatus || !els.dailyBonusCountdown) return;
+    stopDailyBonusCountdown();
+    const availableAt = Number(profile.dailyBonusAvailableAt);
+    const tick = () => {
+      const remaining = availableAt - Date.now();
+      const waiting = Boolean(profile.dailyBonusClaimed) && Number.isFinite(availableAt) && remaining > 0;
+      els.dailyBonusCountdown.classList.toggle('available', !waiting);
+      if (!waiting) {
+        els.dailyBonusStatus.textContent = 'Disponible ahora · entra a una mesa para recibirlo.';
+        els.dailyBonusCountdown.textContent = 'DISPONIBLE';
+        els.dailyBonusCountdown.removeAttribute('datetime');
+        els.dailyBonusCountdown.setAttribute('aria-label', 'Bono diario disponible ahora');
+        stopDailyBonusCountdown();
+        return;
+      }
+      const countdown = formatDailyBonusCountdown(remaining);
+      els.dailyBonusStatus.textContent = 'Bono de hoy recibido · próximo bono en:';
+      els.dailyBonusCountdown.textContent = countdown;
+      els.dailyBonusCountdown.setAttribute('datetime', new Date(availableAt).toISOString());
+      els.dailyBonusCountdown.setAttribute('aria-label', `Próximo bono diario en ${countdown}`);
+    };
+    tick();
+    if (ui.dailyBonusTimer === null && profile.dailyBonusClaimed && availableAt > Date.now()) {
+      ui.dailyBonusTimer = setInterval(tick, 1000);
+    }
+  }
   // El modal de perfil muestra el perfil de la mesa si hay una, o el de la
   // cuenta iniciada si no (ver currentViewerProfile). Nunca se fabrica un
   // objeto de mesa falso como sustituto de la sesión de cuenta: fuera de una
@@ -1818,6 +1857,7 @@
   function closeProfileModal() {
     ui.profileOpen = false;
     ui.profileNameDirty = false;
+    stopDailyBonusCountdown();
     els.profileModal?.classList.remove('open');
     els.profileModal?.setAttribute('aria-hidden', 'true');
     if (!els.modal.classList.contains('open')) document.body.classList.remove('modal-open');
@@ -1917,7 +1957,7 @@
         renderProfileModal();
       }));
     }
-    els.dailyBonusStatus.textContent = profile.dailyBonusClaimed ? 'Bono de hoy recibido · vuelve mañana.' : 'Se entrega una vez al día al entrar.';
+    renderDailyBonusCountdown(profile);
   }
   // Fase 8.2: gráfica SVG de evolución del saldo (últimos 60 movimientos).
   function renderBalanceChart(profile) {
