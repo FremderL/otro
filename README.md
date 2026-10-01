@@ -182,6 +182,7 @@ Variables útiles para pruebas y despliegue:
 - `BOT_FORCE_DECISION_ERROR=1`: fuerza errores de estrategia para validar el fallback; no debe activarse normalmente.
 - `PROFILE_STORE_PATH`: ruta del archivo de perfiles (en Render, apúntalo al disco persistente, p. ej. `/var/data/profiles.json`). Se ignora si `DATABASE_URL` está definida.
 - `DATABASE_URL`: cadena de conexión Postgres (Fase 10). Si está definida, los perfiles se guardan en Postgres en vez de en el archivo JSON — pensado para el free tier de Neon, que no requiere tarjeta. Ver «Persistencia de perfiles» abajo.
+- `CASINO_TIME_ZONE`: zona IANA que define el calendario mensual del ranking. Por defecto `America/Mexico_City`; la temporada cierra a medianoche local y no a las 00:00 UTC del servidor.
 - `SHUTDOWN_GRACE_MS`: milisegundos que espera el apagado ordenado a que termine el guardado final antes de forzar la salida (Fase 11.3). Por defecto 10000 con Postgres y 2500 con el archivo local; súbelo si tu plan de hosting da poco tiempo de gracia y Neon suele tardar más en responder.
 - `LOG_JSON=off`: desactiva los logs estructurados JSON por línea (activados por defecto).
 

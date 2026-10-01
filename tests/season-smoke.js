@@ -12,6 +12,7 @@ const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
 const { TOS_VERSION } = require('../lib/terms');
+const { monthKey, CASINO_TIME_ZONE } = require('../lib/profile-store-shared');
 
 const port = 5600 + Math.floor(Math.random() * 200);
 const url = `http://127.0.0.1:${port}`;
@@ -63,7 +64,7 @@ function waitExit(child, timeout = 4000) {
     child.once('exit', code => { clearTimeout(timer); resolve(code); });
   });
 }
-const currentMonth = new Date().toISOString().slice(0, 7);
+const currentMonth = monthKey();
 
 (async () => {
   // ---- Archivo legado: un arreglo simple de perfiles se sigue cargando ----
@@ -77,7 +78,8 @@ const currentMonth = new Date().toISOString().slice(0, 7);
 
   // ---- Fase 8.6: el lobby publica el ranking mensual ----
   const lobby = await waitLobby(socket);
-  assert.equal(lobby.season.month, currentMonth, 'temporada actual = mes en curso');
+  assert.equal(lobby.season.month, currentMonth, 'temporada actual = mes en curso en Ciudad de México');
+  assert.equal(lobby.season.timeZone, CASINO_TIME_ZONE, 'el lobby publica la zona horaria del calendario mensual');
   const legacyEntry = lobby.season.ranking.find(entry => entry.name === 'Veterana');
   assert.ok(legacyEntry && legacyEntry.chips === 4321, 'el archivo legado se migró y aparece en el ranking');
 
@@ -108,6 +110,7 @@ const currentMonth = new Date().toISOString().slice(0, 7);
   assert.equal(lobby2.season.previous.month, '2020-01', 'la temporada cerrada quedó archivada');
   assert.equal(lobby2.season.previous.podium[0].name, 'Veterana', 'el podio anterior registra a la líder');
   assert.equal(lobby2.season.previous.podium[0].chips, 4321, 'con sus puntos de cierre');
+  assert.equal(lobby2.season.previous.podium[0].profileId, undefined, 'el lobby no expone el id interno guardado para auditoría');
   // ---- Fase 11.4: quien terminó 1er lugar recibe banner dorado (única vez) y una medalla ----
   assert.equal(lobby2.season.previous.podium[0].championBanner, true, 'la líder de la temporada cerrada recibió el banner dorado');
   assert.equal(lobby2.season.previous.podium[0].medals, 1, 'y su primera medalla de oro coleccionable');

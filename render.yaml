@@ -39,6 +39,9 @@ services:
         value: /var/data/profiles.json
       - key: NODE_ENV
         value: production
+      # Las temporadas cierran a medianoche de Ciudad de México, no a las 00:00 UTC.
+      - key: CASINO_TIME_ZONE
+        value: America/Mexico_City
     disk:
       name: montecristo-datos
       mountPath: /var/data

@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { cleanProfile } = require('../lib/profile-store-shared');
-const { ACHIEVEMENTS, CHALLENGES, recordOutcome, publicProgress } = require('../lib/progression');
+const { ACHIEVEMENTS, CHALLENGES, recordOutcome, claimDailyBonus, publicProgress } = require('../lib/progression');
 
 function main() {
   assert.ok(ACHIEVEMENTS.length >= 12, 'la colección de logros creció');
@@ -36,6 +36,15 @@ function main() {
   assert.equal(progress.dailyChallenges.length, 1, 'hay un desafío diario activo');
   assert.equal(progress.weeklyChallenges.length, 1, 'hay un desafío semanal activo');
   assert.ok(progress.dailyChallenges[0].periodKey && progress.weeklyChallenges[0].periodKey, 'los desafíos rotativos tienen periodo');
+
+  assert.equal(progress.dailyBonusClaimed, false, 'el bono todavía aparece disponible antes de reclamarlo');
+  assert.ok(progress.dailyBonusAvailableAt <= Date.now(), 'un bono disponible publica un instante reclamable ahora');
+  const beforeClaim = Date.now();
+  claimDailyBonus(profile);
+  const claimedProgress = publicProgress(profile, true);
+  assert.equal(claimedProgress.dailyBonusClaimed, true, 'el perfil publica que el bono de hoy ya fue recibido');
+  assert.ok(claimedProgress.dailyBonusAvailableAt > beforeClaim, 'el contador apunta al siguiente reinicio diario');
+  assert.ok(claimedProgress.dailyBonusAvailableAt - beforeClaim <= 24 * 60 * 60 * 1000, 'el siguiente bono está a menos de 24 horas');
 
   const eligibleBefore = profile.stats.eligibleBestStreak;
   recordOutcome(profile, { game: 'coinflip', net: 10, eligible: false });

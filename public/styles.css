@@ -145,6 +145,12 @@ a { color: inherit; text-decoration: none; }
 .landing { min-height: 100vh; background: var(--bg); animation: pageIn .55s ease both; }
 .landing.leaving { animation: pageOut .32s ease both; }
 .landing-nav { height: 76px; position: absolute; z-index: 20; top: 0; left: 50%; transform: translateX(-50%); display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.09); }
+/* El héroe es una composición a pantalla completa: en monitores anchos no debe
+   heredar el máximo de 1240 px de las secciones de tarjetas. Ese máximo dejaba
+   un gran margen vacío a la izquierda y separaba el texto del borde mientras
+   la imagen del casino sí ocupaba todo el viewport. Conservamos un gutter
+   fluido y dejamos el máximo solo para el contenido denso del lobby. */
+.landing-nav.shell, .hero-content.shell { width: calc(100% - clamp(56px, 6vw, 128px)); max-width: none; }
 .nav-links { display: flex; align-items: center; gap: 33px; }
 .nav-links a { color: #a4b1b3; font-size: 10px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; transition: color .2s; }
 .nav-links a:hover { color: var(--mint); }
@@ -411,7 +417,9 @@ a { color: inherit; text-decoration: none; }
 .profile-badge.badge-champion { border:1px solid rgba(229,189,114,.45); color:var(--gold-2); background:linear-gradient(90deg,rgba(229,189,114,.1),rgba(229,189,114,.2)); box-shadow:0 0 12px rgba(229,189,114,.15); }
 .profile-badge.badge-medals { border:1px solid rgba(212,175,120,.4); color:var(--gold); background:rgba(212,175,120,.1); }
 .profile-reward-note { min-height:49px; display:flex; align-items:center; gap:10px; margin-top:14px; padding:9px 12px; border:1px solid rgba(229,189,114,.18); border-radius:9px; background:rgba(229,189,114,.04); }
-.profile-reward-note>span { font-size:21px; }.profile-reward-note b { display:block; font-size:9.5px; }.profile-reward-note small { display:block; margin-top:3px; color:var(--muted); font-size:8.5px; }
+.profile-reward-note>span { font-size:21px; }.profile-reward-note>div { min-width:0; flex:1; }.profile-reward-note b { display:block; font-size:9.5px; }.profile-reward-note small { display:block; margin-top:3px; color:var(--muted); font-size:8.5px; }
+.daily-bonus-countdown { min-width:88px; flex:none; padding:7px 9px; border:1px solid rgba(229,189,114,.28); border-radius:8px; color:var(--gold-2); background:rgba(229,189,114,.07); font:800 13px var(--display); letter-spacing:.08em; text-align:center; }
+.daily-bonus-countdown.available { border-color:rgba(82,224,174,.34); color:var(--mint-2); background:rgba(82,224,174,.08); font-size:10px; }
 
 .special-event-banner { width:min(620px,88%); min-height:35px; align-self:center; display:flex; align-items:center; justify-content:center; gap:8px; position:relative; z-index:12; margin:3px auto -38px; padding:0 14px; border:1px solid rgba(229,189,114,.28); border-radius:18px; color:var(--gold-2); background:linear-gradient(90deg,rgba(229,189,114,.04),rgba(229,189,114,.11),rgba(229,189,114,.04)); box-shadow:0 0 25px rgba(229,189,114,.08); font-size:9.5px; font-weight:800; letter-spacing:.06em; animation:specialGlow 1.7s infinite alternate; }
 .winner-ticker { max-width:70%; align-self:center; position:relative; z-index:12; margin:44px auto -65px; overflow:hidden; white-space:nowrap; color:var(--muted); font-size:8.5px; }

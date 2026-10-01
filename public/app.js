@@ -1,7 +1,18 @@
 (() => {
   'use strict';
 
-  const socket = io({ reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 700, reconnectionDelayMax: 4000 });
+  // La presencia del lobby se cuenta por dispositivo, no por pestaña. La
+  // migración debe ocurrir antes de abrir Socket.IO para que quienes vienen de
+  // la versión anterior conserven también su identidad de presencia.
+  migrateLegacyStorage();
+  const deviceToken = getDeviceToken();
+  const socket = io({
+    auth: { deviceToken },
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 700,
+    reconnectionDelayMax: 4000
+  });
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
 
@@ -35,7 +46,8 @@
     featuredAchievements: $('#featured-achievements'),
     balanceChart: $('#balance-chart'), balanceChartNote: $('#balance-chart-note'), gameBreakdown: $('#game-breakdown'),
     historyDownload: $('#history-download'),
-    dailyBonusStatus: $('#daily-bonus-status'), quickChatToggle: $('#quick-chat-toggle'), quickChatMenu: $('#quick-chat-menu'),
+    dailyBonusStatus: $('#daily-bonus-status'), dailyBonusCountdown: $('#daily-bonus-countdown'),
+    quickChatToggle: $('#quick-chat-toggle'), quickChatMenu: $('#quick-chat-menu'),
     botMenuToggle: $('#bot-menu-toggle'), botControls: $('#bot-controls'), botMenuClose: $('#bot-menu-close'),
     botDifficulty: $('#bot-difficulty'), botStyle: $('#bot-style'), botAdd: $('#bot-add'), botFill: $('#bot-fill'),
     accountOpenBtn: $('#account-open-btn'), accountModal: $('#account-modal'), accountForm: $('#account-form'),
@@ -64,8 +76,6 @@
   // Debe coincidir con TOS_VERSION en lib/terms.js; al cambiar, se pide aceptar de nuevo.
   const TOS_VERSION = '2026-09-28';
   const TOS_KEY = 'montecristo-tos';
-  migrateLegacyStorage();
-  const deviceToken = getDeviceToken();
   const routeCode = getRouteCode();
   const savedSession = readSession();
 
@@ -112,7 +122,7 @@
   const ACCOUNT_SESSION_FIELDS = [
     'accountId', 'username', 'name', 'avatar', 'chips', 'stats', 'achievements', 'gamesPlayed',
     'featuredAchievements', 'allAchievements', 'challenges', 'dailyChallenges', 'weeklyChallenges',
-    'gameStats', 'balanceHistory', 'medals', 'championBanner', 'dailyBonusClaimed'
+    'gameStats', 'balanceHistory', 'medals', 'championBanner', 'dailyBonusClaimed', 'dailyBonusAvailableAt'
   ];
   const ui = {
     accountMode: 'login',
@@ -123,15 +133,20 @@
     connection: 'connecting', sound: localStorage.getItem('montecristo-sound') !== 'off', notifications: localStorage.getItem('montecristo-notifications') !== 'off',
     lobbyChat: { joined: false, joining: false, open: false, messages: [], unread: 0 },
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
-    lastEventKey: '', clockTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false, profileNameDirty: false,
+    lastEventKey: '', clockTimer: null, dailyBonusTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false, profileNameDirty: false,
     rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null, resultQueue: [],
     spectating: false
   };
 
   if (savedSession && routeCode && savedSession.code === routeCode) {
     ui.activeCode = routeCode;
-    ui.playerName = savedSession.name || ui.playerName;
-    ui.selectedAvatar = savedSession.avatar || ui.selectedAvatar;
+    // localStorage contiene la última edición confirmada del perfil. La sesión
+    // de la mesa puede ser anterior (se creó al entrar) y nunca debe ganar sobre
+    // ese valor al recargar: hacerlo reenviaba el nombre viejo al servidor y
+    // deshacía el cambio. El nombre de sessionStorage queda solo como fallback
+    // para sesiones históricas que todavía no tienen la clave persistente.
+    ui.playerName = ui.playerName || savedSession.name || '';
+    ui.selectedAvatar = localStorage.getItem('montecristo-avatar') || savedSession.avatar || ui.selectedAvatar;
     ui.spectating = Boolean(savedSession.spectate);
     ui.shouldResume = Boolean(ui.playerName);
   }
@@ -412,7 +427,7 @@
         els.lobbyChatProfile?.classList.remove('hidden');
         els.lobbyChatContent?.classList.add('hidden');
         els.lobbyChatTos.checked = tosAccepted();
-        els.lobbyChatName.value = localStorage.getItem('montecristo-lobby-name') || ui.playerName || '';
+        els.lobbyChatName.value = ui.playerName || localStorage.getItem('montecristo-lobby-name') || '';
         setTimeout(() => els.lobbyChatName?.focus(), 0);
       } else els.lobbyChatInput?.focus();
     }
@@ -454,14 +469,22 @@
     ui.lobbyChat.joined = true;
     ui.lobbyChat.messages = Array.isArray(response.messages) ? response.messages : [];
     ui.lobbyChat.unread = 0;
-    localStorage.setItem('montecristo-lobby-name', response.name || name);
-    els.lobbyChatName.value = response.name || name;
+    const canonicalName = response.name || name;
+    localStorage.setItem('montecristo-lobby-name', canonicalName);
+    localStorage.setItem('montecristo-name', canonicalName);
+    ui.playerName = canonicalName;
+    els.playerName.value = canonicalName;
+    els.lobbyChatName.value = canonicalName;
+    saveSession();
     renderLobbyChat();
     return response;
   }
 
   function tryAutoJoinLobbyChat() {
-    const savedName = localStorage.getItem('montecristo-lobby-name');
+    // `montecristo-name` es la identidad canónica y se actualiza al guardar el
+    // perfil. La clave histórica del chat puede contener un apodo anterior;
+    // usarla primero hacía que el autoingreso renombrara el perfil hacia atrás.
+    const savedName = ui.playerName || localStorage.getItem('montecristo-lobby-name');
     if (!savedName || !tosAccepted() || ui.room || routeCode) return;
     joinLobbyChat(savedName, true, true);
   }
@@ -811,6 +834,7 @@
       ui.playerName = ui.me.name;
       ui.selectedAvatar = ui.me.avatar || ui.selectedAvatar;
       localStorage.setItem('montecristo-name', ui.playerName);
+      localStorage.setItem('montecristo-lobby-name', ui.playerName);
       localStorage.setItem('montecristo-avatar', ui.selectedAvatar);
     }
     saveSession();
@@ -1767,6 +1791,44 @@
   }
 
   // ---------- Profile, social controls and general room controls ----------
+  function stopDailyBonusCountdown() {
+    clearInterval(ui.dailyBonusTimer);
+    ui.dailyBonusTimer = null;
+  }
+  function formatDailyBonusCountdown(milliseconds) {
+    const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor(seconds % 3600 / 60);
+    const remainder = seconds % 60;
+    return [hours, minutes, remainder].map(value => String(value).padStart(2, '0')).join(':');
+  }
+  function renderDailyBonusCountdown(profile) {
+    if (!els.dailyBonusStatus || !els.dailyBonusCountdown) return;
+    stopDailyBonusCountdown();
+    const availableAt = Number(profile.dailyBonusAvailableAt);
+    const tick = () => {
+      const remaining = availableAt - Date.now();
+      const waiting = Boolean(profile.dailyBonusClaimed) && Number.isFinite(availableAt) && remaining > 0;
+      els.dailyBonusCountdown.classList.toggle('available', !waiting);
+      if (!waiting) {
+        els.dailyBonusStatus.textContent = 'Disponible ahora · entra a una mesa para recibirlo.';
+        els.dailyBonusCountdown.textContent = 'DISPONIBLE';
+        els.dailyBonusCountdown.removeAttribute('datetime');
+        els.dailyBonusCountdown.setAttribute('aria-label', 'Bono diario disponible ahora');
+        stopDailyBonusCountdown();
+        return;
+      }
+      const countdown = formatDailyBonusCountdown(remaining);
+      els.dailyBonusStatus.textContent = 'Bono de hoy recibido · próximo bono en:';
+      els.dailyBonusCountdown.textContent = countdown;
+      els.dailyBonusCountdown.setAttribute('datetime', new Date(availableAt).toISOString());
+      els.dailyBonusCountdown.setAttribute('aria-label', `Próximo bono diario en ${countdown}`);
+    };
+    tick();
+    if (ui.dailyBonusTimer === null && profile.dailyBonusClaimed && availableAt > Date.now()) {
+      ui.dailyBonusTimer = setInterval(tick, 1000);
+    }
+  }
   // El modal de perfil muestra el perfil de la mesa si hay una, o el de la
   // cuenta iniciada si no (ver currentViewerProfile). Nunca se fabrica un
   // objeto de mesa falso como sustituto de la sesión de cuenta: fuera de una
@@ -1795,6 +1857,7 @@
   function closeProfileModal() {
     ui.profileOpen = false;
     ui.profileNameDirty = false;
+    stopDailyBonusCountdown();
     els.profileModal?.classList.remove('open');
     els.profileModal?.setAttribute('aria-hidden', 'true');
     if (!els.modal.classList.contains('open')) document.body.classList.remove('modal-open');
@@ -1894,7 +1957,7 @@
         renderProfileModal();
       }));
     }
-    els.dailyBonusStatus.textContent = profile.dailyBonusClaimed ? 'Bono de hoy recibido · vuelve mañana.' : 'Se entrega una vez al día al entrar.';
+    renderDailyBonusCountdown(profile);
   }
   // Fase 8.2: gráfica SVG de evolución del saldo (últimos 60 movimientos).
   function renderBalanceChart(profile) {
@@ -2063,7 +2126,12 @@
     ui.selectedAvatar = response.profile?.avatar || avatar;
     ui.profileNameDirty = false; // lo guardado ya es el estado actual: se puede volver a pintar desde el perfil
     localStorage.setItem('montecristo-name', ui.playerName);
+    localStorage.setItem('montecristo-lobby-name', ui.playerName);
     localStorage.setItem('montecristo-avatar', ui.selectedAvatar);
+    // La sesión de reingreso debe quedar al día en el mismo tick del ack. Si la
+    // página se recarga antes del siguiente room_state, ya no puede revivir el
+    // nombre/avatar con los que se entró originalmente a la mesa.
+    saveSession();
     showToast('Perfil actualizado', inTable() ? 'Tu nombre y avatar ya están visibles en la mesa.' : 'Tu perfil se guardó en el servidor.', 'notice', 3600, avatarEmoji(ui.selectedAvatar));
     renderProfileModal();
   });

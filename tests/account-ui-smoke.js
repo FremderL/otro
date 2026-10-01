@@ -203,6 +203,7 @@ async function main() {
   assert.match(doc.getElementById('profile-account-status').textContent, new RegExp(`@${username}`), 'el modal muestra el username de la cuenta');
   assert.match(doc.getElementById('profile-stats').textContent, /FICHAS/i, 'el modal muestra las fichas');
   assert.match(doc.getElementById('profile-stats').textContent, /VICTORIAS/i, 'el modal muestra victorias/derrotas');
+  assert.equal(doc.getElementById('daily-bonus-countdown').textContent, 'DISPONIBLE', 'antes de entrar a una mesa, el bono muestra que está disponible');
   assert.doesNotMatch(doc.body.innerHTML, /passwordHash/i, 'el HTML del perfil nunca renderiza passwordHash');
 
   // ---------- 4) Editar el perfil DESDE EL LOBBY (sin mesa) persiste en el servidor ----------
@@ -284,6 +285,10 @@ async function main() {
   await until(() => dom.window.getComputedStyle(doc.getElementById('profile-modal')).visibility === 'visible', 'perfil visible tras recargar', 4000);
   assert.match(doc.getElementById('profile-account-status').textContent, new RegExp(`@${username}`));
   assert.equal(doc.getElementById('profile-name-input').value, 'Editado en lobby', 'el nombre editado antes de "recargar" se conserva');
+  await until(() => /^\d{2}:\d{2}:\d{2}$/.test(doc.getElementById('daily-bonus-countdown').textContent), 'contador del próximo bono visible', 4000);
+  const firstCountdown = doc.getElementById('daily-bonus-countdown').textContent;
+  await sleep(1100);
+  assert.notEqual(doc.getElementById('daily-bonus-countdown').textContent, firstCountdown, 'el contador del bono se actualiza cada segundo');
 
   assert.deepEqual(dom.pageErrors, [], `La consola del navegador quedó limpia: ${dom.pageErrors.join(' | ')}`);
   console.log('✅ account-ui-smoke: botón de cuenta (login/perfil/logout), persistencia tras recarga y reconexión, edición desde el lobby y sanitización de localStorage OK');
