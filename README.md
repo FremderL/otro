@@ -155,25 +155,13 @@ Abre `http://localhost:3000`. El servidor escucha en `0.0.0.0` y respeta la vari
 ## Validación
 
 ```bash
-npm run check
-npm run test:multiplayer
-npm run test:bots
-npm run test:bots:fallback
-# o ejecutar toda la validación (21 suites):
-npm test
+npm run check             # ESLint y sintaxis de todos los archivos JavaScript
+npm run test:unit         # configuración, contraseñas y perfiles
+npm run test:integration  # servidor real, invitado, registro y login
+npm test                  # validación completa
 ```
 
-Desde la fase 9, GitHub Actions ejecuta `npm test` en cada push y pull request (`.github/workflows/ci.yml`), la suite incluye un presupuesto de rendimiento (`tests/performance-smoke.js`), un endurecimiento contra entradas maliciosas (`tests/qa-hardening-smoke.js`) y un recorrido de usuario real con navegador simulado (`tests/user-journey-smoke.js`). Desde la fase 10 también incluye `tests/profile-store-pg-smoke.js`, que valida el backend de Postgres contra una base simulada (ninguna de las 21 suites necesita una base de datos real para pasar). Los hallazgos y decisiones de la revisión de diseño y QA viven en `REVISION_CALIDAD.md`, y la rutina trimestral de dependencias en `MANTENIMIENTO.md`.
-
-Las pruebas levantan servidores aislados con perfiles temporales. La regresión multicliente valida:
-
-- resolución y contabilidad de Ruleta, Dados y Cara o Cruz;
-- restricción de resolución al anfitrión;
-- chat rápido, reacciones y actualización de perfil;
-- reembolso de apuestas rápidas abiertas;
-- regresiones básicas de reparto, bote y turnos en Póker y Blackjack.
-
-La prueba de bots cubre permisos del anfitrión, capacidad, cuatro dificultades, cinco estilos, humano + bot, varios bots, mesa completa, falta de fichas, ocultación de información, rondas consecutivas, Poker, Blackjack, juegos rápidos, retirada durante pensamiento, abandono, migración de anfitrión, cambio de sala/juego, automatización sin personas y cancelación al cerrar. La prueba de fallback se ejecuta por separado con un fallo de decisión forzado y confirma registro, economía autoritativa, alternativa segura, continuidad entre rondas y limpieza.
+La suite histórica mencionada por versiones anteriores del README ya no existe en el repositorio. El 1 de octubre de 2026 se reconstruyó una línea base nueva con `node:test`: 9 pruebas unitarias y una prueba de integración que levanta un servidor aislado con perfiles temporales. Su alcance y la diferencia respecto de la suite histórica están documentados en `docs/admin/FASE_0_LINEA_BASE.md`. Esta base se ampliará en cada fase antes de modificar autenticación, autorización y administración.
 
 Variables útiles para pruebas y despliegue:
 

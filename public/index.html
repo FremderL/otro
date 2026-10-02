@@ -45,6 +45,7 @@
       <div class="nav-actions">
         <span id="nav-connection" class="connection-badge connected"><i></i><span>Conectado</span></span>
         <button class="icon-btn notification-toggle" id="notifications-toggle" type="button" aria-label="Silenciar notificaciones" aria-pressed="false">🔔</button>
+        <button class="btn btn-ghost btn-small" id="report-open-btn">⚑ Reportar</button>
         <button class="btn btn-ghost btn-small" id="account-open-btn"><span class="btn-icon">🔑</span> Iniciar sesión</button>
         <button class="btn btn-ghost btn-small" data-open-mode="join"><span class="btn-icon">⌁</span> Entrar con código</button>
       </div>
@@ -304,8 +305,19 @@
         <div class="form-field"><label for="profile-name-input">Nombre</label><div class="input-wrap"><span>◎</span><input id="profile-name-input" maxlength="18" required /></div></div>
         <div class="form-field"><label>Avatar</label><div id="profile-avatar-choice" class="avatar-choice compact"></div></div>
         <button class="btn btn-primary" type="submit">Guardar perfil</button>
+        <button class="account-switch" id="account-password-toggle" type="button">Cambiar contraseña</button>
         <button class="account-switch" id="account-logout" type="button">Cerrar sesión</button>
         <small class="profile-account-note">La cuenta es opcional; puedes seguir jugando sin cuenta.</small>
+      </form>
+      <form id="password-change-form" class="password-change-form hidden" autocomplete="off">
+        <div class="progress-title"><span>SEGURIDAD DE LA CUENTA</span><small>Se cerrarán las demás sesiones</small></div>
+        <div class="password-change-fields">
+          <div class="form-field"><label for="current-password">Contraseña actual</label><div class="input-wrap"><span>●</span><input id="current-password" type="password" autocomplete="current-password" required /></div></div>
+          <div class="form-field"><label for="new-password">Nueva contraseña</label><div class="input-wrap"><span>●</span><input id="new-password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required /></div></div>
+          <div class="form-field"><label for="confirm-password">Confirmar contraseña</label><div class="input-wrap"><span>●</span><input id="confirm-password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required /></div></div>
+        </div>
+        <p id="password-change-error" class="account-error hidden" role="alert"></p>
+        <div class="password-change-actions"><button class="btn btn-primary" id="password-change-submit" type="submit">Actualizar contraseña</button><button class="btn btn-secondary" id="password-change-cancel" type="button">Cancelar</button></div>
       </form>
       <div id="profile-stats" class="profile-stats"></div>
       <section class="featured-achievements-box"><div class="progress-title"><span>VITRINA DE LOGROS</span><small>Elige hasta 3 para destacar</small></div><div id="featured-achievements" class="featured-achievements"></div></section>
@@ -321,6 +333,8 @@
       <div class="profile-reward-note"><span>🎁</span><div><b>Bono diario · +100 fichas</b><small id="daily-bonus-status">Se entrega una vez al día al entrar.</small></div><time id="daily-bonus-countdown" class="daily-bonus-countdown">DISPONIBLE</time></div>
     </div>
   </div>
+
+  <div id="report-modal" class="modal account-modal" aria-hidden="true"><div class="modal-backdrop" data-close-report></div><div class="modal-card account-modal-card" role="dialog" aria-modal="true" aria-labelledby="report-title"><button class="modal-close" data-close-report>×</button><span class="kicker">SEGURIDAD</span><h2 id="report-title">Reportar un usuario</h2><p>Describe lo ocurrido. Los reportes falsos o abusivos también pueden revisarse.</p><form id="report-form" class="account-form"><div class="form-field"><label for="reported-username">Usuario</label><div class="input-wrap"><span>@</span><input id="reported-username" maxlength="20" required /></div></div><div class="form-field"><label for="report-category">Categoría</label><select id="report-category"><option value="harassment">Acoso</option><option value="hate">Odio o discriminación</option><option value="threat">Amenaza</option><option value="spam">Spam</option><option value="impersonation">Suplantación</option><option value="cheating">Trampas</option><option value="account_trade">Comercio de cuentas</option><option value="other">Otro</option></select></div><div class="form-field"><label for="report-description">Descripción</label><textarea id="report-description" minlength="10" maxlength="1000" required></textarea></div><p id="report-error" class="account-error hidden"></p><button class="btn btn-primary" type="submit">Enviar reporte</button></form><div class="progress-title"><span>MIS REPORTES</span><button id="my-reports-refresh" class="text-button" type="button">Actualizar</button></div><div id="my-reports-list" class="my-reports-list"></div></div></div>
 
   <div id="account-modal" class="modal account-modal" aria-hidden="true">
     <div class="modal-backdrop" data-close-account></div>

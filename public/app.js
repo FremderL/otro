@@ -50,10 +50,14 @@
     quickChatToggle: $('#quick-chat-toggle'), quickChatMenu: $('#quick-chat-menu'),
     botMenuToggle: $('#bot-menu-toggle'), botControls: $('#bot-controls'), botMenuClose: $('#bot-menu-close'),
     botDifficulty: $('#bot-difficulty'), botStyle: $('#bot-style'), botAdd: $('#bot-add'), botFill: $('#bot-fill'),
+    reportOpenBtn: $('#report-open-btn'), reportModal: $('#report-modal'), reportForm: $('#report-form'), reportedUsername: $('#reported-username'), reportCategory: $('#report-category'), reportDescription: $('#report-description'), reportError: $('#report-error'), myReportsList: $('#my-reports-list'), myReportsRefresh: $('#my-reports-refresh'),
     accountOpenBtn: $('#account-open-btn'), accountModal: $('#account-modal'), accountForm: $('#account-form'),
     accountModalTitle: $('#account-modal-title'), accountModalCopy: $('#account-modal-copy'),
     accountUsername: $('#account-username'), accountPassword: $('#account-password'), accountError: $('#account-error'),
-    accountSubmit: $('#account-submit'), accountSwitch: $('#account-switch'), accountLogout: $('#account-logout')
+    accountSubmit: $('#account-submit'), accountSwitch: $('#account-switch'), accountLogout: $('#account-logout'),
+    accountPasswordToggle: $('#account-password-toggle'), passwordChangeForm: $('#password-change-form'),
+    currentPassword: $('#current-password'), newPassword: $('#new-password'), confirmPassword: $('#confirm-password'),
+    passwordChangeError: $('#password-change-error'), passwordChangeSubmit: $('#password-change-submit'), passwordChangeCancel: $('#password-change-cancel')
   };
 
   const PHASES = {
@@ -127,6 +131,7 @@
   const ui = {
     accountMode: 'login',
     accountSession: readAccountSession(),
+    csrfToken: null, // solo memoria; nunca localStorage
     modalMode: 'create', selectedGame: 'poker', roomFilter: 'all', lobby: [], playersOnline: 0,
     room: null, me: null, activeCode: null, playerName: localStorage.getItem('montecristo-name') || '',
     selectedAvatar: localStorage.getItem('montecristo-avatar') || 'fox', profileAvatar: localStorage.getItem('montecristo-avatar') || 'fox',
@@ -249,6 +254,7 @@
   function clearAccountSession() {
     localStorage.removeItem(ACCOUNT_SESSION_KEY);
     ui.accountSession = null;
+    ui.csrfToken = null;
     renderAccountButton();
   }
   // ¿La persona está sentada en una mesa (o en la tribuna) ahora mismo? Si es
@@ -274,11 +280,36 @@
       saveAccountSession(profile);
     }
   }
+  async function secureAuthRequest(path, options = {}) {
+    try {
+      const response = await fetch(path, {
+        credentials: 'same-origin',
+        ...options,
+        headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) }
+      });
+      const body = await response.json().catch(() => ({}));
+      return { status: response.status, ok: response.ok, ...body };
+    } catch (_) {
+      return { status: 0, ok: false, error: 'No se pudo contactar al servidor.' };
+    }
+  }
   async function refreshAccountProfile() {
-    if (!ui.accountSession?.accountId || !socket.connected) return;
+    if (!ui.accountSession?.accountId) return;
+    const secure = await secureAuthRequest('/api/auth/session');
+    if (secure.status !== 404) {
+      if (secure.ok && secure.profile) {
+        ui.csrfToken = secure.csrfToken || null;
+        saveAccountSession(secure.profile);
+        if (ui.profileOpen && !inTable()) renderProfileModal();
+      } else if (secure.status === 401) {
+        // localStorage es solo caché visual: una cookie ausente/revocada manda.
+        clearAccountSession();
+      }
+      return;
+    }
+    // Compatibilidad temporal mientras ACCOUNT_SESSIONS_ENABLED está apagado.
+    if (!socket.connected) return;
     const response = await emitAck('account_profile', { accountId: ui.accountSession.accountId });
-    // Un fallo (cuenta borrada, servidor ocupado, etc.) NUNCA debe cerrar la
-    // sesión visual por su cuenta: se conserva lo que ya había en caché.
     if (response.ok && response.profile) {
       saveAccountSession(response.profile);
       if (ui.profileOpen && !inTable()) renderProfileModal();
@@ -438,7 +469,7 @@
     if (!els.lobbyChatMessages) return;
     const messages = ui.lobbyChat.messages || [];
     els.lobbyChatMessages.innerHTML = messages.length
-      ? messages.map(message => `<div class="lobby-chat-message"><span class="lobby-chat-avatar" style="background:${avatarColor(message.playerId)}">${avatarEmoji(message.avatar)}</span><div><b>${escapeHtml(message.name)}</b><p>${escapeHtml(message.text)}</p></div></div>`).join('')
+      ? messages.map(message => `<div class="lobby-chat-message"><span class="lobby-chat-avatar" style="background:${avatarColor(message.playerId)}">${avatarEmoji(message.avatar)}</span><div><b>${escapeHtml(message.name)}</b><p>${escapeHtml(message.text)}</p>${message.username ? `<button class="chat-report" data-report-message="${escapeHtml(message.id)}" data-report-user="${escapeHtml(message.username)}">Reportar</button>` : ''}</div></div>`).join('')
       : '<div class="lobby-chat-empty">Sé el primero en saludar al casino.</div>';
     els.lobbyChatMessages.scrollTop = els.lobbyChatMessages.scrollHeight;
     const unread = Number(ui.lobbyChat.unread) || 0;
@@ -1010,7 +1041,7 @@
     ui.lastChatSignature = signature;
     els.chatList.innerHTML = messages.length ? messages.map(message => message.system
       ? `<div class="chat-system">${escapeHtml(message.text)}</div>`
-      : `<div class="chat-msg"><div class="chat-avatar" style="background:${avatarColor(message.playerId)}">${avatarEmoji(ui.room.players.find(player => player.id === message.playerId)?.avatar)}</div><div class="chat-bubble"><b>${escapeHtml(message.name)}</b><p>${escapeHtml(message.text)}</p></div></div>`).join('')
+      : `<div class="chat-msg"><div class="chat-avatar" style="background:${avatarColor(message.playerId)}">${avatarEmoji(ui.room.players.find(player => player.id === message.playerId)?.avatar)}</div><div class="chat-bubble"><b>${escapeHtml(message.name)}</b><p>${escapeHtml(message.text)}</p>${message.username ? `<button class="chat-report" data-report-message="${escapeHtml(message.id)}" data-report-user="${escapeHtml(message.username)}">Reportar</button>` : ''}</div></div>`).join('')
       : '<div class="chat-system">El chat está listo para la primera jugada.</div>';
     els.chatList.scrollTop = els.chatList.scrollHeight;
   }
@@ -1858,6 +1889,9 @@
     ui.profileOpen = false;
     ui.profileNameDirty = false;
     stopDailyBonusCountdown();
+    els.passwordChangeForm?.reset();
+    els.passwordChangeForm?.classList.add('hidden');
+    els.passwordChangeError?.classList.add('hidden');
     els.profileModal?.classList.remove('open');
     els.profileModal?.setAttribute('aria-hidden', 'true');
     if (!els.modal.classList.contains('open')) document.body.classList.remove('modal-open');
@@ -1884,6 +1918,8 @@
     }
     // "Cerrar sesión" solo tiene sentido si hay una sesión de cuenta activa.
     if (els.accountLogout) els.accountLogout.classList.toggle('hidden', !ui.accountSession);
+    if (els.accountPasswordToggle) els.accountPasswordToggle.classList.toggle('hidden', !ui.accountSession);
+    if (!ui.accountSession) els.passwordChangeForm?.classList.add('hidden');
     // Fase 11.4: insignias de fin de temporada (banner único + medallas coleccionables).
     if (els.profileBadges) {
       const chips = [];
@@ -2037,13 +2073,70 @@
       document.body.classList.remove('modal-open');
     }
   }
+  async function loadMyReports(){const response=await secureAuthRequest('/api/reports/mine');if(!response.ok){els.myReportsList.textContent=response.error||'No se pudieron cargar.';return;}const labels={open:'Recibido',triaged:'Clasificado',investigating:'En revisión',resolved:'Resuelto',rejected:'Cerrado'};els.myReportsList.innerHTML=response.reports.map(report=>`<div class="my-report"><b>${escapeHtml(report.category)}</b><span>${escapeHtml(labels[report.status]||report.status)}</span><small>${new Date(report.createdAt).toLocaleDateString()} · ${escapeHtml(report.id.slice(0,8))}</small></div>`).join('')||'<small>No has enviado reportes.</small>';}
+  async function openReportModal(username='',messageId=null){if(!ui.accountSession&&!messageId)return showToast('Inicia sesión','Los invitados solo pueden reportar mensajes visibles.','notice');ui.reportMessageId=messageId;els.reportedUsername.value=username;els.reportedUsername.readOnly=Boolean(username);els.reportModal.classList.add('open');els.reportModal.setAttribute('aria-hidden','false');document.body.classList.add('modal-open');if(ui.accountSession){if(!ui.csrfToken){const current=await secureAuthRequest('/api/auth/session');if(current.ok)ui.csrfToken=current.csrfToken;}await loadMyReports();}else{els.myReportsList.textContent='El seguimiento requiere una cuenta.';}els.reportedUsername.focus();}
+  els.reportOpenBtn?.addEventListener('click',()=>openReportModal());
+  els.myReportsRefresh?.addEventListener('click',loadMyReports);
+  document.addEventListener('click',event=>{const button=event.target.closest('[data-report-message]');if(button)openReportModal(button.dataset.reportUser,button.dataset.reportMessage);});
+  $$('[data-close-report]').forEach(element=>element.addEventListener('click',()=>{els.reportModal.classList.remove('open');els.reportModal.setAttribute('aria-hidden','true');els.reportedUsername.readOnly=false;ui.reportMessageId=null;document.body.classList.remove('modal-open');}));
+  els.reportForm?.addEventListener('submit',async event=>{event.preventDefault();els.reportError.classList.add('hidden');const response=await secureAuthRequest('/api/reports',{method:'POST',headers:ui.accountSession?(ui.csrfToken?{'X-CSRF-Token':ui.csrfToken}:{}):{'X-Device-Token':deviceToken},body:JSON.stringify({reportedUsername:els.reportedUsername.value.trim(),category:els.reportCategory.value,description:els.reportDescription.value,messageId:ui.reportMessageId||undefined})});if(!response.ok){els.reportError.textContent=response.error||'No se pudo enviar el reporte.';els.reportError.classList.remove('hidden');return;}els.reportForm.reset();els.reportModal.classList.remove('open');document.body.classList.remove('modal-open');showToast('Reporte recibido',`Folio ${response.reportId}`,'notice',5000,'🛡️');});
   els.accountOpenBtn?.addEventListener('click', openAccountModal);
   $$('[data-close-account]').forEach(element => element.addEventListener('click', closeAccountModal));
-  els.accountLogout?.addEventListener('click', () => {
-    // Cierra SOLO la sesión de cuenta: el perfil anónimo local, el token de
-    // dispositivo y las fichas de este dispositivo no se tocan (viven en el
-    // servidor bajo `montecristo-device`, ajeno a esta sesión de cuenta).
+  els.accountPasswordToggle?.addEventListener('click', () => {
+    els.passwordChangeForm?.classList.toggle('hidden');
+    els.passwordChangeError?.classList.add('hidden');
+    if (!els.passwordChangeForm?.classList.contains('hidden')) els.currentPassword?.focus();
+  });
+  els.passwordChangeCancel?.addEventListener('click', () => {
+    els.passwordChangeForm?.reset();
+    els.passwordChangeForm?.classList.add('hidden');
+    els.passwordChangeError?.classList.add('hidden');
+  });
+  els.passwordChangeForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    els.passwordChangeError.classList.add('hidden');
+    if (els.newPassword.value !== els.confirmPassword.value) {
+      els.passwordChangeError.textContent = 'Las contraseñas nuevas no coinciden.';
+      els.passwordChangeError.classList.remove('hidden');
+      return;
+    }
+    if (!ui.csrfToken) {
+      const current = await secureAuthRequest('/api/auth/session');
+      if (current.ok) ui.csrfToken = current.csrfToken || null;
+    }
+    els.passwordChangeSubmit.disabled = true;
+    const response = await secureAuthRequest('/api/auth/change-password', {
+      method: 'POST',
+      headers: ui.csrfToken ? { 'X-CSRF-Token': ui.csrfToken } : {},
+      body: JSON.stringify({ currentPassword: els.currentPassword.value, newPassword: els.newPassword.value })
+    });
+    els.passwordChangeSubmit.disabled = false;
+    if (!response.ok) {
+      els.passwordChangeError.textContent = response.status === 404
+        ? 'Activa primero las sesiones seguras para cambiar la contraseña.'
+        : response.error || 'No se pudo actualizar la contraseña.';
+      els.passwordChangeError.classList.remove('hidden');
+      return;
+    }
+    ui.csrfToken = response.csrfToken || null;
+    if (response.profile) saveAccountSession(response.profile);
+    els.passwordChangeForm.reset();
+    els.passwordChangeForm.classList.add('hidden');
+    if (socket.connected) socket.disconnect().connect();
+    showToast('Contraseña actualizada', 'Las demás sesiones fueron cerradas y esta sesión se renovó.', 'notice', 4200, '🔒');
+  });
+  els.accountLogout?.addEventListener('click', async () => {
+    // Intenta revocar la cookie segura. Un 404 significa que el rollout sigue
+    // apagado y se aplica únicamente la limpieza local del flujo legado.
+    if (!ui.csrfToken) {
+      const current = await secureAuthRequest('/api/auth/session');
+      if (current.ok) ui.csrfToken = current.csrfToken || null;
+    }
+    await secureAuthRequest('/api/auth/logout', {
+      method: 'POST', headers: ui.csrfToken ? { 'X-CSRF-Token': ui.csrfToken } : {}
+    });
     clearAccountSession();
+    if (socket.connected) socket.disconnect().connect();
     closeProfileModal();
     showToast('Sesión cerrada', 'Tu perfil y fichas de este dispositivo siguen intactos. Puedes seguir jugando sin cuenta.', 'notice', 3600, '🔑');
   });
@@ -2057,9 +2150,16 @@
     const password = els.accountPassword.value;
     els.accountError.classList.add('hidden');
     if (ui.accountMode === 'login') {
-      const response = await emitAck('account_login', { username, password }, els.accountSubmit);
-      // Login fallido: NUNCA se guarda sesión y el botón se queda en
-      // "Iniciar sesión" (renderAccountButton no se llama con datos nuevos).
+      els.accountSubmit.disabled = true;
+      let response = await secureAuthRequest('/api/auth/login', {
+        method: 'POST', body: JSON.stringify({ username, password })
+      });
+      // Mientras el rollout está apagado, el endpoint responde 404 y se
+      // conserva temporalmente el login legado. Con la función encendida no
+      // existe fallback: credenciales/sesiones inválidas fallan cerrado.
+      const secureLogin = response.status !== 404;
+      if (!secureLogin) response = await emitAck('account_login', { username, password });
+      els.accountSubmit.disabled = false;
       if (!response.ok || !response.profile) {
         els.accountError.textContent = response.error || 'No se pudo iniciar sesión.';
         els.accountError.classList.remove('hidden');
@@ -2077,6 +2177,10 @@
         els.accountError.classList.remove('hidden');
         return;
       }
+      // Socket.IO leyó cookies durante su handshake anterior; reconectar hace
+      // que adopte la nueva sesión sin enviar token alguno desde JavaScript.
+      if (secureLogin) ui.csrfToken = response.csrfToken || null;
+      if (secureLogin && socket.connected) socket.disconnect().connect();
       showToast('Sesión iniciada', `Bienvenido de nuevo, ${response.profile.name || username}. Tus datos públicos están disponibles en Perfil.`, 'notice', 3800, '👤');
       closeAccountModal();
       els.accountPassword.value = '';
@@ -2089,8 +2193,22 @@
         els.accountError.classList.remove('hidden');
         return;
       }
-      saveAccountSession(response.profile);
-      showToast('Cuenta creada', `Ya puedes iniciar sesión como @${response.profile.username || username} desde cualquier otra computadora.`, 'notice', 4200, '👤');
+      // Si las sesiones seguras están activas, el alta se completa creando la
+      // cookie por HTTP. Con rollout apagado el 404 conserva el comportamiento
+      // anterior sin mezclar el id de perfil con una credencial.
+      const secureSignupLogin = await secureAuthRequest('/api/auth/login', {
+        method: 'POST', body: JSON.stringify({ username, password })
+      });
+      if (secureSignupLogin.status !== 404 && (!secureSignupLogin.ok || !secureSignupLogin.profile)) {
+        els.accountError.textContent = secureSignupLogin.error || 'La cuenta fue creada, pero no se pudo iniciar la sesión segura.';
+        els.accountError.classList.remove('hidden');
+        return;
+      }
+      const activeProfile = secureSignupLogin.profile || response.profile;
+      if (secureSignupLogin.status !== 404) ui.csrfToken = secureSignupLogin.csrfToken || null;
+      saveAccountSession(activeProfile);
+      if (secureSignupLogin.status !== 404 && socket.connected) socket.disconnect().connect();
+      showToast('Cuenta creada', `Ya puedes iniciar sesión como @${activeProfile.username || username} desde cualquier otra computadora.`, 'notice', 4200, '👤');
       closeAccountModal();
       els.accountPassword.value = '';
     }

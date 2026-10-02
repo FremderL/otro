@@ -15,8 +15,29 @@ const { HAND_NAMES, compareScores, bestPokerScore } = require('./lib/poker-evalu
 const { DIFFICULTIES, STYLES, createBot, publicBot } = require('./lib/bots/catalog');
 const { BotController } = require('./lib/bots/bot-controller');
 const { TOS_VERSION } = require('./lib/terms');
+const { loadAdminConfig } = require('./lib/admin-config');
+const { createAccountSessionStore } = require('./lib/account-session-factory');
+const { installAccountAuthRoutes, COOKIE_NAME, parseCookies } = require('./lib/account-auth-http');
+const { sessionState } = require('./lib/account-sessions');
+const { installAdminRoutes } = require('./lib/admin-auth-http');
+const { createAuditStore } = require('./lib/audit-store-factory');
+const { createModerationStore } = require('./lib/moderation-store-factory');
+const { createReportStore } = require('./lib/report-store-factory');
+const { installReportRoutes } = require('./lib/report-http');
+const { createPasswordResetStore } = require('./lib/password-reset-store-factory');
+const { installPasswordResetRoutes } = require('./lib/password-reset-http');
+const { sanitizeLogValue, securityHeaders } = require('./lib/security-hardening');
+const { createIdempotencyStore } = require('./lib/idempotency-store-factory');
+
+// Fase administrativa 0: el feature flag permanece apagado por defecto y, si
+// se activa, el proceso falla cerrado antes de escuchar tráfico cuando falta
+// cualquier secreto o requisito de producción.
+const adminConfig = loadAdminConfig();
 
 const app = express();
+app.disable('x-powered-by');
+app.use(securityHeaders);
+if (adminConfig.accountSessionsEnabled) app.set('trust proxy', adminConfig.trustProxyHops);
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: true, credentials: true } });
 const PORT = process.env.PORT || 3000;
@@ -25,7 +46,7 @@ const PORT = process.env.PORT || 3000;
 const LOG_JSON = process.env.LOG_JSON !== 'off';
 function logEvent(event, data = {}) {
   if (!LOG_JSON) return;
-  try { console.log(JSON.stringify({ time: new Date().toISOString(), event, ...data })); } catch (_) { /* un log nunca debe tumbar el servidor */ }
+  try { console.log(JSON.stringify({ ...sanitizeLogValue(data), time: new Date().toISOString(), event:String(event).slice(0,80) })); } catch (_) { /* un log nunca debe tumbar el servidor */ }
 }
 
 // Última red de seguridad a nivel proceso (refuerzo de la auditoría; las
@@ -45,6 +66,43 @@ process.on('unhandledRejection', reason => {
   logEvent('unhandled_rejection', { message: String(reason?.message || reason) });
 });
 
+// Fase administrativa 1: API de sesión segura. Las rutas existen detrás de
+// ACCOUNT_SESSIONS_ENABLED y resuelven stores cargados por bootstrap().
+installAccountAuthRoutes(app, {
+  config: adminConfig,
+  getProfiles: () => profiles,
+  getSessionStore: () => accountSessionStore,
+  getAuditStore: () => auditStore,
+  logEvent
+});
+installAdminRoutes(app, {
+  config: adminConfig,
+  getProfiles: () => profiles,
+  getSessionStore: () => accountSessionStore,
+  getAuditStore: () => auditStore,
+  getModerationStore: () => moderationStore,
+  getReportStore: () => reportStore,
+  getPasswordResetStore: () => passwordResetStore,
+  getIdempotencyStore: () => idempotencyStore,
+  onModerated: async (target, state) => {
+    const roomName = `account:${target.id}`;
+    io.to(roomName).emit('account_moderated', { status:state.status, until:state.until });
+    io.in(roomName).disconnectSockets(true);
+  }
+});
+installReportRoutes(app, {
+  config: adminConfig,
+  getProfiles: () => profiles,
+  getSessionStore: () => accountSessionStore,
+  getReportStore: () => reportStore,
+  findEvidence: (messageId, targetId) => {
+    const messages = [...lobbyChatMessages, ...[...rooms.values()].flatMap(room => room.messages || [])];
+    const message = messages.find(item => item.id === messageId && item.playerId === targetId);
+    return message ? { messageId:message.id, authorProfileId:message.playerId, text:message.text, time:message.time } : null;
+  }
+});
+installPasswordResetRoutes(app,{config:adminConfig,getProfiles:()=>profiles,getSessionStore:()=>accountSessionStore,getPasswordResetStore:()=>passwordResetStore,getAuditStore:()=>auditStore});
+
 // Fase 9: presupuesto de rendimiento — gzip para HTML/CSS/JS y caché larga para las
 // imágenes del lobby (tienen nombre estable; si se reemplazan, cambiar el nombre del archivo).
 app.use(compression());
@@ -61,7 +119,8 @@ app.get('/healthz', (_req, res) => {
     botTasks: botController?.tasks.size || 0,
     seasonMonth: profiles?.seasons?.current || null,
     casinoTimeZone: CASINO_TIME_ZONE,
-    tosVersion: TOS_VERSION
+    tosVersion: TOS_VERSION,
+    accountSessionsEnabled: adminConfig.accountSessionsEnabled
   });
 });
 app.get('/terminos', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'terminos.html')));
@@ -94,6 +153,12 @@ const LOBBY_CHAT_LIMIT = 60;
 // el ProfileStore de archivo (caso local y de todos los tests actuales) la
 // espera es instantánea, así que el comportamiento no cambia.
 let profiles;
+let accountSessionStore = null;
+let auditStore = null;
+let moderationStore = null;
+let reportStore = null;
+let passwordResetStore = null;
+let idempotencyStore = null;
 let botController = null;
 const ROOM_CAPACITY = 6;
 const BOT_ONLY_ROOM_TTL_MS = Math.max(100, Number(process.env.BOT_ONLY_ROOM_TTL_MS) || 5 * 60 * 1000);
@@ -1562,6 +1627,31 @@ botController = new BotController({
   logError: ({ roomCode, botId, botName, game, purpose, error }) => console.warn(`[BOT_FALLBACK] room=${roomCode} bot=${botId} name=${botName} game=${game} task=${purpose}: ${error.message}`)
 });
 
+// Fase 1: una cookie válida vincula la conexión con una cuenta autenticada.
+// Una cookie ausente o vencida no bloquea el modo invitado; simplemente no
+// concede identidad de cuenta. Ningún id enviado en payload sustituye esto.
+io.use(async (socket, next) => {
+  try {
+    socket.data.accountProfileId = null;
+    if (!adminConfig.accountSessionsEnabled || !accountSessionStore) return next();
+    const token = parseCookies(socket.handshake.headers.cookie)[COOKIE_NAME];
+    if (!token) return next();
+    const session = await accountSessionStore.findByToken(token);
+    const profile = session && profiles.profiles.get(session.profileId);
+    const state = profile && sessionState(session, { sessionVersion: profile.security?.sessionVersion || 1 });
+    if (!profile?.username || !state?.valid) return next();
+    socket.data.accountProfileId = profile.id;
+    socket.data.accountSessionId = session.id;
+    socket.data.accountRole = profile.role || 'user';
+    socket.join(`account:${profile.id}`);
+    await accountSessionStore.touch(session.id, { role: profile.role || 'user' });
+    return next();
+  } catch (error) {
+    console.warn('No se pudo resolver la sesión del socket:', error.message);
+    return next(); // fail-closed para cuenta; el juego invitado sigue disponible
+  }
+});
+
 io.on('connection', socket => {
   // Red de seguridad: un error dentro de CUALQUIER handler de eventos no debe
   // tumbar el proceso completo. Las salas viven en memoria, así que una sola
@@ -1745,7 +1835,7 @@ io.on('connection', socket => {
     if (!room || (!player && !spectator) || !text) return ackError(ack, 'No se pudo enviar.');
     if (duplicateMessageWithinWindow(socket, 'table', text)) return ackError(ack, 'Ese mensaje ya fue enviado hace un momento.');
     const author = player || spectator;
-    room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: author.id, name: spectator ? `👁 ${author.name}` : author.name, text, time: Date.now() });
+    room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: author.id, username: author._profile?.username || null, name: spectator ? `👁 ${author.name}` : author.name, text, time: Date.now() });
     room.messages = room.messages.slice(-40);
     ackOk(ack);
     broadcast(room);
@@ -1768,7 +1858,7 @@ io.on('connection', socket => {
     const profile = profiles.getOrCreate(id, name);
     if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
     profiles.update(profile, { name });
-    socket.data.lobbyChat = { id: profile.id, name: profile.name, avatar: profile.avatar };
+    socket.data.lobbyChat = { id: profile.id, name: profile.name, avatar: profile.avatar, username: profile.username || null };
     const history = lobbyChatMessages.slice();
     ackOk(ack, { name: profile.name, avatar: profile.avatar, messages: history, history });
     socket.emit('lobby_chat', { messages: history });
@@ -1781,7 +1871,7 @@ io.on('connection', socket => {
     text = cleanMessage(text);
     if (!text) return ackError(ack, 'No se pudo enviar.');
     if (duplicateMessageWithinWindow(socket, 'lobby', text)) return ackError(ack, 'Ese mensaje ya fue enviado hace un momento.');
-    const message = { id: `${Date.now()}-${Math.random()}`, playerId: author.id, name: author.name, avatar: author.avatar, text, time: Date.now() };
+    const message = { id: `${Date.now()}-${Math.random()}`, playerId: author.id, username: author.username, name: author.name, avatar: author.avatar, text, time: Date.now() };
     lobbyChatMessages.push(message);
     while (lobbyChatMessages.length > LOBBY_CHAT_LIMIT) lobbyChatMessages.shift();
     for (const client of io.sockets.sockets.values()) {
@@ -1822,9 +1912,14 @@ io.on('connection', socket => {
   socket.on('profile_update', ({ name, avatar, featuredAchievements, accountId } = {}, ack) => {
     const { room, player } = playerForSocket(socket);
     let targetProfile = player ? player._profile : null;
-    if (!targetProfile && accountId) {
-      const candidate = profiles.profiles.get(String(accountId).slice(0, 80));
-      if (candidate && candidate.username) targetProfile = candidate;
+    if (!targetProfile) {
+      // Con sesiones seguras el único perfil de cuenta editable es el que el
+      // middleware autenticó desde la cookie. `accountId` se ignora.
+      const id = adminConfig.accountSessionsEnabled
+        ? socket.data.accountProfileId
+        : String(accountId || '').slice(0, 80); // compatibilidad temporal con rollout apagado
+      const candidate = id ? profiles.profiles.get(id) : null;
+      if (candidate?.username) targetProfile = candidate;
     }
     if (!targetProfile) return ackError(ack, 'Perfil no disponible.');
     name = cleanName(name) || targetProfile.name;
@@ -1854,9 +1949,11 @@ io.on('connection', socket => {
   // sin tener que volver a pedir la contraseña. Solo expone campos públicos
   // (los mismos que devuelve publicProgress): nunca passwordHash.
   socket.on('account_profile', ({ accountId } = {}, ack) => {
-    const id = String(accountId || '').slice(0, 80);
+    const id = adminConfig.accountSessionsEnabled
+      ? socket.data.accountProfileId
+      : String(accountId || '').slice(0, 80);
     const profile = id ? profiles.profiles.get(id) : null;
-    if (!profile || !profile.username) return ackError(ack, 'No se encontró la cuenta.');
+    if (!profile?.username) return ackError(ack, 'No hay una sesión de cuenta válida.');
     ackOk(ack, { profile: publicProgress(profile, true) });
   });
 
@@ -1888,6 +1985,9 @@ io.on('connection', socket => {
   });
 
   socket.on('account_login', ({ username, password } = {}, ack) => {
+    if (adminConfig.accountSessionsEnabled) {
+      return ackError(ack, 'Actualiza la página para usar el inicio de sesión seguro.');
+    }
     const result = profiles.authenticate(username, password);
     if (!result.ok) return ackError(ack, result.error);
     logEvent('account_login', { profileId: result.profile.id, username: result.profile.username });
@@ -2187,6 +2287,24 @@ async function gracefulShutdown(signal) {
   const forceExit = setTimeout(() => { logEvent('shutdown_forced', { graceMs }); process.exit(0); }, graceMs);
   forceExit.unref?.();
   try { await profiles.saveNow(); } catch (_) { /* saveNow ya reporta sus propios errores */ }
+  try { await accountSessionStore?.close?.(); } catch (error) {
+    console.warn('No se pudo cerrar el store de sesiones:', error.message);
+  }
+  try { await auditStore?.close?.(); } catch (error) {
+    console.warn('No se pudo cerrar el store de auditoría:', error.message);
+  }
+  try { await moderationStore?.close?.(); } catch (error) {
+    console.warn('No se pudo cerrar el store de moderación:', error.message);
+  }
+  try { await reportStore?.close?.(); } catch (error) {
+    console.warn('No se pudo cerrar el store de reportes:', error.message);
+  }
+  try { await passwordResetStore?.close?.(); } catch (error) {
+    console.warn('No se pudo cerrar el store de restablecimientos:', error.message);
+  }
+  try { await idempotencyStore?.close?.(); } catch (error) {
+    console.warn('No se pudo cerrar el store de idempotencia:', error.message);
+  }
   io.close(() => {
     server.close(() => {
       logEvent('shutdown_complete', {});
@@ -2202,6 +2320,12 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 // antes de que los perfiles existan en memoria.
 async function bootstrap() {
   profiles = await createProfileStore(process.env.PROFILE_STORE_PATH);
+  accountSessionStore = createAccountSessionStore(adminConfig);
+  auditStore = createAuditStore(adminConfig);
+  moderationStore = createModerationStore(adminConfig);
+  reportStore = createReportStore(adminConfig);
+  passwordResetStore = createPasswordResetStore(adminConfig);
+  idempotencyStore = createIdempotencyStore(adminConfig);
   if (profiles.lastSeasonRepair) {
     console.warn(`Calendario de temporada corregido: ${profiles.lastSeasonRepair.fromMonth} → ${profiles.lastSeasonRepair.toMonth} (${CASINO_TIME_ZONE}).`);
     logEvent('season_calendar_repaired', profiles.lastSeasonRepair);
@@ -2222,7 +2346,8 @@ async function bootstrap() {
       profileStore: profiles.filePath,
       profileBackend: profiles.backend,
       casinoTimeZone: CASINO_TIME_ZONE,
-      historyLimits: { ...HISTORY_LIMITS }
+      historyLimits: { ...HISTORY_LIMITS },
+      adminFeatureEnabled: adminConfig.enabled
     });
   });
 }
