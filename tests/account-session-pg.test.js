@@ -55,6 +55,7 @@ test('touch y revocaciones son parametrizadas y reportan filas afectadas', async
   assert.equal(await store.touch('session-id', { now: 500000, role: 'user' }), true);
   assert.equal(await store.revoke('session-id', 'logout', 600000), true);
   assert.equal(await store.revokeProfile('profile-id', 'logout_all', { now: 700000 }), 2);
+  assert.deepEqual(pool.calls[0].params, ['session-id', 500000n, 605300000n]);
   assert.deepEqual(pool.calls[1].params, ['session-id', 'logout', 600000]);
   assert.deepEqual(pool.calls[2].params, ['profile-id', 'logout_all', null, 700000]);
 });
