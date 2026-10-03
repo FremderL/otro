@@ -151,7 +151,8 @@ H.append(PageBreak())
 H.append(p("Contenido", "h1"))
 H.append(tabla(
     ["Paso", "Qué vas a hacer"],
-    [["Antes de empezar", "Lo que necesitas instalado y las cuentas que debes tener"],
+    [["Quién hace qué", "El equipo, los roles y qué tickets le tocan a cada quien"],
+     ["Antes de empezar", "Lo que necesitas instalado y las cuentas que debes tener"],
      ["Paso 1", "Aceptar la invitación al repositorio"],
      ["Paso 2", "Clonar el repositorio en tu computadora"],
      ["Paso 3", "Conectar Arena.ai con GitHub y abrir el repositorio"],
@@ -168,7 +169,54 @@ H.append(tabla(
      ["Anexos", "Guías de lo que se hace fuera de Arena: diagramas, Neon, Render y pruebas"]],
     [3.6 * cm, 12.8 * cm]))
 
+# Equipo
+H.append(PageBreak())
+H.append(p("Quién hace qué", "h1"))
+H.append(p("Los 40 tickets ya están repartidos según el rol de cada quien. En Jira vienen asignados "
+           "y en el archivo <b>PROMPTS-POR-TICKET.txt</b> cada ticket dice arriba quién es el "
+           "responsable."))
+H.append(tabla(
+    ["Integrante", "Rol", "De qué se encarga", "Tickets"],
+    [["Luis Enrique Rodríguez González", "Product Owner y líder",
+      "Visión del producto, backlog, sprints y enlace con el profesor",
+      "1, 2, 5, 16, 40"],
+     ["Castell Guzmán Elian Avishayr", "Backend · motor de juegos",
+      "Reglas de los juegos, azar del servidor, cobro y pago de apuestas",
+      "19 a 28"],
+     ["Alan Emmanuel Oseguera Michel", "Backend · API y datos",
+      "Servidor, API, base de datos en Neon, saldos y despliegue",
+      "6 a 14, 39"],
+     ["Héctor Jaime Navarro Guillén", "Frontend",
+      "Maquetas, estilos, pantallas, animaciones y chat",
+      "29 a 37"],
+     ["Josué Ángel Carrillo Cruz", "Documentación y QA",
+      "Diagramas, módulo de salas, plan de pruebas y entregables",
+      "3, 4, 15, 17, 18, 38"]],
+    [4.3 * cm, 3.3 * cm, 6.0 * cm, 2.8 * cm]))
+H.append(p("En qué orden conviene trabajar", "h2"))
+H.append(p("No todos pueden empezar al mismo tiempo: hay tickets que dependen de otros. "
+           "Esta es la secuencia sana:"))
+H.append(vinetas([
+    "<b>Semana 1.</b> Luis saca los requerimientos y las reglas (1, 2); Josué, los diagramas (3, 4). "
+    "Alan arranca con la base en Neon y el servidor (6 a 12). Héctor va haciendo las maquetas y "
+    "la hoja de estilos (29).",
+    "<b>Semana 2.</b> Alan termina API y saldos (13, 14); Josué hace el módulo de salas (15, 17, 18); "
+    "Luis el código de sala (16); Héctor, inicio y formulario (30, 31).",
+    "<b>Semana 3.</b> Elian arranca el motor: ciclo de ronda, azar, apuestas y turnos (19 a 22). "
+    "Héctor hace lobby y mesa (32, 33).",
+    "<b>Semana 4.</b> Elian saca los juegos (23 a 28). Héctor, los botones de apuesta, los mensajes "
+    "y las animaciones (34, 35, 36).",
+    "<b>Semana 5.</b> Héctor cierra con el chat (37). Josué corre el plan de pruebas con todo el "
+    "equipo (38). Alan publica en Render (39).",
+    "<b>Semana 6.</b> Luis arma la presentación (40) y se ensaya entre todos.",
+]))
+H.append(tip("Si te quedas esperando a alguien",
+             "Avísale en el grupo y toma otro de tus tickets que no dependa de eso, o échale la mano "
+             "al que va retrasado. Lo que no se vale es quedarse parado tres días sin decir nada: "
+             "el profesor va a ver las fechas en Jira y en los commits."))
+
 # Antes de empezar
+H.append(PageBreak())
 H.append(p("Antes de empezar", "h1"))
 H.append(p("Necesitas tener esto listo. Si te falta algo, instálalo ahora: después, a media tarea, "
            "estorba más."))

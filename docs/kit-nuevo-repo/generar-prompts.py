@@ -534,6 +534,25 @@ FUERA = {
     ]),
 }
 
+# Quien hace cada ticket
+RESPONSABLES = {
+    1: "Luis", 2: "Luis", 5: "Luis", 16: "Luis", 40: "Luis",
+    3: "Josue", 4: "Josue", 15: "Josue", 17: "Josue", 18: "Josue", 38: "Josue",
+    6: "Alan", 7: "Alan", 8: "Alan", 9: "Alan", 10: "Alan",
+    11: "Alan", 12: "Alan", 13: "Alan", 14: "Alan", 39: "Alan",
+    19: "Elian", 20: "Elian", 21: "Elian", 22: "Elian", 23: "Elian",
+    24: "Elian", 25: "Elian", 26: "Elian", 27: "Elian", 28: "Elian",
+    29: "Hector", 30: "Hector", 31: "Hector", 32: "Hector", 33: "Hector",
+    34: "Hector", 35: "Hector", 36: "Hector", 37: "Hector",
+}
+NOMBRES = {
+    "Luis": "Luis Enrique Rodriguez Gonzalez (Product Owner / lider)",
+    "Elian": "Castell Guzman Elian Avishayr (Backend - motor de juegos)",
+    "Alan": "Alan Emmanuel Oseguera Michel (Backend - API y datos)",
+    "Hector": "Hector Jaime Navarro Guillen (Frontend)",
+    "Josue": "Josue Angel Carrillo Cruz (Documentacion y QA)",
+}
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -579,7 +598,17 @@ lineas.append("")
 lineas.append("INDICE")
 lineas.append("-" * 96)
 for num, titulo, _tipo, _t, _d in TICKETS:
-    lineas.append("  Ticket %2d .... %s" % (num, titulo))
+    lineas.append("  Ticket %2d  %-8s  %s" % (num, RESPONSABLES[num], titulo))
+lineas.append("")
+lineas.append("")
+lineas.append("REPARTO POR INTEGRANTE")
+lineas.append("-" * 96)
+for clave, nombre in NOMBRES.items():
+    mios = sorted(n for n, c in RESPONSABLES.items() if c == clave)
+    lineas.append(envolver("%s" % nombre, ancho=92))
+    lineas.append(envolver("Tickets: %s" % ", ".join(str(n) for n in mios),
+                           ancho=88, sangria="   "))
+    lineas.append("")
 lineas.append("")
 lineas.append("")
 
@@ -587,6 +616,7 @@ for num, titulo, tipo, tarea, detalles in TICKETS:
     lineas.append("=" * 96)
     lineas.append("TICKET %d - %s" % (num, titulo))
     lineas.append("=" * 96)
+    lineas.append("Responsable: %s" % NOMBRES[RESPONSABLES[num]])
     lineas.append("")
     lineas.append("[COPIA DESDE AQUI]")
     lineas.append("")

@@ -25,51 +25,71 @@ va a chocar con lo que ya subieron tus companeros.
 
 INDICE
 ------------------------------------------------------------------------------------------------
-  Ticket  1 .... Escribir el documento de requerimientos
-  Ticket  2 .... Definir las reglas de cada juego
-  Ticket  3 .... Hacer el diagrama de la base de datos
-  Ticket  4 .... Hacer el diagrama de arquitectura de la pagina
-  Ticket  5 .... Escribir el README del repositorio
-  Ticket  6 .... Crear la base de datos y conectarla al servidor
-  Ticket  7 .... Crear la tabla de jugadores
-  Ticket  8 .... Crear la tabla de salas
-  Ticket  9 .... Crear la tabla de partidas jugadas
-  Ticket 10 .... Funciones para guardar y consultar jugadores
-  Ticket 11 .... Crear el proyecto de Node con Express
-  Ticket 12 .... Conectar el servidor y el navegador con Socket.IO
-  Ticket 13 .... Rutas de la API para el jugador
-  Ticket 14 .... Dar saldo inicial y guardarlo
-  Ticket 15 .... Crear la estructura de una sala en el servidor
-  Ticket 16 .... Generar el codigo de sala de 5 caracteres
-  Ticket 17 .... Unir y sacar jugadores de una sala
-  Ticket 18 .... Avisar a todos los de la sala cuando algo cambia
-  Ticket 19 .... Ciclo de la ronda: esperar, apostar y resultado
-  Ticket 20 .... Funcion de numeros aleatorios del servidor
-  Ticket 21 .... Funcion que cobra la apuesta y paga el premio
-  Ticket 22 .... Turnos con tiempo limite
-  Ticket 23 .... Juego de cara o cruz
-  Ticket 24 .... Juego de dados
-  Ticket 25 .... Logica de la ruleta
-  Ticket 26 .... Blackjack: mazo y reparto de cartas
-  Ticket 27 .... Blackjack: pedir carta y plantarse
-  Ticket 28 .... Blackjack: turno de la casa y ganador
-  Ticket 29 .... Hacer la hoja de estilos general
-  Ticket 30 .... Pantalla de inicio
-  Ticket 31 .... Formulario de nombre y avatar
-  Ticket 32 .... Pantalla del lobby con la lista de salas
-  Ticket 33 .... Pantalla de la mesa de juego
-  Ticket 34 .... Botones para apostar
-  Ticket 35 .... Mostrar mensajes y el resultado de la ronda
-  Ticket 36 .... Animacion simple de la moneda, los dados y la ruleta
-  Ticket 37 .... Chat de la sala
-  Ticket 38 .... Probar la pagina entre varios y anotar los errores
-  Ticket 39 .... Subir la pagina a un hosting gratuito
-  Ticket 40 .... Preparar la presentacion final del proyecto
+  Ticket  1  Luis      Escribir el documento de requerimientos
+  Ticket  2  Luis      Definir las reglas de cada juego
+  Ticket  3  Josue     Hacer el diagrama de la base de datos
+  Ticket  4  Josue     Hacer el diagrama de arquitectura de la pagina
+  Ticket  5  Luis      Escribir el README del repositorio
+  Ticket  6  Alan      Crear la base de datos y conectarla al servidor
+  Ticket  7  Alan      Crear la tabla de jugadores
+  Ticket  8  Alan      Crear la tabla de salas
+  Ticket  9  Alan      Crear la tabla de partidas jugadas
+  Ticket 10  Alan      Funciones para guardar y consultar jugadores
+  Ticket 11  Alan      Crear el proyecto de Node con Express
+  Ticket 12  Alan      Conectar el servidor y el navegador con Socket.IO
+  Ticket 13  Alan      Rutas de la API para el jugador
+  Ticket 14  Alan      Dar saldo inicial y guardarlo
+  Ticket 15  Josue     Crear la estructura de una sala en el servidor
+  Ticket 16  Luis      Generar el codigo de sala de 5 caracteres
+  Ticket 17  Josue     Unir y sacar jugadores de una sala
+  Ticket 18  Josue     Avisar a todos los de la sala cuando algo cambia
+  Ticket 19  Elian     Ciclo de la ronda: esperar, apostar y resultado
+  Ticket 20  Elian     Funcion de numeros aleatorios del servidor
+  Ticket 21  Elian     Funcion que cobra la apuesta y paga el premio
+  Ticket 22  Elian     Turnos con tiempo limite
+  Ticket 23  Elian     Juego de cara o cruz
+  Ticket 24  Elian     Juego de dados
+  Ticket 25  Elian     Logica de la ruleta
+  Ticket 26  Elian     Blackjack: mazo y reparto de cartas
+  Ticket 27  Elian     Blackjack: pedir carta y plantarse
+  Ticket 28  Elian     Blackjack: turno de la casa y ganador
+  Ticket 29  Hector    Hacer la hoja de estilos general
+  Ticket 30  Hector    Pantalla de inicio
+  Ticket 31  Hector    Formulario de nombre y avatar
+  Ticket 32  Hector    Pantalla del lobby con la lista de salas
+  Ticket 33  Hector    Pantalla de la mesa de juego
+  Ticket 34  Hector    Botones para apostar
+  Ticket 35  Hector    Mostrar mensajes y el resultado de la ronda
+  Ticket 36  Hector    Animacion simple de la moneda, los dados y la ruleta
+  Ticket 37  Hector    Chat de la sala
+  Ticket 38  Josue     Probar la pagina entre varios y anotar los errores
+  Ticket 39  Alan      Subir la pagina a un hosting gratuito
+  Ticket 40  Luis      Preparar la presentacion final del proyecto
+
+
+REPARTO POR INTEGRANTE
+------------------------------------------------------------------------------------------------
+Luis Enrique Rodriguez Gonzalez (Product Owner / lider)
+   Tickets: 1, 2, 5, 16, 40
+
+Castell Guzman Elian Avishayr (Backend - motor de juegos)
+   Tickets: 19, 20, 21, 22, 23, 24, 25, 26, 27, 28
+
+Alan Emmanuel Oseguera Michel (Backend - API y datos)
+   Tickets: 6, 7, 8, 9, 10, 11, 12, 13, 14, 39
+
+Hector Jaime Navarro Guillen (Frontend)
+   Tickets: 29, 30, 31, 32, 33, 34, 35, 36, 37
+
+Josue Angel Carrillo Cruz (Documentacion y QA)
+   Tickets: 3, 4, 15, 17, 18, 38
+
 
 
 ================================================================================================
 TICKET 1 - Escribir el documento de requerimientos
 ================================================================================================
+Responsable: Luis Enrique Rodriguez Gonzalez (Product Owner / lider)
 
 [COPIA DESDE AQUI]
 
@@ -114,6 +134,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 2 - Definir las reglas de cada juego
 ================================================================================================
+Responsable: Luis Enrique Rodriguez Gonzalez (Product Owner / lider)
 
 [COPIA DESDE AQUI]
 
@@ -159,6 +180,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 3 - Hacer el diagrama de la base de datos
 ================================================================================================
+Responsable: Josue Angel Carrillo Cruz (Documentacion y QA)
 
 [COPIA DESDE AQUI]
 
@@ -231,6 +253,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 4 - Hacer el diagrama de arquitectura de la pagina
 ================================================================================================
+Responsable: Josue Angel Carrillo Cruz (Documentacion y QA)
 
 [COPIA DESDE AQUI]
 
@@ -293,6 +316,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 5 - Escribir el README del repositorio
 ================================================================================================
+Responsable: Luis Enrique Rodriguez Gonzalez (Product Owner / lider)
 
 [COPIA DESDE AQUI]
 
@@ -335,6 +359,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 6 - Crear la base de datos y conectarla al servidor
 ================================================================================================
+Responsable: Alan Emmanuel Oseguera Michel (Backend - API y datos)
 
 [COPIA DESDE AQUI]
 
@@ -411,6 +436,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 7 - Crear la tabla de jugadores
 ================================================================================================
+Responsable: Alan Emmanuel Oseguera Michel (Backend - API y datos)
 
 [COPIA DESDE AQUI]
 
@@ -470,6 +496,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 8 - Crear la tabla de salas
 ================================================================================================
+Responsable: Alan Emmanuel Oseguera Michel (Backend - API y datos)
 
 [COPIA DESDE AQUI]
 
@@ -525,6 +552,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 9 - Crear la tabla de partidas jugadas
 ================================================================================================
+Responsable: Alan Emmanuel Oseguera Michel (Backend - API y datos)
 
 [COPIA DESDE AQUI]
 
@@ -584,6 +612,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 10 - Funciones para guardar y consultar jugadores
 ================================================================================================
+Responsable: Alan Emmanuel Oseguera Michel (Backend - API y datos)
 
 [COPIA DESDE AQUI]
 
@@ -628,6 +657,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 11 - Crear el proyecto de Node con Express
 ================================================================================================
+Responsable: Alan Emmanuel Oseguera Michel (Backend - API y datos)
 
 [COPIA DESDE AQUI]
 
@@ -684,6 +714,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 12 - Conectar el servidor y el navegador con Socket.IO
 ================================================================================================
+Responsable: Alan Emmanuel Oseguera Michel (Backend - API y datos)
 
 [COPIA DESDE AQUI]
 
@@ -728,6 +759,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 13 - Rutas de la API para el jugador
 ================================================================================================
+Responsable: Alan Emmanuel Oseguera Michel (Backend - API y datos)
 
 [COPIA DESDE AQUI]
 
@@ -773,6 +805,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 14 - Dar saldo inicial y guardarlo
 ================================================================================================
+Responsable: Alan Emmanuel Oseguera Michel (Backend - API y datos)
 
 [COPIA DESDE AQUI]
 
@@ -817,6 +850,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 15 - Crear la estructura de una sala en el servidor
 ================================================================================================
+Responsable: Josue Angel Carrillo Cruz (Documentacion y QA)
 
 [COPIA DESDE AQUI]
 
@@ -862,6 +896,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 16 - Generar el codigo de sala de 5 caracteres
 ================================================================================================
+Responsable: Luis Enrique Rodriguez Gonzalez (Product Owner / lider)
 
 [COPIA DESDE AQUI]
 
@@ -905,6 +940,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 17 - Unir y sacar jugadores de una sala
 ================================================================================================
+Responsable: Josue Angel Carrillo Cruz (Documentacion y QA)
 
 [COPIA DESDE AQUI]
 
@@ -949,6 +985,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 18 - Avisar a todos los de la sala cuando algo cambia
 ================================================================================================
+Responsable: Josue Angel Carrillo Cruz (Documentacion y QA)
 
 [COPIA DESDE AQUI]
 
@@ -995,6 +1032,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 19 - Ciclo de la ronda: esperar, apostar y resultado
 ================================================================================================
+Responsable: Castell Guzman Elian Avishayr (Backend - motor de juegos)
 
 [COPIA DESDE AQUI]
 
@@ -1042,6 +1080,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 20 - Funcion de numeros aleatorios del servidor
 ================================================================================================
+Responsable: Castell Guzman Elian Avishayr (Backend - motor de juegos)
 
 [COPIA DESDE AQUI]
 
@@ -1085,6 +1124,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 21 - Funcion que cobra la apuesta y paga el premio
 ================================================================================================
+Responsable: Castell Guzman Elian Avishayr (Backend - motor de juegos)
 
 [COPIA DESDE AQUI]
 
@@ -1131,6 +1171,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 22 - Turnos con tiempo limite
 ================================================================================================
+Responsable: Castell Guzman Elian Avishayr (Backend - motor de juegos)
 
 [COPIA DESDE AQUI]
 
@@ -1175,6 +1216,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 23 - Juego de cara o cruz
 ================================================================================================
+Responsable: Castell Guzman Elian Avishayr (Backend - motor de juegos)
 
 [COPIA DESDE AQUI]
 
@@ -1220,6 +1262,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 24 - Juego de dados
 ================================================================================================
+Responsable: Castell Guzman Elian Avishayr (Backend - motor de juegos)
 
 [COPIA DESDE AQUI]
 
@@ -1263,6 +1306,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 25 - Logica de la ruleta
 ================================================================================================
+Responsable: Castell Guzman Elian Avishayr (Backend - motor de juegos)
 
 [COPIA DESDE AQUI]
 
@@ -1307,6 +1351,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 26 - Blackjack: mazo y reparto de cartas
 ================================================================================================
+Responsable: Castell Guzman Elian Avishayr (Backend - motor de juegos)
 
 [COPIA DESDE AQUI]
 
@@ -1353,6 +1398,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 27 - Blackjack: pedir carta y plantarse
 ================================================================================================
+Responsable: Castell Guzman Elian Avishayr (Backend - motor de juegos)
 
 [COPIA DESDE AQUI]
 
@@ -1396,6 +1442,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 28 - Blackjack: turno de la casa y ganador
 ================================================================================================
+Responsable: Castell Guzman Elian Avishayr (Backend - motor de juegos)
 
 [COPIA DESDE AQUI]
 
@@ -1440,6 +1487,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 29 - Hacer la hoja de estilos general
 ================================================================================================
+Responsable: Hector Jaime Navarro Guillen (Frontend)
 
 [COPIA DESDE AQUI]
 
@@ -1485,6 +1533,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 30 - Pantalla de inicio
 ================================================================================================
+Responsable: Hector Jaime Navarro Guillen (Frontend)
 
 [COPIA DESDE AQUI]
 
@@ -1529,6 +1578,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 31 - Formulario de nombre y avatar
 ================================================================================================
+Responsable: Hector Jaime Navarro Guillen (Frontend)
 
 [COPIA DESDE AQUI]
 
@@ -1573,6 +1623,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 32 - Pantalla del lobby con la lista de salas
 ================================================================================================
+Responsable: Hector Jaime Navarro Guillen (Frontend)
 
 [COPIA DESDE AQUI]
 
@@ -1616,6 +1667,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 33 - Pantalla de la mesa de juego
 ================================================================================================
+Responsable: Hector Jaime Navarro Guillen (Frontend)
 
 [COPIA DESDE AQUI]
 
@@ -1661,6 +1713,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 34 - Botones para apostar
 ================================================================================================
+Responsable: Hector Jaime Navarro Guillen (Frontend)
 
 [COPIA DESDE AQUI]
 
@@ -1706,6 +1759,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 35 - Mostrar mensajes y el resultado de la ronda
 ================================================================================================
+Responsable: Hector Jaime Navarro Guillen (Frontend)
 
 [COPIA DESDE AQUI]
 
@@ -1752,6 +1806,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 36 - Animacion simple de la moneda, los dados y la ruleta
 ================================================================================================
+Responsable: Hector Jaime Navarro Guillen (Frontend)
 
 [COPIA DESDE AQUI]
 
@@ -1797,6 +1852,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 37 - Chat de la sala
 ================================================================================================
+Responsable: Hector Jaime Navarro Guillen (Frontend)
 
 [COPIA DESDE AQUI]
 
@@ -1840,6 +1896,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 38 - Probar la pagina entre varios y anotar los errores
 ================================================================================================
+Responsable: Josue Angel Carrillo Cruz (Documentacion y QA)
 
 [COPIA DESDE AQUI]
 
@@ -1903,6 +1960,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 39 - Subir la pagina a un hosting gratuito
 ================================================================================================
+Responsable: Alan Emmanuel Oseguera Michel (Backend - API y datos)
 
 [COPIA DESDE AQUI]
 
@@ -1975,6 +2033,7 @@ Reglas de entrega (respetalas al pie de la letra):
 ================================================================================================
 TICKET 40 - Preparar la presentacion final del proyecto
 ================================================================================================
+Responsable: Luis Enrique Rodriguez Gonzalez (Product Owner / lider)
 
 [COPIA DESDE AQUI]
 

@@ -238,6 +238,34 @@ TICKETS = [
      "esta hecho y una partida en vivo. Repartir quien expone cada parte."),
 ]
 
+# Integrantes del equipo y su rol
+EQUIPO = [
+    ("Luis", "Luis Enrique Rodriguez Gonzalez", "Product Owner / lider",
+     "Vision del producto, backlog, sprints, enlace con el profesor"),
+    ("Elian", "Castell Guzman Elian Avishayr", "Backend - motor de juegos",
+     "Reglas de los juegos, azar del servidor, cobro y pago de apuestas"),
+    ("Alan", "Alan Emmanuel Oseguera Michel", "Backend - API y datos",
+     "Servidor, API, base de datos en Neon, saldos y despliegue"),
+    ("Hector", "Hector Jaime Navarro Guillen", "Frontend",
+     "Maquetas, estilos, pantallas, animaciones y chat"),
+    ("Josue", "Josue Angel Carrillo Cruz", "Documentacion y QA",
+     "Diagramas, salas, plan de pruebas y entregables"),
+]
+
+# Quien hace cada ticket (numero de ticket -> clave del integrante)
+RESPONSABLES = {
+    1: "Luis", 2: "Luis", 5: "Luis", 16: "Luis", 40: "Luis",
+    3: "Josue", 4: "Josue", 15: "Josue", 17: "Josue", 18: "Josue", 38: "Josue",
+    6: "Alan", 7: "Alan", 8: "Alan", 9: "Alan", 10: "Alan",
+    11: "Alan", 12: "Alan", 13: "Alan", 14: "Alan", 39: "Alan",
+    19: "Elian", 20: "Elian", 21: "Elian", 22: "Elian", 23: "Elian",
+    24: "Elian", 25: "Elian", 26: "Elian", 27: "Elian", 28: "Elian",
+    29: "Hector", 30: "Hector", 31: "Hector", 32: "Hector", 33: "Hector",
+    34: "Hector", 35: "Hector", 36: "Hector", 37: "Hector",
+}
+NOMBRE = {k: n for k, n, _r, _d in EQUIPO}
+ROL = {k: r for k, _n, r, _d in EQUIPO}
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 assert 35 <= len(TICKETS) <= 40, "Se esperaban entre 35 y 40 tickets, hay %d" % len(TICKETS)
@@ -245,9 +273,9 @@ assert 35 <= len(TICKETS) <= 40, "Se esperaban entre 35 y 40 tickets, hay %d" % 
 # ------------------------------------------------------------------- CSV
 with open(os.path.join(HERE, "montecristo-tickets.csv"), "w", newline="", encoding="utf-8") as f:
     w = csv.writer(f, quoting=csv.QUOTE_ALL)
-    w.writerow(["Issue Type", "Summary", "Description"])
-    for _etapa, titulo, desc in TICKETS:
-        w.writerow(["Tarea", titulo, desc])
+    w.writerow(["Issue Type", "Summary", "Description", "Assignee"])
+    for i, (_etapa, titulo, desc) in enumerate(TICKETS, 1):
+        w.writerow(["Tarea", titulo, desc, NOMBRE[RESPONSABLES[i]]])
 
 # ------------------------------------------------------------------- MD
 etapas = []
@@ -263,6 +291,25 @@ lineas = [
     "",
     "Para importarlos a Jira esta el archivo `montecristo-tickets.csv` de esta carpeta "
     "(columnas: tipo, titulo y descripcion).",
+    "",
+    "## Equipo",
+    "",
+    "| Integrante | Rol | De que se encarga | Tickets |",
+    "| --- | --- | --- | ---: |",
+]
+for clave, nombre, rol, desc in EQUIPO:
+    mios = sorted(n for n, c in RESPONSABLES.items() if c == clave)
+    lineas.append("| %s | %s | %s | %d |" % (nombre, rol, desc, len(mios)))
+lineas += [
+    "",
+    "### Reparto de los tickets",
+    "",
+]
+for clave, nombre, rol, _desc in EQUIPO:
+    mios = sorted(n for n, c in RESPONSABLES.items() if c == clave)
+    lineas.append("- **%s** (%s) - %d tickets: %s" %
+                  (nombre, rol, len(mios), ", ".join(str(n) for n in mios)))
+lineas += [
     "",
     "## Etapas",
     "",
@@ -281,7 +328,12 @@ for e in etapas:
         if etapa != e:
             continue
         num += 1
-        lineas += ["**%d. %s**" % (num, titulo), "", desc, ""]
+        lineas += ["**%d. %s**" % (num, titulo),
+                   "",
+                   "_Responsable: %s (%s)_" % (NOMBRE[RESPONSABLES[num]],
+                                               ROL[RESPONSABLES[num]]),
+                   "",
+                   desc, ""]
 
 lineas += [
     "## Como importar en Jira",
@@ -289,7 +341,10 @@ lineas += [
     "1. Entrar al proyecto y usar *Import issues from CSV* "
     "(o **Configuracion > Sistema > Importar datos externos > CSV**).",
     "2. Subir `montecristo-tickets.csv`.",
-    "3. Mapear las tres columnas: *Issue Type*, *Summary* y *Description*.",
+    "3. Mapear las columnas: *Issue Type*, *Summary*, *Description* y *Assignee*.",
+    "   La columna *Assignee* trae el nombre de cada integrante. Jira necesita que coincida con "
+    "su usuario o su correo: si no los reconoce, deja esa columna sin mapear e "
+    "   asignenlos a mano despues de importar (se pueden seleccionar varios a la vez).",
     "4. Importar y despues asignar cada ticket a un integrante del equipo.",
     "",
     "Si el proyecto de Jira esta en ingles, cambiar el valor *Tarea* por *Task* en la "
