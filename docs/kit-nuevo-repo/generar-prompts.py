@@ -18,7 +18,8 @@ fichas virtuales (sin dinero real), donde un grupo de amigos crea una sala priva
 codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por sala. Los juegos son: cara o cruz, dados, \
 ruleta y blackjack. Saldo inicial de cada jugador: 1000 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de datos, y HTML, CSS \
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon (el plan \
+gratuito, sin tarjeta) para la base de datos, y HTML, CSS \
 y JavaScript puro en el navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el \
 codigo del servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
@@ -79,7 +80,7 @@ TICKETS = [
 
     (4, "Hacer el diagrama de arquitectura de la pagina", "doc",
      "Hazme el diagrama de arquitectura de la pagina, en texto Y como imagen.",
-     ["Debe mostrar: navegador (HTML, CSS, JS), servidor Node con Express y Socket.IO, y la base de datos MySQL.",
+     ["Debe mostrar: navegador (HTML, CSS, JS), servidor Node con Express y Socket.IO, y la base de datos PostgreSQL en Neon.",
       "Marca con flechas que viaja por HTTP y que viaja por Socket.IO.",
       "Primero dame el diagrama en texto con sintaxis de Mermaid (flowchart) en el archivo "
       "docs/diagrama-arquitectura.md.",
@@ -99,44 +100,51 @@ TICKETS = [
       "Que sea corto y legible, no un README gigante."]),
 
     (6, "Crear la base de datos y conectarla al servidor", "codigo",
-     "Hazme la conexion a la base de datos MySQL desde el servidor.",
-     ["Crea src/db/conexion.js usando el paquete mysql2 con un pool de conexiones.",
-      "Los datos de conexion se leen de variables de entorno (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME) "
-      "con valores por defecto para desarrollo; usa dotenv.",
-      "Al arrancar, el servidor debe imprimir en consola si la conexion funciono o el error si fallo.",
-      "Incluye tambien el archivo .env.example con las variables vacias y agrega .env al .gitignore.",
-      "Dame el comando SQL para crear la base de datos vacia."]),
+     "Hazme la conexion a la base de datos PostgreSQL de Neon desde el servidor.",
+     ["Crea src/db/conexion.js usando el paquete pg (node-postgres) con un Pool.",
+      "La cadena de conexion se lee de la variable de entorno DATABASE_URL; usa dotenv para leerla "
+      "del archivo .env.",
+      "Neon exige SSL: configura el pool con ssl y rejectUnauthorized en false, o deja el "
+      "sslmode=require que ya trae la cadena de Neon.",
+      "Al arrancar, el servidor hace una consulta de prueba (SELECT NOW()) e imprime en consola si la "
+      "conexion funciono o el error si fallo.",
+      "Incluye el archivo .env.example con DATABASE_URL vacia y agrega .env al .gitignore.",
+      "Avisame que Neon duerme la base cuando no se usa, y que la primera consulta despues puede "
+      "tardar unos segundos."]),
 
     (7, "Crear la tabla de jugadores", "codigo",
      "Hazme el script SQL de la tabla de jugadores.",
-     ["Archivo: src/db/sql/01_jugadores.sql.",
-      "Campos: id (entero autoincremental, llave primaria), nombre (varchar 30), avatar (varchar 50), "
-      "saldo (entero, por defecto 1000), fecha_registro (datetime por defecto la fecha actual).",
+     ["Archivo: src/db/sql/01_jugadores.sql, con sintaxis de PostgreSQL (no de MySQL).",
+      "Campos: id SERIAL llave primaria, nombre VARCHAR(30) obligatorio, avatar VARCHAR(50), "
+      "saldo INTEGER por defecto 1000, fecha_registro TIMESTAMPTZ por defecto NOW().",
       "Usa CREATE TABLE IF NOT EXISTS para poder correrlo varias veces sin error.",
       "Agrega 2 INSERT de ejemplo comentados al final."]),
 
     (8, "Crear la tabla de salas", "codigo",
      "Hazme el script SQL de la tabla de salas.",
-     ["Archivo: src/db/sql/02_salas.sql.",
-      "Campos: id, codigo (varchar 5, unico), juego (varchar 20), id_anfitrion (entero, llave foranea a "
-      "jugadores), estado (varchar 10, 'abierta' o 'cerrada'), fecha_creacion.",
+     ["Archivo: src/db/sql/02_salas.sql, con sintaxis de PostgreSQL.",
+      "Campos: id SERIAL llave primaria, codigo VARCHAR(5) unico, juego VARCHAR(20), "
+      "id_anfitrion INTEGER con llave foranea a jugadores(id), estado VARCHAR(10) "
+      "('abierta' o 'cerrada'), fecha_creacion TIMESTAMPTZ por defecto NOW().",
       "Usa CREATE TABLE IF NOT EXISTS y declara la llave foranea.",
       "Explicame en 2 lineas por que el codigo debe ser unico."]),
 
     (9, "Crear la tabla de partidas jugadas", "codigo",
      "Hazme el script SQL de la tabla de partidas y la funcion que guarda una ronda terminada.",
-     ["Archivo SQL: src/db/sql/03_partidas.sql, con campos id, id_sala, id_jugador, juego, apuesta, "
-      "resultado (varchar: 'gano', 'perdio', 'empate'), ganancia y fecha.",
+     ["Archivo SQL: src/db/sql/03_partidas.sql, con sintaxis de PostgreSQL: id SERIAL, id_sala y "
+      "id_jugador INTEGER con llaves foraneas, juego VARCHAR(20), apuesta INTEGER, "
+      "resultado VARCHAR(10) ('gano', 'perdio', 'empate'), ganancia INTEGER y fecha TIMESTAMPTZ "
+      "por defecto NOW().",
       "Archivo JS: src/db/partidas.js con la funcion guardarPartida(datos) que inserta una fila.",
-      "La funcion debe usar consultas preparadas (con ?) y no concatenar texto.",
+      "La funcion debe usar consultas preparadas con $1, $2 (asi es en PostgreSQL) y no concatenar texto.",
       "Agrega la funcion obtenerUltimasPartidas(idSala, limite) que regresa las ultimas rondas de una sala."]),
 
     (10, "Funciones para guardar y consultar jugadores", "codigo",
      "Hazme el archivo src/db/jugadores.js con las funciones basicas para manejar jugadores.",
      ["Funciones: crearJugador(nombre, avatar), obtenerJugadorPorId(id), "
       "actualizarPerfil(id, nombre, avatar) y actualizarSaldo(id, nuevoSaldo).",
-      "Todas usan el pool de src/db/conexion.js y consultas preparadas con ?.",
-      "Las funciones son async y regresan el jugador ya listo como objeto, no el resultado crudo de MySQL.",
+      "Todas usan el pool de src/db/conexion.js y consultas preparadas con $1, $2 (PostgreSQL).",
+      "Las funciones son async y regresan el jugador ya listo como objeto (result.rows[0]), no el resultado crudo de pg.",
       "Si un jugador no existe, que regrese null en vez de lanzar error."]),
 
     (11, "Crear el proyecto de Node con Express", "codigo",
@@ -386,7 +394,7 @@ TICKETS = [
     (39, "Subir la pagina a un hosting gratuito", "doc",
      "Explicame paso a paso como publicar este proyecto en un hosting gratuito, en el archivo "
      "docs/despliegue.md.",
-     ["Usa Render (plan gratuito) para el servidor Node y una base de datos MySQL gratuita en la nube.",
+     ["Usa Render (plan gratuito) para el servidor Node y la misma base de PostgreSQL de Neon que ya usamos en desarrollo.",
       "Pasos numerados con lo que hay que dar clic y que variables de entorno configurar.",
       "Explica como se conecta el repositorio de GitHub para que se publique solo al hacer merge.",
       "Advierte de las limitaciones del plan gratuito (se duerme tras un rato de no usarse).",
@@ -427,44 +435,46 @@ FUERA = {
         "Clic en 'Actions' y luego en 'PNG' para descargarlo.",
         "Renombra el archivo como diagrama-arquitectura.png y copialo a la carpeta docs/.",
     ]),
-    6: ("Instalar MySQL y crear la base de datos vacia en tu computadora", [
-        "Descarga XAMPP desde https://www.apachefriends.org (trae MySQL y phpMyAdmin juntos y es lo "
-        "mas facil para la escuela). Si prefieres MySQL solo, bajalo de https://dev.mysql.com/downloads/",
-        "Instala XAMPP con las opciones por defecto.",
-        "Abre el 'XAMPP Control Panel' y dale 'Start' a los modulos Apache y MySQL. Los dos deben "
-        "quedar en verde.",
-        "En el renglon de MySQL da clic en 'Admin': se abre phpMyAdmin en el navegador, en la "
-        "direccion http://localhost/phpmyadmin",
-        "En phpMyAdmin, clic en la pestania 'Bases de datos' (arriba a la izquierda).",
-        "Escribe el nombre montecristo, elige el cotejamiento utf8mb4_general_ci y da clic en 'Crear'.",
-        "Con XAMPP, el usuario es root y la contrasenia esta vacia. Esos son los datos que van en tu "
-        "archivo .env (DB_USER=root y DB_PASSWORD= vacio).",
-        "Importante: el archivo .env NO se sube al repositorio. Cada quien tiene el suyo en su "
-        "computadora; en el repo solo va .env.example.",
-        "Deja XAMPP prendido mientras trabajas: si apagas MySQL, el servidor no se va a poder conectar.",
+    6: ("Crear la base de datos en Neon y copiar la cadena de conexion", [
+        "Entra a https://neon.tech y da clic en 'Sign up'. Puedes entrar con tu cuenta de GitHub. "
+        "El plan gratuito no pide tarjeta.",
+        "Al entrar te pide crear un proyecto: ponle de nombre montecristo, deja la version de "
+        "PostgreSQL que viene por defecto y elige la region mas cercana (por ejemplo US East).",
+        "Da clic en 'Create project'. Tarda unos segundos.",
+        "En cuanto termina, te muestra un recuadro que dice 'Connection string' con algo como: "
+        "postgresql://usuario:clave@ep-algo.us-east-2.aws.neon.tech/neondb?sslmode=require",
+        "Copia esa cadena completa con el boton de copiar. Si cerraste el recuadro, esta en el "
+        "Dashboard del proyecto, en 'Connection Details'.",
+        "En la carpeta del proyecto, crea un archivo llamado .env (asi, con el punto adelante) y "
+        "pega adentro: DATABASE_URL=\"la cadena que copiaste\"",
+        "IMPORTANTE: el archivo .env NO se sube al repositorio. Cada quien tiene el suyo; en el repo "
+        "solo va .env.example sin datos reales. Revisa que .env este en el .gitignore.",
+        "Solo UNA persona del equipo crea el proyecto en Neon y les pasa la cadena a los demas por "
+        "privado (no por el repositorio ni por el grupo publico). Asi todos trabajan sobre la misma base.",
+        "Dato util: en el plan gratis la base se duerme cuando nadie la usa. La primera consulta "
+        "despues de un rato tarda unos segundos; no esta descompuesta.",
     ]),
-    7: ("Correr el script SQL en phpMyAdmin", [
-        "Abre el XAMPP Control Panel y asegurate de que MySQL este en verde.",
-        "Entra a http://localhost/phpmyadmin y selecciona la base de datos montecristo en la lista "
-        "de la izquierda.",
-        "Da clic en la pestania 'SQL' de arriba.",
-        "Abre el archivo .sql que te dio Arena con el Bloc de notas o VS Code, copia todo el contenido "
-        "y pegalo en el recuadro.",
-        "Da clic en 'Continuar'. Si todo salio bien, aparece un mensaje verde y la tabla aparece en la "
-        "lista de la izquierda.",
-        "Si marca error, lee el mensaje: casi siempre es que no seleccionaste la base de datos antes "
-        "de pegar el script.",
+    7: ("Correr el script SQL en el editor de Neon", [
+        "Entra a https://console.neon.tech y abre el proyecto montecristo.",
+        "En el menu de la izquierda da clic en 'SQL Editor'.",
+        "Abre el archivo .sql que te dio Arena con VS Code o el Bloc de notas, copia todo el contenido "
+        "y pegalo en el editor.",
+        "Da clic en 'Run' (o presiona Ctrl+Enter). Abajo aparece el resultado.",
+        "Para comprobar que quedo, ve a 'Tables' en el menu de la izquierda: ahi debe aparecer la "
+        "tabla jugadores con sus campos.",
+        "Si marca error, lee el mensaje: casi siempre es que copiaste sintaxis de MySQL "
+        "(AUTO_INCREMENT en vez de SERIAL, por ejemplo). Pidele a Arena que lo corrija para PostgreSQL.",
     ]),
-    8: ("Correr el script SQL en phpMyAdmin", [
-        "Mismos pasos del ticket 7: phpMyAdmin, selecciona la base montecristo, pestania 'SQL', pega "
-        "el contenido del archivo .sql y 'Continuar'.",
+    8: ("Correr el script SQL en el editor de Neon", [
+        "Mismos pasos del ticket 7: console.neon.tech, proyecto montecristo, 'SQL Editor', pega el "
+        "contenido del archivo .sql y da clic en 'Run'.",
         "Ojo con el orden: la tabla de salas tiene una llave foranea hacia jugadores, asi que la tabla "
-        "de jugadores (ticket 7) ya debe existir. Si no, te va a marcar error de 'foreign key'.",
+        "de jugadores (ticket 7) ya debe existir. Si no, marca error de 'foreign key'.",
     ]),
-    9: ("Correr el script SQL en phpMyAdmin", [
-        "Mismos pasos del ticket 7.",
+    9: ("Correr el script SQL en el editor de Neon", [
+        "Mismos pasos del ticket 7, en el 'SQL Editor' de Neon.",
         "Esta tabla depende de salas y de jugadores: corre primero los scripts de los tickets 7 y 8.",
-        "Para comprobar que quedo, da clic en la tabla partidas y luego en la pestania 'Estructura': "
+        "Para comprobar que quedo, entra a 'Tables' en el menu de la izquierda y da clic en partidas: "
         "deben aparecer todos los campos.",
     ]),
     11: ("Instalar Node.js si todavia no lo tienes", [
@@ -487,20 +497,20 @@ FUERA = {
         "Mientras prueban, llenen la tabla del plan de pruebas y anoten cada error con los pasos para "
         "repetirlo.",
     ]),
-    39: ("Publicar la pagina en Render y crear la base de datos en la nube", [
-        "BASE DE DATOS: entra a https://railway.app (o https://aiven.io) e inicia sesion con GitHub.",
-        "Crea un proyecto nuevo y elige 'Provision MySQL' (o 'MySQL' en el catalogo de servicios).",
-        "Cuando termine, entra al servicio y abre la pestania 'Variables' o 'Connect': ahi vienen el "
-        "host, el usuario, la contrasenia, el puerto y el nombre de la base. Copialos a un bloc de notas.",
-        "Conectate a esa base desde phpMyAdmin o MySQL Workbench con esos datos y corre los tres "
-        "scripts .sql del proyecto para crear las tablas.",
+    39: ("Publicar la pagina en Render (la base ya esta en Neon)", [
+        "BASE DE DATOS: no hay que crear nada nuevo. Ya la tienen en Neon desde el ticket 6 y esa "
+        "misma sirve para la pagina publicada, porque vive en la nube.",
+        "Entra a https://console.neon.tech, abre el proyecto y copia otra vez la cadena de conexion "
+        "('Connection string') del Dashboard. La vas a necesitar en un momento.",
+        "Antes de publicar, revisa en el 'SQL Editor' que las tres tablas ya existan (jugadores, "
+        "salas y partidas). Si no, corre los scripts de los tickets 7, 8 y 9.",
         "SERVIDOR: entra a https://render.com e inicia sesion con GitHub.",
         "Da clic en 'New +' y luego en 'Web Service'.",
         "Autoriza a Render para que vea tus repositorios y elige el repositorio de MonteCristo.",
         "Llena el formulario: Name = montecristo; Runtime = Node; Build Command = npm install; "
         "Start Command = npm start; Instance Type = Free.",
-        "Baja a 'Environment Variables' y agrega una por una: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME "
-        "y DB_PORT, con los datos que copiaste de la base de datos.",
+        "Baja a 'Environment Variables' y agrega UNA sola variable: DATABASE_URL, con la cadena de "
+        "conexion de Neon que copiaste (la que termina en ?sslmode=require).",
         "Da clic en 'Create Web Service' y espera a que el log diga 'Live' (tarda unos minutos).",
         "Arriba aparece la direccion publica, algo como https://montecristo.onrender.com. Esa es la "
         "que le pasan al profesor.",

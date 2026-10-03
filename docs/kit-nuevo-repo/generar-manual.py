@@ -165,7 +165,7 @@ H.append(tabla(
      ["Ejemplo completo", "Un ticket de principio a fin, con los comandos reales"],
      ["Problemas comunes", "Qué hacer cuando algo sale mal"],
      ["Reglas del equipo", "Lista para revisar antes de pedir el merge"],
-     ["Anexos", "Guías de lo que se hace fuera de Arena: diagramas, MySQL, Render y pruebas"]],
+     ["Anexos", "Guías de lo que se hace fuera de Arena: diagramas, Neon, Render y pruebas"]],
     [3.6 * cm, 12.8 * cm]))
 
 # Antes de empezar
@@ -511,10 +511,10 @@ H.append(p("Hay tickets que no se terminan en el chat: hay que entrar a otra pá
 H.append(tabla(
     ["Anexo", "Para qué tickets", "Dónde hay que entrar"],
     [["A. Exportar un diagrama a imagen", "3 y 4", "mermaid.live"],
-     ["B. Instalar MySQL y crear la base", "6", "XAMPP (en tu computadora)"],
-     ["C. Correr los scripts SQL", "7, 8 y 9", "phpMyAdmin (en tu computadora)"],
+     ["B. Crear la base de datos", "6", "neon.tech"],
+     ["C. Correr los scripts SQL", "7, 8 y 9", "SQL Editor de Neon"],
      ["D. Probar entre varias computadoras", "38", "Tu red local o la página publicada"],
-     ["E. Publicar la página", "39", "Railway y Render"],
+     ["E. Publicar la página", "39", "render.com"],
      ["F. Armar las diapositivas", "40", "Canva, PowerPoint o Google Slides"]],
     [6.2 * cm, 4.0 * cm, 6.2 * cm]))
 
@@ -533,39 +533,49 @@ H.append(vinetas([
     "Renombra la imagen y cópiala a la carpeta <font face='Courier'>docs/</font> del repositorio.",
 ], numerada=True))
 
-H.append(p("Anexo B. Instalar MySQL y crear la base de datos (ticket 6)", "h2"))
+H.append(p("Anexo B. Crear la base de datos en Neon (ticket 6)", "h2"))
+H.append(p("Nuestra base de datos es <b>PostgreSQL en Neon</b>, que vive en la nube: no hay que "
+           "instalar nada en la computadora y el plan gratuito no pide tarjeta."))
 H.append(vinetas([
-    "Descarga <b>XAMPP</b> de <b>https://www.apachefriends.org</b> (trae MySQL y phpMyAdmin juntos, "
-    "es lo más fácil) e instálalo con las opciones por defecto.",
-    "Abre el <b>XAMPP Control Panel</b> y dale <b>Start</b> a <b>Apache</b> y a <b>MySQL</b>: los dos "
-    "deben quedar en verde.",
-    "En el renglón de MySQL, clic en <b>Admin</b>. Se abre phpMyAdmin en "
-    "<font face='Courier'>http://localhost/phpmyadmin</font>",
-    "Pestaña <b>Bases de datos</b> → escribe <font face='Courier'>montecristo</font> → cotejamiento "
-    "<font face='Courier'>utf8mb4_general_ci</font> → <b>Crear</b>.",
-    "Con XAMPP el usuario es <font face='Courier'>root</font> y la contraseña va <b>vacía</b>. Esos "
-    "datos son los que pones en tu archivo <font face='Courier'>.env</font>.",
+    "Entra a <b>https://neon.tech</b> y da clic en <b>Sign up</b>. Puedes entrar con tu cuenta de GitHub.",
+    "Crea un proyecto: nómbralo <font face='Courier'>montecristo</font>, deja la versión de PostgreSQL "
+    "por defecto y elige la región más cercana (por ejemplo US East). Clic en <b>Create project</b>.",
+    "Al terminar aparece el recuadro <b>Connection string</b>, con algo como "
+    "<font face='Courier'>postgresql://usuario:clave@ep-algo.neon.tech/neondb?sslmode=require</font>. "
+    "Cópiala completa.",
+    "Si cerraste el recuadro, la encuentras en el <b>Dashboard</b> del proyecto, en "
+    "<b>Connection Details</b>.",
+    "En la carpeta del proyecto crea el archivo <font face='Courier'>.env</font> y pega adentro: "
+    "<font face='Courier'>DATABASE_URL=\"la cadena que copiaste\"</font>",
 ], numerada=True))
+H.append(tip("Una sola base para todo el equipo",
+             "Solo una persona crea el proyecto en Neon y les pasa la cadena a los demás <b>por "
+             "privado</b>. Así los cuatro trabajan sobre la misma base y ven los mismos datos. Y "
+             "ojo: en el plan gratis la base se duerme si nadie la usa, así que la primera consulta "
+             "después de un rato tarda unos segundos. No está descompuesta."))
 H.append(alerta("El archivo .env no se sube nunca",
-                "Cada quien tiene el suyo en su computadora. En el repositorio solo va "
-                "<font face='Courier'>.env.example</font> con las variables vacías. Si subes tus "
-                "contraseñas al repo, el profesor lo va a ver y además es mala práctica."))
+                "La cadena de conexión trae usuario y contraseña. En el repositorio solo va "
+                "<font face='Courier'>.env.example</font> con la variable vacía, y "
+                "<font face='Courier'>.env</font> debe estar listado en el "
+                "<font face='Courier'>.gitignore</font>. Si subes la cadena real, cualquiera que vea "
+                "el repo puede entrar a la base."))
 
 H.append(PageBreak())
 H.append(p("Anexo C. Correr los scripts SQL (tickets 7, 8 y 9)", "h2"))
 H.append(vinetas([
-    "Abre el XAMPP Control Panel y revisa que MySQL esté en verde.",
-    "Entra a <font face='Courier'>http://localhost/phpmyadmin</font> y <b>selecciona la base "
-    "montecristo</b> en la lista de la izquierda (si no la seleccionas, el script falla).",
-    "Pestaña <b>SQL</b> de arriba.",
-    "Abre el archivo <font face='Courier'>.sql</font> que te dio Arena, copia todo y pégalo en el "
-    "recuadro.",
-    "Clic en <b>Continuar</b>. Si salió bien, aparece un mensaje verde y la tabla se ve a la izquierda.",
+    "Entra a <b>https://console.neon.tech</b> y abre el proyecto <font face='Courier'>montecristo</font>.",
+    "En el menú de la izquierda, clic en <b>SQL Editor</b>.",
+    "Abre el archivo <font face='Courier'>.sql</font> que te dio Arena, copia todo y pégalo en el editor.",
+    "Clic en <b>Run</b> (o Ctrl+Enter). El resultado sale abajo.",
+    "Para comprobar, entra a <b>Tables</b> en el menú de la izquierda: ahí debe aparecer la tabla "
+    "con sus campos.",
 ], numerada=True))
 H.append(tip("El orden importa",
              "Primero jugadores (ticket 7), luego salas (8) y al final partidas (9). Las tablas de "
-             "salas y partidas apuntan a jugadores con llaves foráneas: si la corres antes, te marca "
-             "error de <i>foreign key</i>."))
+             "salas y partidas apuntan a jugadores con llaves foráneas: si las corres antes, marca "
+             "error de <i>foreign key</i>. Y si el script trae "
+             "<font face='Courier'>AUTO_INCREMENT</font>, es sintaxis de MySQL: en PostgreSQL va "
+             "<font face='Courier'>SERIAL</font>. Pídele a Arena que lo corrija."))
 
 H.append(p("Anexo D. Probar entre varias computadoras (ticket 38)", "h2"))
 H.append(vinetas([
@@ -581,15 +591,13 @@ H.append(vinetas([
 
 H.append(PageBreak())
 H.append(p("Anexo E. Publicar la página (ticket 39)", "h2"))
-H.append(p("Son dos cosas: la base de datos en la nube y el servidor. Primero la base.", "p"))
-H.append(p("Base de datos en la nube", "h2"))
+H.append(p("La base de datos ya está en la nube desde el ticket 6, así que solo falta el servidor.", "p"))
+H.append(p("Antes de empezar", "h2"))
 H.append(vinetas([
-    "Entra a <b>https://railway.app</b> e inicia sesión con GitHub.",
-    "<b>New Project</b> → <b>Provision MySQL</b>.",
-    "Abre el servicio y busca la pestaña <b>Variables</b> o <b>Connect</b>: ahí están el host, "
-    "usuario, contraseña, puerto y nombre de la base. Cópialos a un bloc de notas.",
-    "Conéctate a esa base con phpMyAdmin o MySQL Workbench usando esos datos y corre los tres "
-    "scripts <font face='Courier'>.sql</font> para crear las tablas.",
+    "Entra a <b>https://console.neon.tech</b> y copia otra vez la cadena de conexión del "
+    "<b>Dashboard</b>: la vas a necesitar en Render.",
+    "En el <b>SQL Editor</b>, revisa que ya existan las tres tablas (jugadores, salas y partidas). "
+    "Si no, corre los scripts de los tickets 7, 8 y 9.",
 ], numerada=True))
 H.append(p("Servidor en Render", "h2"))
 H.append(vinetas([
@@ -598,8 +606,8 @@ H.append(vinetas([
     "Llena: <b>Name</b> montecristo · <b>Runtime</b> Node · <b>Build Command</b> "
     "<font face='Courier'>npm install</font> · <b>Start Command</b> "
     "<font face='Courier'>npm start</font> · <b>Instance Type</b> Free.",
-    "En <b>Environment Variables</b> agrega DB_HOST, DB_USER, DB_PASSWORD, DB_NAME y DB_PORT con "
-    "los datos de Railway.",
+    "En <b>Environment Variables</b> agrega una sola variable: <b>DATABASE_URL</b>, con la cadena "
+    "de conexión de Neon (la que termina en <font face='Courier'>?sslmode=require</font>).",
     "<b>Create Web Service</b> y espera a que el log diga <b>Live</b>.",
     "Arriba aparece la dirección pública (algo como https://montecristo.onrender.com). Anótenla en "
     "el README.",

@@ -16,7 +16,7 @@ que necesites y lo mandas. Nada más.
 > privada, comparte un código de 5 caracteres y juegan juntos.
 >
 > Tecnologías: Node.js con Express en el servidor, Socket.IO para el tiempo real,
-> [MySQL / PostgreSQL / SQLite] para la base de datos, y HTML, CSS y JavaScript puro
+> PostgreSQL alojado en Neon (plan gratuito) para la base de datos, y HTML, CSS y JavaScript puro
 > en el navegador (sin frameworks).
 >
 > Juegos incluidos: cara o cruz, dados, ruleta y blackjack. Máximo 6 jugadores por sala.

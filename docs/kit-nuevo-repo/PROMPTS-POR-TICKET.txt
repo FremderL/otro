@@ -79,10 +79,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -123,10 +123,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -168,10 +168,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -240,10 +240,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -254,7 +254,7 @@ imagen.
 
 Detalles de lo que necesito:
 - Debe mostrar: navegador (HTML, CSS, JS), servidor Node con Express y Socket.IO, y la base
-  de datos MySQL.
+  de datos PostgreSQL en Neon.
 - Marca con flechas que viaja por HTTP y que viaja por Socket.IO.
 - Primero dame el diagrama en texto con sintaxis de Mermaid (flowchart) en el archivo
   docs/diagrama-arquitectura.md.
@@ -302,10 +302,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -344,26 +344,29 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
 administracion, moderacion, reportes, login con contrasena ni seguridad avanzada.
 
-Mi tarea de hoy (ticket 6): Hazme la conexion a la base de datos MySQL desde el servidor.
+Mi tarea de hoy (ticket 6): Hazme la conexion a la base de datos PostgreSQL de Neon desde el
+servidor.
 
 Detalles de lo que necesito:
-- Crea src/db/conexion.js usando el paquete mysql2 con un pool de conexiones.
-- Los datos de conexion se leen de variables de entorno (DB_HOST, DB_USER, DB_PASSWORD,
-  DB_NAME) con valores por defecto para desarrollo; usa dotenv.
-- Al arrancar, el servidor debe imprimir en consola si la conexion funciono o el error si
-  fallo.
-- Incluye tambien el archivo .env.example con las variables vacias y agrega .env al
-  .gitignore.
-- Dame el comando SQL para crear la base de datos vacia.
+- Crea src/db/conexion.js usando el paquete pg (node-postgres) con un Pool.
+- La cadena de conexion se lee de la variable de entorno DATABASE_URL; usa dotenv para
+  leerla del archivo .env.
+- Neon exige SSL: configura el pool con ssl y rejectUnauthorized en false, o deja el
+  sslmode=require que ya trae la cadena de Neon.
+- Al arrancar, el servidor hace una consulta de prueba (SELECT NOW()) e imprime en consola
+  si la conexion funciono o el error si fallo.
+- Incluye el archivo .env.example con DATABASE_URL vacia y agrega .env al .gitignore.
+- Avisame que Neon duerme la base cuando no se usa, y que la primera consulta despues puede
+  tardar unos segundos.
 
 Reglas de entrega (respetalas al pie de la letra):
 - Haz SOLO lo que pide este ticket. No adelantes trabajo de otros tickets.
@@ -380,25 +383,29 @@ Reglas de entrega (respetalas al pie de la letra):
   | OJO: ESTE TICKET NO SE TERMINA DENTRO DE ARENA                                              |
   +--------------------------------------------------------------------------------------------+
 
-  Instalar MySQL y crear la base de datos vacia en tu computadora
+  Crear la base de datos en Neon y copiar la cadena de conexion
 
-   1. Descarga XAMPP desde https://www.apachefriends.org (trae MySQL y phpMyAdmin
-      juntos y es lo mas facil para la escuela). Si prefieres MySQL solo, bajalo de
-      https://dev.mysql.com/downloads/
-   2. Instala XAMPP con las opciones por defecto.
-   3. Abre el 'XAMPP Control Panel' y dale 'Start' a los modulos Apache y MySQL. Los
-      dos deben quedar en verde.
-   4. En el renglon de MySQL da clic en 'Admin': se abre phpMyAdmin en el navegador,
-      en la direccion http://localhost/phpmyadmin
-   5. En phpMyAdmin, clic en la pestania 'Bases de datos' (arriba a la izquierda).
-   6. Escribe el nombre montecristo, elige el cotejamiento utf8mb4_general_ci y da
-      clic en 'Crear'.
-   7. Con XAMPP, el usuario es root y la contrasenia esta vacia. Esos son los datos
-      que van en tu archivo .env (DB_USER=root y DB_PASSWORD= vacio).
-   8. Importante: el archivo .env NO se sube al repositorio. Cada quien tiene el suyo
-      en su computadora; en el repo solo va .env.example.
-   9. Deja XAMPP prendido mientras trabajas: si apagas MySQL, el servidor no se va a
-      poder conectar.
+   1. Entra a https://neon.tech y da clic en 'Sign up'. Puedes entrar con tu cuenta de
+      GitHub. El plan gratuito no pide tarjeta.
+   2. Al entrar te pide crear un proyecto: ponle de nombre montecristo, deja la
+      version de PostgreSQL que viene por defecto y elige la region mas cercana (por
+      ejemplo US East).
+   3. Da clic en 'Create project'. Tarda unos segundos.
+   4. En cuanto termina, te muestra un recuadro que dice 'Connection string' con algo
+      como: postgresql://usuario:clave@ep-algo.us-
+      east-2.aws.neon.tech/neondb?sslmode=require
+   5. Copia esa cadena completa con el boton de copiar. Si cerraste el recuadro, esta
+      en el Dashboard del proyecto, en 'Connection Details'.
+   6. En la carpeta del proyecto, crea un archivo llamado .env (asi, con el punto
+      adelante) y pega adentro: DATABASE_URL="la cadena que copiaste"
+   7. IMPORTANTE: el archivo .env NO se sube al repositorio. Cada quien tiene el suyo;
+      en el repo solo va .env.example sin datos reales. Revisa que .env este en el
+      .gitignore.
+   8. Solo UNA persona del equipo crea el proyecto en Neon y les pasa la cadena a los
+      demas por privado (no por el repositorio ni por el grupo publico). Asi todos
+      trabajan sobre la misma base.
+   9. Dato util: en el plan gratis la base se duerme cuando nadie la usa. La primera
+      consulta despues de un rato tarda unos segundos; no esta descompuesta.
 
 
 ================================================================================================
@@ -413,10 +420,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -425,10 +432,9 @@ administracion, moderacion, reportes, login con contrasena ni seguridad avanzada
 Mi tarea de hoy (ticket 7): Hazme el script SQL de la tabla de jugadores.
 
 Detalles de lo que necesito:
-- Archivo: src/db/sql/01_jugadores.sql.
-- Campos: id (entero autoincremental, llave primaria), nombre (varchar 30), avatar (varchar
-  50), saldo (entero, por defecto 1000), fecha_registro (datetime por defecto la fecha
-  actual).
+- Archivo: src/db/sql/01_jugadores.sql, con sintaxis de PostgreSQL (no de MySQL).
+- Campos: id SERIAL llave primaria, nombre VARCHAR(30) obligatorio, avatar VARCHAR(50),
+  saldo INTEGER por defecto 1000, fecha_registro TIMESTAMPTZ por defecto NOW().
 - Usa CREATE TABLE IF NOT EXISTS para poder correrlo varias veces sin error.
 - Agrega 2 INSERT de ejemplo comentados al final.
 
@@ -447,18 +453,18 @@ Reglas de entrega (respetalas al pie de la letra):
   | OJO: ESTE TICKET NO SE TERMINA DENTRO DE ARENA                                              |
   +--------------------------------------------------------------------------------------------+
 
-  Correr el script SQL en phpMyAdmin
+  Correr el script SQL en el editor de Neon
 
-   1. Abre el XAMPP Control Panel y asegurate de que MySQL este en verde.
-   2. Entra a http://localhost/phpmyadmin y selecciona la base de datos montecristo en
-      la lista de la izquierda.
-   3. Da clic en la pestania 'SQL' de arriba.
-   4. Abre el archivo .sql que te dio Arena con el Bloc de notas o VS Code, copia todo
-      el contenido y pegalo en el recuadro.
-   5. Da clic en 'Continuar'. Si todo salio bien, aparece un mensaje verde y la tabla
-      aparece en la lista de la izquierda.
-   6. Si marca error, lee el mensaje: casi siempre es que no seleccionaste la base de
-      datos antes de pegar el script.
+   1. Entra a https://console.neon.tech y abre el proyecto montecristo.
+   2. En el menu de la izquierda da clic en 'SQL Editor'.
+   3. Abre el archivo .sql que te dio Arena con VS Code o el Bloc de notas, copia todo
+      el contenido y pegalo en el editor.
+   4. Da clic en 'Run' (o presiona Ctrl+Enter). Abajo aparece el resultado.
+   5. Para comprobar que quedo, ve a 'Tables' en el menu de la izquierda: ahi debe
+      aparecer la tabla jugadores con sus campos.
+   6. Si marca error, lee el mensaje: casi siempre es que copiaste sintaxis de MySQL
+      (AUTO_INCREMENT en vez de SERIAL, por ejemplo). Pidele a Arena que lo corrija para
+      PostgreSQL.
 
 
 ================================================================================================
@@ -473,10 +479,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -485,9 +491,10 @@ administracion, moderacion, reportes, login con contrasena ni seguridad avanzada
 Mi tarea de hoy (ticket 8): Hazme el script SQL de la tabla de salas.
 
 Detalles de lo que necesito:
-- Archivo: src/db/sql/02_salas.sql.
-- Campos: id, codigo (varchar 5, unico), juego (varchar 20), id_anfitrion (entero, llave
-  foranea a jugadores), estado (varchar 10, 'abierta' o 'cerrada'), fecha_creacion.
+- Archivo: src/db/sql/02_salas.sql, con sintaxis de PostgreSQL.
+- Campos: id SERIAL llave primaria, codigo VARCHAR(5) unico, juego VARCHAR(20), id_anfitrion
+  INTEGER con llave foranea a jugadores(id), estado VARCHAR(10) ('abierta' o 'cerrada'),
+  fecha_creacion TIMESTAMPTZ por defecto NOW().
 - Usa CREATE TABLE IF NOT EXISTS y declara la llave foranea.
 - Explicame en 2 lineas por que el codigo debe ser unico.
 
@@ -506,13 +513,13 @@ Reglas de entrega (respetalas al pie de la letra):
   | OJO: ESTE TICKET NO SE TERMINA DENTRO DE ARENA                                              |
   +--------------------------------------------------------------------------------------------+
 
-  Correr el script SQL en phpMyAdmin
+  Correr el script SQL en el editor de Neon
 
-   1. Mismos pasos del ticket 7: phpMyAdmin, selecciona la base montecristo, pestania
-      'SQL', pega el contenido del archivo .sql y 'Continuar'.
+   1. Mismos pasos del ticket 7: console.neon.tech, proyecto montecristo, 'SQL
+      Editor', pega el contenido del archivo .sql y da clic en 'Run'.
    2. Ojo con el orden: la tabla de salas tiene una llave foranea hacia jugadores, asi
-      que la tabla de jugadores (ticket 7) ya debe existir. Si no, te va a marcar error
-      de 'foreign key'.
+      que la tabla de jugadores (ticket 7) ya debe existir. Si no, marca error de
+      'foreign key'.
 
 
 ================================================================================================
@@ -527,10 +534,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -540,10 +547,13 @@ Mi tarea de hoy (ticket 9): Hazme el script SQL de la tabla de partidas y la fun
 guarda una ronda terminada.
 
 Detalles de lo que necesito:
-- Archivo SQL: src/db/sql/03_partidas.sql, con campos id, id_sala, id_jugador, juego,
-  apuesta, resultado (varchar: 'gano', 'perdio', 'empate'), ganancia y fecha.
+- Archivo SQL: src/db/sql/03_partidas.sql, con sintaxis de PostgreSQL: id SERIAL, id_sala y
+  id_jugador INTEGER con llaves foraneas, juego VARCHAR(20), apuesta INTEGER, resultado
+  VARCHAR(10) ('gano', 'perdio', 'empate'), ganancia INTEGER y fecha TIMESTAMPTZ por defecto
+  NOW().
 - Archivo JS: src/db/partidas.js con la funcion guardarPartida(datos) que inserta una fila.
-- La funcion debe usar consultas preparadas (con ?) y no concatenar texto.
+- La funcion debe usar consultas preparadas con $1, $2 (asi es en PostgreSQL) y no
+  concatenar texto.
 - Agrega la funcion obtenerUltimasPartidas(idSala, limite) que regresa las ultimas rondas de
   una sala.
 
@@ -562,13 +572,13 @@ Reglas de entrega (respetalas al pie de la letra):
   | OJO: ESTE TICKET NO SE TERMINA DENTRO DE ARENA                                              |
   +--------------------------------------------------------------------------------------------+
 
-  Correr el script SQL en phpMyAdmin
+  Correr el script SQL en el editor de Neon
 
-   1. Mismos pasos del ticket 7.
+   1. Mismos pasos del ticket 7, en el 'SQL Editor' de Neon.
    2. Esta tabla depende de salas y de jugadores: corre primero los scripts de los
       tickets 7 y 8.
-   3. Para comprobar que quedo, da clic en la tabla partidas y luego en la pestania
-      'Estructura': deben aparecer todos los campos.
+   3. Para comprobar que quedo, entra a 'Tables' en el menu de la izquierda y da clic
+      en partidas: deben aparecer todos los campos.
 
 
 ================================================================================================
@@ -583,10 +593,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -598,9 +608,9 @@ para manejar jugadores.
 Detalles de lo que necesito:
 - Funciones: crearJugador(nombre, avatar), obtenerJugadorPorId(id), actualizarPerfil(id,
   nombre, avatar) y actualizarSaldo(id, nuevoSaldo).
-- Todas usan el pool de src/db/conexion.js y consultas preparadas con ?.
-- Las funciones son async y regresan el jugador ya listo como objeto, no el resultado crudo
-  de MySQL.
+- Todas usan el pool de src/db/conexion.js y consultas preparadas con $1, $2 (PostgreSQL).
+- Las funciones son async y regresan el jugador ya listo como objeto (result.rows[0]), no el
+  resultado crudo de pg.
 - Si un jugador no existe, que regrese null en vez de lanzar error.
 
 Reglas de entrega (respetalas al pie de la letra):
@@ -627,10 +637,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -683,10 +693,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -727,10 +737,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -772,10 +782,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -816,10 +826,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -861,10 +871,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -904,10 +914,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -948,10 +958,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -994,10 +1004,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1041,10 +1051,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1084,10 +1094,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1130,10 +1140,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1174,10 +1184,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1219,10 +1229,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1262,10 +1272,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1306,10 +1316,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1352,10 +1362,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1395,10 +1405,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1439,10 +1449,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1484,10 +1494,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1528,10 +1538,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1572,10 +1582,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1615,10 +1625,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1660,10 +1670,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1705,10 +1715,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1751,10 +1761,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1796,10 +1806,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1839,10 +1849,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1902,10 +1912,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
@@ -1915,8 +1925,8 @@ Mi tarea de hoy (ticket 39): Explicame paso a paso como publicar este proyecto e
 gratuito, en el archivo docs/despliegue.md.
 
 Detalles de lo que necesito:
-- Usa Render (plan gratuito) para el servidor Node y una base de datos MySQL gratuita en la
-  nube.
+- Usa Render (plan gratuito) para el servidor Node y la misma base de PostgreSQL de Neon que
+  ya usamos en desarrollo.
 - Pasos numerados con lo que hay que dar clic y que variables de entorno configurar.
 - Explica como se conecta el repositorio de GitHub para que se publique solo al hacer merge.
 - Advierte de las limitaciones del plan gratuito (se duerme tras un rato de no usarse).
@@ -1936,33 +1946,30 @@ Reglas de entrega (respetalas al pie de la letra):
   | OJO: ESTE TICKET NO SE TERMINA DENTRO DE ARENA                                              |
   +--------------------------------------------------------------------------------------------+
 
-  Publicar la pagina en Render y crear la base de datos en la nube
+  Publicar la pagina en Render (la base ya esta en Neon)
 
-   1. BASE DE DATOS: entra a https://railway.app (o https://aiven.io) e inicia sesion
-      con GitHub.
-   2. Crea un proyecto nuevo y elige 'Provision MySQL' (o 'MySQL' en el catalogo de
-      servicios).
-   3. Cuando termine, entra al servicio y abre la pestania 'Variables' o 'Connect':
-      ahi vienen el host, el usuario, la contrasenia, el puerto y el nombre de la base.
-      Copialos a un bloc de notas.
-   4. Conectate a esa base desde phpMyAdmin o MySQL Workbench con esos datos y corre
-      los tres scripts .sql del proyecto para crear las tablas.
-   5. SERVIDOR: entra a https://render.com e inicia sesion con GitHub.
-   6. Da clic en 'New +' y luego en 'Web Service'.
-   7. Autoriza a Render para que vea tus repositorios y elige el repositorio de
+   1. BASE DE DATOS: no hay que crear nada nuevo. Ya la tienen en Neon desde el ticket
+      6 y esa misma sirve para la pagina publicada, porque vive en la nube.
+   2. Entra a https://console.neon.tech, abre el proyecto y copia otra vez la cadena
+      de conexion ('Connection string') del Dashboard. La vas a necesitar en un momento.
+   3. Antes de publicar, revisa en el 'SQL Editor' que las tres tablas ya existan
+      (jugadores, salas y partidas). Si no, corre los scripts de los tickets 7, 8 y 9.
+   4. SERVIDOR: entra a https://render.com e inicia sesion con GitHub.
+   5. Da clic en 'New +' y luego en 'Web Service'.
+   6. Autoriza a Render para que vea tus repositorios y elige el repositorio de
       MonteCristo.
-   8. Llena el formulario: Name = montecristo; Runtime = Node; Build Command = npm
+   7. Llena el formulario: Name = montecristo; Runtime = Node; Build Command = npm
       install; Start Command = npm start; Instance Type = Free.
-   9. Baja a 'Environment Variables' y agrega una por una: DB_HOST, DB_USER,
-      DB_PASSWORD, DB_NAME y DB_PORT, con los datos que copiaste de la base de datos.
-   10. Da clic en 'Create Web Service' y espera a que el log diga 'Live' (tarda unos
+   8. Baja a 'Environment Variables' y agrega UNA sola variable: DATABASE_URL, con la
+      cadena de conexion de Neon que copiaste (la que termina en ?sslmode=require).
+   9. Da clic en 'Create Web Service' y espera a que el log diga 'Live' (tarda unos
       minutos).
-   11. Arriba aparece la direccion publica, algo como
+   10. Arriba aparece la direccion publica, algo como
       https://montecristo.onrender.com. Esa es la que le pasan al profesor.
-   12. Ojo con el plan gratis: la pagina se duerme si nadie la usa por 15 minutos y la
+   11. Ojo con el plan gratis: la pagina se duerme si nadie la usa por 15 minutos y la
       primera visita despues tarda como un minuto en despertar. No se asusten el dia de
       la exposicion: abranla 5 minutos antes.
-   13. Anoten la direccion final en el README y en el documento de despliegue.
+   12. Anoten la direccion final en el README y en el documento de despliegue.
 
 
 ================================================================================================
@@ -1977,10 +1984,10 @@ comparte con un codigo de 5 caracteres y juegan juntos. Maximo 6 jugadores por s
 juegos son: cara o cruz, dados, ruleta y blackjack. Saldo inicial de cada jugador: 1000
 fichas. Apuesta minima: 10 fichas.
 
-Tecnologias: Node.js con Express, Socket.IO para el tiempo real, MySQL para la base de
-datos, y HTML, CSS y JavaScript puro en el navegador (sin frameworks). Estructura del
-repositorio: server.js en la raiz, el codigo del servidor en src/, el del navegador en
-public/ y la documentacion en docs/.
+Tecnologias: Node.js con Express, Socket.IO para el tiempo real, PostgreSQL alojado en Neon
+(el plan gratuito, sin tarjeta) para la base de datos, y HTML, CSS y JavaScript puro en el
+navegador (sin frameworks). Estructura del repositorio: server.js en la raiz, el codigo del
+servidor en src/, el del navegador en public/ y la documentacion en docs/.
 
 Importante: todas las decisiones del juego (resultados, pagos, turnos) se calculan en el
 servidor, nunca en el navegador. Es un proyecto de escuela: no quiero panel de
