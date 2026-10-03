@@ -164,7 +164,8 @@ H.append(tabla(
      ["Paso 10", "Que un compañero lo revise y se haga el merge"],
      ["Ejemplo completo", "Un ticket de principio a fin, con los comandos reales"],
      ["Problemas comunes", "Qué hacer cuando algo sale mal"],
-     ["Reglas del equipo", "Lista para revisar antes de pedir el merge"]],
+     ["Reglas del equipo", "Lista para revisar antes de pedir el merge"],
+     ["Anexos", "Guías de lo que se hace fuera de Arena: diagramas, MySQL, Render y pruebas"]],
     [3.6 * cm, 12.8 * cm]))
 
 # Antes de empezar
@@ -185,6 +186,30 @@ H.append(p("Comprueba que Git y Node estén bien instalados abriendo una termina
 H.append(codigo("git --version\nnode --version\nnpm --version"))
 H.append(p("Si los tres responden con un número de versión, estás listo. Si alguno dice que el "
            "comando no existe, falta instalarlo."))
+
+# Como bajar los archivos del kit
+H.append(PageBreak())
+H.append(p("Cómo bajar este manual y los prompts", "h1"))
+H.append(p("Todos los archivos del kit viven en el repositorio, así que siempre los puedes bajar "
+           "desde GitHub aunque no tengas ningún enlace a la mano."))
+H.append(p("Bajar un archivo suelto (el PDF o el TXT)", "h2"))
+H.append(vinetas([
+    "Entra al repositorio en GitHub y abre la carpeta donde están los archivos del kit.",
+    "Da clic en el archivo que quieres (por ejemplo <b>PROMPTS-POR-TICKET.txt</b>).",
+    "Arriba a la derecha del archivo hay un botón de descarga (<b>Download raw file</b>, el icono "
+    "de la flecha hacia abajo). Dale clic y se guarda en tu computadora.",
+    "Si es un PDF, GitHub lo muestra en pantalla: usa el mismo botón de descarga.",
+], numerada=True))
+H.append(p("Bajar todo el proyecto de una vez", "h2"))
+H.append(vinetas([
+    "En la página principal del repositorio, botón verde <b>Code</b> → <b>Download ZIP</b>.",
+    "O, si ya lo clonaste, los archivos ya están en tu carpeta: solo haz "
+    "<font face='Courier'>git pull</font>.",
+], numerada=True))
+H.append(tip("Si te pasan un enlace de vista previa y no te deja descargar",
+             "Las vistas previas se abren dentro de un marco que a veces bloquea las descargas. "
+             "Busca el botón de abrir en una pestaña nueva (el icono de la flecha diagonal) y "
+             "descarga desde ahí. Si aun así no baja, usa GitHub: nunca falla."))
 
 # Paso 1
 H.append(PageBreak())
@@ -474,6 +499,126 @@ H.append(tip("Una nota sobre la IA y el profesor",
              "declarándolo, lo más sano es anotarlo en el README: cuesta mucho menos que te lo "
              "descubran. Lo que de verdad defiende el proyecto es que ustedes puedan explicar cada "
              "decisión y que el historial muestre el trabajo repartido entre los cuatro."))
+
+
+# ----------------------------------------------------------------- Anexos
+H.append(PageBreak())
+H.append(p("Anexos: lo que se hace fuera de Arena", "h1"))
+H.append(p("Hay tickets que no se terminan en el chat: hay que entrar a otra página o abrir otro "
+           "programa. Aquí están esos pasos explicados. En el archivo "
+           "<b>PROMPTS-POR-TICKET.txt</b> cada uno de esos tickets trae el aviso "
+           "<i>“OJO: ESTE TICKET NO SE TERMINA DENTRO DE ARENA”</i> con los mismos pasos."))
+H.append(tabla(
+    ["Anexo", "Para qué tickets", "Dónde hay que entrar"],
+    [["A. Exportar un diagrama a imagen", "3 y 4", "mermaid.live"],
+     ["B. Instalar MySQL y crear la base", "6", "XAMPP (en tu computadora)"],
+     ["C. Correr los scripts SQL", "7, 8 y 9", "phpMyAdmin (en tu computadora)"],
+     ["D. Probar entre varias computadoras", "38", "Tu red local o la página publicada"],
+     ["E. Publicar la página", "39", "Railway y Render"],
+     ["F. Armar las diapositivas", "40", "Canva, PowerPoint o Google Slides"]],
+    [6.2 * cm, 4.0 * cm, 6.2 * cm]))
+
+H.append(p("Anexo A. Exportar un diagrama a imagen (tickets 3 y 4)", "h2"))
+H.append(p("En estos tickets el prompt ya le pide a Arena que genere la imagen en PNG. Si te la dio, "
+           "solo cópiala a la carpeta <font face='Courier'>docs/</font> y ya está. Estos pasos son por "
+           "si la quieres rehacer tú o cambiarle algo."))
+H.append(vinetas([
+    "Entra a <b>https://mermaid.live</b> (no hay que registrarse).",
+    "Borra el ejemplo del panel izquierdo con Ctrl+A y Suprimir.",
+    "Abre el archivo <font face='Courier'>.md</font> que te dio Arena y copia <b>solo</b> lo que está "
+    "dentro del bloque de código (empieza con <font face='Courier'>erDiagram</font> o "
+    "<font face='Courier'>flowchart</font>), sin las comillas invertidas.",
+    "Pégalo en el panel izquierdo: el dibujo aparece a la derecha.",
+    "Clic en <b>Actions</b> (abajo del panel derecho) y luego en <b>PNG</b>.",
+    "Renombra la imagen y cópiala a la carpeta <font face='Courier'>docs/</font> del repositorio.",
+], numerada=True))
+
+H.append(p("Anexo B. Instalar MySQL y crear la base de datos (ticket 6)", "h2"))
+H.append(vinetas([
+    "Descarga <b>XAMPP</b> de <b>https://www.apachefriends.org</b> (trae MySQL y phpMyAdmin juntos, "
+    "es lo más fácil) e instálalo con las opciones por defecto.",
+    "Abre el <b>XAMPP Control Panel</b> y dale <b>Start</b> a <b>Apache</b> y a <b>MySQL</b>: los dos "
+    "deben quedar en verde.",
+    "En el renglón de MySQL, clic en <b>Admin</b>. Se abre phpMyAdmin en "
+    "<font face='Courier'>http://localhost/phpmyadmin</font>",
+    "Pestaña <b>Bases de datos</b> → escribe <font face='Courier'>montecristo</font> → cotejamiento "
+    "<font face='Courier'>utf8mb4_general_ci</font> → <b>Crear</b>.",
+    "Con XAMPP el usuario es <font face='Courier'>root</font> y la contraseña va <b>vacía</b>. Esos "
+    "datos son los que pones en tu archivo <font face='Courier'>.env</font>.",
+], numerada=True))
+H.append(alerta("El archivo .env no se sube nunca",
+                "Cada quien tiene el suyo en su computadora. En el repositorio solo va "
+                "<font face='Courier'>.env.example</font> con las variables vacías. Si subes tus "
+                "contraseñas al repo, el profesor lo va a ver y además es mala práctica."))
+
+H.append(PageBreak())
+H.append(p("Anexo C. Correr los scripts SQL (tickets 7, 8 y 9)", "h2"))
+H.append(vinetas([
+    "Abre el XAMPP Control Panel y revisa que MySQL esté en verde.",
+    "Entra a <font face='Courier'>http://localhost/phpmyadmin</font> y <b>selecciona la base "
+    "montecristo</b> en la lista de la izquierda (si no la seleccionas, el script falla).",
+    "Pestaña <b>SQL</b> de arriba.",
+    "Abre el archivo <font face='Courier'>.sql</font> que te dio Arena, copia todo y pégalo en el "
+    "recuadro.",
+    "Clic en <b>Continuar</b>. Si salió bien, aparece un mensaje verde y la tabla se ve a la izquierda.",
+], numerada=True))
+H.append(tip("El orden importa",
+             "Primero jugadores (ticket 7), luego salas (8) y al final partidas (9). Las tablas de "
+             "salas y partidas apuntan a jugadores con llaves foráneas: si la corres antes, te marca "
+             "error de <i>foreign key</i>."))
+
+H.append(p("Anexo D. Probar entre varias computadoras (ticket 38)", "h2"))
+H.append(vinetas([
+    "Conéctense todos a la misma red (el wifi de la escuela o un celular compartiendo datos).",
+    "Quien tenga el proyecto corriendo busca su IP local: en Windows, terminal y "
+    "<font face='Courier'>ipconfig</font>; es la que dice <i>Dirección IPv4</i> "
+    "(algo como 192.168.1.75).",
+    "Los demás entran desde su navegador a <font face='Courier'>http://ESA-IP:3000</font>",
+    "Si no carga, es el firewall de Windows: cuando salga el aviso, den <b>Permitir acceso</b> para "
+    "redes privadas.",
+    "Opción más cómoda: hagan las pruebas directo sobre la página ya publicada (ticket 39).",
+], numerada=True))
+
+H.append(PageBreak())
+H.append(p("Anexo E. Publicar la página (ticket 39)", "h2"))
+H.append(p("Son dos cosas: la base de datos en la nube y el servidor. Primero la base.", "p"))
+H.append(p("Base de datos en la nube", "h2"))
+H.append(vinetas([
+    "Entra a <b>https://railway.app</b> e inicia sesión con GitHub.",
+    "<b>New Project</b> → <b>Provision MySQL</b>.",
+    "Abre el servicio y busca la pestaña <b>Variables</b> o <b>Connect</b>: ahí están el host, "
+    "usuario, contraseña, puerto y nombre de la base. Cópialos a un bloc de notas.",
+    "Conéctate a esa base con phpMyAdmin o MySQL Workbench usando esos datos y corre los tres "
+    "scripts <font face='Courier'>.sql</font> para crear las tablas.",
+], numerada=True))
+H.append(p("Servidor en Render", "h2"))
+H.append(vinetas([
+    "Entra a <b>https://render.com</b> e inicia sesión con GitHub.",
+    "<b>New +</b> → <b>Web Service</b> → autoriza y elige el repositorio de MonteCristo.",
+    "Llena: <b>Name</b> montecristo · <b>Runtime</b> Node · <b>Build Command</b> "
+    "<font face='Courier'>npm install</font> · <b>Start Command</b> "
+    "<font face='Courier'>npm start</font> · <b>Instance Type</b> Free.",
+    "En <b>Environment Variables</b> agrega DB_HOST, DB_USER, DB_PASSWORD, DB_NAME y DB_PORT con "
+    "los datos de Railway.",
+    "<b>Create Web Service</b> y espera a que el log diga <b>Live</b>.",
+    "Arriba aparece la dirección pública (algo como https://montecristo.onrender.com). Anótenla en "
+    "el README.",
+], numerada=True))
+H.append(alerta("Para el día de la exposición",
+                "El plan gratis duerme la página tras 15 minutos sin visitas, y la primera carga "
+                "después tarda cerca de un minuto. Abran la página 5 minutos antes de exponer para "
+                "que ya esté despierta."))
+
+H.append(p("Anexo F. Armar las diapositivas (ticket 40)", "h2"))
+H.append(vinetas([
+    "Entra a <b>https://www.canva.com</b> (o usa PowerPoint o Google Slides).",
+    "Busca <b>Presentación</b> y elige una plantilla oscura y sencilla.",
+    "Pasa el guion que te dio Arena diapositiva por diapositiva: título arriba y máximo 4 puntos "
+    "cortos. Nada de párrafos.",
+    "Mete los diagramas de los tickets 3 y 4 y capturas de la página funcionando (Win+Shift+S).",
+    "Descárgala en PDF y súbela a <font face='Courier'>docs/</font>, por si falla el internet.",
+    "Ensayen una vez con reloj: 10 minutos entre cuatro se van rapidísimo.",
+], numerada=True))
 
 
 # ------------------------------------------------------------------- armado

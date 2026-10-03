@@ -38,7 +38,8 @@ REGLAS_CODIGO = """Reglas de entrega (respetalas al pie de la letra):
 REGLAS_DOC = """Reglas de entrega (respetalas al pie de la letra):
 - Haz SOLO lo que pide este ticket.
 - No hagas commits, no crees ramas y NO abras pull requests. Yo subo los cambios a mano.
-- Entregame el documento en formato Markdown dentro de un archivo .zip para descargar.
+- Entregame dentro de un archivo .zip para descargar todo lo que te pedi: el documento en Markdown
+  y, si en los detalles pedi una imagen, tambien el archivo PNG.
 - No agregues codigo ni otros documentos que no haya pedido.
 - Usa lenguaje claro de estudiante, no de consultora."""
 
@@ -63,21 +64,30 @@ TICKETS = [
       "Para cada juego: como se apuesta, como se gana y una tabla de pagos con un ejemplo numerico."]),
 
     (3, "Hacer el diagrama de la base de datos", "doc",
-     "Hazme el diagrama entidad-relacion de la base de datos en texto, usando sintaxis de Mermaid "
-     "(bloque erDiagram), en el archivo docs/diagrama-base-de-datos.md.",
+     "Hazme el diagrama entidad-relacion de la base de datos, en texto Y como imagen.",
      ["Tablas: jugadores, salas y partidas.",
       "jugadores: id, nombre, avatar, saldo, fecha_registro.",
       "salas: id, codigo, juego, id_anfitrion, estado, fecha_creacion.",
       "partidas: id, id_sala, id_jugador, juego, apuesta, resultado, ganancia, fecha.",
-      "Marca las llaves primarias y foraneas, y explica en 3 lineas como se relacionan."]),
+      "Marca las llaves primarias y foraneas, y explica en 3 lineas como se relacionan.",
+      "Primero dame el diagrama en texto con sintaxis de Mermaid (bloque erDiagram) en el archivo "
+      "docs/diagrama-base-de-datos.md.",
+      "Y ademas GENERAME LA IMAGEN del diagrama en PNG, en docs/diagrama-base-de-datos.png, con las "
+      "tres tablas en recuadros, sus campos listados, las llaves marcadas y las lineas de relacion "
+      "con su cardinalidad (uno a muchos). Que se vea limpio y se lea bien impreso en blanco y negro.",
+      "Incluye los dos archivos (el .md y el .png) en el zip."]),
 
     (4, "Hacer el diagrama de arquitectura de la pagina", "doc",
-     "Hazme un diagrama de arquitectura sencillo en sintaxis Mermaid (flowchart) en el archivo "
-     "docs/diagrama-arquitectura.md.",
+     "Hazme el diagrama de arquitectura de la pagina, en texto Y como imagen.",
      ["Debe mostrar: navegador (HTML, CSS, JS), servidor Node con Express y Socket.IO, y la base de datos MySQL.",
       "Marca con flechas que viaja por HTTP y que viaja por Socket.IO.",
-      "Abajo del diagrama, explica en un parrafo corto el recorrido de una apuesta desde que el jugador "
-      "da clic hasta que ve el resultado."]),
+      "Primero dame el diagrama en texto con sintaxis de Mermaid (flowchart) en el archivo "
+      "docs/diagrama-arquitectura.md.",
+      "Y ademas GENERAME LA IMAGEN del diagrama en PNG, en docs/diagrama-arquitectura.png, con los tres "
+      "bloques, las flechas etiquetadas y que se entienda de un vistazo.",
+      "Abajo del diagrama en el .md, explica en un parrafo corto el recorrido de una apuesta desde que "
+      "el jugador da clic hasta que ve el resultado.",
+      "Incluye los dos archivos (el .md y el .png) en el zip."]),
 
     (5, "Escribir el README del repositorio", "doc",
      "Escribeme el README.md del repositorio.",
@@ -392,6 +402,128 @@ TICKETS = [
       "La presentacion dura 10 minutos entre 4 personas."]),
 ]
 
+# Tickets que requieren salir de Arena y hacer algo en otra pagina o programa.
+# {numero: (titulo del apartado, [pasos])}
+FUERA = {
+    3: ("Guardar la imagen del diagrama y, si la necesitas a mano, exportarla desde mermaid.live", [
+        "Si Arena ya te dio el PNG en el zip, solo copialo a la carpeta docs/ del proyecto y listo. "
+        "Los pasos siguientes son por si quieres rehacerla tu o cambiarle algo.",
+        "Abre tu navegador y entra a https://mermaid.live (no hay que registrarse).",
+        "Borra el ejemplo que aparece en el panel izquierdo (selecciona todo con Ctrl+A y Suprimir).",
+        "Abre el archivo docs/diagrama-base-de-datos.md que te dio Arena, copia SOLO lo que esta "
+        "adentro del bloque de codigo (empieza con 'erDiagram') y pegalo en el panel izquierdo.",
+        "El diagrama aparece dibujado del lado derecho. Si marca error, revisa que no hayas copiado "
+        "las comillas invertidas (```) del inicio y del final.",
+        "Da clic en el boton 'Actions' que esta abajo del panel derecho y elige 'PNG'.",
+        "Se descarga la imagen. Renombrala como diagrama-base-de-datos.png y copiala a la carpeta "
+        "docs/ de tu copia del repositorio.",
+        "Esa imagen es la que va en el documento que entregan al profesor.",
+    ]),
+    4: ("Exportar la imagen del diagrama de arquitectura", [
+        "Igual que en el ticket 3: si Arena ya te dio el PNG, solo copialo a docs/ y terminaste.",
+        "Para hacerlo a mano: entra a https://mermaid.live, borra el ejemplo y pega el contenido del "
+        "bloque de codigo de docs/diagrama-arquitectura.md.",
+        "Revisa el dibujo del lado derecho y, si algo se ve encimado, acomoda el texto del diagrama.",
+        "Clic en 'Actions' y luego en 'PNG' para descargarlo.",
+        "Renombra el archivo como diagrama-arquitectura.png y copialo a la carpeta docs/.",
+    ]),
+    6: ("Instalar MySQL y crear la base de datos vacia en tu computadora", [
+        "Descarga XAMPP desde https://www.apachefriends.org (trae MySQL y phpMyAdmin juntos y es lo "
+        "mas facil para la escuela). Si prefieres MySQL solo, bajalo de https://dev.mysql.com/downloads/",
+        "Instala XAMPP con las opciones por defecto.",
+        "Abre el 'XAMPP Control Panel' y dale 'Start' a los modulos Apache y MySQL. Los dos deben "
+        "quedar en verde.",
+        "En el renglon de MySQL da clic en 'Admin': se abre phpMyAdmin en el navegador, en la "
+        "direccion http://localhost/phpmyadmin",
+        "En phpMyAdmin, clic en la pestania 'Bases de datos' (arriba a la izquierda).",
+        "Escribe el nombre montecristo, elige el cotejamiento utf8mb4_general_ci y da clic en 'Crear'.",
+        "Con XAMPP, el usuario es root y la contrasenia esta vacia. Esos son los datos que van en tu "
+        "archivo .env (DB_USER=root y DB_PASSWORD= vacio).",
+        "Importante: el archivo .env NO se sube al repositorio. Cada quien tiene el suyo en su "
+        "computadora; en el repo solo va .env.example.",
+        "Deja XAMPP prendido mientras trabajas: si apagas MySQL, el servidor no se va a poder conectar.",
+    ]),
+    7: ("Correr el script SQL en phpMyAdmin", [
+        "Abre el XAMPP Control Panel y asegurate de que MySQL este en verde.",
+        "Entra a http://localhost/phpmyadmin y selecciona la base de datos montecristo en la lista "
+        "de la izquierda.",
+        "Da clic en la pestania 'SQL' de arriba.",
+        "Abre el archivo .sql que te dio Arena con el Bloc de notas o VS Code, copia todo el contenido "
+        "y pegalo en el recuadro.",
+        "Da clic en 'Continuar'. Si todo salio bien, aparece un mensaje verde y la tabla aparece en la "
+        "lista de la izquierda.",
+        "Si marca error, lee el mensaje: casi siempre es que no seleccionaste la base de datos antes "
+        "de pegar el script.",
+    ]),
+    8: ("Correr el script SQL en phpMyAdmin", [
+        "Mismos pasos del ticket 7: phpMyAdmin, selecciona la base montecristo, pestania 'SQL', pega "
+        "el contenido del archivo .sql y 'Continuar'.",
+        "Ojo con el orden: la tabla de salas tiene una llave foranea hacia jugadores, asi que la tabla "
+        "de jugadores (ticket 7) ya debe existir. Si no, te va a marcar error de 'foreign key'.",
+    ]),
+    9: ("Correr el script SQL en phpMyAdmin", [
+        "Mismos pasos del ticket 7.",
+        "Esta tabla depende de salas y de jugadores: corre primero los scripts de los tickets 7 y 8.",
+        "Para comprobar que quedo, da clic en la tabla partidas y luego en la pestania 'Estructura': "
+        "deben aparecer todos los campos.",
+    ]),
+    11: ("Instalar Node.js si todavia no lo tienes", [
+        "Entra a https://nodejs.org y descarga la version LTS (la del boton de la izquierda).",
+        "Instalala con las opciones por defecto, dandole siguiente a todo.",
+        "Cierra y vuelve a abrir la terminal (si no, no reconoce el comando).",
+        "Comprueba que quedo escribiendo: node --version y npm --version. Los dos deben responder con "
+        "un numero de version.",
+    ]),
+    38: ("Probar entre varias computadoras", [
+        "Opcion facil: que todos se conecten a la misma red (el wifi de la escuela o un celular "
+        "compartiendo internet).",
+        "Quien tenga el proyecto corriendo busca su direccion IP local: en Windows abre la terminal y "
+        "escribe ipconfig; es el numero que dice 'Direccion IPv4' (algo como 192.168.1.75).",
+        "Los demas entran desde su navegador a http://ESA-IP:3000 (por ejemplo http://192.168.1.75:3000).",
+        "Si no carga, es el firewall de Windows: cuando salga el aviso de 'Permitir acceso', acepten "
+        "para redes privadas.",
+        "Opcion mas comoda: hagan las pruebas directo sobre la pagina ya publicada (ticket 39), asi no "
+        "dependen de la red.",
+        "Mientras prueban, llenen la tabla del plan de pruebas y anoten cada error con los pasos para "
+        "repetirlo.",
+    ]),
+    39: ("Publicar la pagina en Render y crear la base de datos en la nube", [
+        "BASE DE DATOS: entra a https://railway.app (o https://aiven.io) e inicia sesion con GitHub.",
+        "Crea un proyecto nuevo y elige 'Provision MySQL' (o 'MySQL' en el catalogo de servicios).",
+        "Cuando termine, entra al servicio y abre la pestania 'Variables' o 'Connect': ahi vienen el "
+        "host, el usuario, la contrasenia, el puerto y el nombre de la base. Copialos a un bloc de notas.",
+        "Conectate a esa base desde phpMyAdmin o MySQL Workbench con esos datos y corre los tres "
+        "scripts .sql del proyecto para crear las tablas.",
+        "SERVIDOR: entra a https://render.com e inicia sesion con GitHub.",
+        "Da clic en 'New +' y luego en 'Web Service'.",
+        "Autoriza a Render para que vea tus repositorios y elige el repositorio de MonteCristo.",
+        "Llena el formulario: Name = montecristo; Runtime = Node; Build Command = npm install; "
+        "Start Command = npm start; Instance Type = Free.",
+        "Baja a 'Environment Variables' y agrega una por una: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME "
+        "y DB_PORT, con los datos que copiaste de la base de datos.",
+        "Da clic en 'Create Web Service' y espera a que el log diga 'Live' (tarda unos minutos).",
+        "Arriba aparece la direccion publica, algo como https://montecristo.onrender.com. Esa es la "
+        "que le pasan al profesor.",
+        "Ojo con el plan gratis: la pagina se duerme si nadie la usa por 15 minutos y la primera "
+        "visita despues tarda como un minuto en despertar. No se asusten el dia de la exposicion: "
+        "abranla 5 minutos antes.",
+        "Anoten la direccion final en el README y en el documento de despliegue.",
+    ]),
+    40: ("Armar las diapositivas", [
+        "Entra a https://www.canva.com e inicia sesion con tu cuenta de Google o correo escolar "
+        "(tambien sirve PowerPoint o Google Slides si prefieren).",
+        "Busca 'Presentacion' y elige una plantilla oscura y sencilla; eviten las muy cargadas.",
+        "Pasa el guion que te dio Arena diapositiva por diapositiva: el titulo arriba y maximo 4 "
+        "puntos cortos por lamina. No peguen parrafos.",
+        "Mete las imagenes del proyecto: los diagramas de los tickets 3 y 4, y capturas de pantalla "
+        "de la pagina funcionando (en Windows se toman con la tecla Impr Pant o con Win+Shift+S).",
+        "Para la demostracion en vivo, abran la pagina ya publicada antes de empezar a exponer.",
+        "Descarga la presentacion en PDF ('Compartir' -> 'Descargar' -> 'PDF estandar') y subela a la "
+        "carpeta docs/ del repositorio, por si falla el internet el dia de la exposicion.",
+        "Ensayen una vez completa con reloj: 10 minutos entre 4 personas se van rapidisimo.",
+    ]),
+}
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -461,6 +593,18 @@ for num, titulo, tipo, tarea, detalles in TICKETS:
     lineas.append("")
     lineas.append("[HASTA AQUI]")
     lineas.append("")
+    if num in FUERA:
+        titulo_fuera, pasos = FUERA[num]
+        lineas.append("  +" + "-" * 92 + "+")
+        lineas.append("  | OJO: ESTE TICKET NO SE TERMINA DENTRO DE ARENA" + " " * 46 + "|")
+        lineas.append("  +" + "-" * 92 + "+")
+        lineas.append("")
+        lineas.append(envolver(titulo_fuera, ancho=88, sangria="  "))
+        lineas.append("")
+        for i, paso in enumerate(pasos, 1):
+            texto = envolver("%d. %s" % (i, paso), ancho=86, sangria="   ")
+            lineas.append(texto.replace("\n   ", "\n      "))
+        lineas.append("")
     lineas.append("")
 
 lineas.append("=" * 96)
