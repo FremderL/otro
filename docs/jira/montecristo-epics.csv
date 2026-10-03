@@ -1,7 +1,0 @@
-"Issue Type","Summary","Epic Name","Description","Priority"
-"Epic","Base tecnica","Base tecnica","Servidor, tiempo real, guardado de perfiles y red de seguridad minima para poder construir.","High"
-"Epic","Perfil y fichas","Perfil y fichas","Identidad de invitado, saldo virtual y reglas economicas basicas.","High"
-"Epic","Salas y tiempo real","Salas y tiempo real","Crear y compartir una mesa, sincronizar su estado y aguantar desconexiones.","High"
-"Epic","Juegos esenciales","Juegos esenciales","Motor de ronda comun y los cuatro juegos del MVP: Cara o Cruz, Dados, Ruleta y Blackjack.","High"
-"Epic","Lobby y social","Lobby y social","Descubrir salas, entrar rapido y conversar durante la partida.","High"
-"Epic","Cierre para lanzar","Cierre para lanzar","Avisos legales, estados de error, accesibilidad minima y despliegue.","High"

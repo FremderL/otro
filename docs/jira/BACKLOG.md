@@ -1,578 +1,203 @@
-# Backlog MVP — MonteCristo Social Casino
+# Tickets del proyecto — MonteCristo
 
-35 tickets centrados en **lo primordial de la pagina**, todos de esfuerzo bajo o medio
-(1 a 5 puntos). El objetivo del conjunto es un producto jugable de punta a punta:
-entrar sin registro, crear una sala, compartirla, jugar y conversar.
+40 tickets chicos para repartir en el equipo. Cada uno es una tarea que se puede terminar en una sentada.
 
-- `montecristo-epics.csv` — 6 epics. **Importar primero.**
-- `montecristo-tickets.csv` — los 35 tickets, enlazados a su epic por nombre (`Epic Link`).
+Para importarlos a Jira esta el archivo `montecristo-tickets.csv` de esta carpeta (columnas: tipo, titulo y descripcion).
 
-**Escala de esfuerzo:** 1-2 puntos = bajo · 3-5 puntos = medio. Ningun ticket pasa de 5.
+## Etapas
 
-## Resumen
+| Etapa | Tickets |
+| --- | ---: |
+| Documentacion y planeacion | 5 |
+| Base de datos | 5 |
+| Servidor | 4 |
+| Motor del juego | 8 |
+| Juegos | 6 |
+| Pantallas y diseno | 8 |
+| Extras y cierre | 4 |
+| **Total** | **40** |
 
-| Epic | Tickets | Puntos |
-| --- | ---: | ---: |
-| Base tecnica | 5 | 10 |
-| Perfil y fichas | 5 | 12 |
-| Salas y tiempo real | 6 | 17 |
-| Juegos esenciales | 9 | 32 |
-| Lobby y social | 5 | 13 |
-| Cierre para lanzar | 5 | 13 |
-| **Total** | **35** | **97** |
+## Documentacion y planeacion
 
-13 tickets de esfuerzo bajo y 22 de esfuerzo medio.
+**1. Escribir el documento de requerimientos**
 
-## Fuera de alcance de este MVP
+Redactar un documento corto con lo que debe hacer la pagina: juegos incluidos, cuantos jugadores por sala y que puede hacer cada jugador. Sirve como base para todos los demas tickets.
 
-Se deja fuera a proposito para no abarcar todo de una vez; son candidatos a una segunda fase:
+**2. Definir las reglas de cada juego**
 
-- Texas Hold'em y torneos sit & go (es el bloque mas caro del producto; va despues del MVP).
-- Bots e IA autoritativa con dificultades y estilos.
-- Cuentas con usuario y contrasena, sesiones revocables, roles, MFA.
-- Panel administrativo, moderacion, reportes con evidencia y bitacora de auditoria.
-- Persistencia en Postgres y migraciones (el MVP usa el archivo JSON).
-- Ranking mensual por temporadas, medallas y banner dorado.
-- Modo espectador, tragamonedas, retos, logros y eventos especiales.
-- Historial descargable y graficas de evolucion de saldo.
+Escribir en un documento las reglas y los pagos de cada juego (cara o cruz, dados, ruleta y blackjack). Hay que dejar claro cuanto paga cada apuesta para que despues el codigo y las pruebas usen los mismos numeros.
 
-## Tickets
+**3. Hacer el diagrama de la base de datos**
 
-### Epic: Base tecnica
+Dibujar el diagrama entidad-relacion con las tablas que vamos a usar (jugadores, salas, partidas) y sus campos. Guardar la imagen en la carpeta de documentacion.
 
-Servidor, tiempo real, guardado de perfiles y red de seguridad minima para poder construir.
+**4. Hacer el diagrama de arquitectura de la pagina**
 
-#### 1. Servir el cliente web desde un servidor Express
+Dibujar un diagrama sencillo que muestre como se comunican el navegador, el servidor y la base de datos. Agregarlo a la documentacion del proyecto.
 
-`Tarea` · Prioridad **Highest** · **2** puntos · `backend` `setup` `esfuerzo:bajo`
+**5. Escribir el README del repositorio**
 
-**Contexto.** Primer paso para tener algo que abrir en el navegador: un servidor que entregue la pagina.
+Explicar en el README que es el proyecto, que tecnologias usa y los pasos para instalarlo y ejecutarlo en la computadora de cualquier integrante.
 
-**Criterios de aceptacion**
+## Base de datos
 
-1. 'npm install && npm start' levanta el servidor en 0.0.0.0 respetando la variable PORT (3000 por defecto).
-2. Se sirven los archivos de /public: index.html, styles.css y app.js.
-3. Abrir la raiz en el navegador muestra la pagina sin errores en consola.
-4. package.json declara engines node >= 18 y los scripts start y dev.
+**6. Crear la base de datos y conectarla al servidor**
 
-**Notas**
+Crear la base de datos del proyecto y escribir el codigo que la conecta desde el servidor. Debe avisar en la consola si la conexion funciono o si fallo.
 
-- Dependencias: express y compression.
+**7. Crear la tabla de jugadores**
 
-#### 2. Conectar el cliente y el servidor por Socket.IO
+Crear la tabla de jugadores con id, nombre, avatar, saldo y fecha de registro. Dejar el script SQL guardado en el repositorio.
 
-`Tarea` · Prioridad **Highest** · **2** puntos · `backend` `tiempo-real` `esfuerzo:bajo`
+**8. Crear la tabla de salas**
 
-**Contexto.** Todo el juego depende de un canal en vivo; conviene dejarlo funcionando y probado desde el inicio.
+Crear la tabla de salas con id, codigo de la sala, juego, anfitrion y estado (abierta o cerrada). Dejar el script SQL en el repositorio.
 
-**Criterios de aceptacion**
+**9. Crear la tabla de partidas jugadas**
 
-1. Socket.IO queda montado sobre el mismo servidor HTTP.
-2. Al conectar, el cliente recibe un evento de bienvenida con la version del servidor.
-3. El cliente reintenta la conexion automaticamente si se cae.
-4. La interfaz muestra un indicador visible de conectado / reconectando / sin conexion.
+Crear la tabla donde se guarda cada ronda terminada: sala, juego, jugador, apuesta, resultado y fecha, junto con la funcion que inserta la fila al acabar la ronda. Sirve para el historial y las estadisticas.
 
-#### 3. Guardar perfiles en un archivo JSON con escritura segura
+**10. Funciones para guardar y consultar jugadores**
 
-`Historia` · Prioridad **Highest** · **3** puntos · `backend` `persistencia` `esfuerzo:medio`
+Programar las funciones basicas para crear un jugador, buscarlo por id y actualizar su nombre, avatar y saldo. Todo el codigo que necesite jugadores debe usar estas funciones y no consultas sueltas.
 
-**Contexto.** Como jugador quiero que mis fichas sigan ahi cuando vuelva, para no empezar de cero cada vez.
+## Servidor
 
-**Criterios de aceptacion**
+**11. Crear el proyecto de Node con Express**
 
-1. Los perfiles se guardan en data/profiles.json y se cargan al arrancar.
-2. La escritura es diferida y atomica (archivo temporal + rename) para que un corte no corrompa el archivo.
-3. La ruta es configurable con PROFILE_STORE_PATH.
-4. El acceso pasa por un modulo unico, para poder cambiar el backend despues sin tocar el resto del codigo.
-5. Lo que se envia al cliente es una lista explicita de campos, nunca el objeto completo del perfil.
+Iniciar el proyecto con npm, instalar Express y dejar un servidor que arranque con 'npm start' en el puerto 3000 y que entregue los archivos de la carpeta public (HTML, CSS, imagenes y JavaScript del navegador).
 
-**Notas**
+**12. Conectar el servidor y el navegador con Socket.IO**
 
-- No se usa base de datos en el MVP; Postgres queda fuera de alcance.
+Instalar Socket.IO y dejar la conexion funcionando: cuando el navegador se conecta, el servidor le manda un mensaje de bienvenida y lo imprime en consola.
 
-#### 4. Red de seguridad minima: lint, verificacion de sintaxis y prueba de humo
+**13. Rutas de la API para el jugador**
 
-`Tarea` · Prioridad **High** · **2** puntos · `calidad` `ci` `esfuerzo:bajo`
+Crear las rutas para registrar un jugador nuevo, consultar sus datos y actualizar su nombre o avatar. Probarlas antes de conectarlas con la pantalla.
 
-**Contexto.** Con poco esfuerzo se evita romper lo que ya funciona en cada cambio.
+**14. Dar saldo inicial y guardarlo**
 
-**Criterios de aceptacion**
+Cuando se crea un jugador nuevo, darle 1000 fichas virtuales. El saldo se actualiza en la base de datos cada vez que termina una ronda.
 
-1. 'npm run lint' pasa ESLint sobre el repositorio sin errores.
-2. 'npm run check:syntax' valida la sintaxis de todos los archivos JavaScript.
-3. Existe una prueba de humo con node:test que levanta el servidor y verifica que responde.
-4. 'npm test' encadena las tres cosas.
-5. Un workflow de GitHub Actions ejecuta 'npm test' en cada push y pull request.
+## Motor del juego
 
-#### 5. Health check y registro de eventos clave
+**15. Crear la estructura de una sala en el servidor**
 
-`Tarea` · Prioridad **Medium** · **1** puntos · `backend` `observabilidad` `esfuerzo:bajo`
+Programar el objeto sala que guarda en memoria el juego elegido, los jugadores sentados, el anfitrion y la fase en la que va la ronda.
 
-**Contexto.** Necesario para desplegar sin caidas y para entender que paso cuando algo falle.
+**16. Generar el codigo de sala de 5 caracteres**
 
-**Criterios de aceptacion**
+Hacer la funcion que genera un codigo de 5 caracteres para cada sala y revisa que no este repetido. Con ese codigo los amigos se unen a la mesa.
 
-1. GET /healthz responde 200 con estado, uptime, salas activas y jugadores conectados.
-2. Se registran arranque, sala creada, sala destruida, jugador entra y jugador sale.
-3. Los logs nunca incluyen datos sensibles.
+**17. Unir y sacar jugadores de una sala**
 
-### Epic: Perfil y fichas
+Programar la logica para que un jugador entre a una sala por su codigo y salga de ella. Maximo 6 jugadores por sala.
 
-Identidad de invitado, saldo virtual y reglas economicas basicas.
+**18. Avisar a todos los de la sala cuando algo cambia**
 
-#### 6. Perfil de invitado con nombre y avatar
+Cada vez que cambia el estado de la sala (alguien entra, sale o apuesta), el servidor manda el estado actualizado a todos los jugadores de esa sala.
 
-`Historia` · Prioridad **Highest** · **3** puntos · `frontend` `backend` `perfil` `esfuerzo:medio`
+**19. Ciclo de la ronda: esperar, apostar y resultado**
 
-**Contexto.** Como visitante quiero entrar y jugar en segundos, sin registro, pero siendo reconocible en la mesa.
+Programar las fases por las que pasa una ronda: esperando jugadores, recibiendo apuestas, mostrando el resultado y vuelta a empezar. Es la base que van a usar todos los juegos.
 
-**Criterios de aceptacion**
+**20. Funcion de numeros aleatorios del servidor**
 
-1. Al entrar por primera vez se crea un perfil con un token local de dispositivo guardado en el navegador.
-2. Puedo elegir y cambiar mi nombre y mi avatar desde la interfaz.
-3. Al volver desde el mismo navegador recupero mi perfil automaticamente.
-4. El cambio de nombre o avatar se refleja en la mesa en tiempo real.
-5. El token de dispositivo solo da continuidad al perfil: no concede ningun privilegio.
+Hacer la funcion que saca los resultados al azar (cara o cruz, numero del dado, numero de la ruleta, carta del mazo). Siempre corre en el servidor, nunca en el navegador, para que nadie pueda hacer trampa.
 
-#### 7. Saldo virtual inicial de 1000 fichas que persiste
+**21. Funcion que cobra la apuesta y paga el premio**
 
-`Historia` · Prioridad **Highest** · **2** puntos · `backend` `economia` `esfuerzo:bajo`
+Programar la funcion que descuenta las fichas al apostar y acredita el premio segun lo que pague el juego. Antes de aceptar la apuesta revisa que sea de minimo 10 fichas y que al jugador le alcance el saldo. Es la misma funcion para todos los juegos.
 
-**Contexto.** Como jugador quiero arrancar con fichas y que mi saldo se conserve entre sesiones, para que las partidas tengan continuidad.
+**22. Turnos con tiempo limite**
 
-**Criterios de aceptacion**
+Poner un limite de tiempo por turno. Si el jugador no hace nada, el servidor decide por el (se planta o no apuesta) para que la partida no se quede atorada.
 
-1. Un perfil nuevo arranca con 1000 fichas virtuales.
-2. El saldo se actualiza en el servidor y se persiste tras cada ronda.
-3. El saldo visible en la interfaz siempre viene del servidor, nunca se calcula solo en el cliente.
-4. Si recargo la pagina, el saldo mostrado es el mismo.
+## Juegos
 
-#### 8. Bono diario de 100 fichas
+**23. Juego de cara o cruz**
 
-`Historia` · Prioridad **Medium** · **2** puntos · `backend` `economia` `esfuerzo:bajo`
+Programar el juego mas simple: el jugador apuesta a cara o cruz, el servidor lanza la moneda y paga el doble si le atina. Sirve para probar que el motor de la ronda funciona bien.
 
-**Contexto.** Como jugador quiero poder seguir jugando aunque me quede sin fichas, para no quedar bloqueado.
+**24. Juego de dados**
 
-**Criterios de aceptacion**
+Programar el juego de dados: se puede apostar a bajo (1-3) o alto (4-6) que paga doble, o a un numero exacto que paga x6.
 
-1. Al entrar se otorgan 100 fichas, una sola vez por dia natural.
-2. La interfaz avisa con un mensaje breve cuando se recibe el bono.
-3. Recargar la pagina varias veces el mismo dia no vuelve a otorgarlo.
-4. El calculo del dia usa la zona horaria configurada (America/Mexico_City por defecto).
+**25. Logica de la ruleta**
 
-#### 9. Validacion de apuestas en el servidor
+Programar la ruleta: apuestas a rojo o negro, par o impar (pagan doble) y a un numero exacto del 0 al 36 (paga x36). El cero hace perder las apuestas de color y de par o impar.
 
-`Historia` · Prioridad **Highest** · **2** puntos · `backend` `economia` `seguridad` `esfuerzo:bajo`
+**26. Blackjack: mazo y reparto de cartas**
 
-**Contexto.** Como producto necesitamos que nadie pueda apostar fichas que no tiene manipulando el navegador.
+Programar el mazo de 52 cartas, barajarlo y repartir dos cartas a cada jugador y dos a la casa (una de ellas tapada). Incluir la cuenta de puntos con el as valiendo 1 u 11.
 
-**Criterios de aceptacion**
+**27. Blackjack: pedir carta y plantarse**
 
-1. La apuesta minima es de 10 fichas.
-2. El servidor rechaza apuestas mayores al saldo disponible, con un mensaje claro para el cliente.
-3. Las fichas se descuentan al confirmar la apuesta y se acreditan al resolver la ronda.
-4. El cliente deshabilita los controles invalidos, pero la decision siempre se revalida en el servidor.
-5. Una prueba automatizada intenta apostar mas del saldo y espera un rechazo.
+Programar las acciones del jugador en su turno: pedir otra carta o plantarse. Si se pasa de 21 pierde de inmediato.
 
-#### 10. Modal de perfil con estadisticas basicas
+**28. Blackjack: turno de la casa y ganador**
 
-`Historia` · Prioridad **Low** · **3** puntos · `frontend` `perfil` `esfuerzo:medio`
+Programar el turno de la casa (pide cartas hasta llegar a 17), comparar las manos, decidir quien gana y pagar las apuestas.
 
-**Contexto.** Como jugador quiero ver como me ha ido, para tener una sensacion de progreso.
+## Pantallas y diseno
 
-**Criterios de aceptacion**
+**29. Hacer la hoja de estilos general**
 
-1. El modal muestra nombre, avatar, saldo actual, rondas jugadas, victorias y mayor ganancia.
-2. Las estadisticas se actualizan al terminar cada ronda.
-3. Los contadores se persisten junto al perfil.
-4. El modal se abre y cierra con teclado y devuelve el foco al elemento que lo abrio.
+Definir los colores, la tipografia y el estilo de los botones de toda la pagina en un solo archivo CSS, para que todas las pantallas se vean parecidas.
 
-### Epic: Salas y tiempo real
+**30. Pantalla de inicio**
 
-Crear y compartir una mesa, sincronizar su estado y aguantar desconexiones.
+Hacer el HTML de la pagina de inicio con el nombre del proyecto, una explicacion corta, los botones de crear sala y entrar con codigo, y un aviso visible de que las fichas son virtuales y no hay dinero real.
 
-#### 11. Crear una sala con codigo de 5 caracteres y URL compartible
+**31. Formulario de nombre y avatar**
 
-`Historia` · Prioridad **Highest** · **3** puntos · `backend` `frontend` `salas` `esfuerzo:medio`
+Hacer la pantalla donde el jugador escribe su nombre y elige un avatar antes de entrar a jugar. Los datos se mandan al servidor para crear su jugador.
 
-**Contexto.** Como anfitrion quiero abrir una mesa y pasarle el enlace a mis amigos, que es la razon de ser de la pagina.
+**32. Pantalla del lobby con la lista de salas**
 
-**Criterios de aceptacion**
+Mostrar las salas abiertas con su juego, el anfitrion y cuantos jugadores tiene (por ejemplo 3/6), con un boton para entrar a cada una.
 
-1. Puedo crear una sala eligiendo juego y nombre.
-2. El servidor genera un codigo unico de 5 caracteres y una URL compartible.
-3. La interfaz muestra el codigo y un boton para copiar el enlace.
-4. Quien crea la sala queda como anfitrion.
-5. Solo el anfitrion puede iniciar la ronda.
+**33. Pantalla de la mesa de juego**
 
-#### 12. Unirse a una sala por codigo o URL con capacidad de 6
+Hacer la pantalla donde se juega: los lugares de los jugadores con su nombre y avatar, el area del juego al centro y el saldo del jugador.
 
-`Historia` · Prioridad **Highest** · **3** puntos · `backend` `frontend` `salas` `esfuerzo:medio`
+**34. Botones para apostar**
 
-**Contexto.** Como invitado quiero entrar con un clic o escribiendo el codigo, sin crear cuenta.
+Hacer los controles para elegir la apuesta y confirmarla. Se desactivan cuando no es momento de apostar o cuando no alcanza el saldo.
 
-**Criterios de aceptacion**
+**35. Mostrar mensajes y el resultado de la ronda**
 
-1. Puedo unirme pegando la URL o escribiendo el codigo de 5 caracteres.
-2. Si la sala no existe, recibo un mensaje claro y vuelvo al lobby.
-3. La capacidad maxima es de 6 participantes; el servidor rechaza al septimo con un aviso.
-4. No se puede entrar a mitad de una mano en curso: se espera a la siguiente ronda.
-5. El codigo no distingue mayusculas de minusculas.
+Mostrar en pantalla los avisos del servidor: de quien es el turno, el resultado de la ronda y cuanto gano o perdio cada quien.
 
-#### 13. Estado de la sala sincronizado desde el servidor
+**36. Animacion simple de la moneda, los dados y la ruleta**
 
-`Historia` · Prioridad **Highest** · **3** puntos · `backend` `tiempo-real` `esfuerzo:medio`
+Agregar una animacion corta que muestre el resultado que ya mando el servidor. Debe durar poco y se tiene que poder saltar.
 
-**Contexto.** Como jugador quiero que todos veamos exactamente lo mismo, para que no haya discusiones ni trampas.
+## Extras y cierre
 
-**Criterios de aceptacion**
+**37. Chat de la sala**
 
-1. El servidor es la unica fuente de verdad: el cliente solo envia intenciones y renderiza lo que recibe.
-2. Tras cada cambio relevante se difunde el estado a los participantes de la sala.
-3. El servidor revalida turno, fase, importe y saldo antes de aplicar cualquier accion.
-4. Al entrar a la sala recibo el estado completo actual, no solo los cambios siguientes.
+Hacer el chat para que los jugadores de una misma sala puedan escribirse durante la partida. Se manda con Enter y aparece el nombre de quien escribio.
 
-#### 14. Lista de participantes con asientos, anfitrion y turno
+**38. Probar la pagina entre varios y anotar los errores**
 
-`Historia` · Prioridad **High** · **2** puntos · `frontend` `salas` `esfuerzo:bajo`
+Juntarse el equipo a probar la pagina con varias computadoras al mismo tiempo: crear sala, entrar con el codigo y jugar una ronda de cada juego. Anotar los errores que salgan y corregir los que alcancen a arreglarse en esta entrega.
 
-**Contexto.** Como jugador quiero ver quien esta en la mesa y a quien le toca, para seguir la partida.
+**39. Subir la pagina a un hosting gratuito**
 
-**Criterios de aceptacion**
+Publicar la pagina en un servicio gratuito para que se pueda abrir desde cualquier computadora y anotar en el README la direccion y los pasos que se siguieron.
 
-1. Se muestran hasta 6 asientos con nombre, avatar y saldo de cada participante.
-2. El anfitrion esta marcado con una insignia.
-3. El asiento de quien tiene el turno esta resaltado.
-4. Los asientos vacios se ven claramente como disponibles.
-5. La lista se actualiza en vivo cuando alguien entra o sale.
+**40. Preparar la presentacion final del proyecto**
 
-#### 15. Salir de la sala con reembolso y cierre de salas vacias
-
-`Historia` · Prioridad **High** · **3** puntos · `backend` `salas` `esfuerzo:medio`
-
-**Contexto.** Como jugador quiero poder irme sin perder fichas comprometidas, y como operador no quiero mesas fantasma acumulandose en memoria.
-
-**Criterios de aceptacion**
-
-1. Al salir, mis apuestas abiertas de la ronda en curso se reembolsan.
-2. Si sale el anfitrion, el rol pasa a otra persona de la mesa.
-3. Una sala sin participantes se destruye y deja de aparecer en el lobby.
-4. Al destruir la sala se cancelan sus temporizadores de turno y de ronda.
-5. Los demas ven un mensaje breve de que alguien salio.
-
-#### 16. Reconexion por token de dispositivo
-
-`Historia` · Prioridad **High** · **3** puntos · `backend` `tiempo-real` `resiliencia` `esfuerzo:medio`
-
-**Contexto.** Como jugador quiero recuperar mi asiento si se me cae el internet un momento, en lugar de perder la partida y las fichas.
-
-**Criterios de aceptacion**
-
-1. Si vuelvo con el mismo token de dispositivo dentro de la ventana de gracia, recupero asiento, saldo y estado de ronda.
-2. Mientras estoy desconectado, los demas ven mi asiento marcado como 'reconectando'.
-3. Si no vuelvo dentro de la ventana, se libera mi asiento y se reembolsan mis apuestas abiertas.
-4. El cliente reintenta la conexion solo y muestra el progreso.
-
-### Epic: Juegos esenciales
-
-Motor de ronda comun y los cuatro juegos del MVP: Cara o Cruz, Dados, Ruleta y Blackjack.
-
-#### 17. Motor de ronda comun para los juegos de apuesta unica
-
-`Historia` · Prioridad **Highest** · **5** puntos · `backend` `motor-juego` `esfuerzo:medio`
-
-**Contexto.** Como equipo queremos una sola maquina de estados reutilizable, para no reimplementar el ciclo de la ronda en cada juego.
-
-**Criterios de aceptacion**
-
-1. Existe una maquina de estados con las fases: espera, apuestas, resolucion y resultados.
-2. Cada participante confirma una sola apuesta por ronda (opcion e importe).
-3. Solo el anfitrion abre y lanza la ronda, pero el servidor genera y liquida el resultado.
-4. Los resultados se calculan con una fuente aleatoria del servidor, nunca en el cliente.
-5. Al terminar, se acreditan los pagos, se difunde el resultado y la sala vuelve a espera.
-6. Los tres juegos rapidos del MVP se montan sobre este motor sin duplicar logica.
-
-**Notas**
-
-- Archivo de referencia: lib/quick-games.js.
-
-#### 18. Cara o Cruz
-
-`Historia` · Prioridad **Highest** · **2** puntos · `backend` `frontend` `juego` `esfuerzo:bajo`
-
-**Contexto.** Como grupo queremos el juego mas simple posible para probar el circuito completo de apuesta y pago.
-
-**Criterios de aceptacion**
-
-1. Puedo apostar a cara o a cruz con un importe valido.
-2. Acertar paga x2 sobre la apuesta; fallar la pierde.
-3. El resultado lo decide el servidor antes de cualquier animacion.
-4. El resultado y el pago de cada participante se muestran al cerrar la ronda.
-
-**Notas**
-
-- Primer juego a implementar: valida el motor de ronda de punta a punta.
-
-#### 19. Dados Cosmicos
-
-`Historia` · Prioridad **High** · **3** puntos · `backend` `frontend` `juego` `esfuerzo:medio`
-
-**Contexto.** Como jugador quiero una apuesta con mas de dos opciones, para variar el ritmo entre rondas.
-
-**Criterios de aceptacion**
-
-1. Puedo apostar a bajo (1-3) o alto (4-6) con pago x2.
-2. Puedo apostar a un numero exacto con pago x6.
-3. El dado lo tira el servidor y el mismo valor llega a todos los participantes.
-4. La interfaz muestra claramente mi apuesta antes de lanzar y puedo cambiarla hasta que se cierra la mesa.
-
-#### 20. Animaciones de moneda y dados sobre el resultado del servidor
-
-`Tarea` · Prioridad **Medium** · **3** puntos · `frontend` `ux` `esfuerzo:medio`
-
-**Contexto.** La tension visual es parte de la experiencia, pero no debe poder alterar ni adelantar el resultado.
-
-**Criterios de aceptacion**
-
-1. La moneda gira y los dados ruedan antes de revelar el valor que ya envio el servidor.
-2. La animacion dura menos de 3 segundos y se puede saltar.
-3. Se respeta prefers-reduced-motion: sin animacion, revelado directo.
-4. Ninguna animacion bloquea el chat ni el resto de la interfaz.
-
-#### 21. Ruleta: apuestas simples y pleno
-
-`Historia` · Prioridad **High** · **5** puntos · `backend` `frontend` `juego` `esfuerzo:medio`
-
-**Contexto.** Como jugador quiero la ruleta, que es el juego de casino mas reconocible, en una version acotada pero correcta.
-
-**Criterios de aceptacion**
-
-1. Puedo apostar a rojo, negro, par, impar, 1-18 o 19-36, con pago x2.
-2. Puedo apostar a un numero exacto de 0 a 36 (pleno), con pago x36.
-3. El cero es verde y hace perder todas las apuestas externas.
-4. El numero ganador lo decide el servidor y la rueda se detiene exactamente en el.
-5. La animacion se puede saltar y respeta prefers-reduced-motion.
-
-**Notas**
-
-- Docenas, columnas y el pano completo quedan fuera del MVP.
-
-#### 22. Blackjack: reparto, pedir, plantarse y casa a 17
-
-`Historia` · Prioridad **Highest** · **5** puntos · `backend` `frontend` `juego` `esfuerzo:medio`
-
-**Contexto.** Como jugador quiero un juego con decisiones por turno y no solo azar, que es lo que da profundidad a la mesa.
-
-**Criterios de aceptacion**
-
-1. Cada jugador apuesta y recibe dos cartas; la casa recibe una visible y una oculta.
-2. Puedo pedir carta o plantarme en mi turno.
-3. Pasarse de 21 pierde la apuesta de inmediato.
-4. La casa pide hasta 17 y se planta, segun reglas fijas del servidor.
-5. Se comparan manos, se declaran ganadores y empates y se acreditan los pagos.
-6. El as vale 1 u 11 segun convenga a la mano.
-
-#### 23. Blackjack: doblar y pago 3:2 del blackjack natural
-
-`Historia` · Prioridad **Medium** · **3** puntos · `backend` `frontend` `juego` `esfuerzo:medio`
-
-**Contexto.** Como jugador quiero las dos reglas que mas cambian la estrategia, sin complicar el MVP con seguro ni split.
-
-**Criterios de aceptacion**
-
-1. Puedo doblar la apuesta con mis dos primeras cartas y recibir exactamente una carta mas.
-2. No puedo doblar si no me alcanza el saldo.
-3. Un blackjack natural (as + figura o diez) paga 3:2.
-4. Si la casa tambien tiene blackjack natural, la mano es empate y se devuelve la apuesta.
-
-**Notas**
-
-- Seguro y split quedan fuera del MVP.
-
-#### 24. Temporizador de turno con accion segura por defecto
-
-`Historia` · Prioridad **High** · **3** puntos · `backend` `motor-juego` `esfuerzo:medio`
-
-**Contexto.** Como jugador no quiero que la partida se congele porque alguien se fue a hacer otra cosa.
-
-**Criterios de aceptacion**
-
-1. Cada turno tiene un limite de 25 segundos, visible como cuenta regresiva en la interfaz.
-2. Al expirar, el servidor aplica una accion segura: plantarse en blackjack, o no apostar en los juegos rapidos.
-3. Los temporizadores no bloquean el bucle de eventos y se cancelan al destruir la sala.
-4. La accion automatica pasa por el mismo validador que la accion manual.
-5. Los demas participantes ven que la accion fue automatica.
-
-#### 25. Privacidad de cartas garantizada por el servidor
-
-`Historia` · Prioridad **Highest** · **3** puntos · `backend` `seguridad` `esfuerzo:medio`
-
-**Contexto.** Como jugador quiero certeza de que nadie puede ver mis cartas abriendo la consola del navegador.
-
-**Criterios de aceptacion**
-
-1. La carta oculta de la casa no viaja al cliente hasta la resolucion.
-2. Cada jugador recibe unicamente sus propias cartas; las ajenas viajan boca abajo como XX.
-3. El estado se filtra por destinatario en el servidor, no se oculta con CSS en el cliente.
-4. Una prueba automatizada verifica que el payload de un jugador no contiene cartas de otro ni la carta oculta de la casa.
-
-### Epic: Lobby y social
-
-Descubrir salas, entrar rapido y conversar durante la partida.
-
-#### 26. Lobby con tarjetas de juego y accesos directos
-
-`Historia` · Prioridad **High** · **3** puntos · `frontend` `lobby` `esfuerzo:medio`
-
-**Contexto.** Como visitante quiero entender en 5 segundos que es la pagina y como empezar a jugar.
-
-**Criterios de aceptacion**
-
-1. La portada explica en una frase que es un casino social con fichas virtuales, sin dinero real.
-2. Hay accesos directos a crear sala y a entrar con codigo.
-3. Hay una tarjeta por juego del MVP con imagen, descripcion breve y duracion estimada.
-4. La accion principal de cada tarjeta crea una sala de ese juego.
-5. Las imagenes son locales, sin depender de CDNs externos.
-
-#### 27. Lista de salas abiertas en vivo
-
-`Historia` · Prioridad **Medium** · **3** puntos · `frontend` `backend` `lobby` `esfuerzo:medio`
-
-**Contexto.** Como visitante que llega solo quiero unirme a una mesa existente, para no depender de que alguien me invite.
-
-**Criterios de aceptacion**
-
-1. El lobby lista las salas abiertas con juego, anfitrion, fase y ocupacion (por ejemplo 3/6).
-2. La lista se actualiza en vivo cuando se crean, llenan o cierran salas.
-3. Las salas llenas se muestran deshabilitadas en vez de desaparecer.
-4. Puedo filtrar por juego.
-5. Si no hay salas abiertas, se muestra un estado vacio que invita a crear una.
-
-#### 28. Chat de sala
-
-`Historia` · Prioridad **High** · **3** puntos · `frontend` `backend` `social` `esfuerzo:medio`
-
-**Contexto.** Como grupo de amigos queremos comentar la jugada: la conversacion es la mitad de la diversion.
-
-**Criterios de aceptacion**
-
-1. Puedo escribir y enviar mensajes visibles para toda la sala, con mi nombre y avatar.
-2. Enter envia el mensaje y la tecla T enfoca el campo de chat.
-3. El servidor valida longitud maxima y aplica un limite antiflood por remitente.
-4. Los mensajes nuevos se anuncian a lectores de pantalla mediante una region en vivo.
-5. El historial del chat se conserva mientras la sala exista.
-
-#### 29. Mensajes rapidos y reacciones
-
-`Historia` · Prioridad **Low** · **2** puntos · `frontend` `social` `esfuerzo:bajo`
-
-**Contexto.** Como jugador quiero reaccionar sin dejar de mirar la mesa, con un solo clic.
-
-**Criterios de aceptacion**
-
-1. Hay botones de mensajes rapidos predefinidos que se envian al chat.
-2. Hay reacciones con emoji que aparecen brevemente sobre la mesa.
-3. Las reacciones tienen un limite de frecuencia por persona.
-4. Funcionan con teclado y tienen etiqueta accesible.
-
-#### 30. Historial de ganadores recientes de la sala
-
-`Historia` · Prioridad **Low** · **2** puntos · `frontend` `backend` `social` `esfuerzo:bajo`
-
-**Contexto.** Como jugador quiero ver como viene la racha de la mesa, para darle continuidad a la sesion.
-
-**Criterios de aceptacion**
-
-1. La sala muestra las ultimas rondas con juego, ganador e importe.
-2. Se conservan al menos las 10 rondas mas recientes mientras la sala exista.
-3. Las ganancias grandes se destacan con una celebracion breve que no bloquea la partida.
-4. El historial se envia como parte del estado de la sala a quien entra.
-
-### Epic: Cierre para lanzar
-
-Avisos legales, estados de error, accesibilidad minima y despliegue.
-
-#### 31. Aviso de juego virtual y terminos con aceptacion
-
-`Historia` · Prioridad **Highest** · **3** puntos · `legal` `frontend` `backend` `esfuerzo:medio`
-
-**Contexto.** Como operador en Mexico necesito dejar claro que no hay dinero real y que el uso es para mayores de edad, antes de abrir la pagina al publico.
-
-**Criterios de aceptacion**
-
-1. Existe la pagina /terminos con naturaleza recreativa, requisito 18+, deslinde de responsabilidad y aviso de privacidad.
-2. Al entrar por primera vez debo aceptar los terminos para poder crear o unirme a una sala.
-3. La aceptacion queda registrada con su version; el servidor rechaza crear o unirse sin la aceptacion vigente.
-4. La interfaz repite de forma visible que las fichas son virtuales y que no hay depositos, retiros ni premios canjeables.
-
-#### 32. Estados de carga, error y reconexion en el cliente
-
-`Historia` · Prioridad **High** · **2** puntos · `frontend` `ux` `esfuerzo:bajo`
-
-**Contexto.** Como visitante quiero entender que esta pasando cuando algo tarda o falla, en lugar de ver una pantalla muerta.
-
-**Criterios de aceptacion**
-
-1. Hay una pantalla de carga mientras el servidor despierta, con los reintentos visibles.
-2. Los errores del servidor se muestran como mensajes legibles, nunca como un fallo silencioso.
-3. Perder la conexion muestra un aviso persistente y recuperarla lo retira.
-4. Las acciones en curso deshabilitan su boton para evitar envios duplicados.
-
-#### 33. Bloqueo para pantallas menores a 1024 px
-
-`Historia` · Prioridad **Medium** · **2** puntos · `frontend` `ux` `esfuerzo:bajo`
-
-**Contexto.** Como producto decidimos soportar solo computadoras; hay que comunicarlo bien en vez de mostrar una interfaz rota en el telefono.
-
-**Criterios de aceptacion**
-
-1. Con ventanas de menos de 1024 px de ancho se muestra una pantalla que invita a volver desde una computadora.
-2. Hay un boton 'Entrar de todos modos' cuya decision se recuerda en el navegador.
-3. En ese caso la pagina permite desplazamiento horizontal en vez de romper el diseno.
-4. La resolucion minima soportada es 1024x720 y el diseno es optimo desde 1280x800.
-5. El README indica que es un sitio solo para escritorio.
-
-#### 34. Accesibilidad minima y atajos de teclado
-
-`Tarea` · Prioridad **Medium** · **3** puntos · `frontend` `accesibilidad` `esfuerzo:medio`
-
-**Contexto.** Con poco esfuerzo la pagina se vuelve usable con teclado y comoda para quien prefiere menos movimiento.
-
-**Criterios de aceptacion**
-
-1. Toda accion se puede ejecutar con teclado y el foco es siempre visible.
-2. Atajos en mesa: H/S/D en blackjack, Enter confirma la apuesta rapida, T enfoca el chat y ? muestra la guia.
-3. Los cambios de estado importantes se anuncian mediante regiones en vivo.
-4. Se respeta prefers-reduced-motion en todas las animaciones.
-5. El contraste de texto cumple el nivel AA.
-
-#### 35. Despliegue en Render y guia de ejecucion
-
-`Tarea` · Prioridad **High** · **3** puntos · `devops` `despliegue` `esfuerzo:medio`
-
-**Contexto.** El MVP no sirve de nada si no esta en linea y nadie sabe como levantarlo.
-
-**Criterios de aceptacion**
-
-1. render.yaml versiona el servicio: build, start, health check en /healthz y variables de entorno.
-2. El health check permite deploys sin caida y ante SIGTERM el servidor guarda los perfiles antes de salir.
-3. Esta documentada la opcion gratuita y su limitacion (suspension tras inactividad y perfiles efimeros sin disco).
-4. El README explica como ejecutar en local y como desplegar, en pasos numerados.
-5. La URL de produccion queda probada de punta a punta: crear sala, entrar desde otro navegador y jugar una ronda.
-
-## Orden sugerido
-
-Los tickets ya estan numerados en el orden en que conviene tomarlos. Tres hitos naturales:
-
-1. **Tickets 1-10** — la pagina abre, hay perfil con fichas y todo se guarda.
-2. **Tickets 11-24** — se puede crear una sala, invitar y jugar los cuatro juegos.
-3. **Tickets 25-35** — lobby, chat y todo lo necesario para publicarla.
+Armar las diapositivas y el guion de la demostracion: que problema resuelve, como esta hecho y una partida en vivo. Repartir quien expone cada parte.
 
 ## Como importar en Jira
 
-1. **Configuracion > Sistema > Importar y exportar > Importar datos externos > CSV** (o *Project settings > Import issues* en un proyecto de equipo).
-2. Sube primero `montecristo-epics.csv` y mapea `Epic Name`.
-3. Sube despues `montecristo-tickets.csv` y mapea: *Issue Type, Summary, Description, Priority, Story Points, Epic Link, Labels (x4), Component*.
-4. En proyectos *team-managed*, `Epic Link` puede llamarse `Parent`: renombra la columna antes de importar o usa el mapeo equivalente.
+1. Entrar al proyecto y usar *Import issues from CSV* (o **Configuracion > Sistema > Importar datos externos > CSV**).
+2. Subir `montecristo-tickets.csv`.
+3. Mapear las tres columnas: *Issue Type*, *Summary* y *Description*.
+4. Importar y despues asignar cada ticket a un integrante del equipo.
 
-Para regenerar estos archivos: `python3 docs/jira/generar-tickets.py`.
+Si el proyecto de Jira esta en ingles, cambiar el valor *Tarea* por *Task* en la primera columna del CSV antes de importar.
+
+Para regenerar los archivos: `python3 docs/jira/generar-tickets.py`.
