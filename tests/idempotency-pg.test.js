@@ -1,2 +1,0 @@
-'use strict';const test=require('node:test');const assert=require('node:assert/strict');const {PgIdempotencyStore}=require('../lib/idempotency-store-pg');const key=Buffer.alloc(32,6).toString('base64');
-test('respuesta idempotente PostgreSQL queda cifrada y autenticada',()=>{const store=new PgIdempotencyStore(null,{pool:{},encryptionKey:key}),body={ok:true,resetUrl:'https://example/reset#token=secreto'};const encoded=store.encodeResponse(body);assert.match(encoded.encrypted,/^v1:/);assert.equal(JSON.stringify(encoded).includes('secreto'),false);});

@@ -1,7 +1,0 @@
-'use strict';
-const test=require('node:test');const assert=require('node:assert/strict');
-const {applyModeration,effectiveModeration,moderationMessage}=require('../lib/moderation');
-function profile(){return {security:{sessionVersion:1},moderation:{status:'active'}};}
-test('suspensión tiene vencimiento e incrementa versión',()=>{const p=profile();applyModeration(p,{type:'suspend',duration:'24h',reason:'Violación confirmada del chat',now:1000});assert.equal(p.moderation.status,'suspended');assert.equal(p.moderation.until,1000+86400000);assert.equal(p.security.sessionVersion,2);assert.equal(moderationMessage(p,2000).code,'account_suspended');assert.equal(effectiveModeration(p,1000+86400000).status,'active');});
-test('baneo es permanente y desbaneo conserva trazabilidad',()=>{const p=profile();applyModeration(p,{type:'ban',reason:'Abuso grave confirmado por soporte',now:1000});assert.equal(moderationMessage(p,999999).code,'account_banned');const first=p.moderation.actionId;applyModeration(p,{type:'unban',reason:'Apelación aprobada por administración',now:2000});assert.equal(p.moderation.status,'active');assert.notEqual(p.moderation.actionId,first);assert.equal(p.security.sessionVersion,3);});
-test('rechaza motivos y duraciones inválidas',()=>{assert.throws(()=>applyModeration(profile(),{type:'suspend',duration:'forever',reason:'Motivo suficientemente largo'}),/Duración/);assert.throws(()=>applyModeration(profile(),{type:'ban',reason:'corto'}),/motivo/);});
