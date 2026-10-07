@@ -275,7 +275,7 @@ with open(os.path.join(HERE, "montecristo-tickets.csv"), "w", newline="", encodi
     w = csv.writer(f, quoting=csv.QUOTE_ALL)
     w.writerow(["Issue Type", "Summary", "Description", "Assignee"])
     for i, (_etapa, titulo, desc) in enumerate(TICKETS, 1):
-        w.writerow(["Tarea", titulo, desc, NOMBRE[RESPONSABLES[i]]])
+        w.writerow(["Historia", titulo, desc, NOMBRE[RESPONSABLES[i]]])
 
 # ------------------------------------------------------------------- MD
 etapas = []
@@ -347,7 +347,7 @@ lineas += [
     "   asignenlos a mano despues de importar (se pueden seleccionar varios a la vez).",
     "4. Importar y despues asignar cada ticket a un integrante del equipo.",
     "",
-    "Si el proyecto de Jira esta en ingles, cambiar el valor *Tarea* por *Task* en la "
+    "Si el proyecto de Jira esta en ingles, cambiar el valor *Historia* por *Story* en la "
     "primera columna del CSV antes de importar.",
     "",
     "Para regenerar los archivos: `python3 docs/jira/generar-tickets.py`.",

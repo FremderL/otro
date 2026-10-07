@@ -14,7 +14,7 @@ El CSV tiene solo tres columnas: **Issue Type**, **Summary** y **Description**.
 
 1. Necesitas tener ya creado el proyecto en Jira.
 2. Tienes que ser **administrador del proyecto** (o del sitio) para ver la opción de importar.
-3. Si tu Jira está en **inglés**, abre el CSV y reemplaza la palabra `Tarea` por `Task` en
+3. Si tu Jira está en **inglés**, abre el CSV y reemplaza la palabra `Historia` por `Story` en
    toda la primera columna (en Excel o Google Sheets: Buscar y reemplazar). Si está en
    español, déjalo como está.
 
@@ -66,7 +66,7 @@ El CSV tiene solo tres columnas: **Issue Type**, **Summary** y **Description**.
 ## Si algo sale mal
 
 - **"The issue type is invalid" / tipo de incidencia inválido**
-  Tu Jira está en otro idioma: cambia `Tarea` por `Task` (o por el nombre exacto que use
+  Tu Jira está en otro idioma: cambia `Historia` por `Story` (o por el nombre exacto que use
   tu proyecto) en la primera columna del CSV y vuelve a importar.
 
 - **Se ven caracteres raros (Ã±, Ã©)**

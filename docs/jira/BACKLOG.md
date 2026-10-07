@@ -297,6 +297,6 @@ Armar las diapositivas y el guion de la demostracion: que problema resuelve, com
    La columna *Assignee* trae el nombre de cada integrante. Jira necesita que coincida con su usuario o su correo: si no los reconoce, deja esa columna sin mapear e    asignenlos a mano despues de importar (se pueden seleccionar varios a la vez).
 4. Importar y despues asignar cada ticket a un integrante del equipo.
 
-Si el proyecto de Jira esta en ingles, cambiar el valor *Tarea* por *Task* en la primera columna del CSV antes de importar.
+Si el proyecto de Jira esta en ingles, cambiar el valor *Historia* por *Story* en la primera columna del CSV antes de importar.
 
 Para regenerar los archivos: `python3 docs/jira/generar-tickets.py`.

@@ -82,7 +82,7 @@ pártelo en 3 tickets más chicos"*.
 > Convierte esta lista de tickets a un archivo CSV con exactamente tres columnas:
 > Issue Type, Summary, Description.
 >
-> El valor de Issue Type siempre es "Tarea". Usa comillas dobles en todos los campos,
+> El valor de Issue Type siempre es "Historia". Usa comillas dobles en todos los campos,
 > codificación UTF-8 y coma como separador. No agregues ninguna otra columna.
 >
 > [PEGA AQUÍ TU LISTA DE TICKETS]
