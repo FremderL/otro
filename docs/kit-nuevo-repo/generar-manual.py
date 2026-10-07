@@ -254,6 +254,20 @@ H.append(vinetas([
     "O, si ya lo clonaste, los archivos ya están en tu carpeta: solo haz "
     "<font face='Courier'>git pull</font>.",
 ], numerada=True))
+H.append(p("Editar el manual en Google Docs", "h2"))
+H.append(p("Además del PDF hay una versión en Word, <b>MANUAL-EQUIPO.docx</b>, por si hay que "
+           "corregir algo o agregarle una sección. Para abrirla en Google Docs:"))
+H.append(vinetas([
+    "Baja el archivo <b>MANUAL-EQUIPO.docx</b> del repositorio (mismo botón de descarga).",
+    "Entra a <font face='Courier'>drive.google.com</font> y arrastra el archivo a la ventana, "
+    "o usa <b>Nuevo</b> → <b>Subir archivo</b>.",
+    "Cuando termine de subir, da doble clic y arriba elige <b>Abrir con</b> → "
+    "<b>Documentos de Google</b>. Queda una copia editable y la original en Word se queda igual.",
+    "Comparte el documento con el equipo (botón <b>Compartir</b>, permiso de editor) para que "
+    "todos trabajen sobre la misma versión.",
+    "Al terminar, <b>Archivo</b> → <b>Descargar</b> → <b>PDF</b> si necesitas volver a entregarlo "
+    "en PDF, o <b>Microsoft Word (.docx)</b> para reemplazar el archivo del repositorio.",
+], numerada=True))
 H.append(tip("Si te pasan un enlace de vista previa y no te deja descargar",
              "Las vistas previas se abren dentro de un marco que a veces bloquea las descargas. "
              "Busca el botón de abrir en una pestaña nueva (el icono de la flecha diagonal) y "
