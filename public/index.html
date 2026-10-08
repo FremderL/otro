@@ -41,6 +41,10 @@
         <a href="#games">Juegos</a>
         <a href="#live-lobby">Salas en vivo</a>
         <a href="#how">Cómo jugar</a>
+        <!-- Estadio MonteCristo (Fase E4, §16 fila 7). Nace oculto: una sonda al
+             final del body lo revela solo si la sección está activa (FOOTBALL_ENABLED),
+             para que con el flag apagado no haya un enlace visible a un 404. -->
+        <a href="/estadio" id="nav-estadio" hidden>🏟 Estadio</a>
       </div>
       <div class="nav-actions">
         <span id="nav-connection" class="connection-badge connected"><i></i><span>Conectado</span></span>
@@ -89,6 +93,35 @@
       </div>
       <div class="scroll-cue"><span>EXPLORAR LOBBY</span><i>↓</i></div>
     </main>
+
+    <!-- Estadio MonteCristo (Fase E4, §16 fila 7): acceso PRINCIPAL desde el casino.
+         Nace oculto; la sonda del final del body lo revela y puebla solo si
+         /api/estadio/state responde ok (FOOTBALL_ENABLED). Con el flag apagado el
+         banner no existe para el usuario y la sección sigue invisible (§21). -->
+    <section id="estadio-access" class="estadio-banner shell" hidden aria-labelledby="estadio-access-title">
+      <a class="estadio-banner-card" href="/estadio">
+        <div class="estadio-banner-glow" aria-hidden="true"></div>
+        <div class="estadio-banner-pitch" aria-hidden="true"></div>
+        <div class="estadio-banner-copy">
+          <span class="estadio-kicker">LIGA SIMULADA · APUESTAS CON FICHAS 100% VIRTUALES</span>
+          <h2 id="estadio-access-title">Estadio <em>MonteCristo</em></h2>
+          <p>Dieciséis clubes ficticios, una jornada por día y partidos que se juegan solos en una cancha 2D en vivo, con narrador y analista. Apuesta antes y durante el encuentro con tus fichas.</p>
+          <div class="estadio-banner-meta">
+            <span class="est-chip" id="est-banner-jornada">Jornada —</span>
+            <span class="est-chip est-chip-live" id="est-banner-live" hidden><i></i><b id="est-banner-live-count">0</b>&nbsp;en vivo</span>
+            <span class="est-chip" id="est-banner-today" hidden>—</span>
+          </div>
+          <span class="estadio-banner-cta">Entrar al Estadio <b>→</b></span>
+        </div>
+        <div class="estadio-banner-feature" id="est-banner-feature" hidden>
+          <span class="est-feature-label" id="est-feature-label"><i></i>EN VIVO</span>
+          <div class="est-feature-teams">
+            <span id="est-feature-home">—</span><b id="est-feature-mid">vs</b><span id="est-feature-away">—</span>
+          </div>
+          <small id="est-feature-sub">Partido destacado de la jornada</small>
+        </div>
+      </a>
+    </section>
 
     <section id="games" class="lobby-section shell">
       <div class="section-heading">
@@ -468,6 +501,53 @@
     </div>
   </div>
 
+  <!-- Estadio MonteCristo (Fase E4): revela el enlace del nav Y el banner de acceso
+       solo si la sección está activa, y puebla el banner (jornada, partidos en vivo y
+       destacado). Con FOOTBALL_ENABLED=off, /api/estadio/state responde 404 y todo
+       sigue oculto (la sección es invisible, §21 Fases A–E tras el flag). -->
+  <script>
+    (function () {
+      var LIVE = { live: 1, halftime: 1, extra_time: 1, shootout: 1 };
+      function el(id) { return document.getElementById(id); }
+      function txt(id, v) { var e = el(id); if (e && v != null) e.textContent = v; }
+      function show(id, on) { var e = el(id); if (e) e.hidden = !on; }
+      function fmtCountdown(ms) {
+        if (ms == null || !(ms >= 0)) return null;
+        var min = Math.floor(ms / 60000), h = Math.floor(min / 60), m = min % 60;
+        if (h > 0) return 'Empieza en ' + h + ' h' + (m > 0 ? ' ' + m + ' min' : '');
+        if (m > 0) return 'Empieza en ' + m + ' min';
+        return 'Empieza en breve';
+      }
+      try {
+        fetch('/api/estadio/state').then(function (r) { return r && r.ok ? r.json() : null; }).then(function (j) {
+          if (!j || !j.ok) return;
+          show('nav-estadio', true);
+          show('estadio-access', true);
+          var lobby = j.lobby || {}, teams = j.teams || {}, matches = lobby.matches || [];
+          function name(id) { return (teams[id] && teams[id].name) || id; }
+          var liveList = matches.filter(function (m) { return LIVE[m.status]; });
+          var jor = (liveList[0] || matches[0] || {}).jornada;
+          if (jor) txt('est-banner-jornada', 'Jornada ' + jor);
+          txt('est-banner-live-count', String(liveList.length));
+          show('est-banner-live', liveList.length > 0);
+          if (matches.length) { txt('est-banner-today', matches.length + ' partidos hoy'); show('est-banner-today', true); }
+          var feat = liveList[0] || matches.filter(function (m) { return m.id === lobby.featured; })[0] || matches[0];
+          if (!feat) return;
+          show('est-banner-feature', true);
+          var isLive = !!LIVE[feat.status], isFinal = feat.status === 'settled';
+          txt('est-feature-label', isLive ? 'EN VIVO' : (isFinal ? 'FINAL' : 'PRÓXIMO'));
+          var lbl = el('est-feature-label'); if (lbl) lbl.classList.toggle('is-live', isLive);
+          txt('est-feature-home', name(feat.homeId));
+          txt('est-feature-away', name(feat.awayId));
+          var mid = el('est-feature-mid');
+          if (mid) mid.textContent = (isFinal && feat.result) ? (feat.result.home + '–' + feat.result.away) : (isLive ? Math.floor(feat.minute || 0) + "'" : 'vs');
+          txt('est-feature-sub', isLive ? ('Minuto ' + Math.floor(feat.minute || 0) + ' · bloque ' + (feat.block || '—'))
+            : isFinal ? ('Jornada ' + (feat.jornada || '—') + ' · bloque ' + (feat.block || '—'))
+            : (fmtCountdown(lobby.countdownMs) || ('Bloque ' + (feat.block || '—'))));
+        }).catch(function () {});
+      } catch (e) {}
+    })();
+  </script>
   <script src="/socket.io/socket.io.js"></script>
   <script src="/app.js"></script>
 </body>

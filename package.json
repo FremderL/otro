@@ -19,7 +19,8 @@
     "retention:check": "node scripts/cleanup-retention.js",
     "retention:cleanup": "node scripts/cleanup-retention.js --execute",
     "admin:preflight": "node scripts/admin-preflight.js",
-    "test:postgres": "node --test tests/postgres-real.test.js"
+    "test:postgres": "node --test tests/postgres-real.test.js",
+    "test:football": "node --test tests/football-*.test.js"
   },
   "engines": {
     "node": ">=18"
