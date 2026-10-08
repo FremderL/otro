@@ -81,7 +81,73 @@
   }
 
   // ===== Arranque =====
+  // ===== Animación de entrada (casino → Estadio) =====
+  // Se reproduce UNA sola vez por acceso desde el casino. El disparo es la URL
+  // (?from=casino, que añaden el banner y el nav del casino) o, como respaldo, un
+  // referrer del mismo origen que no sea el propio Estadio. Para que un refresco
+  // (F5) NO la repita, se consume el parámetro con history.replaceState en cuanto se
+  // reproduce; además una bandera de sessionStorage la limita a una vez por sesión.
+  // El overlay se retira del DOM al terminar (o al saltarlo), de modo que ningún tick
+  // de socket, re-render ni navegación interna puede volver a mostrarlo (sin bucles).
+  var ENTER_FLAG = 'mc-estadio-entered';
+
+  function shouldPlayEntry() {
+    if (reduced.matches) return false; // accesibilidad: sin intro con movimiento reducido
+    try { if (sessionStorage.getItem(ENTER_FLAG)) return false; } catch (e) { /* sin storage */ }
+    try {
+      if (new URLSearchParams(location.search).get('from') === 'casino') return true;
+    } catch (e) { /* URLSearchParams no disponible */ }
+    try {
+      var ref = new URL(document.referrer || '', location.href);
+      // Vino del casino: mismo origen y una ruta distinta de la del Estadio.
+      if (ref.origin === location.origin && ref.pathname !== '/estadio') return true;
+    } catch (e) { /* referrer inválido */ }
+    return false;
+  }
+
+  function maybePlayEntry() {
+    if (!shouldPlayEntry()) return;
+    var overlay = $('est-enter');
+    if (!overlay) return;
+    try { sessionStorage.setItem(ENTER_FLAG, String(Date.now())); } catch (e) { /* sin storage */ }
+    // Consume ?from=casino para que un refresco no vuelva a dispararla.
+    try {
+      var clean = new URL(location.href);
+      clean.searchParams.delete('from');
+      history.replaceState(null, '', clean.toString());
+    } catch (e) { /* sin history API */ }
+
+    overlay.hidden = false;
+    var finished = false;
+    function onKey(ev) {
+      // Se traga la tecla para que no active atajos del Estadio durante la intro.
+      ev.preventDefault();
+      ev.stopPropagation();
+      finish(false);
+    }
+    function finish(instant) {
+      if (finished) return;
+      finished = true;
+      window.removeEventListener('keydown', onKey, true);
+      if (instant) { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); return; }
+      overlay.classList.add('est-enter-out');
+      setTimeout(function () { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 320);
+    }
+    // Fin natural: al terminar el ciclo de vida el overlay ya está en opacidad 0.
+    overlay.addEventListener('animationend', function (ev) {
+      if (ev.target === overlay && ev.animationName === 'est-enter-lifecycle') finish(true);
+    });
+    // Red de seguridad por si animationend no llegara (pestaña en segundo plano, etc.).
+    setTimeout(function () { finish(true); }, 3400);
+    // Saltar con clic en cualquier parte o con cualquier tecla.
+    overlay.addEventListener('click', function () { finish(false); });
+    window.addEventListener('keydown', onKey, true);
+    var skip = $('est-enter-skip');
+    if (skip) skip.addEventListener('click', function (ev) { ev.stopPropagation(); finish(false); });
+  }
+
   function boot() {
+    maybePlayEntry();
     cacheEls();
     S.token = deviceToken();
     S.name = localStorage.getItem('montecristo-name') || ('Aficionado ' + S.token.slice(-4).toUpperCase());

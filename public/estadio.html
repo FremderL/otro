@@ -10,6 +10,23 @@
   <link rel="stylesheet" href="/estadio.css" />
 </head>
 <body class="estadio-body">
+  <!-- Animación de entrada (casino → Estadio). Vive oculta por defecto; solo la
+       revela maybePlayEntry() (public/estadio.js) cuando se llega DESDE el casino
+       (?from=casino o referrer del casino) y aún no se mostró en esta sesión. Al
+       terminar se autoelimina del DOM, así que no se repite en ticks ni en refresh.
+       Clic o cualquier tecla la saltan. Respeta prefers-reduced-motion. -->
+  <div id="est-enter" class="est-enter" hidden aria-hidden="true">
+    <div class="est-enter-tunnel"></div>
+    <div class="est-enter-bloom"></div>
+    <div class="est-enter-title">
+      <span class="est-enter-kicker">Bienvenido al</span>
+      <span class="est-enter-name">Estadio MonteCristo</span>
+      <span class="est-enter-sub">Liga simulada en vivo · apuestas con fichas virtuales</span>
+    </div>
+    <div class="est-enter-flash"></div>
+    <button class="est-enter-skip" type="button" id="est-enter-skip">Saltar intro ›</button>
+  </div>
+
   <a class="skip-link" href="#estadio-main">Ir al contenido del Estadio</a>
 
   <header class="estadio-nav">

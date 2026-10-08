@@ -44,7 +44,7 @@
         <!-- Estadio MonteCristo (Fase E4, §16 fila 7). Nace oculto: una sonda al
              final del body lo revela solo si la sección está activa (FOOTBALL_ENABLED),
              para que con el flag apagado no haya un enlace visible a un 404. -->
-        <a href="/estadio" id="nav-estadio" hidden>🏟 Estadio</a>
+        <a href="/estadio?from=casino" id="nav-estadio" hidden>🏟 Estadio</a>
       </div>
       <div class="nav-actions">
         <span id="nav-connection" class="connection-badge connected"><i></i><span>Conectado</span></span>
@@ -99,7 +99,9 @@
          /api/estadio/state responde ok (FOOTBALL_ENABLED). Con el flag apagado el
          banner no existe para el usuario y la sección sigue invisible (§21). -->
     <section id="estadio-access" class="estadio-banner shell" hidden aria-labelledby="estadio-access-title">
-      <a class="estadio-banner-card" href="/estadio">
+      <!-- ?from=casino es la señal de una sola vez que dispara la animación de
+           entrada del Estadio (ver public/estadio.js: maybePlayEntry). -->
+      <a class="estadio-banner-card" href="/estadio?from=casino">
         <div class="estadio-banner-glow" aria-hidden="true"></div>
         <div class="estadio-banner-pitch" aria-hidden="true"></div>
         <div class="estadio-banner-copy">

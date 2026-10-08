@@ -178,3 +178,138 @@
   .estadio-body *, .estadio-body *::before, .estadio-body *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
   .est-goal-banner.show { animation: none; }
 }
+
+/* ============================================================
+   ANIMACIÓN DE ENTRADA (casino → Estadio MonteCristo).
+   Se reproduce UNA sola vez por acceso desde el casino y el overlay
+   se AUTOELIMINA del DOM al terminar, así que no puede repetirse en
+   ticks, refresco ni re-render (ver public/estadio.js: maybePlayEntry).
+   z-index 200 por encima de nav (30), modales (60), toasts (70) y
+   skip-link (100). Toda la coreografía dura 2.6 s y termina en
+   opacidad 0 (est-enter-lifecycle), momento en que JS retira el nodo.
+   ============================================================ */
+.est-enter {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  background: #04070a; overflow: hidden; cursor: pointer;
+  animation: est-enter-lifecycle 2.6s ease forwards;
+}
+/* El atributo hidden debe ganar sobre display:flex (el CSS de autor
+   vencería a la regla [hidden] del UA si no lo declaramos aquí). */
+.est-enter[hidden] { display: none; }
+
+/* Túnel: dolly hacia la cancha (escala + brillo + desenfoque). */
+.est-enter-tunnel {
+  position: absolute; inset: -6%;
+  background: url('/assets/estadio-tunnel.jpg') center 62% / cover no-repeat;
+  transform: scale(1.65) translateY(6%);
+  filter: brightness(.28) saturate(.65) blur(10px);
+  animation: est-enter-walk 2.6s cubic-bezier(.22,.61,.28,1) forwards;
+}
+@keyframes est-enter-walk {
+  0%   { transform: scale(1.65) translateY(6%); filter: brightness(.28) saturate(.65) blur(10px); }
+  16%  { transform: scale(1.50) translateY(4%); filter: brightness(.42) saturate(.75) blur(6px); }
+  55%  { transform: scale(1.22) translateY(1%); filter: brightness(.75) saturate(.92) blur(2px); }
+  82%  { transform: scale(1.04);                filter: brightness(1.06) saturate(1.02) blur(0); }
+  92%  { transform: scale(1.00);                filter: brightness(1.28) saturate(1.05); }
+  100% { transform: scale(1.00);                filter: brightness(1.50) saturate(1.05); }
+}
+
+/* Bloom de reflectores: destello radial que «enciende» el estadio. */
+.est-enter-bloom {
+  position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen;
+  background: radial-gradient(58% 46% at 50% 56%, rgba(255,244,214,.95), rgba(255,214,140,.35) 42%, transparent 72%);
+  opacity: 0;
+  animation: est-enter-bloom 2.6s ease forwards;
+}
+@keyframes est-enter-bloom {
+  0%, 46% { opacity: 0;   transform: scale(.7); }
+  62%     { opacity: .55; transform: scale(1); }
+  78%     { opacity: .85; transform: scale(1.06); }
+  100%    { opacity: 0;   transform: scale(1.15); }
+}
+
+/* Flash dorado de transición justo antes de revelar la interfaz. */
+.est-enter-flash {
+  position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,236,190,0), rgba(255,224,160,.9) 55%, rgba(255,246,220,1));
+  opacity: 0;
+  animation: est-enter-flash 2.6s ease forwards;
+}
+@keyframes est-enter-flash {
+  0%, 84% { opacity: 0; }
+  92%     { opacity: .9; }
+  100%    { opacity: 0; }
+}
+
+/* Título: kicker menta + nombre dorado con brillo metálico + subtítulo. */
+.est-enter-title { position: relative; text-align: center; pointer-events: none; padding: 0 24px; }
+.est-enter-kicker {
+  display: block; font-family: var(--sans); font-size: 13px; letter-spacing: .42em;
+  text-transform: uppercase; color: var(--mint); opacity: 0;
+  animation: est-enter-kicker 2.6s ease forwards;
+}
+@keyframes est-enter-kicker {
+  0%, 20% { opacity: 0;  transform: translateY(10px); letter-spacing: .7em; }
+  40%     { opacity: .9; transform: translateY(0);    letter-spacing: .42em; }
+  84%     { opacity: .9; }
+  100%    { opacity: 0; }
+}
+.est-enter-name {
+  display: block; margin-top: 10px; font-family: var(--display); font-weight: 900;
+  font-size: clamp(40px, 7vw, 92px); line-height: 1.02; text-transform: uppercase; letter-spacing: .04em;
+  background: linear-gradient(100deg, #f7e3b4 0%, #e5bd72 38%, #fff3d6 52%, #d9a94f 70%, #f2d795 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 0 46px rgba(229,189,114,.25);
+  opacity: 0;
+  animation: est-enter-name 2.6s cubic-bezier(.2,.7,.2,1) forwards;
+}
+@keyframes est-enter-name {
+  0%, 26% { opacity: 0; transform: translateY(26px) scale(.96); filter: blur(6px); }
+  48%     { opacity: 1; transform: translateY(0) scale(1);      filter: blur(0); }
+  84%     { opacity: 1; }
+  100%    { opacity: 0; transform: scale(1.04); }
+}
+.est-enter-sub {
+  display: block; margin-top: 14px; font-size: 13px; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--muted); opacity: 0;
+  animation: est-enter-sub 2.6s ease forwards;
+}
+@keyframes est-enter-sub {
+  0%, 44% { opacity: 0; }
+  62%     { opacity: .85; }
+  84%     { opacity: .85; }
+  100%    { opacity: 0; }
+}
+
+/* Botón «saltar»: discreto, aparece tarde, siempre clicable. */
+.est-enter-skip {
+  position: absolute; right: 22px; bottom: 20px; z-index: 2;
+  font-size: 12px; letter-spacing: .08em; color: var(--muted);
+  background: rgba(255,255,255,.04); border: 1px solid var(--line);
+  border-radius: 999px; padding: 7px 14px; cursor: pointer;
+  opacity: 0; animation: est-enter-skip 2.6s ease forwards;
+}
+@keyframes est-enter-skip {
+  0%, 58% { opacity: 0; }
+  70%     { opacity: .8; }
+  86%     { opacity: .8; }
+  100%    { opacity: 0; }
+}
+.est-enter-skip:hover { color: var(--text); border-color: var(--line-strong); }
+
+/* Ciclo de vida del overlay: visible y, al final, se desvanece por completo. */
+@keyframes est-enter-lifecycle {
+  0%   { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { opacity: 0; visibility: hidden; }
+}
+/* Salida rápida al saltar con click o tecla. */
+.est-enter.est-enter-out, .est-enter.est-enter-out * { animation: none !important; }
+.est-enter.est-enter-out { opacity: 0; visibility: hidden; transition: opacity .3s ease; }
+
+/* Sin animación de entrada bajo prefers-reduced-motion: el overlay ni se muestra
+   (también lo evita el gate de JS en maybePlayEntry; doble seguridad). */
+@media (prefers-reduced-motion: reduce) {
+  .est-enter, .est-enter * { display: none !important; animation: none !important; }
+}
