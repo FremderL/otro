@@ -19,7 +19,8 @@ const { loadAdminConfig } = require('./lib/admin-config');
 const { createAccountSessionStore } = require('./lib/account-session-factory');
 const { installAccountAuthRoutes, COOKIE_NAME, parseCookies } = require('./lib/account-auth-http');
 const { sessionState } = require('./lib/account-sessions');
-const { installAdminRoutes } = require('./lib/admin-auth-http');
+const { installAdminRoutes, makeAdminGuard } = require('./lib/admin-auth-http');
+const { PERMISSIONS } = require('./lib/permissions');
 const { createAuditStore } = require('./lib/audit-store-factory');
 const { createModerationStore } = require('./lib/moderation-store-factory');
 const { createReportStore } = require('./lib/report-store-factory');
@@ -46,7 +47,7 @@ const { FootballScheduler } = require('./lib/football/scheduler');
 const { createBettingService } = require('./lib/football/betting');
 const { SimulatedFlow } = require('./lib/football/simulated-flow');
 const { registerFootballSockets } = require('./lib/football/sockets');
-const { installFootballRoutes, footballHealth } = require('./lib/football/http');
+const { installFootballRoutes, installFootballAdminRoutes, footballHealth } = require('./lib/football/http');
 const footballConfig = loadFootballConfig();
 
 const app = express();
@@ -176,6 +177,46 @@ installFootballRoutes(app, {
   get config() { return { tosVersion: TOS_VERSION }; },
   log: logEvent,
   enabled: () => footballConfig.enabled
+});
+
+// Estadio MonteCristo (Fase E4b): palancas operativas de administración del fútbol
+// (/admin/estadio/*): suspender mercados, forzar liquidación, posponer y cerrar un
+// mercado por precio incorrecto. Fail-closed en dos capas: el gate de http.js
+// devuelve 404 si ADMIN_FEATURE_ENABLED está apagado, y la guardia inyectada exige
+// sesión staff con el permiso football:manage (solo rol admin), MFA reciente y
+// escritura de confianza (origen + CSRF), exactamente igual que /api/admin. Se monta
+// un parser JSON propio bajo /admin/estadio porque los del casino solo cubren
+// /api/auth y /api/admin; sin él, req.body llegaría undefined a estas rutas.
+app.use('/admin/estadio', express.json({ limit: '16kb', strict: true }));
+installFootballAdminRoutes(app, {
+  adminConfig,
+  guard: makeAdminGuard({
+    config: adminConfig,
+    getProfiles: () => profiles,
+    getSessionStore: () => accountSessionStore
+  }).fullGuard(PERMISSIONS.FOOTBALL_MANAGE),
+  get store() { return footballStore; },
+  get betting() { return footballBetting; },
+  get engine() { return footballEngine; },
+  // Rastro de auditoría normalizado al mismo store que el resto del panel; es
+  // best-effort: si el store no está listo o falla, no debe tumbar la palanca.
+  audit: (type, data) => {
+    try {
+      const entry = {
+        actorProfileId: data && data.admin ? String(data.admin) : null,
+        actorRole: 'admin',
+        action: type,
+        targetType: 'football',
+        targetId: data && (data.match || data.matchId) ? String(data.match || data.matchId) : null,
+        beforeData: null,
+        afterData: data || null,
+        reason: 'Palanca operativa del Estadio'
+      };
+      Promise.resolve(auditStore && auditStore.append ? auditStore.append(entry) : null).catch(() => {});
+    } catch (_) { /* la auditoría no debe romper la operación */ }
+  },
+  log: logEvent,
+  now: () => Date.now()
 });
 
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
