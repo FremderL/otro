@@ -272,16 +272,16 @@ test('bet suscrito: debita, guarda y devuelve publicBet sin fugas', async (t) =>
   const profile = ctx.profiles.getProfile(sub.profile.id);
   profile.chips = 1000; ctx.profiles.saveNow();
   const res = await new Promise((resolve) => s._fire('football:bet', {
-    matchId: ctx.scheduled.id, market: '1x2', selection: 'home', stake: 50
+    matchId: ctx.scheduled.id, market: '1x2', selection: 'home', stake: 100
   }, resolve));
   assert.equal(res.ok, true, 'apuesta aceptada: ' + JSON.stringify(res));
-  assert.equal(res.chips, 950, 'debitado');
+  assert.equal(res.chips, 900, 'debitado');
   assert.equal(ctx.spy.placeBet, 1);
   // publicBet: sin profileId ni deviceToken.
   const pb = res.bet;
   assert.ok(!('profileId' in pb) && !('deviceToken' in pb), 'publicBet sin identidad cruda');
   assert.equal(pb.market, '1x2');
-  assert.equal(pb.stake, 50);
+  assert.equal(pb.stake, 100);
   assert.ok(pb.odds >= 1.05);
 });
 

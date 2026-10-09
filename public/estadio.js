@@ -1,6 +1,6 @@
 // Fase E3 — Cliente de la sección «Estadio MonteCristo».
 // Canvas 2D cenital con tweening a 60 fps (§8), relato de dos voces, boleta de
-// apuesta con probabilidad implícita y tope del 25 % visible, tabla de posiciones.
+// apuesta con probabilidad implícita y límites del 10 %–50 % del saldo visibles, tabla de posiciones.
 // Reusa la identidad del casino (mismo deviceToken, nombre, avatar y TOS_KEY en
 // localStorage). La primera pintura viene de /api/estadio/state (sin socket); el
 // socket aporta el vivo. Accesible con teclado y con prefers-reduced-motion.
@@ -15,7 +15,9 @@
   var FIELD_W = W - PAD * 2, FIELD_H = H - PAD * 2;
   var PLAYER_R = 13, BALL_R = 6, TAU = Math.PI * 2;
   var DENOMS = [10, 25, 50, 100, 250, 500, 1000];
-  var STAKE_CAP_FRAC = 0.25, STAKE_ABS_MAX = 25000, STAKE_MIN = 10;
+  // Ronda 9: la apuesta debe ser material respecto al saldo — mínimo 10 % y máximo
+  // 50 % de las fichas actuales (espejo exacto de lib/football/betting.js LIMITS).
+  var STAKE_MIN_FRAC = 0.10, STAKE_MAX_FRAC = 0.50, STAKE_ABS_MAX = 25000;
 
   var reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -602,9 +604,9 @@
 
   // ===== Boleta =====
   function stakeBounds() {
-    var chips = S.chips || 0;
-    var min = Math.min(STAKE_MIN, chips);
-    var max = Math.min(Math.floor(chips * STAKE_CAP_FRAC), STAKE_ABS_MAX);
+    var chips = Math.floor(S.chips || 0);
+    var max = Math.min(Math.floor(chips * STAKE_MAX_FRAC), STAKE_ABS_MAX);
+    var min = Math.min(Math.max(1, Math.floor(chips * STAKE_MIN_FRAC)), chips);
     if (min > max) { min = max; }
     return { min: Math.max(0, Math.floor(min)), max: Math.max(0, Math.floor(max)) };
   }
@@ -616,7 +618,7 @@
     el['est-slip-implied'].textContent = pct(sel.implied);
     var b = stakeBounds();
     el['est-stake'].min = b.min || 1; el['est-stake'].max = b.max || 1;
-    el['est-slip-range'].textContent = 'Mín ' + fmt(b.min) + ' · Máx ' + fmt(b.max) + ' (25 % de tu saldo)';
+    el['est-slip-range'].textContent = 'Mín ' + fmt(b.min) + ' · Máx ' + fmt(b.max) + ' (10 %–50 % de tu saldo)';
     el['est-stake'].value = '';
     renderDenoms(b);
     renderMarkets();
@@ -624,7 +626,7 @@
   }
   function renderDenoms(b) {
     var box = el['est-denoms']; box.innerHTML = '';
-    DENOMS.filter(function (d) { return d <= b.max; }).forEach(function (d) {
+    DENOMS.filter(function (d) { return d >= b.min && d <= b.max; }).forEach(function (d) {
       var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'est-denom'; btn.textContent = fmt(d);
       btn.addEventListener('click', function () {
         var cur = Number(el['est-stake'].value || 0);
@@ -660,7 +662,7 @@
   function humanError(code) {
     return ({
       no_identity: 'Vuelve a entrar al Estadio (sesión no resuelta).', insufficient_chips: 'Saldo insuficiente.',
-      stake_bajo_minimo: 'Monto por debajo del mínimo.', stake_sobre_maximo: 'Monto sobre el tope (25 % o 25 000).',
+      stake_bajo_minimo: 'Monto por debajo del mínimo (10 % de tu saldo).', stake_sobre_maximo: 'Monto sobre el tope (50 % del saldo o 25 000).',
       market_suspended: 'Mercado suspendido momentáneamente.', selection_closed: 'Mercado cerrado.',
       match_ended: 'El partido ya terminó.', rate_limit: 'Demasiadas apuestas seguidas; espera un momento.',
       window_cerrada: 'Fuera de la ventana de apuestas.', no_match: 'Partido no encontrado.'

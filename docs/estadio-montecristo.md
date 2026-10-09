@@ -1071,34 +1071,41 @@ Si la temporada se **truncó** no hay desempate (§7.5, §15.5): este mercado nu
 
 ### 11.3 Reglas generales de apuesta
 
-**Decisión C5: tope del 25 % del saldo.** El documento original proponía `min(5000, 2 % del saldo)`,
-que era inutilizable: con el reinicio mensual a 1000 fichas, el 2 % dejaba a un jugador nuevo
-apostando **máximo 20 fichas**, apenas encima del mínimo y por debajo de las denominaciones de la
-interfaz. Se corrige a un modelo intermedio:
+**Decisión C5 (revisada en la ronda 9): apuesta material, mínimo 10 % y máximo 50 % del saldo.**
+El documento original proponía `min(5000, 2 % del saldo)`, que era inutilizable; luego se fijó un
+tope del 25 % con mínimo fijo de 10 fichas. En la ronda 9 se sustituyó por un rango **proporcional al
+saldo actual**, por un mandato de producto: si el jugador puede apostar montos diminutos tantas veces
+quiera, las pérdidas no le afectan y la ventaja de la casa no se ejerce. Con un mínimo del 10 % cada
+boleto es material respecto al saldo; con un máximo del 50 % ninguna apuesta liquida la pila de una
+vez (a diferencia de los juegos rápidos, que aceptan el 100 % del stack):
 
 ```
-stakeMáximoPorApuesta = min( 25 % del saldo , FOOTBALL_MAX_STAKE )
-stakeMínimo           = min( 10 , saldo )
+stakeMínimoPorApuesta = max( 1 , min( 10 % del saldo , saldo ) )
+stakeMáximoPorApuesta = min( 50 % del saldo , FOOTBALL_MAX_STAKE )   // techo absoluto 25.000
 ```
 
 | Saldo del jugador | Rango de apuesta |
 | --- | --- |
-| 1.000 (recién reiniciado) | 10 – 250 |
-| 5.000 | 10 – 1.250 |
-| 50.000 | 10 – 12.500 |
-| 200.000+ | 10 – 25.000 (techo absoluto) |
+| 1.000 (recién reiniciado) | 100 – 500 |
+| 5.000 | 500 – 2.500 |
+| 50.000 | 5.000 – 25.000 |
+| 200.000+ | 20.000 – 25.000 (techo absoluto) |
+| 8 (saldo bajo) | 1 – 4 (el mínimo se ajusta al tope) |
 
-Denominaciones en la interfaz: **`[10, 25, 50, 100, 250, 500, 1000]` filtradas por el tope vigente**,
-igual que el patrón existente de `public/app.js:1531`. Más un campo libre para cantidad exacta.
+Denominaciones en la interfaz: **`[10, 25, 50, 100, 250, 500, 1000]` filtradas por el rango vigente
+(≥ mínimo y ≤ máximo)**, igual que el patrón existente de `public/app.js:1531`. Más un campo libre
+para cantidad exacta. El rango se aplica por igual a apuestas simples, combinadas y futuros
+(`validateStake` en `lib/football/betting.js`), y se muestra en la boleta y en el aviso del slip.
 
 Dos efectos que hay que comunicar, no esconder:
 
-1. **Es más restrictivo que tus juegos rápidos.** En `server.js:1311` una apuesta rápida acepta hasta
-   el 100 % del stack; en el Estadio el tope es 25 %. La boleta debe decir explícitamente
-   «Máximo 25 % de tu saldo por apuesta» para que no se lea como un fallo.
-2. **Funciona como limitador de pérdida natural.** Al caer el saldo, cae el tope: quien va perdiendo
-   no puede duplicar indefinidamente para recuperarse. Es una protección real de juego responsable
-   dentro de un casino de fichas virtuales, y conviene mencionarla en los T&C como característica.
+1. **El mínimo del 10 % es deliberado, no un error.** Garantiza que la ventaja de la casa (7 %) se
+   note en cada boleto y que las pérdidas sean reales para el jugador; la boleta lo dice
+   explícitamente («mínimo 10 % y máximo 50 % de tu saldo») para que no se lea como un fallo.
+2. **Funciona como limitador de pérdida natural.** Al caer el saldo, caen mínimo y máximo en
+   proporción: quien va perdiendo no puede duplicar indefinidamente para recuperarse, y ninguna
+   apuesta supera la mitad de su saldo. Es una protección real de juego responsable dentro de un
+   casino de fichas virtuales, y conviene mencionarla en los T&C como característica.
 
 Límites agregados:
 
@@ -2004,9 +2011,9 @@ casino, y está protegida por `nameIssue` (unicidad global) y por `verifyTosAcce
 handler de apuesta, es una catástrofe en tres frentes:
 
 **1. Fichas infinitas.** El `token` es un string que elige el cliente. Si `football:bet` resuelve con
-`getOrCreate(token)`, cada token inventado llega con **1000 fichas nuevas**. Con el tope del 25 %
-(decisión C5) son 250 fichas apostables por token, y no hay ningún límite de cuántos tokens se pueden
-inventar. Un bucle `for (i=0;;i++) emit('football:bet', { token: 'x'+i, stake: 250, … })` es una
+`getOrCreate(token)`, cada token inventado llega con **1000 fichas nuevas**. Con el rango 10 %–50 %
+(decisión C5) son 100–500 fichas apostables por token, y no hay ningún límite de cuántos tokens se
+pueden inventar. Un bucle `for (i=0;;i++) emit('football:bet', { token: 'x'+i, stake: 500, … })` es una
 fuente inagotable de saldo. Los límites de §11.5 (20 apuestas abiertas y 50.000 de exposición **por
 perfil y partido**) no lo frenan: se aplican por perfil, y cada request trae un perfil nuevo. La casa
 queda expuesta sin techo real, y el flujo simulado de §11.6 —calibrado sobre `realTotal`— se distorsiona
@@ -2764,7 +2771,7 @@ Puntos de contacto concretos, con la ubicación actual en el código:
 | 9b | `lib/progression.js:72` `trackPeriod` | **Obligatorio**: filtrar por `CHALLENGE_GAMES` o el Estadio contará para «Turista del día» y «Ruta del casino» (§12.7, hallazgo 2) | **Alto si se omite** |
 | 9c | `lib/progression.js:153` | **Exportar `debit()` nuevo**: `credit()` hace `Math.max(0, …)` y no puede debitar (§12.7, hallazgo 1). El módulo **sigue puro**: no se le inyecta el store | **Crítico si se omite** |
 | 9d | Todo llamador de `debit()` | **`profiles.touch(profile)` obligatorio** acto seguido: `lib/progression.js` no persiste (su único `require` es `HISTORY_LIMITS`). Es la convención del repo en `server.js:590` y `:1091`; `executeQuickBet` se salva solo porque su setter ya toca (§12.7, hallazgo 7, A8) | **Crítico si se omite** |
-| 10 | `lib/terms.js:6` `TOS_VERSION` | **Subir la versión** y agregar la cláusula de apuestas deportivas simuladas: eventos ficticios generados por el servidor, tope del 25 % del saldo por apuesta y **declaración del flujo simulado** (§11.6) | **Alto**: fuerza re-aceptación de todos |
+| 10 | `lib/terms.js:6` `TOS_VERSION` | **Subir la versión** y agregar la cláusula de apuestas deportivas simuladas: eventos ficticios generados por el servidor, rango del 10 %–50 % del saldo por apuesta y **declaración del flujo simulado** (§11.6) | **Alto**: fuerza re-aceptación de todos |
 | 10b | `public/app.js:81` `TOS_VERSION` | **Subirla en el MISMO commit que la fila 10.** El cliente la tiene hardcodeada y la usa para decidir si muestra el modal (`tosAccepted()`, `:87`/`:105`) y qué versión envía (`:2189`) | **Crítico si se omite**: lockout total sin modal (§12.7 h.9, A10, T36) |
 | 11 | `scripts/migrate-db.js` | **Ningún cambio** (§12.7 hallazgo 4). El DDL de las 6 tablas va **inline** en `lib/football-store-pg.js`, como en `profile-store-pg.js`. El runner lee un `migrations/` que no existe y ningún deploy lo ejecuta | Nulo |
 | 11b | `lib/football-store-pg.js` + `football-store-factory.js` | Aceptar `{ pool }` por parámetro en vez de crear el propio, y colocar la apuesta en **una sola transacción** con `SELECT data FROM montecristo_profiles … FOR UPDATE`. Patrones ya existentes: `password-reset-store-pg.js` (`ownsPool`) y su `consumeAndApply` (§12.7, hallazgo 7, A8) | **Crítico si se omite** |
@@ -2816,7 +2823,7 @@ FOOTBALL_WOM_WEIGHT=0.30
 FOOTBALL_WOM_MAX_MOVE=0.06
 FOOTBALL_WOM_MIN_INTERVAL_MS=20000
 FOOTBALL_WOM_MAX_DRIFT=0.25
-# --- Límites de apuesta (decisión C5: 25 % del saldo; ver §11.3) ---
+# --- Límites de apuesta (decisión C5: mínimo 10 % y máximo 50 % del saldo; ver §11.3) ---
 FOOTBALL_MIN_STAKE=10
 FOOTBALL_STAKE_PCT_OF_BALANCE=0.25
 FOOTBALL_MAX_STAKE=25000
@@ -2948,7 +2955,7 @@ subir `TOS_VERSION` en un solo archivo, ni a resolver identidad con `getOrCreate
 | T18 | Flujo simulado: no mueve fichas de ningún perfil, no cuenta en exposición ni responsabilidad, y nunca provoca `selection_closed` | §11.6 (D8) |
 | T19 | Ningún payload `football:*` dirigido al cliente contiene datos del flujo simulado | §11.6 (D8) |
 | T20 | Con 0 fichas reales el simulado mueve cuotas; con 40.000 reales su influencia cae por debajo del 5 % | §11.6 (D8) |
-| T21 | Tope de stake: con saldo 1.000 el máximo es 250 y las denominaciones se filtran; con saldo 20 el mínimo se ajusta | §11.3 (C5) |
+| T21 | Límites de stake: con saldo 1.000 el rango es 100–500 y las denominaciones se filtran por mínimo y tope; con saldo bajo el mínimo se ajusta al tope; con saldo enorme manda el techo absoluto 25.000 | §11.3 (C5) |
 | T22 | Margen 7 %: ventaja real medida por simulación = 6,54 % ± 0,2 pp en 1X2 | §10.3 (C4) |
 | T23 | `debit()`: con saldo insuficiente devuelve `{ok:false}` y **no muta** el perfil; con saldo suficiente debita exacto y nunca deja saldo negativo | §12.7 hallazgo 1 |
 | T24 | Regresión de `credit()`: `credit(profile, -500)` devuelve 0 y no cambia el saldo — la prueba existe para que nadie vuelva a usarlo como débito | §12.7 hallazgo 1 |
@@ -2997,7 +3004,7 @@ en medio, sin intervención y sin apuestas huérfanas.
 ### Fase D — Cuotas y apuestas pre-partido (~1.000 líneas + ~15 en `lib/progression.js`)
 `odds.js` (Poisson, Dixon-Coles, margen 7 %, peso del dinero), `simulated-flow.js` (flujo sintético
 con decaimiento y contabilidad separada), `betting.js` (escrow, idempotencia, liquidación, tope del
-25 % del saldo), integración con `rate-limit`.
+10 %–50 % del saldo), integración con `rate-limit`.
 
 **Prerrequisito de esta fase, no opcional**: los dos cambios en `lib/progression.js` verificados en
 §12.7 — exportar `debit()` (porque `credit()` no puede debitar) y filtrar `trackPeriod` por
@@ -3010,7 +3017,7 @@ dinero real **y** simulado, y verificado que el flujo simulado no toca la exposi
 ### Fase E — Frontend `/estadio` (~1.200 líneas)
 `public/estadio.html`, `public/estadio.js`, `public/estadio.css`, render canvas 2D con los 16 kits,
 panel de relato de dos voces, tabla de posiciones, boleta de apuesta con denominaciones filtradas y
-aviso del tope del 25 %, «mis apuestas», enlace «🏟 Estadio» desde el nav.
+aviso de los límites 10 %–50 %, «mis apuestas», enlace «🏟 Estadio» desde el nav.
 **Aceptación**: partido visible en canvas con tweening fluido a 60 fps, relato en vivo, apuesta
 pre-partido colocable desde la interfaz, probabilidad implícita visible junto a cada cuota, contraste
 de kits validado, usable a 1024×720, accesible con teclado y con `prefers-reduced-motion`.
@@ -3077,7 +3084,7 @@ sin pasos humanos pendientes.
 | R15 | El margen del 7 % (ventaja 6,54 %) drena fichas mucho más rápido que el resto del casino y degrada el ranking mensual | **Alta** | Probabilidad implícita siempre visible, métrica `chips_netos_perdidos_por_juego` desde el día 1, márgenes en env vars para bajarlos sin desplegar código (§10.3, decisión C4) |
 | R16 | El flujo simulado se filtra a la interfaz o se confunde con jugadores reales | **Alta** | Nunca viaja en payloads (T19), no cuenta en exposición (T18), se declara en los T&C (§11.6, decisión D8) |
 | R17 | Un nombre de club coincide con uno real | **Baja** (era Media) | **Mitigado**: los 16 nombres se validaron por búsqueda y siete candidatos fueron rechazados y reemplazados (§5.5). Residual: no es un estudio de marcas, así que cuatro clubes quedan con riesgo bajo documentado. Si el producto se comercializa, hacer revisión de marcas |
-| R18 | El tope del 25 % del saldo se percibe como un fallo frente a los juegos rápidos, que aceptan el 100 % del stack | Media | La boleta lo dice explícitamente y el panel de ayuda explica por qué (decisión C5) |
+| R18 | El mínimo del 10 % y el máximo del 50 % del saldo pueden percibirse como un fallo frente a los juegos rápidos, que aceptan el 100 % del stack | Media | La boleta y el aviso del slip lo dicen explícitamente («mínimo 10 % y máximo 50 % de tu saldo») y el panel de ayuda explica por qué (decisión C5) |
 | R19 | Los 16 kits no se distinguen bien en canvas a 1024×720 | Baja | Validación de contraste WCAG AA entre pares de kits y contra el césped, no a ojo (§5.5) |
 | R20 | Usar `credit()` para debitar el stake: no descuenta fichas y no falla, devuelve 0 en silencio | **Crítica** | **Ya materializada en este documento y corregida.** `debit()` nuevo en `lib/progression.js` + T23 y T24 de regresión (§12.7, hallazgo 1) |
 | R21 | Confiar en `AVAILABLE_GAMES` para excluir al fútbol de los retos: `trackPeriod` no lo consulta | Media | **Ya materializada en la decisión C6 y corregida.** Filtro `CHALLENGE_GAMES` + T25 (§12.7, hallazgo 2) |
@@ -3114,7 +3121,7 @@ que no se vuelva a discutir sin motivo y para que quien retome el trabajo sepa *
 | **B2** | «En Vivo» colisiona con el lobby de salas | **«Estadio MonteCristo»**, ruta `/estadio`, `public/estadio.*`, `/api/estadio/*` | `#live-lobby` y `.live-section` **no se tocan**. Vocabulario interno único: `football` |
 | **B3** | Sabor de los 16 clubes | **Internacional neutro** (Vantora FC, United Vanguard…), **ya validados contra clubes reales** | Tabla y validación en §5.5. Siete candidatos fueron rechazados por colisión real y reemplazados. Cambiar nombres después de publicada la jornada 1 rompe la continuidad, así que esta lista se considera definitiva |
 | **C4** | Margen de casa | **7 %** en mercados principales | Queda en **6,54 % de ventaja**, más del doble que la ruleta (2,6–3,25 %) y que las slots (2,26 %), y muy por encima de dados y cara o cruz (~0 %). Obliga a: probabilidad implícita siempre visible, métrica de drenaje comparada por juego desde el día 1, y márgenes en env vars para poder bajarlos sin desplegar código (§10.3) |
-| **C5** | Límites de apuesta | **Máximo 25 % del saldo**, techo absoluto 25.000 | Jugador recién reiniciado: 10–250 fichas. Es **más restrictivo que los juegos rápidos**, que aceptan el 100 % del stack (`server.js:1311`): la boleta debe decirlo explícitamente. Funciona como limitador de pérdida natural (§11.3) |
+| **C5** | Límites de apuesta | **Mínimo 10 % y máximo 50 % del saldo**, techo absoluto 25.000 (revisado en ronda 9; antes: tope 25 % con mínimo fijo 10) | Jugador recién reiniciado: 100–500 fichas. El mínimo hace cada apuesta **material** para que la ventaja de la casa se ejerza; el máximo es **más restrictivo que los juegos rápidos**, que aceptan el 100 % del stack (`server.js:1311`): la boleta debe decirlo explícitamente. Funciona como limitador de pérdida natural (§11.3) |
 | **C6** | ¿Cuenta fútbol para los retos «prueba N juegos»? | **No se agrega a `AVAILABLE_GAMES`**, y además se filtra en `trackPeriod` | **Corregido**: `AVAILABLE_GAMES` por sí solo **no** excluye al fútbol de esos retos (§12.7). Sin el filtro extra, «Turista del día» y «Ruta del casino» contarían el Estadio como un juego más |
 | **D7** | Ritmo del partido | **10 s por minuto simulado** → 16:05 a 17:05 reales | Es la palanca que más cambia la sensación del producto. Configurable; conviene validarla con usuarios reales mirando un partido antes de fijarla |
 | **D8** | Apostadores simulados | **Sí**: flujo sintético invisible, etiquetado en logs como `football_simulated_flow` | **Nunca** aparece como jugador real en interfaz, chat o rankings. **No** cuenta para exposición ni responsabilidad. Su influencia decae con el dinero real y **se declara en los T&C** (§11.6) |
@@ -3408,8 +3415,9 @@ código sin leer la función**, y sus tres corolarios:
 
 Dos decisiones de producto se tomaron en contra de la recomendación técnica y quedan registradas con
 su consecuencia en §23, no para reabrirlas sino para gestionarlas: el **margen del 7 %** deja al
-Estadio en 6,54 % de ventaja frente al 0–3,25 % del resto del casino (R15), y el **tope del 25 % del
-saldo** es más restrictivo que los juegos rápidos, que aceptan el 100 % del stack (R18). Ambos se
+Estadio en 6,54 % de ventaja frente al 0–3,25 % del resto del casino (R15), y el **rango del 10 %–50 %
+del saldo** hace cada apuesta material y más restrictiva que los juegos rápidos, que aceptan el 100 %
+del stack (R18). Ambos se
 mitigan con transparencia en la interfaz y con configurables en variables de entorno, de modo que
 pueden ajustarse sin desplegar código si los datos de las primeras semanas lo piden.
 
@@ -3502,3 +3510,22 @@ capas: 404 si `ADMIN_FEATURE_ENABLED` está apagado y 401/403 sin sesión staff 
 la cadena con stores simulados: `tests/football-admin-guard.test.js` (en local admin completo no
 enciende porque `loadAdminConfig` exige `DATABASE_URL`, origen HTTPS, `MFA_ENCRYPTION_KEY` y
 `AUDIT_IP_PEPPER`).
+
+### 27.5 Límites de apuesta de la ronda 9: mínimo 10 % y máximo 50 % del saldo
+
+Mandato de producto: «la casa tiene que ganar; si se les deja apostar la cantidad de veces que
+quieran no les afectarán las pérdidas». Con el mínimo fijo de 10 fichas un jugador con saldo alto
+podía colocar apuestas diminutas e indoloras tantas veces como quisiera, sin que la ventaja de la
+casa (7 %) se ejerciera. Se sustituyó el modelo de la decisión C5 (tope 25 %, mínimo fijo 10) por un
+rango proporcional al saldo actual: **mínimo 10 % y máximo 50 % de las fichas actuales**, con el techo
+absoluto `FOOTBALL_MAX_STAKE` (25.000) como capa exterior de riesgo de casa.
+
+Implementación: `lib/football/betting.js` (`LIMITS.stakeMinFraction` / `stakeMaxFraction`,
+ajustables por env `FOOTBALL_STAKE_MIN_FRAC` / `FOOTBALL_STAKE_MAX_FRAC`, y `stakeBounds()`), aplicado
+por `validateStake()` a apuestas simples, combinadas y futuros —es decir, **en el servidor**, que es
+la fuente de verdad y no se puede bypasear—. El cliente (`public/estadio.js`) espeja los mismos
+límites en la boleta: rango del campo, denominaciones filtradas por `[mín, máx]`, aviso «Mín … · Máx …
+(10 %–50 % de tu saldo)» y el aviso permanente del slip en `public/estadio.html`. Consecuencia
+colateral documentada: con mínimo del 10 %, diez apuestas agotan el saldo, así que el rate limit
+(10/10 s) rara vez es la restricción operativa que limita al jugador —lo es el propio saldo—; la
+prueba T15 relaja exposición y da saldo alto precisamente para aislar el rate limit.

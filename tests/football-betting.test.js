@@ -186,25 +186,30 @@ test('T27: 20 apuestas liquidadas a la vez no alteran eligibleBestStreak pero s�
 
 // --- Límites (T15, T21) ---
 
-test('T21: tope de stake 25 % y denominaciones filtradas; con saldo bajo el mínimo se ajusta', () => {
+test('T21: mínimo 10 % y tope 50 % del saldo; denominaciones filtradas; con saldo bajo se ajusta', () => {
   const h = setup({ chips: 1000 });
   let b = h.betting.stakeBounds(h.profile);
-  assert.strictEqual(b.max, 250, '25 % de 1000');
-  assert.strictEqual(b.min, 10);
-  assert.deepStrictEqual(h.betting.availableDenominations(h.profile), [10, 25, 50, 100, 250], 'filtradas por el tope');
-  // Saldo 20: tope 5, mínimo ajustado a 5.
-  h.profile.chips = 20;
+  assert.strictEqual(b.min, 100, '10 % de 1000');
+  assert.strictEqual(b.max, 500, '50 % de 1000');
+  assert.deepStrictEqual(h.betting.availableDenominations(h.profile), [100, 250, 500], 'filtradas por mínimo y tope');
+  // Saldo 8: tope 4 y mínimo ajustado a 1; ninguna denominación estándar cabe.
+  h.profile.chips = 8;
   b = h.betting.stakeBounds(h.profile);
-  assert.strictEqual(b.max, 5, '25 % de 20');
-  assert.strictEqual(b.min, 5, 'el mínimo (10) se ajusta al tope (5)');
+  assert.strictEqual(b.max, 4, '50 % de 8');
+  assert.strictEqual(b.min, 1, 'mínimo con piso de 1 ficha');
   assert.deepStrictEqual(h.betting.availableDenominations(h.profile), [], 'ninguna denominación estándar cabe');
+  // Saldo enorme: el tope absoluto (25 000) manda y el mínimo se ajusta a él.
+  h.profile.chips = 1000000;
+  b = h.betting.stakeBounds(h.profile);
+  assert.strictEqual(b.max, 25000, 'tope absoluto');
+  assert.strictEqual(b.min, 25000, 'el mínimo (10 %) se ajusta al tope absoluto');
   h.cleanup();
 });
 
 test('T15: stake fuera de límites, mercado suspendido y rate limit rechazan con su código', async () => {
   const h = setup({ chips: 1000 });
   // Tope excedido.
-  const over = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'home', stake: 500, placedAt: 1000 });
+  const over = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'home', stake: 600, placedAt: 1000 });
   assert.strictEqual(over.ok, false);
   assert.strictEqual(over.code, 'stake_excede_tope');
   // Bajo el mínimo.
@@ -212,16 +217,22 @@ test('T15: stake fuera de límites, mercado suspendido y rate limit rechazan con
   assert.strictEqual(low.code, 'stake_bajo_minimo');
   // Mercado suspendido (§10.6).
   h.betting.suspend(h.match.id, '1x2', Date.now() + 60000);
-  const susp = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'home', stake: 50, placedAt: 3000 });
+  const susp = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'home', stake: 100, placedAt: 3000 });
   assert.strictEqual(susp.code, 'market_suspended');
   h.betting.resume(h.match.id, '1x2');
   // Selección inexistente.
-  const badSel = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'nope', stake: 50, placedAt: 4000 });
+  const badSel = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'nope', stake: 100, placedAt: 4000 });
   assert.strictEqual(badSel.code, 'selection_invalida');
-  // Rate limit: 10 intentos / 10 s. El resto de intentos rápidos cae.
+  // Rate limit: 10 intentos / 10 s. Con mínimo del 10 %, diez apuestas agotarían el
+  // saldo antes de que el límite de frecuencia actúe (y la exposición por partido
+  // rechazaría antes); se relajan exposición y se da saldo alto para AISLAR el rate
+  // limit, que es lo que esta parte prueba.
+  h.profile.chips = 1000000;
+  h.betting.config.maxExposurePerProfileMatch = 1e12;
+  h.betting.config.maxExposurePerMatch = 1e12;
   let rateLimited = false;
   for (let i = 0; i < 14; i++) {
-    const r = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: 'over_under_2.5', selection: 'over', stake: 20, placedAt: 100000 + i * 3000 });
+    const r = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: 'over_under_2.5', selection: 'over', stake: 25000, placedAt: 100000 + i * 3000 });
     if (r.code === 'rate_limit') { rateLimited = true; break; }
   }
   assert.ok(rateLimited, 'el rate limit debió activarse');
@@ -324,20 +335,20 @@ test('combinada: una pata perdida → lost inmediato; todas anuladas → reembol
 test('futuros: escrow al colocar, pago al cerrar la temporada y reembolso si se trunca', async () => {
   const h = setup({ chips: 1000 });
   neuterProgression(h.profile);
-  const r = await h.betting.placeFuture({ profile: h.profile, seasonMonth: h.month, market: 'champion', selection: 'atletico_solaris', odds: 8, stake: 50, placedAtJornada: 1, placedAt: 1000 });
+  const r = await h.betting.placeFuture({ profile: h.profile, seasonMonth: h.month, market: 'champion', selection: 'atletico_solaris', odds: 8, stake: 100, placedAtJornada: 1, placedAt: 1000 });
   assert.strictEqual(r.ok, true, r.code);
-  assert.strictEqual(h.profile.chips, 950);
+  assert.strictEqual(h.profile.chips, 900);
   // Duplicado abierto → rechazado.
-  const dup = await h.betting.placeFuture({ profile: h.profile, seasonMonth: h.month, market: 'champion', selection: 'atletico_solaris', odds: 8, stake: 50, placedAtJornada: 1, placedAt: 2000 });
+  const dup = await h.betting.placeFuture({ profile: h.profile, seasonMonth: h.month, market: 'champion', selection: 'atletico_solaris', odds: 8, stake: 100, placedAtJornada: 1, placedAt: 2000 });
   assert.strictEqual(dup.code, 'futuro_duplicado');
   // Cierra la temporada con ese campeón → gana.
   const res = h.betting.settleFutures(h.month, { championTeamId: 'atletico_solaris' });
   assert.strictEqual(res.settled, 1);
   assert.strictEqual(h.store.getFutures({ profileId: 'p1' })[0].status, 'won');
-  assert.strictEqual(h.profile.chips, 950 + 400, 'pago = 50 × 8');
+  assert.strictEqual(h.profile.chips, 900 + 800, 'pago = 100 × 8');
 
   const h2 = setup({ chips: 1000 });
-  await h2.betting.placeFuture({ profile: h2.profile, seasonMonth: h2.month, market: 'champion', selection: 'vantora', odds: 6, stake: 50, placedAtJornada: 1, placedAt: 1000 });
+  await h2.betting.placeFuture({ profile: h2.profile, seasonMonth: h2.month, market: 'champion', selection: 'vantora', odds: 6, stake: 100, placedAtJornada: 1, placedAt: 1000 });
   const ref = h2.betting.refundFutures(h2.month, 'temporada truncada');
   assert.strictEqual(ref.refunded, 1);
   assert.strictEqual(h2.profile.chips, 1000, 'futuro reembolsado');
