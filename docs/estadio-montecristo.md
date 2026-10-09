@@ -3430,7 +3430,75 @@ primera división guatemalteca fundado en 1945— que a ojo habrían pasado desa
 publicada la liga. Dos decisiones (C6 y E10) quedaron cerradas **con su consecuencia corregida** tras
 la verificación contra el código.
 
-Siguiente paso: arrancar la Fase A —liga, clubes, calendario y store—, que es
-invisible para los jugadores y deja validada la temporada completa antes de escribir una sola línea
-de canvas. La Fase D no puede empezar sin los dos cambios en `lib/progression.js` (`debit()` y el
-filtro `CHALLENGE_GAMES`), que son prerrequisito y no parte del trabajo opcional.
+**Estado de entrega (actualizado):** las fases A–F, la guardia de administración (E4b) y la
+animación de entrada están **implementadas y probadas** en la rama de trabajo; la suite cubre el
+Estadio de punta a punta (`tests/football-*.test.js`, `tests/season-reset-gate.test.js` y
+`tests/football-admin-guard.test.js`). Lo que sigue ya no es plan sino registro: véase §27.
+
+## 27. Cierre de entrega: estado real, animación de entrada y guardia admin (E4b)
+
+Esta sección registra lo que efectivamente se construyó después de §21, para que el documento siga
+siendo la fuente de verdad del código que corre.
+
+### 27.1 Backend Postgres del Estadio (Fase F, `lib/football-store-pg.js`)
+
+`PgFootballStore extends FootballStore`: hereda **toda** la lógica en memoria (temporada, asentado,
+apuestas, combinadas, futuros, auditoría) y sobrescribe únicamente la E/S, porque el motor muta los
+partidos directamente y llama a `saveNow()`/`scheduleSave()` sin esperar. Seis tablas con
+`CREATE TABLE IF NOT EXISTS` **inline** (§13.3, hallazgo 4): columnas de integridad y consulta (PK,
+`idempotency_key UNIQUE`, `stake CHECK > 0`, índice único parcial de futuros abiertos, índices por
+perfil/partido/estado y `season_month`/`status`) más una columna `data JSONB` con el objeto completo
+limpiado por los *cleaners* de `football-store-shared.js` — el patrón `id + data` de
+`montecristo_profiles`, rehidratable sin pérdidas. `saveNow()` es **aguardable**: foto de las seis
+tablas en **una transacción con `unnest`**, guarda de solapamiento, reintentos con retroceso (Neon
+despierta lento de escalar a cero, §11.3) y reintento en segundo plano cada 10 s si todo falla.
+Acepta `{pool}`/`ownsPool` para la atomicidad entre stores (A8) y `close()` asíncrono que aguarda el
+último volcado. Durante `_init` se suprimen los guardados sueltos (`_loading`) y se hace un único
+volcado determinista al final, para que el `saveNow` que dispara `generateSeason` no corra en
+paralelo con la carga. Pruebas con pool simulado: `tests/football-store-pg.test.js`.
+
+### 27.2 Reset mensual diferido (A12) — el casino no pisa apuestas abiertas
+
+`profile-store-base.js` consulta un gancho `onBeforeSeasonReset({fromMonth,toMonth,date})` dentro de
+`ensureSeason()`, después de la reparación «hacia atrás» y antes de cerrar: si devuelve
+`{type:'deferred'}` **no** se reinician saldos ni avanza el mes. Hay un tope
+`SEASON_RESET_MAX_DEFERRALS` (por defecto 12) tras el cual el cierre se fuerza con aviso, para que el
+casino nunca quede atascado; el contador se reinicia al cerrar de verdad. `server.js` cablea el gate
+después de `initFootball()` consultando `hasOpenBets`/`getParlays(open)`/`getOpenFutures` de la
+temporada que iba a cerrar, y `seasonSweep` registra `season_reset_deferred`. Para que el gate exista
+antes del primer `ensureSeason`, ambos stores de perfiles aceptan `deferSeasonCheck` y `bootstrap()`
+llama a `ensureSeason()` explícitamente tras cablearlo. Pruebas: `tests/season-reset-gate.test.js`.
+
+### 27.3 Animación de entrada (casino → Estadio), una sola vez y sin bucles
+
+Cinemática de ~2,6 s: *dolly* desde el túnel de jugadores hacia la cancha (`public/assets/
+estadio-tunnel.jpg`, escala + brillo + desenfoque), bloom de reflectores, título «Estadio
+MonteCristo» en dorado metálico y flash dorado de salida. Vive en un overlay `#est-enter`
+(`z-index` 200, por encima de nav 30, modales 60, toasts 70 y skip-link 100) que está `hidden` en el
+HTML y solo revela `maybePlayEntry()` en `boot()`.
+
+**Disparo y anti-bucle.** Se reproduce únicamente al llegar desde el casino: parámetro
+`?from=casino` (lo añaden el nav `#nav-estadio` y la tarjeta del banner) o, como respaldo, un
+*referrer* del mismo origen que no sea `/estadio`. Al reproducirse **consume el parámetro** con
+`history.replaceState` y fija una bandera en `sessionStorage`, de modo que un refresco (F5) no la
+repite; y al terminar —`animationend` del ciclo de vida del overlay, con un `setTimeout` de
+respaldo— **retira el nodo del DOM**, así ningún tick de socket, re-render ni navegación interna
+puede volver a mostrarla. Se salta con clic o cualquier tecla (que se traga para no activar atajos)
+y queda `display:none` bajo `prefers-reduced-motion`. Decisión de producto: **una vez por sesión**;
+quitar la comprobación de `sessionStorage` la haría sonar en cada acceso deliberado.
+
+### 27.4 Guardia de administración (E4b) de `/admin/estadio/*`
+
+Las palancas operativas (suspender mercados, forzar liquidación, posponer, cerrar mercado) existían
+en `lib/football/http.js` pero no se registraban y su guardia por defecto era un *pass-through*;
+además viven fuera de `/api/admin`, por lo que `req.body` llegaba `undefined`. Ahora:
+`lib/admin-auth-http.js` expone `makeAdminGuard()` —fábrica con la disciplina completa del panel
+(sesión staff válida + rol + MFA, permiso, MFA reciente y escritura de confianza origen + CSRF) y
+`fullGuard(permission)` que la encadena en un solo middleware— y `installAdminRoutes` la consume sin
+duplicar lógica. `lib/permissions.js` añade `FOOTBALL_MANAGE` (`football:manage`), concedido **solo
+al rol admin**. `server.js` monta `express.json()` bajo `/admin/estadio` y registra
+`installFootballAdminRoutes` con deps perezosas y `fullGuard(FOOTBALL_MANAGE)`. Fail-closed en dos
+capas: 404 si `ADMIN_FEATURE_ENABLED` está apagado y 401/403 sin sesión staff válida. Pruebas de toda
+la cadena con stores simulados: `tests/football-admin-guard.test.js` (en local admin completo no
+enciende porque `loadAdminConfig` exige `DATABASE_URL`, origen HTTPS, `MFA_ENCRYPTION_KEY` y
+`AUDIT_IP_PEPPER`).
