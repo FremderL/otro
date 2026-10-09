@@ -13,6 +13,19 @@
     reconnectionDelay: 700,
     reconnectionDelayMax: 4000
   });
+  // Flags públicos del despliegue (GET /healthz), leídos una sola vez. El
+  // backend responde 404 fail-closed cuando una función está apagada (diseño
+  // intencional, cubierto por tests); el navegador loguea todo 404 de red en
+  // consola aunque el JS lo maneje, así que con el flag a la mano el cliente va
+  // directo al fallback sin generar la petición. Si /healthz no responde se
+  // asume "encendido" y se conserva el comportamiento anterior (cada flujo
+  // tolera el 404 como red de seguridad por si el flag cambió en vivo).
+  const serverFlags = { accountSessions: null };
+  const serverFlagsReady = fetch('/healthz', { cache: 'no-store' })
+    .then(response => (response.ok ? response.json() : null))
+    .then(data => { serverFlags.accountSessions = !data || data.accountSessionsEnabled !== false; })
+    .catch(() => { serverFlags.accountSessions = true; });
+  function accountSessionsAvailable() { return serverFlags.accountSessions !== false; }
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
 
@@ -299,7 +312,11 @@
   }
   async function refreshAccountProfile() {
     if (!ui.accountSession?.accountId) return;
-    const secure = await secureAuthRequest('/api/auth/session');
+    await serverFlagsReady;
+    // Con ACCOUNT_SESSIONS_ENABLED apagado, /api/auth/session responde 404
+    // fail-closed; se va directo al fallback por socket para no generar ese
+    // 404 en la consola del navegador.
+    const secure = accountSessionsAvailable() ? await secureAuthRequest('/api/auth/session') : { status: 404 };
     if (secure.status !== 404) {
       if (secure.ok && secure.profile) {
         ui.csrfToken = secure.csrfToken || null;
@@ -2104,6 +2121,14 @@
       els.passwordChangeError.classList.remove('hidden');
       return;
     }
+    await serverFlagsReady;
+    if (!accountSessionsAvailable()) {
+      // El endpoint respondería 404 fail-closed; se evita la petición para no
+      // generar el 404 en la consola del navegador.
+      els.passwordChangeError.textContent = 'Activa primero las sesiones seguras para cambiar la contraseña.';
+      els.passwordChangeError.classList.remove('hidden');
+      return;
+    }
     if (!ui.csrfToken) {
       const current = await secureAuthRequest('/api/auth/session');
       if (current.ok) ui.csrfToken = current.csrfToken || null;
@@ -2130,15 +2155,20 @@
     showToast('Contraseña actualizada', 'Las demás sesiones fueron cerradas y esta sesión se renovó.', 'notice', 4200, '🔒');
   });
   els.accountLogout?.addEventListener('click', async () => {
-    // Intenta revocar la cookie segura. Un 404 significa que el rollout sigue
-    // apagado y se aplica únicamente la limpieza local del flujo legado.
-    if (!ui.csrfToken) {
-      const current = await secureAuthRequest('/api/auth/session');
-      if (current.ok) ui.csrfToken = current.csrfToken || null;
+    // Intenta revocar la cookie segura. Con el rollout apagado (flag leído de
+    // /healthz) no se generan las peticiones: el backend respondería 404
+    // fail-closed y el navegador lo loguearía en consola; solo se aplica la
+    // limpieza local del flujo legado.
+    await serverFlagsReady;
+    if (accountSessionsAvailable()) {
+      if (!ui.csrfToken) {
+        const current = await secureAuthRequest('/api/auth/session');
+        if (current.ok) ui.csrfToken = current.csrfToken || null;
+      }
+      await secureAuthRequest('/api/auth/logout', {
+        method: 'POST', headers: ui.csrfToken ? { 'X-CSRF-Token': ui.csrfToken } : {}
+      });
     }
-    await secureAuthRequest('/api/auth/logout', {
-      method: 'POST', headers: ui.csrfToken ? { 'X-CSRF-Token': ui.csrfToken } : {}
-    });
     clearAccountSession();
     if (socket.connected) socket.disconnect().connect();
     closeProfileModal();
@@ -2155,12 +2185,16 @@
     els.accountError.classList.add('hidden');
     if (ui.accountMode === 'login') {
       els.accountSubmit.disabled = true;
-      let response = await secureAuthRequest('/api/auth/login', {
-        method: 'POST', body: JSON.stringify({ username, password })
-      });
+      await serverFlagsReady;
       // Mientras el rollout está apagado, el endpoint responde 404 y se
-      // conserva temporalmente el login legado. Con la función encendida no
-      // existe fallback: credenciales/sesiones inválidas fallan cerrado.
+      // conserva temporalmente el login legado. El flag se lee de /healthz
+      // para no generar ese 404 en la consola del navegador; si el despliegue
+      // cambió en vivo, el 404 sigue activando el fallback. Con la función
+      // encendida no existe fallback: credenciales/sesiones inválidas fallan
+      // cerrado.
+      let response = accountSessionsAvailable()
+        ? await secureAuthRequest('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) })
+        : { status: 404 };
       const secureLogin = response.status !== 404;
       if (!secureLogin) response = await emitAck('account_login', { username, password });
       els.accountSubmit.disabled = false;
@@ -2198,11 +2232,13 @@
         return;
       }
       // Si las sesiones seguras están activas, el alta se completa creando la
-      // cookie por HTTP. Con rollout apagado el 404 conserva el comportamiento
-      // anterior sin mezclar el id de perfil con una credencial.
-      const secureSignupLogin = await secureAuthRequest('/api/auth/login', {
-        method: 'POST', body: JSON.stringify({ username, password })
-      });
+      // cookie por HTTP. Con rollout apagado (flag leído de /healthz, con el
+      // 404 como red de seguridad) se conserva el comportamiento anterior sin
+      // mezclar el id de perfil con una credencial.
+      await serverFlagsReady;
+      const secureSignupLogin = accountSessionsAvailable()
+        ? await secureAuthRequest('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) })
+        : { status: 404 };
       if (secureSignupLogin.status !== 404 && (!secureSignupLogin.ok || !secureSignupLogin.profile)) {
         els.accountError.textContent = secureSignupLogin.error || 'La cuenta fue creada, pero no se pudo iniciar la sesión segura.';
         els.accountError.classList.remove('hidden');
