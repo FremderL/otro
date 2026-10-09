@@ -230,9 +230,12 @@ test('T15: stake fuera de límites, mercado suspendido y rate limit rechazan con
   h.profile.chips = 1000000;
   h.betting.config.maxExposurePerProfileMatch = 1e12;
   h.betting.config.maxExposurePerMatch = 1e12;
+  // Cada intento va a un partido distinto: la regla de una selección por categoría
+  // (mercado + partido) no debe enmascarar el rate limit.
+  const others = h.store.getMatches(h.month).filter(m => m.status === 'scheduled');
   let rateLimited = false;
   for (let i = 0; i < 14; i++) {
-    const r = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: 'over_under_2.5', selection: 'over', stake: 25000, placedAt: 100000 + i * 3000 });
+    const r = await h.betting.placeBet({ profile: h.profile, matchId: others[i].id, market: 'over_under_2.5', selection: 'over', stake: 25000, placedAt: 100000 + i * 3000 });
     if (r.code === 'rate_limit') { rateLimited = true; break; }
   }
   assert.ok(rateLimited, 'el rate limit debió activarse');
