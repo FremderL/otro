@@ -1,0 +1,27 @@
+# Dependencias
+node_modules/
+
+# Entorno y secretos (DATABASE_URL, SESSION_PEPPER, MFA_ENCRYPTION_KEY, AUDIT_IP_PEPPER…)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# Cobertura de pruebas
+coverage/
+.nyc_output/
+
+# Datos de corrida local: la semilla data/profiles.json SÍ se versiona a propósito
+# (arranque en limpio), pero el store de fútbol nace vacío y se genera solo.
+data/football.json
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

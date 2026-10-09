@@ -19,7 +19,8 @@ const { loadAdminConfig } = require('./lib/admin-config');
 const { createAccountSessionStore } = require('./lib/account-session-factory');
 const { installAccountAuthRoutes, COOKIE_NAME, parseCookies } = require('./lib/account-auth-http');
 const { sessionState } = require('./lib/account-sessions');
-const { installAdminRoutes } = require('./lib/admin-auth-http');
+const { installAdminRoutes, makeAdminGuard } = require('./lib/admin-auth-http');
+const { PERMISSIONS } = require('./lib/permissions');
 const { createAuditStore } = require('./lib/audit-store-factory');
 const { createModerationStore } = require('./lib/moderation-store-factory');
 const { createReportStore } = require('./lib/report-store-factory');
@@ -33,6 +34,21 @@ const { createIdempotencyStore } = require('./lib/idempotency-store-factory');
 // se activa, el proceso falla cerrado antes de escuchar tráfico cuando falta
 // cualquier secreto o requisito de producción.
 const adminConfig = loadAdminConfig();
+
+// Estadio MonteCristo (Fase E4): feature flag fail-closed, apagado por defecto.
+// loadFootballConfig() se invoca aquí, junto a loadAdminConfig y ANTES de la red
+// de uncaughtException de más abajo: si la configuración crítica falta cuando el
+// flag está activo, el throw mata el proceso en el arranque en vez de dejarlo
+// zombi sin server.listen() (decisión A6, §12.7 hallazgo 5, R26).
+const { loadFootballConfig } = require('./lib/football-config');
+const { createFootballStore } = require('./lib/football-store-factory');
+const { FootballEngine } = require('./lib/football/engine');
+const { FootballScheduler } = require('./lib/football/scheduler');
+const { createBettingService } = require('./lib/football/betting');
+const { SimulatedFlow } = require('./lib/football/simulated-flow');
+const { registerFootballSockets } = require('./lib/football/sockets');
+const { installFootballRoutes, installFootballAdminRoutes, footballHealth } = require('./lib/football/http');
+const footballConfig = loadFootballConfig();
 
 const app = express();
 app.disable('x-powered-by');
@@ -120,7 +136,13 @@ app.get('/healthz', (_req, res) => {
     seasonMonth: profiles?.seasons?.current || null,
     casinoTimeZone: CASINO_TIME_ZONE,
     tosVersion: TOS_VERSION,
-    accountSessionsEnabled: adminConfig.accountSessionsEnabled
+    accountSessionsEnabled: adminConfig.accountSessionsEnabled,
+    // Estadio MonteCristo (§15.8): bloque de salud del motor. Con el flag apagado
+    // (o antes de bootstrap) queda reducido a { enabled: false }; footballHealth
+    // nunca lanza, así que el health check de Render no puede fallar por el motor.
+    football: footballConfig.enabled && footballEngine
+      ? footballHealth({ engine: footballEngine, enabled: footballConfig.enabled })
+      : { enabled: false }
   });
 });
 app.get('/terminos', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'terminos.html')));
@@ -142,6 +164,61 @@ app.get('/api/perfil/:token/historial', (req, res) => {
     transacciones: profile.transactions
   });
 });
+// Estadio MonteCristo (Fase E4): rutas públicas de la sección. Se registran ANTES
+// del catch-all para que /estadio y /api/estadio/* no queden atrapados por él
+// (§14.3, igual que /terminos). Las deps se resuelven en diferido con getters:
+// los servicios se crean en bootstrap(), pero las rutas existen desde el arranque
+// y devuelven 404 mientras footballConfig.enabled sea false.
+installFootballRoutes(app, {
+  get store() { return footballStore; },
+  get profiles() { return profiles; },
+  get buildLobby() { return footballSockets ? footballSockets.buildLobby : null; },
+  get buildMatchState() { return footballSockets ? footballSockets.buildMatchState : null; },
+  get config() { return { tosVersion: TOS_VERSION }; },
+  log: logEvent,
+  enabled: () => footballConfig.enabled
+});
+
+// Estadio MonteCristo (Fase E4b): palancas operativas de administración del fútbol
+// (/admin/estadio/*): suspender mercados, forzar liquidación, posponer y cerrar un
+// mercado por precio incorrecto. Fail-closed en dos capas: el gate de http.js
+// devuelve 404 si ADMIN_FEATURE_ENABLED está apagado, y la guardia inyectada exige
+// sesión staff con el permiso football:manage (solo rol admin), MFA reciente y
+// escritura de confianza (origen + CSRF), exactamente igual que /api/admin. Se monta
+// un parser JSON propio bajo /admin/estadio porque los del casino solo cubren
+// /api/auth y /api/admin; sin él, req.body llegaría undefined a estas rutas.
+app.use('/admin/estadio', express.json({ limit: '16kb', strict: true }));
+installFootballAdminRoutes(app, {
+  adminConfig,
+  guard: makeAdminGuard({
+    config: adminConfig,
+    getProfiles: () => profiles,
+    getSessionStore: () => accountSessionStore
+  }).fullGuard(PERMISSIONS.FOOTBALL_MANAGE),
+  get store() { return footballStore; },
+  get betting() { return footballBetting; },
+  get engine() { return footballEngine; },
+  // Rastro de auditoría normalizado al mismo store que el resto del panel; es
+  // best-effort: si el store no está listo o falla, no debe tumbar la palanca.
+  audit: (type, data) => {
+    try {
+      const entry = {
+        actorProfileId: data && data.admin ? String(data.admin) : null,
+        actorRole: 'admin',
+        action: type,
+        targetType: 'football',
+        targetId: data && (data.match || data.matchId) ? String(data.match || data.matchId) : null,
+        beforeData: null,
+        afterData: data || null,
+        reason: 'Palanca operativa del Estadio'
+      };
+      Promise.resolve(auditStore && auditStore.append ? auditStore.append(entry) : null).catch(() => {});
+    } catch (_) { /* la auditoría no debe romper la operación */ }
+  },
+  log: logEvent,
+  now: () => Date.now()
+});
+
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const rooms = new Map();
@@ -153,6 +230,14 @@ const LOBBY_CHAT_LIMIT = 60;
 // el ProfileStore de archivo (caso local y de todos los tests actuales) la
 // espera es instantánea, así que el comportamiento no cambia.
 let profiles;
+// Estadio MonteCristo (Fase E4): servicios creados en bootstrap() SOLO si
+// footballConfig.enabled. Nacen en null; las rutas /api/estadio/* y /healthz los
+// leen en diferido (getters), igual que el casino lee `profiles`.
+let footballStore = null;
+let footballEngine = null;
+let footballBetting = null;
+let footballScheduler = null;
+let footballSockets = null;
 let accountSessionStore = null;
 let auditStore = null;
 let moderationStore = null;
@@ -2219,6 +2304,17 @@ const seasonSweep = setInterval(() => {
     }
     const closed = profiles.ensureSeason();
     if (!closed) return;
+    if (closed.type === 'deferred') {
+      // Fase F (A12): el reset del casino se aplazó porque aún quedan apuestas de
+      // fútbol abiertas en la temporada que iba a cerrar. No se reinician saldos ni
+      // se anuncia nada; el próximo barrido (5 min) lo reintenta. Si se agota el
+      // tope de aplazamientos, ensureSeason fuerza el cierre y ya no llega aquí.
+      logEvent('season_reset_deferred', {
+        month: closed.month, toMonth: closed.toMonth, reason: closed.reason,
+        deferrals: closed.deferrals, maxDeferrals: closed.maxDeferrals
+      });
+      return;
+    }
     if (closed.type === 'repair') {
       logEvent('season_calendar_repaired', closed);
       for (const room of rooms.values()) {
@@ -2305,6 +2401,13 @@ async function gracefulShutdown(signal) {
   try { await idempotencyStore?.close?.(); } catch (error) {
     console.warn('No se pudo cerrar el store de idempotencia:', error.message);
   }
+  // Estadio MonteCristo (Fase E4): detener el motor y persistir su store. El orden
+  // importa: primero se paran los sweeps y los listeners del motor (no más writes),
+  // luego se guarda y cierra el store de fútbol.
+  try { footballScheduler?.stop(); } catch (_) { /* parar el scheduler es lo primero */ }
+  try { footballSockets?.stop(); } catch (_) { /* desregistrar listeners del motor */ }
+  try { await footballStore?.saveNow?.(); } catch (error) { console.warn('No se pudo guardar el store de fútbol:', error.message); }
+  try { await footballStore?.close?.(); } catch (error) { console.warn('No se pudo cerrar el store de fútbol:', error.message); }
   io.close(() => {
     server.close(() => {
       logEvent('shutdown_complete', {});
@@ -2315,21 +2418,91 @@ async function gracefulShutdown(signal) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+// Estadio MonteCristo (Fase E4): inicializa la sección completa. Se invoca desde
+// bootstrap() SOLO con footballConfig.enabled, y siempre ANTES de server.listen()
+// para no aceptar tráfico sobre un estado sin reconciliar (§15.6). Si algo crítico
+// falla, el throw sube al catch de bootstrap() que hace process.exit(1) (A6).
+async function initFootball() {
+  // 1. Store (fábrica: archivo JSON o Postgres/Neon). La fábrica falla cerrada si
+  //    DATABASE_URL está definida antes de la Fase F (backend PG del Estadio).
+  footballStore = await createFootballStore(footballConfig.storePath, process.env.DATABASE_URL);
+  footballStore.ensureSeason(new Date());
+
+  // 2. Log estructurado que ADEMÁS reenvía cada liquidación al socket del perfil
+  //    (football:settlement). El log de betting no trae profileId, así que se
+  //    resuelve del betId con una lectura estricta del store.
+  const footballLog = (event, data) => {
+    logEvent(event, data);
+    if (event === 'football_bet_settled' && data && data.betId && footballSockets && footballStore) {
+      const bet = footballStore.getBet(data.betId);
+      if (bet) footballSockets.broadcastSettlement({ profileId: bet.profileId, betId: bet.id, status: data.status, payout: data.payout, reason: data.reason });
+    }
+  };
+
+  // 3. Flujo de apostadores simulados (invisible, §11.6) + servicio de apuestas.
+  const simulatedFlow = new SimulatedFlow({ log: footballLog });
+  footballBetting = createBettingService({
+    store: footballStore, profiles, simulatedFlow, log: footballLog, now: () => Date.now()
+  });
+
+  // 4. Motor determinista con los hooks de apuestas cableados (Fase D) y el gate de
+  //    temporada (A7). El motor emite eventos que la capa de socket difunde.
+  footballEngine = new FootballEngine(footballStore, {
+    logEvent: footballLog,
+    settleBets: (match, score) => footballBetting.settleMatchBets(match, score),
+    refundBets: (match, reason) => footballBetting.refundMatchBets(match, reason),
+    cancelPendingBets: () => footballBetting.cancelPendingBets(),
+    reconcileEscrow: () => footballBetting.reconcileEscrow(),
+    hasOpenBets: (month) => footballBetting.hasOpenBets(month),
+    countOpenBets: () => footballBetting.countOpenBets(),
+    countEscrow: () => footballBetting.countEscrow()
+  });
+
+  // 5. Reconciliación de arranque (§15.6): reconstruye el estado de los partidos no
+  //    terminales desde (seed, now) y cuadra el escrow. ANTES de aceptar tráfico.
+  footballEngine.reconcile(Date.now());
+
+  // 6. Capa de protocolo Socket.IO (§14). Añade su propio io.on('connection'),
+  //    independiente del handler de mesas del casino. Helpers del casino inyectados:
+  //    ackOk/ackError (con code), cleanMessage, nameIssue (unicidad global de
+  //    nombres) y verifyTosAcceptance. La identidad se resuelve SOLO en subscribe.
+  footballSockets = registerFootballSockets(io, {
+    betting: footballBetting, engine: footballEngine, store: footballStore, profiles,
+    config: footballConfig.sockets, log: footballLog, now: () => Date.now(),
+    ackOk,
+    ackError: (ack, message, code) => ackResult(ack, actionError(message, code || 'invalid')),
+    cleanMessage, nameIssue, verifyTosAcceptance
+  });
+
+  // 7. Scheduler: sweeps de kickoff, avance, partidos atascados y temporada (§15).
+  footballScheduler = new FootballScheduler(footballEngine);
+  footballScheduler.start();
+
+  logEvent('football_initialized', {
+    storePath: footballConfig.storePath,
+    backend: footballStore.backend || 'file',
+    seasonMonth: footballStore.getCurrentSeasonMonth()
+  });
+}
+
 // Fase 10.2: se crea el ProfileStore (archivo o Postgres, según DATABASE_URL)
 // y solo cuando está listo se abre el puerto; así ningún socket puede llegar
 // antes de que los perfiles existan en memoria.
 async function bootstrap() {
-  profiles = await createProfileStore(process.env.PROFILE_STORE_PATH);
+  // Fase F (A12): deferSeasonCheck pospone la comprobación de temporada del casino.
+  // Sin esto, createProfileStore cerraría el mes y reiniciaría TODOS los saldos dentro
+  // de su constructor (archivo) o de _init (Postgres), antes de que exista el store de
+  // fútbol y antes de poder consultar si quedan apuestas abiertas. El cierre efectivo
+  // se hace más abajo con profiles.ensureSeason(), ya con el gate cableado.
+  profiles = await createProfileStore(process.env.PROFILE_STORE_PATH, process.env.DATABASE_URL, { deferSeasonCheck: true });
   accountSessionStore = createAccountSessionStore(adminConfig);
   auditStore = createAuditStore(adminConfig);
   moderationStore = createModerationStore(adminConfig);
   reportStore = createReportStore(adminConfig);
   passwordResetStore = createPasswordResetStore(adminConfig);
   idempotencyStore = createIdempotencyStore(adminConfig);
-  if (profiles.lastSeasonRepair) {
-    console.warn(`Calendario de temporada corregido: ${profiles.lastSeasonRepair.fromMonth} → ${profiles.lastSeasonRepair.toMonth} (${CASINO_TIME_ZONE}).`);
-    logEvent('season_calendar_repaired', profiles.lastSeasonRepair);
-  }
+  // NOTA (Fase F, A12): el aviso de lastSeasonRepair se emite más abajo, después de
+  // profiles.ensureSeason(), que es quien de verdad puede disparar la reparación.
   // Fase 11.1: con Postgres, guardar más historial no infla un archivo local
   // que se reescribe entero en cada guardado (ver nota en profile-store-shared.js),
   // así que se eleva el techo de puntos de saldo y transacciones conservados.
@@ -2337,6 +2510,42 @@ async function bootstrap() {
   if (profiles.backend === 'postgres') {
     HISTORY_LIMITS.balance = 2000;
     HISTORY_LIMITS.transactions = 500;
+  }
+  // Estadio MonteCristo (Fase E4): motor, apuestas, sockets y scheduler listos y
+  // reconciliados ANTES de abrir el puerto. Detrás del flag fail-closed: con
+  // FOOTBALL_ENABLED=off (por defecto) no se crea nada y la sección es invisible.
+  if (footballConfig.enabled) {
+    await initFootball();
+    // Fase F (A12): con el store de fútbol ya reconciliado, se cablea el gate del
+    // reset mensual. ensureSeason() del casino lo consulta ANTES de cerrar la
+    // temporada: si la temporada que va a cerrar aún tiene apuestas, combinadas o
+    // futuros abiertos, devuelve {type:'deferred'} y no se reinician los saldos.
+    // Fallo abierto: si la consulta falla, se permite el cierre — el casino no puede
+    // quedar atascado por un error del gate (y ensureSeason lleva su propio tope de
+    // aplazamientos, SEASON_RESET_MAX_DEFERRALS).
+    profiles.onBeforeSeasonReset = ({ fromMonth }) => {
+      try {
+        if (!footballStore) return null;
+        const openBets = footballStore.hasOpenBets({ seasonMonth: fromMonth });
+        const openParlays = footballStore.getParlays({ status: 'open' }).some(p => p.seasonMonth === fromMonth);
+        const openFutures = footballStore.getOpenFutures(fromMonth).length > 0;
+        if (openBets || openParlays || openFutures) return { type: 'deferred', reason: 'apuestas_de_futbol_abiertas' };
+      } catch (error) {
+        console.warn('Gate de reset de temporada: no se pudo consultar el fútbol; se permite el cierre:', error.message);
+      }
+      return null;
+    };
+  }
+  // Fase F (A12): comprobación/cierre de la temporada del casino, AHORA con el gate
+  // cableado. Puede devolver 'closed', 'repair', 'deferred' o null.
+  const seasonResult = profiles.ensureSeason();
+  if (profiles.lastSeasonRepair) {
+    console.warn(`Calendario de temporada corregido: ${profiles.lastSeasonRepair.fromMonth} → ${profiles.lastSeasonRepair.toMonth} (${CASINO_TIME_ZONE}).`);
+    logEvent('season_calendar_repaired', profiles.lastSeasonRepair);
+  }
+  if (seasonResult && seasonResult.type === 'deferred') {
+    console.warn(`Reset del casino aplazado: la temporada ${seasonResult.month} aún tiene apuestas de fútbol abiertas (aplazamiento ${seasonResult.deferrals}/${seasonResult.maxDeferrals}).`);
+    logEvent('season_reset_deferred', { month: seasonResult.month, toMonth: seasonResult.toMonth, reason: seasonResult.reason, deferrals: seasonResult.deferrals, maxDeferrals: seasonResult.maxDeferrals });
   }
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`MonteCristo lista en http://0.0.0.0:${PORT}`);

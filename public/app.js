@@ -68,7 +68,11 @@
   const GAME_META = {
     poker: { icon: '♠', name: 'TEXAS HOLD’EM' }, blackjack: { icon: '◆', name: 'BLACKJACK' },
     roulette: { icon: '◉', name: 'RULETA NOVA' }, dice: { icon: '⚄', name: 'DADOS CÓSMICOS' },
-    coinflip: { icon: '◐', name: 'CARA O CRUZ' }, slots: { icon: '🎰', name: 'TRAGAMONEDAS' }
+    coinflip: { icon: '◐', name: 'CARA O CRUZ' }, slots: { icon: '🎰', name: 'TRAGAMONEDAS' },
+    // Estadio MonteCristo (Fase E4, §16 fila 14): solo meta de visualización para
+    // el panel «Historial por juego» y el icono del modal. NO agrega fútbol a los
+    // juegos jugables ni a los retos (AVAILABLE_GAMES/CHALLENGE_GAMES lo excluyen, C6).
+    football: { icon: '🏟', name: 'ESTADIO' }
   };
   const AVATARS = [
     { id: 'fox', emoji: '🦊', label: 'Zorro' }, { id: 'tiger', emoji: '🐯', label: 'Tigre' },

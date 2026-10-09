@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#060b0d" />
+  <meta name="description" content="Estadio MonteCristo: liga de fútbol simulada en vivo, con cancha 2D, relato de dos voces y apuestas con fichas virtuales." />
+  <title>Estadio MonteCristo — Liga en vivo</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/estadio.css" />
+</head>
+<body class="estadio-body">
+  <!-- Animación de entrada (casino → Estadio). Vive oculta por defecto; solo la
+       revela maybePlayEntry() (public/estadio.js) cuando se llega DESDE el casino
+       (?from=casino o referrer del casino) y aún no se mostró en esta sesión. Al
+       terminar se autoelimina del DOM, así que no se repite en ticks ni en refresh.
+       Clic o cualquier tecla la saltan. Respeta prefers-reduced-motion. -->
+  <div id="est-enter" class="est-enter" hidden aria-hidden="true">
+    <div class="est-enter-tunnel"></div>
+    <div class="est-enter-bloom"></div>
+    <div class="est-enter-title">
+      <span class="est-enter-kicker">Bienvenido al</span>
+      <span class="est-enter-name">Estadio MonteCristo</span>
+      <span class="est-enter-sub">Liga simulada en vivo · apuestas con fichas virtuales</span>
+    </div>
+    <div class="est-enter-flash"></div>
+    <button class="est-enter-skip" type="button" id="est-enter-skip">Saltar intro ›</button>
+  </div>
+
+  <a class="skip-link" href="#estadio-main">Ir al contenido del Estadio</a>
+
+  <header class="estadio-nav">
+    <a class="brand" href="/">MonteCristo</a>
+    <span class="estadio-tag">🏟 Estadio</span>
+    <div class="estadio-nav-right">
+      <span id="est-connection" class="connection-badge connecting"><i></i><span>Conectando</span></span>
+      <span id="est-chips" class="est-chips" title="Tus fichas virtuales">— fichas</span>
+      <button id="est-sound" class="icon-btn" type="button" aria-label="Silenciar campana de avisos" aria-pressed="false">🔔</button>
+      <a class="btn btn-ghost btn-small" href="/">← Casino</a>
+    </div>
+  </header>
+
+  <main id="estadio-main" class="estadio-shell">
+    <!-- Columna izquierda: lobby (partidos de hoy) + tabla de posiciones -->
+    <aside class="est-col-left" aria-label="Partidos y posiciones">
+      <section class="est-panel" id="est-lobby-panel">
+        <h2 class="est-panel-title">Jornada de hoy</h2>
+        <div id="est-countdown" class="est-countdown" aria-live="off">—</div>
+        <ul id="est-match-list" class="est-match-list" aria-label="Partidos de hoy"></ul>
+      </section>
+      <section class="est-panel" id="est-standings-panel">
+        <h2 class="est-panel-title">Posiciones</h2>
+        <div class="est-table-wrap">
+          <table id="est-standings" class="est-standings" aria-label="Tabla de posiciones">
+            <thead><tr><th>#</th><th>Club</th><th>PJ</th><th>DG</th><th>Pts</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </aside>
+
+    <!-- Columna central: cancha + marcador + relato -->
+    <section class="est-col-center" aria-label="Partido en juego">
+      <div class="est-scoreboard" id="est-scoreboard">
+        <div class="est-team est-team-home"><span class="est-crest" id="crest-home"></span><span id="name-home">Local</span></div>
+        <div class="est-score"><b id="score-home">0</b><span class="est-clock" id="est-clock">—</span><b id="score-away">0</b></div>
+        <div class="est-team est-team-away"><span id="name-away">Visita</span><span class="est-crest" id="crest-away"></span></div>
+      </div>
+
+      <div class="est-canvas-wrap" id="est-canvas-wrap">
+        <canvas id="est-pitch" width="1050" height="680" role="img"
+                aria-label="Cancha de fútbol en vista cenital. Marcador y minuto disponibles en el texto alternativo."></canvas>
+        <div id="est-goal-banner" class="est-goal-banner" aria-hidden="true">¡GOOOL!</div>
+      </div>
+
+      <!-- Relato de dos voces -->
+      <div class="est-commentary" id="est-commentary" aria-live="polite" aria-label="Relato del partido">
+        <p class="est-commentary-empty">El relato comenzará cuando arranque el partido…</p>
+      </div>
+
+      <!-- Fallback solo texto (accesibilidad / canvas desactivado / reduced-motion extremo) -->
+      <div class="est-text-fallback" id="est-text-fallback" aria-live="polite">
+        <strong>Texto alternativo del partido:</strong> <span id="est-text-state">Sin partido seleccionado.</span>
+      </div>
+    </section>
+
+    <!-- Columna derecha: boleta de apuesta + mis apuestas -->
+    <aside class="est-col-right" aria-label="Apuestas">
+      <section class="est-panel" id="est-bet-panel">
+        <h2 class="est-panel-title">Apuestas <span id="est-market-phase" class="est-badge">Pre-partido</span></h2>
+        <p class="est-cap-notice">Por apuesta: <strong>mínimo 10 % y máximo 50 % de tu saldo</strong> (tope absoluto 25 000). Fichas 100 % virtuales.</p>
+        <div id="est-markets" class="est-markets" aria-label="Mercados y cuotas">
+          <p class="est-muted">Selecciona un partido para ver las cuotas.</p>
+        </div>
+        <div class="est-bet-slip" id="est-bet-slip" hidden>
+          <div class="est-slip-head">
+            <span id="est-slip-pick">—</span>
+            <button id="est-slip-clear" class="text-button" type="button">✕</button>
+          </div>
+          <div class="est-slip-odds">Cuota <b id="est-slip-odds">—</b> · Implícita <span id="est-slip-implied">—</span></div>
+          <label class="est-stake-label" for="est-stake">Monto a apostar
+            <input id="est-stake" type="number" min="10" step="1" inputmode="numeric" placeholder="0" />
+          </label>
+          <div class="est-denoms" id="est-denoms" aria-label="Denominaciones rápidas"></div>
+          <div class="est-slip-range" id="est-slip-range">Mín 0 · Máx 0</div>
+          <button id="est-place-bet" class="btn btn-primary est-place" type="button">Apostar</button>
+          <div id="est-bet-msg" class="est-bet-msg" role="status"></div>
+        </div>
+      </section>
+
+      <section class="est-panel" id="est-mybets-panel">
+        <h2 class="est-panel-title">Mis apuestas</h2>
+        <ul id="est-mybets" class="est-mybets" aria-label="Tus apuestas abiertas">
+          <li class="est-muted">Sin apuestas abiertas.</li>
+        </ul>
+      </section>
+    </aside>
+  </main>
+
+  <!-- Guía de atajos -->
+  <div id="est-help" class="est-modal" hidden role="dialog" aria-modal="true" aria-label="Atajos de teclado">
+    <div class="est-modal-card">
+      <h2>Atajos de teclado</h2>
+      <ul class="est-help-list">
+        <li><kbd>M</kbd> Silenciar/activar el relato</li>
+        <li><kbd>O</kbd> Enfocar el panel de cuotas</li>
+        <li><kbd>B</kbd> Abrir la boleta de apuesta</li>
+        <li><kbd>?</kbd> Mostrar esta guía</li>
+        <li><kbd>Esc</kbd> Cerrar diálogos</li>
+      </ul>
+      <button class="btn btn-primary" id="est-help-close" type="button">Cerrar</button>
+    </div>
+  </div>
+
+  <!-- Aceptación de T&C -->
+  <div id="est-tos" class="est-modal" hidden role="dialog" aria-modal="true" aria-label="Términos y condiciones">
+    <div class="est-modal-card">
+      <h2>Términos y condiciones</h2>
+      <p>El Estadio es una sección de <strong>simulación</strong> con fichas virtuales sin valor real.
+        Los partidos, clubes y jugadores son ficticios. Los apostadores adicionales que puedas percibir
+        en las cuotas son <strong>simulados</strong> y nunca compiten ni aparecen como personas reales.</p>
+      <p><a href="/terminos" target="_blank" rel="noopener">Leer los términos completos</a></p>
+      <button class="btn btn-primary" id="est-tos-accept" type="button">Acepto y quiero entrar</button>
+    </div>
+  </div>
+
+  <div id="est-toast" class="est-toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/estadio.js"></script>
+</body>
+</html>

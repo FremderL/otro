@@ -1003,3 +1003,43 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 .rotating-challenge > small { display: block; margin-top: 5px; color: var(--muted); font-size: 8.5px; line-height: 1.35; }
 .rotating-challenge .progress-track { margin-top: 7px; }
 @media (max-width: 1080px) { .rotating-challenge-list { grid-template-columns: 1fr; } }
+
+/* ==========================================================================
+   Estadio MonteCristo — banner de acceso desde el casino (Fase E4, §16 fila 7).
+   Es un vertical distinto de los juegos de mesa: feltro verde + oro (estadio
+   nocturno) en lugar del menta de las tarjetas. Nace oculto (hidden) y la sonda
+   del index.html lo revela y puebla solo con FOOTBALL_ENABLED activo; apagado,
+   no existe para el usuario y no produce desplazamiento de maquetación.
+   ========================================================================== */
+.estadio-banner { padding: 40px 0 0; }
+.estadio-banner[hidden] { display: none; }
+.estadio-banner-card { position: relative; display: grid; grid-template-columns: 1.4fr .85fr; gap: 36px; align-items: center; overflow: hidden; padding: 40px 44px; border: 1px solid rgba(229,189,114,.22); border-radius: 22px; background: radial-gradient(120% 150% at 86% -10%, rgba(82,224,174,.12), transparent 48%), linear-gradient(135deg, #0d3027 0%, #0a1c18 46%, #0b1316 100%); box-shadow: 0 26px 70px rgba(0,0,0,.42); color: var(--text); text-decoration: none; isolation: isolate; transition: transform .35s, border-color .35s, box-shadow .35s; }
+.estadio-banner-card:hover { transform: translateY(-5px); border-color: rgba(229,189,114,.44); box-shadow: 0 34px 86px rgba(0,0,0,.5), 0 0 48px rgba(82,224,174,.09); }
+.estadio-banner-pitch { position: absolute; z-index: 0; inset: 0; opacity: .55; background-image: linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px); background-size: 48px 48px; -webkit-mask-image: radial-gradient(78% 100% at 72% 50%, #000 26%, transparent 76%); mask-image: radial-gradient(78% 100% at 72% 50%, #000 26%, transparent 76%); pointer-events: none; }
+.estadio-banner-glow { position: absolute; z-index: 0; width: 440px; height: 440px; right: -130px; top: -190px; border-radius: 50%; background: radial-gradient(circle, rgba(229,189,114,.18), transparent 62%); pointer-events: none; }
+.estadio-banner-copy { position: relative; z-index: 2; }
+.estadio-kicker { display: inline-block; color: var(--gold); font-size: 10px; font-weight: 850; letter-spacing: .18em; }
+.estadio-banner-copy h2 { margin: 12px 0 0; font-family: var(--display); font-size: clamp(36px,4.6vw,58px); font-weight: 750; line-height: .94; letter-spacing: -.045em; text-transform: uppercase; }
+.estadio-banner-copy h2 em { color: var(--gold-2); font-style: normal; }
+.estadio-banner-copy > p { max-width: 470px; margin: 15px 0 0; color: var(--muted); font-size: 13px; line-height: 1.75; }
+.estadio-banner-meta { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 22px; }
+.est-chip { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 20px; background: rgba(4,10,12,.5); color: #cdd8d5; font-size: 10px; font-weight: 800; letter-spacing: .07em; }
+.est-chip[hidden] { display: none; }
+.est-chip-live { color: var(--mint); border-color: rgba(82,224,174,.32); }
+.est-chip-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 8px var(--mint); animation: est-pulse 1.6s ease-in-out infinite; }
+.est-chip-live b { font-size: 11px; }
+@keyframes est-pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+.estadio-banner-cta { display: inline-flex; align-items: center; gap: 10px; margin-top: 26px; padding: 13px 22px; border: 1px solid rgba(229,189,114,.42); border-radius: 12px; background: linear-gradient(135deg, rgba(229,189,114,.17), rgba(229,189,114,.05)); color: var(--gold-2); font-size: 12px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; transition: background .3s, gap .3s; }
+.estadio-banner-card:hover .estadio-banner-cta { gap: 15px; background: linear-gradient(135deg, rgba(229,189,114,.28), rgba(229,189,114,.1)); }
+.estadio-banner-cta b { font-size: 16px; }
+.estadio-banner-feature { position: relative; z-index: 2; padding: 24px 22px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(150deg, rgba(11,20,23,.9), rgba(6,12,14,.92)); text-align: center; backdrop-filter: blur(6px); }
+.estadio-banner-feature[hidden] { display: none; }
+.est-feature-label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .16em; }
+.est-feature-label i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.est-feature-label.is-live { color: var(--mint); }
+.est-feature-label.is-live i { box-shadow: 0 0 8px var(--mint); animation: est-pulse 1.6s ease-in-out infinite; }
+.est-feature-teams { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 15px 0 9px; font-family: var(--display); font-size: 19px; font-weight: 750; line-height: 1.1; letter-spacing: -.02em; text-transform: uppercase; }
+.est-feature-teams b { color: var(--gold); font-size: 16px; }
+.estadio-banner-feature small { display: block; color: var(--muted); font-size: 10.5px; letter-spacing: .03em; }
+@media (max-width: 1080px) { .estadio-banner-card { grid-template-columns: 1fr; gap: 26px; padding: 32px 28px; } .estadio-banner-feature { display: none; } }
+@media (prefers-reduced-motion: reduce) { .est-chip-live i, .est-feature-label.is-live i { animation: none; } .estadio-banner-card, .estadio-banner-cta { transition: none; } }
