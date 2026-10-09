@@ -592,8 +592,13 @@
     var ended = S.match && ['settled', 'finished', 'postponed'].indexOf(S.match.status) >= 0;
     if (!keys.length) { box.innerHTML = '<p class="est-muted">' + (ended ? 'Partido finalizado: mercados cerrados.' : 'Sin mercados disponibles todavía.') + '</p>'; return; }
     box.innerHTML = '';
+    // Una sola selección por categoría: los mercados donde ya hay una apuesta abierta
+    // quedan bloqueados (el servidor también lo valida; esto solo evita el clic).
+    var taken = {};
+    (S.myBets || []).forEach(function (b) { if (b.status === 'open') taken[b.market] = b.selection; });
     keys.forEach(function (mk) {
       var sels = S.markets[mk] || []; if (!sels.length) return;
+      var lockedBy = taken[mk];
       var group = document.createElement('div'); group.className = 'est-market-group';
       var head = document.createElement('div'); head.className = 'est-market-name'; head.textContent = MARKET_LABEL[mk] || mk; group.appendChild(head);
       var row = document.createElement('div'); row.className = 'est-selections';
@@ -601,13 +606,15 @@
         var mv = S.movement[mk + ':' + s.key];
         var btn = document.createElement('button');
         btn.type = 'button'; btn.className = 'est-sel' + (S.slip && S.slip.market === mk && S.slip.selection === s.key ? ' selected' : '');
-        btn.disabled = ended;
+        var locked = lockedBy !== undefined && lockedBy !== s.key;
+        btn.disabled = ended || locked;
+        if (locked) btn.title = 'Ya apostaste en esta categoría. Solo se permite una selección por mercado.';
         var arrow = mv && mv.dir === 'up' ? '<span class="est-sel-move up">▲</span>' : mv && mv.dir === 'down' ? '<span class="est-sel-move down">▼</span>' : '';
         btn.innerHTML = '<span class="est-sel-key">' + esc(selLabel(mk, s.key)) + '</span>' +
           '<span class="est-sel-odds">' + Number(s.price).toFixed(2) + arrow + '</span>' +
           '<span class="est-sel-implied">impl. ' + pct(s.implied) + '</span>';
         btn.setAttribute('aria-label', (MARKET_LABEL[mk] || mk) + ' ' + selLabel(mk, s.key) + ', cuota ' + Number(s.price).toFixed(2) + ', probabilidad implícita ' + pct(s.implied));
-        btn.addEventListener('click', function () { if (!ended) openSlip(mk, s); });
+        btn.addEventListener('click', function () { if (!ended && !locked) openSlip(mk, s); });
         row.appendChild(btn);
       });
       group.appendChild(row); box.appendChild(group);
@@ -677,7 +684,8 @@
       stake_bajo_minimo: 'Monto por debajo del mínimo (10 % de tu saldo).', stake_sobre_maximo: 'Monto sobre el tope (50 % del saldo o 25 000).',
       market_suspended: 'Mercado suspendido momentáneamente.', selection_closed: 'Mercado cerrado.',
       match_ended: 'El partido ya terminó.', rate_limit: 'Demasiadas apuestas seguidas; espera un momento.',
-      window_cerrada: 'Fuera de la ventana de apuestas.', no_match: 'Partido no encontrado.'
+      window_cerrada: 'Fuera de la ventana de apuestas.', no_match: 'Partido no encontrado.',
+      mercado_ya_apostado: 'Ya apostaste en esta categoría: solo se permite una selección por mercado.'
     })[code] || ('No se pudo apostar (' + (code || 'error') + ').');
   }
 
