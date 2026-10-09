@@ -156,14 +156,26 @@
     S.avatar = localStorage.getItem('montecristo-avatar') || 'fox';
     bindUI();
     initPitchCanvas();
-    fetch('/api/estadio/state').then(function (r) { return r.json(); }).then(function (data) {
-      if (!data || !data.ok) return;
-      S.teams = data.teams || {};
-      S.tosVersion = data.tosVersion || TOS_FALLBACK;
-      if (data.profile) { S.profile = data.profile; S.chips = data.profile.chips; updateChips(); }
-      renderLobby(data.lobby);
-      gateTosThenConnect();
-    }).catch(function () { gateTosThenConnect(); });
+    // Con FOOTBALL_ENABLED apagado el backend responde 404 fail-closed (diseño
+    // intencional); el flag público de /healthz evita la petición — el
+    // navegador loguea todo 404 de red en consola aunque el JS lo maneje.
+    fetch('/healthz', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (health) {
+        if (health && health.football && health.football.enabled === false) return gateTosThenConnect();
+        return fetch('/api/estadio/state')
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.ok) return;
+            S.teams = data.teams || {};
+            S.tosVersion = data.tosVersion || TOS_FALLBACK;
+            if (data.profile) { S.profile = data.profile; S.chips = data.profile.chips; updateChips(); }
+            renderLobby(data.lobby);
+            gateTosThenConnect();
+          })
+          .catch(function () { gateTosThenConnect(); });
+      })
+      .catch(function () { gateTosThenConnect(); });
   }
 
   function gateTosThenConnect() {
