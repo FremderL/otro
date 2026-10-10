@@ -3604,3 +3604,46 @@ Se corrige la coherencia visual y narrativa de los goles en el Estadio MonteCris
   espera a que termine el desplazamiento del balón antes de mostrar el mensaje del narrador y
   analista, evitando revelar el gol antes de que el balón llegue a la portería. Con
   `prefers-reduced-motion` activo, el relato se muestra inmediatamente.
+
+## 31. Realismo integral: IA de jugadores, cinemática del balón y sincronización del relato
+
+Se implementa una arquitectura completa de fidelidad de simulación y sincronización visual entre el motor autoritativo (`lib/football/match-state.js`), el transporte de sockets (`lib/football/sockets.js`) y la interfaz de usuario (`public/estadio.js`):
+
+1. **Fuente de verdad centralizada:**
+   - La simulación conserva un estado unificado con balón (`x`, `y`, `vx`, `vy`, `zone`, `controlled`, `carrierId`, `crossedGoalLine`), equipo en posesión (`possessionTeam`), portador (`ballCarrierId`), jugadores con posición, rol, velocidad (`vx`, `vy`), orientación, atributos (`speed`, `stamina`, `passing`, `shooting`, `control`, `defending`, `goalkeeping`) y estado disciplinario.
+   - El relato sigue con rigor estricto los eventos confirmados por el motor sin bifurcaciones especulativas.
+
+2. **Inteligencia táctica y cinemática de jugadores:**
+   - **Conducción vinculada:** el portador del balón mantiene la pelota físicamente anclada en sus pies a lo largo de su avance, eliminando despegues o rezagos visuales.
+   - **Presión defensiva inteligente:** únicamente el defensor rival más cercano al balón sale a presionar con velocidad dirigida por sus atributos (`pac`), mientras el resto de los defensores resguarda su estructura zonal y compacta las líneas.
+   - **Apoyos ofensivos y desmarques:** los compañeros de equipo en ataque se desmarcan hacia espacios libres en función de su rol ofensivo (`FW`), habilitando líneas de pase diagonales.
+   - **Comportamiento en festejos:** tras un gol, los compañeros del autor del tanto se aproximan para celebrar de forma conjunta durante la ventana de festejo.
+   - **Restricción estricta de saque de centro:** durante el saque inicial y tras un gol (`kickoff`, `goal_restart`), ningún jugador puede invadir la mitad del campo contraria (`x <= 0.485` para local y `x >= 0.515` para visitante), y el equipo defensor permanece fuera del círculo central (`x <= 0.40` o `x >= 0.60`). El ejecutor se posiciona con precisión en el punto de saque.
+
+3. **Física del balón y coherencia de jugadas:**
+   - Los pases vinculan la posición de salida del pasador (`ballFrom` / `actorPosition`) con la carrera y destino del receptor (`receiverPosition` / `receiverId`).
+   - Los remates viajan a la portería y las atajadas ubican al guardameta en el ángulo exacto del balón, conteniendo la pelota en el área de meta y transfiriendo la posesión.
+   - Los saques de esquina se ubican con precisión en los banderines de córner, los saques de banda en la línea lateral y los saques de meta en el área chica.
+
+4. **Secuencia post-gol en 10 pasos:**
+   - 1) Balón cruza la línea hacia la red (`1.01` o `-0.01`).
+   - 2) Validación del gol y confirmación de autor y asistencia.
+   - 3) Actualización atómica del marcador una sola vez.
+   - 4) Registro del evento en el historial del partido.
+   - 5) Pausa reglamentaria y celebración del equipo goleador.
+   - 6) Detención temporal de mercados de apuestas (`playStopped = true`).
+   - 7) Reposicionamiento táctico de ambos planteles en sus propias mitades de cancha.
+   - 8) Colocación del balón en el punto central `(0.5, 0.5)`.
+   - 9) Saque de centro ejecutado por el equipo que recibió el gol (`goal_restart`).
+   - 10) Reanudación de la fluidez del partido y apertura del mercado.
+
+5. **Disciplina, sustituciones e interrupciones:**
+   - Faltas detienen el reloj y el mercado (`playStopped = true`), colocando el balón en el punto de la infracción.
+   - Tarjetas amarillas y rojas se registran en `state.cards`. Las expulsiones (roja directa o doble amarilla) marcan al jugador como `sent_off`, desactivándolo del campo (`active = false`), reduciendo el conteo de jugadores a 10 y excluyéndolo de toda jugada posterior.
+   - Sustituciones atómicas retiran al jugador saliente (`substituted`) e incorporan al suplente (`active = true`), preservando la posición táctica en cancha y actualizando el relato con el nombre del jugador reemplazado (`sale`).
+   - El medio tiempo y el pitazo final cierran mercados y fases sin admitir jugadas huérfanas.
+
+6. **Renderizado visual orgánico:**
+   - Supresión completa de vibraciones o temblores en balón detenido y en el portador.
+   - Respiración táctica sutil (`0.002` de oscilación armónica) para jugadores sin balón, ofreciendo dinamismo visual natural sin teletransportación.
+

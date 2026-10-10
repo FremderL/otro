@@ -383,3 +383,142 @@ test('el relato del gol espera a que termine la animación del balón', async t 
   h.advanceTime(2000);
   assert.match(window.document.getElementById('est-commentary').textContent, /Gol confirmado de Jugador 10: 1-0/, 'el relato aparece al completarse la animación');
 });
+
+test('14 escenarios — validación integral de visualización, física y UI del estadio', async t => {
+  const h = createHarness({ reducedMotion: false });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const id = match.id;
+  const fireEvent = event => handlers['football:event']({ matchId: id, event });
+
+  // 1. Kickoff inicial: jugadores en sus mitades
+  handlers['football:status']({ matchId: id, code: 'live', minute: 0 });
+  fireEvent({
+    type: 'kickoff', team: 'home', minute: 0, phase: 'kickoff', playStopped: false,
+    ball: { x: .5, y: .5 }, ballFrom: { x: .5, y: .5 }, ballCarrierId: 'h2', possessionTeam: 'home',
+    playerId: 'h2', actorPosition: { x: .485, y: .5 }
+  });
+  h.advanceTime(100);
+  let numbers = h.draw();
+  assert.ok(numbers.length >= 22, 'todos los jugadores en cancha');
+
+  // 2. Pase, recepción y conducción de balón
+  fireEvent({
+    type: 'pass_sequence', team: 'home', minute: 5, phase: 'build_up', playStopped: false,
+    ball: { x: .65, y: .45 }, ballFrom: { x: .485, y: .5 }, actorPosition: { x: .485, y: .5 },
+    playerId: 'h2', receiverId: 'h10', ballCarrierId: 'h10', possessionTeam: 'home'
+  });
+  h.advanceTime(1000);
+  h.draw();
+
+  // 3. Disparo y llegada a meta
+  fireEvent({
+    type: 'shot', team: 'home', minute: 15, phase: 'attack', playStopped: false,
+    ball: { x: 1.0, y: .5 }, ballFrom: { x: .85, y: .5 }, actorPosition: { x: .85, y: .5 },
+    playerId: 'h10', keeperId: 'a1', keeperPosition: { x: .96, y: .5 }
+  });
+  h.advanceTime(500);
+
+  // 4. Atajada del guardameta
+  fireEvent({
+    type: 'save', team: 'away', minute: 15, phase: 'build_up', playStopped: false,
+    ball: { x: .96, y: .5 }, ballFrom: { x: 1.0, y: .5 }, actorPosition: { x: .96, y: .5 },
+    playerId: 'a1', keeperId: 'a1', keeperPosition: { x: .96, y: .5 },
+    ballCarrierId: 'a1', possessionTeam: 'away'
+  });
+  h.advanceTime(500);
+
+  // 5. Gol, banner, celebración, y saque de centro del equipo que recibió el gol
+  fireEvent({
+    type: 'goal', team: 'home', playerId: 'h9', playerName: 'Delantero Local', minute: 28,
+    phase: 'goal_celebration', playStopped: true, marcador: '1-0',
+    ball: { x: 1.01, y: .5 }, ballFrom: { x: .88, y: .5 }, actorPosition: { x: .88, y: .5 },
+    ballCarrierId: null, possessionTeam: null
+  });
+  handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'Golazo de Delantero Local: 1-0.' });
+  assert.equal(window.document.getElementById('score-home').textContent, '1');
+  assert.equal(window.document.getElementById('score-away').textContent, '0');
+  h.advanceTime(2100);
+  assert.match(window.document.getElementById('est-commentary').textContent, /Golazo de Delantero Local/);
+
+  // Saque de centro tras gol: balón a (0.5, 0.5) y saca visitante
+  fireEvent({
+    type: 'goal_restart', team: 'away', minute: 29, phase: 'kickoff', playStopped: false,
+    ball: { x: .5, y: .5 }, ballFrom: { x: 1.01, y: .5 }, actorPosition: { x: .515, y: .5 },
+    playerId: 'a9', ballCarrierId: 'a9', possessionTeam: 'away'
+  });
+  h.advanceTime(500);
+
+  // 6. Falta y detención de juego
+  fireEvent({
+    type: 'foul', team: 'home', minute: 34, phase: 'set_piece', playStopped: true,
+    ball: { x: .40, y: .30 }, ballFrom: { x: .40, y: .30 }, actorPosition: { x: .40, y: .30 },
+    ballCarrierId: null, possessionTeam: 'away'
+  });
+  assert.ok(Array.from(window.document.querySelectorAll('#est-markets .est-sel')).every(b => b.disabled), 'mercados bloqueados en falta');
+
+  // 7. Tarjeta amarilla
+  fireEvent({
+    type: 'yellow_card', team: 'home', playerId: 'h3', playerName: 'Defensor Local', minute: 35,
+    phase: 'set_piece', playStopped: true, ball: { x: .40, y: .30 }
+  });
+  handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'Tarjeta amarilla para Defensor Local.' });
+  assert.match(window.document.getElementById('est-commentary').textContent, /Tarjeta amarilla para Defensor Local/);
+
+  // 8. Expulsión (tarjeta roja)
+  fireEvent({
+    type: 'red_card', team: 'home', playerId: 'h3', playerName: 'Defensor Local', minute: 40,
+    phase: 'set_piece', playStopped: true, ball: { x: .40, y: .30 }
+  });
+  numbers = h.draw();
+  assert.ok(!numbers.includes('3'), 'el jugador con tarjeta roja sale de la cancha');
+
+  // 9. Sustitución
+  fireEvent({
+    type: 'substitution', team: 'home', playerId: 'h12', playerInId: 'h12', playerOutId: 'h9',
+    minute: 42, phase: 'set_piece', playStopped: true, ball: { x: .5, y: .01 }
+  });
+  numbers = h.draw();
+  assert.ok(numbers.includes('12'), 'suplente h12 ingresa al campo');
+  assert.ok(!numbers.includes('9'), 'titular h9 abandona el campo');
+
+  // 10. Saque de banda
+  fireEvent({
+    type: 'throw_in', team: 'away', minute: 44, phase: 'set_piece', playStopped: true,
+    ball: { x: .60, y: 1.0 }, ballFrom: { x: .60, y: 1.0 }, actorPosition: { x: .60, y: 1.0 },
+    playerId: 'a2', ballCarrierId: 'a2', possessionTeam: 'away'
+  });
+
+  // 11. Córner y saque de meta
+  fireEvent({
+    type: 'corner', team: 'away', minute: 45, phase: 'set_piece', playStopped: true,
+    ball: { x: 0.0, y: 0.0 }, ballFrom: { x: 0.0, y: 0.0 }, actorPosition: { x: 0.0, y: 0.0 },
+    playerId: 'a2', ballCarrierId: 'a2', possessionTeam: 'away'
+  });
+  fireEvent({
+    type: 'goal_kick', team: 'home', minute: 45.5, phase: 'set_piece', playStopped: true,
+    ball: { x: 0.045, y: .5 }, ballFrom: { x: 0.045, y: .5 }, actorPosition: { x: 0.045, y: .5 },
+    playerId: 'h1', ballCarrierId: 'h1', possessionTeam: 'home'
+  });
+
+  // 12. Descanso y segundo tiempo
+  fireEvent({
+    type: 'halftime', minute: 45, phase: 'halftime', playStopped: true,
+    ball: { x: .5, y: .5 }, ballCarrierId: null, possessionTeam: null
+  });
+  handlers['football:status']({ matchId: id, code: 'halftime', minute: 45 });
+  assert.match(window.document.getElementById('est-clock').textContent, /Descanso/);
+
+  fireEvent({
+    type: 'second_half', team: 'away', minute: 46, phase: 'build_up', playStopped: false,
+    ball: { x: .5, y: .5 }, ballFrom: { x: .5, y: .5 }, actorPosition: { x: .515, y: .5 },
+    playerId: 'a9', ballCarrierId: 'a9', possessionTeam: 'away'
+  });
+  handlers['football:status']({ matchId: id, code: 'live', minute: 46 });
+
+  // 13. Pitazo final
+  handlers['football:status']({ matchId: id, code: 'full_time', minute: 90 });
+  assert.equal(window.document.getElementById('est-clock').textContent, 'Final');
+  assert.ok(Array.from(window.document.querySelectorAll('#est-markets .est-sel')).every(b => b.disabled), 'mercados cerrados al terminar el partido');
+});

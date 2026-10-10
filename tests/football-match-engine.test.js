@@ -650,3 +650,132 @@ test('§7.6 — genera un partido muy por debajo de 8 ms', () => {
   const ms = Number(process.hrtime.bigint() - t0) / 1e6 / N;
   assert.ok(ms < 8, `promedio ${ms.toFixed(3)} ms/partido < 8 ms`);
 });
+
+// --- 14 Escenarios de Simulación Coherente ---
+
+test('14 escenarios — validación integral de simulación y coherencia de juego', () => {
+  const otherSide = side => side === 'home' ? 'away' : 'home';
+  // 1. Pase, recepción y conducción del balón
+  const r = generateTimeline(HOME, AWAY, ctxBase, rnd('scenarios-1'));
+  const pass = r.timeline.find(e => e.type === 'pass_sequence' && e.receiverId);
+  assert.ok(pass, 'se genera pase con receptor');
+  assert.ok(pass.actorPosition, 'el pasador tiene posición');
+  assert.ok(pass.receiverPosition, 'el receptor tiene posición');
+  assert.equal(pass.ballCarrierId, pass.receiverId, 'el receptor toma el control del balón');
+
+  // 2. Presión del rival sobre el balón
+  const { state: midPlay } = deriveState(r.timeline, pass.t, r.lineups, pass.i);
+  assert.ok(midPlay.players.length >= 22, 'jugadores activos en cancha');
+  const presser = midPlay.players.find(p => p.team !== pass.team && Math.hypot(p.x - midPlay.ball.x, p.y - midPlay.ball.y) < 0.35);
+  assert.ok(presser, 'hay un rival disputando o presionando el balón');
+
+  // 3. Delantero dispara y el balón llega a portería
+  const shot = r.timeline.find(e => e.type === 'shot' || e.type === 'shot_on_target' || e.type === 'goal');
+  assert.ok(shot, 'se genera remate');
+  assert.ok(shot.actorPosition, 'el tirador tiene posición');
+  assert.ok(shot.ball.x <= 0.05 || shot.ball.x >= 0.95, 'el balón del remate llega a zona de meta');
+
+  // 4. Atajada del arquero y posición coherente
+  const save = r.timeline.find(e => e.type === 'save');
+  if (save) {
+    assert.ok(save.keeperPosition, 'el guardameta tiene posición');
+    assert.equal(save.team, otherSide(r.timeline.find(e => e.sequenceId === save.sequenceId && (e.type === 'shot' || e.type === 'shot_on_target')).team));
+    assert.equal(save.ballCarrierId, save.playerId, 'el arquero retiene el balón');
+  }
+
+  // 5. Post-gol: red, celebración y saque de centro con equipo que recibió el gol
+  const goal = r.timeline.find(e => e.type === 'goal' || e.type === 'penalty_scored');
+  if (goal) {
+    assert.equal(goal.ball.x, goal.team === 'home' ? 1.01 : -0.01, 'el balón cruza la línea de gol');
+    const restart = r.timeline.find(e => e.type === 'goal_restart' && e.t >= goal.t);
+    assert.ok(restart, 'hay reinicio de gol');
+    assert.equal(restart.team, otherSide(goal.team), 'el equipo que recibió el gol realiza el saque de centro');
+    assert.deepEqual(restart.ball, { x: 0.5, y: 0.5 });
+    // Mitades respetadas durante kickoff (el ejecutor se ubica en el centro exacto 0.5)
+    const { state: restartState } = deriveState(r.timeline, restart.t, r.lineups, restart.i);
+    for (const player of restartState.players.filter(p => p.active && p.id !== restart.playerId)) {
+      if (player.team === 'home') {
+        assert.ok(player.x <= 0.485, `jugador local ${player.name} en su propia mitad (${player.x} <= 0.485)`);
+      } else if (player.team === 'away') {
+        assert.ok(player.x >= 0.515, `jugador visitante ${player.name} en su propia mitad (${player.x} >= 0.515)`);
+      }
+    }
+  }
+
+  // 6. Falta y detención de juego
+  const foul = r.timeline.find(e => e.type === 'foul');
+  if (foul) {
+    const { state: foulState } = deriveState(r.timeline, foul.t, r.lineups, foul.i);
+    assert.equal(foulState.playStopped, true, 'el juego se detiene tras una falta');
+    assert.equal(foulState.phase, 'set_piece', 'fase es set_piece tras falta');
+  }
+
+  // 7. Tarjeta amarilla en el historial
+  let sawYellow = false;
+  for (let s = 0; s < 10; s++) {
+    const sim = generateTimeline(HOME, AWAY, ctxBase, rnd('yellow-' + s));
+    const yellow = sim.timeline.find(e => e.type === 'yellow_card');
+    if (yellow) {
+      sawYellow = true;
+      const { state: yellowState } = deriveState(sim.timeline, yellow.t, sim.lineups, yellow.i);
+      assert.ok(yellowState.cards[yellow.team].some(c => c.playerId === yellow.playerId && c.type === 'yellow'), 'la tarjeta amarilla queda registrada');
+      break;
+    }
+  }
+  assert.ok(sawYellow, 'se registró al menos una tarjeta amarilla');
+
+  // 8. Expulsión y retiro de jugada
+  const rRed = generateTimeline(HOME, AWAY, ctxBase, rnd('red-card-2'));
+  const redEvent = rRed.timeline.find(e => e.type === 'red_card' || e.type === 'second_yellow');
+  assert.ok(redEvent, 'hay evento de expulsión');
+  const { state: redState } = deriveState(rRed.timeline, redEvent.t, rRed.lineups, redEvent.i);
+  assert.equal(redState.redCards[redEvent.team], 1, 'se incrementa contador de rojas');
+  const sentOffPlayer = redState.players.find(p => p.id === redEvent.playerId);
+  assert.equal(sentOffPlayer.active, false, 'jugador expulsado deja de estar activo');
+  assert.equal(sentOffPlayer.status, 'sent_off');
+
+  // 9. Sustitución y cambio efectivo de jugadores
+  const subEvent = r.timeline.find(e => e.type === 'substitution');
+  if (subEvent) {
+    const { state: subState } = deriveState(r.timeline, subEvent.t, r.lineups, subEvent.i);
+    const outPl = subState.players.find(p => p.id === subEvent.playerOutId);
+    const inPl = subState.players.find(p => p.id === subEvent.playerInId);
+    assert.equal(outPl.active, false, 'titular sustituido sale de cancha');
+    assert.equal(outPl.status, 'substituted');
+    assert.equal(inPl.active, true, 'suplente entra a la cancha');
+    assert.equal(inPl.status, 'active');
+  }
+
+  // 10. Saque de banda en la línea
+  const throwIn = r.timeline.find(e => e.type === 'throw_in');
+  if (throwIn) {
+    assert.ok(throwIn.ball.y <= 0.05 || throwIn.ball.y >= 0.95, 'el saque de banda se posiciona sobre la línea');
+  }
+
+  // 11. Línea de fondo: córner o saque de meta
+  const corner = r.timeline.find(e => e.type === 'corner');
+  if (corner) {
+    assert.ok(corner.ball.x <= 0.05 || corner.ball.x >= 0.95, 'el tiro de esquina se coloca en el fondo');
+    assert.ok(corner.ball.y <= 0.05 || corner.ball.y >= 0.95, 'el tiro de esquina se coloca en la esquina');
+  }
+  const goalKick = r.timeline.find(e => e.type === 'goal_kick');
+  if (goalKick) {
+    assert.ok(goalKick.ball.x <= 0.06 || goalKick.ball.x >= 0.94, 'el saque de meta se coloca en área de meta');
+  }
+
+  // 12. Fin del primer tiempo y saque del segundo tiempo
+  const ht = r.timeline.find(e => e.type === 'halftime');
+  assert.ok(ht, 'hay descanso');
+  const sh = r.timeline.find(e => e.type === 'second_half');
+  assert.ok(sh, 'hay saque de segundo tiempo');
+  assert.deepEqual(sh.ball, { x: 0.5, y: 0.5 });
+  assert.equal(sh.team, 'away', 'el segundo tiempo lo saca el equipo visitante');
+
+  // 13. Final del partido sin acciones posteriores
+  const ft = r.timeline.find(e => e.type === 'full_time');
+  assert.ok(ft, 'hay pitazo final');
+  assert.ok(!r.timeline.some(e => e.t > ft.t), 'no se producen acciones tras el final');
+
+  // 14. Relato generado para eventos clave
+  assert.ok(r.timeline.some(e => Array.isArray(e.commentary) && e.commentary.length > 0), 'los eventos clave cuentan con comentarios sincronizados');
+});
