@@ -3561,8 +3561,8 @@ verifica la referencia de hora y la metadata táctica pública.
 ## 29. La Previa — promociones de cuentas vinculadas (segunda entrega)
 
 Esta entrega amplía el apartado §28: añade promociones pagadas de **solo texto** al mismo y único
-espacio de La Previa. No añade inventario paralelo, imágenes, video, audio, segmentación personal ni
-redes publicitarias externas.
+espacio de La Previa. No añade inventario paralelo, video, audio, segmentación personal ni
+redes publicitarias externas. Las imágenes que esta entrega excluía se añaden en §33.
 
 - **Envío y revisión:** solo se acepta una sesión segura válida de una cuenta vinculada. El servidor
   comprueba CSRF/origen, que el partido siga programado y que el envío ocurra dentro de T−30.
@@ -3669,3 +3669,34 @@ Se establece una arquitectura integral para la reprogramación del horario de ki
    - **Apertura inmediata si se acerca el kickoff:** si un partido lejano se reprograma a menos de 30 minutos del presente, La Previa abre al instante reflejando los minutos exactos restantes.
    - **Recuperación desde estado de retraso:** si un partido en demora (`remaining <= 0`, `panel.dataset.delay = "true"`) es reprogramado hacia el futuro, el estado de retraso se cancela de inmediato (`panel.dataset.delay = "false"`), el panel restaura el temporizador activo y se reactiva el espacio promocional.
    - **Ventana de promociones:** el envío y la revisión de promociones vinculadas (`lib/football/promotions.js`) evalúan dinámicamente `isPreshowWindow()` frente al nuevo `scheduledKickoffAt`, garantizando que solo se puedan enviar y aprobar dentro de los últimos 30 minutos reales del partido.
+
+## 33. La Previa — creatividades con imagen de anunciantes vinculados
+
+Amplía §29 (que excluía imágenes). La cuenta vinculada puede adjuntar una imagen a su promoción; la
+revisión la aprueba o rechaza un administrador, y la imagen se elimina del disco al terminar el anuncio.
+
+- **Formatos admitidos:** PNG o JPEG, verificados por firma binaria (no por la extensión ni el tipo MIME
+  declarado). Máximo **350 KB** por archivo; ancho entre 960 y 2400 px, alto entre 320 y 1600 px, y proporción
+  ancho/alto entre **1,5 y 2,1**.
+- **Metadatos:** se eliminan antes de guardar (bloques de texto, EXIF y similares), de modo que el archivo
+  guardado no conserva datos del autor.
+- **Límites de transporte:** el envío `POST /api/estadio/promotions` acepta hasta 600 KB con la imagen en
+  base64 (data URL). Las demás rutas de `/api/estadio` siguen con el límite de 8 KB.
+- **Almacenamiento:** directorio `PROMOTION_MEDIA_DIR`. En producción (`render.yaml`) es
+  `/var/data/promotion-media`, en el disco persistente de 1 GB que ya usa la aplicación (`montecristo-datos`); fuera de `.gitignore` nada de este directorio
+  entra en Git (`data/promotion-media/` está ignorado para desarrollo).
+- **Revisión:** la bandeja admin muestra una miniatura (`imageUrl`, solo lectura, con permiso de staff).
+  Aprobar la deja disponible; rechazar la **borra de inmediato** y no cobra.
+- **Servicio público:** `GET /api/estadio/promotion-media/:promotionId` sirve la imagen solo si la
+  promoción está **aprobada** y el instante actual está dentro de **T−30 del kickoff**. Fuera de esa
+  ventana responde 404. Cabeceras: `X-Content-Type-Options: nosniff` y `Cache-Control: private, max-age=60`.
+- **Retención:** `runPromotionMediaSweep` borra el archivo de las promociones **rechazadas** y de las que
+  ya no pueden verse: partido inexistente, no programado (terminado o cancelado) o con kickoff alcanzado. Se ejecuta al arrancar (primera pasada a
+  los 5 s) y luego cada 60 s, con temporizadores `unref`. Tras el borrado, `imageFile` queda en `null`
+  y el texto de la promoción permanece, de modo que la previa vuelve a su imagen de respaldo.
+- **Presentación:** la imagen ocupa todo el espacio de La Previa y rota de derecha a izquierda; el texto
+  de la promoción se mantiene encima. Sin imagen, se usa `casino-hero.jpg`.
+
+**Pruebas:** `tests/football-promotion-media.test.js` (validación, metadatos, lectura y borrado) y
+`tests/football-promotion-media-routes.test.js` (envío, rechazo de imagen inválida, bandeja, servicio
+público antes y después de aprobar, borrado al kickoff y al rechazar).

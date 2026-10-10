@@ -1,7 +1,18 @@
 {
   "seasons": {
-    "current": "2026-09",
-    "history": []
+    "current": "2026-10",
+    "history": [
+      {
+        "type": "closed",
+        "month": "2026-09",
+        "podium": [],
+        "players": 0,
+        "winnerId": null,
+        "bannerAwarded": false,
+        "closedAt": 1791664153125,
+        "timeZone": "America/Mexico_City"
+      }
+    ]
   },
   "profiles": []
 }

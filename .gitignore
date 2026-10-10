@@ -18,6 +18,8 @@ coverage/
 # Datos de corrida local: la semilla data/profiles.json SÍ se versiona a propósito
 # (arranque en limpio), pero el store de fútbol nace vacío y se genera solo.
 data/football.json
+# Creatividades de La Previa (imágenes subidas): nunca se versionan.
+data/promotion-media/
 
 # Sistema operativo y editores
 .DS_Store

@@ -26,7 +26,7 @@ const { createAccountSessionStore } = require('./lib/account-session-factory');
 const { installAccountAuthRoutes, COOKIE_NAME, parseCookies } = require('./lib/account-auth-http');
 const { sessionState } = require('./lib/account-sessions');
 const { installAdminRoutes, makeAdminGuard } = require('./lib/admin-auth-http');
-const { PERMISSIONS } = require('./lib/permissions');
+const { PERMISSIONS, normalizeRole } = require('./lib/permissions');
 const { createAuditStore } = require('./lib/audit-store-factory');
 const { createModerationStore } = require('./lib/moderation-store-factory');
 const { createReportStore } = require('./lib/report-store-factory');
@@ -53,7 +53,7 @@ const { FootballScheduler } = require('./lib/football/scheduler');
 const { createBettingService } = require('./lib/football/betting');
 const { SimulatedFlow } = require('./lib/football/simulated-flow');
 const { registerFootballSockets } = require('./lib/football/sockets');
-const { installFootballRoutes, installFootballAdminRoutes, footballHealth } = require('./lib/football/http');
+const { installFootballRoutes, installFootballAdminRoutes, footballHealth, startPromotionMediaSweep } = require('./lib/football/http');
 const footballConfig = loadFootballConfig();
 
 const app = express();
@@ -186,7 +186,16 @@ app.get('/api/perfil/:token/historial', (req, res) => {
 // los servicios se crean en bootstrap(), pero las rutas existen desde el arranque
 // y devuelven 404 mientras footballConfig.enabled sea false. El parser queda
 // limitado a esta API; no amplía el límite JSON del resto del casino.
+// El envío de promociones puede incluir una creatividad PNG/JPEG en base64 (≤350 KB).
+// Su parser va antes del límite general de 8 KB de /api/estadio, que sigue vigente.
+app.post('/api/estadio/promotions', express.json({ limit: '600kb', strict: true }));
 app.use('/api/estadio', express.json({ limit: '8kb', strict: true }));
+const promotionMediaDeps = {
+  get store() { return footballStore; },
+  get profiles() { return profiles; },
+  promotionMediaDir: process.env.PROMOTION_MEDIA_DIR || undefined,
+  now: () => Date.now()
+};
 installFootballRoutes(app, {
   get store() { return footballStore; },
   get profiles() { return profiles; },
@@ -200,6 +209,8 @@ installFootballRoutes(app, {
   log: logEvent,
   enabled: () => footballConfig.enabled
 });
+// Retención de creatividades: borra imágenes rechazadas o de partidos ya iniciados.
+startPromotionMediaSweep(promotionMediaDeps, 60 * 1000);
 
 // Estadio MonteCristo (Fase E4b): palancas operativas de administración del fútbol
 // (/admin/estadio/*): suspender mercados, forzar liquidación, posponer y cerrar un
@@ -217,6 +228,7 @@ const footballAdminGuard = makeAdminGuard({
 });
 installFootballAdminRoutes(app, {
   adminConfig,
+  promotionMediaDir: process.env.PROMOTION_MEDIA_DIR || undefined,
   guard: footballAdminGuard.fullGuard(PERMISSIONS.FOOTBALL_MANAGE),
   readGuard: (req, res, next) => footballAdminGuard.resolveAdmin(req, res, () =>
     footballAdminGuard.requirePermission(PERMISSIONS.FOOTBALL_MANAGE)(req, res, next)),
@@ -254,6 +266,15 @@ installFootballAdminRoutes(app, {
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const rooms = new Map();
+// Insignia pública del chat: solo el staff (administración y moderación) la muestra.
+// El patrocinador y el resto de usuarios no llevan insignia; el rol nunca se envía a quien no lo necesita.
+const PUBLIC_CHAT_ROLE = Object.freeze({ admin: 'staff', moderator: 'moderator' });
+function chatRoleField(profileId) {
+  const profile = profiles.profiles.get(profileId);
+  const role = PUBLIC_CHAT_ROLE[normalizeRole(profile?.role)];
+  return role ? { role } : {};
+}
+
 // Chat global del casino: vive en memoria y nunca se mezcla con los mensajes de una mesa.
 const lobbyChatMessages = [];
 const LOBBY_CHAT_LIMIT = 60;
@@ -1952,7 +1973,7 @@ io.on('connection', socket => {
     if (!room || (!player && !spectator) || !text) return ackError(ack, 'No se pudo enviar.');
     if (duplicateMessageWithinWindow(socket, 'table', text)) return ackError(ack, 'Ese mensaje ya fue enviado hace un momento.');
     const author = player || spectator;
-    room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: author.id, username: author._profile?.username || null, name: spectator ? `👁 ${author.name}` : author.name, text, time: Date.now() });
+    room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: author.id, username: author._profile?.username || null, name: spectator ? `👁 ${author.name}` : author.name, text, time: Date.now(), ...(spectator ? {} : chatRoleField(author.id)) });
     room.messages = room.messages.slice(-40);
     ackOk(ack);
     broadcast(room);
@@ -1991,7 +2012,7 @@ io.on('connection', socket => {
     text = cleanMessage(text);
     if (!text) return ackError(ack, 'No se pudo enviar.');
     if (duplicateMessageWithinWindow(socket, 'lobby', text)) return ackError(ack, 'Ese mensaje ya fue enviado hace un momento.');
-    const message = { id: `${Date.now()}-${Math.random()}`, playerId: author.id, username: author.username, name: author.name, avatar: author.avatar, text, time: Date.now() };
+    const message = { id: `${Date.now()}-${Math.random()}`, playerId: author.id, username: author.username, name: author.name, avatar: author.avatar, text, time: Date.now(), ...chatRoleField(author.id) };
     lobbyChatMessages.push(message);
     while (lobbyChatMessages.length > LOBBY_CHAT_LIMIT) lobbyChatMessages.shift();
     for (const client of io.sockets.sockets.values()) {

@@ -22,6 +22,9 @@ services:
       # Estadio MonteCristo: habilita la sección de apuestas de fútbol.
       - key: FOOTBALL_ENABLED
         value: "true"
+      # Creatividades de La Previa (imágenes aprobadas): en el disco persistente.
+      - key: PROMOTION_MEDIA_DIR
+        value: /var/data/promotion-media
     disk:
       name: montecristo-datos
       mountPath: /var/data

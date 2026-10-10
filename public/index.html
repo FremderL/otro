@@ -7,7 +7,7 @@
   <meta name="description" content="MonteCristo: póker, blackjack, ruleta y minijuegos en vivo con amigos. Fichas 100% virtuales, perfiles, retos y logros." />
   <title>MonteCristo — Casino social</title>
   <link rel="stylesheet" href="/styles.css" />
-  <script>try { if (localStorage.getItem('montecristo-gate-bypass') === '1') document.documentElement.classList.add('gate-bypass'); } catch (e) {}</script>
+  <script src="/gate.js"></script>
 </head>
 <body>
   <!-- Puerta de escritorio: pantallas menores a 1024 px no son compatibles -->
@@ -15,7 +15,7 @@
     <span class="brand-mark"><span>♠</span></span>
     <h1>MonteCristo es para computadoras</h1>
     <p>Este casino social está diseñado exclusivamente para jugarse en una computadora de escritorio o laptop, con una ventana de al menos 1024 píxeles de ancho. Amplía la ventana o vuelve desde tu computadora: la mesa te espera.</p>
-    <button type="button" class="gate-bypass-btn" onclick="document.documentElement.classList.add('gate-bypass');try{localStorage.setItem('montecristo-gate-bypass','1')}catch(e){}">Entrar de todos modos →</button>
+    <button type="button" class="gate-bypass-btn">Entrar de todos modos →</button>
   </div>
   <a class="skip-link" href="#games">Ir a los juegos</a>
   <div class="noise" aria-hidden="true"></div>
@@ -209,8 +209,9 @@
           </form>
         </div>
         <div id="lobby-chat-content" class="lobby-chat-content">
-          <div id="lobby-chat-messages" class="lobby-chat-messages"></div>
-          <form id="lobby-chat-form" class="lobby-chat-form"><input id="lobby-chat-input" maxlength="180" placeholder="Escribe al lobby o pregunta a @Monte…" autocomplete="off" /><button aria-label="Enviar mensaje">↑</button></form>
+          <div id="lobby-chat-messages" class="lobby-chat-messages" role="log" aria-label="Chat del casino" aria-relevant="additions"></div>
+          <button id="lobby-chat-jump" class="chat-jump hidden" type="button">↓ Nuevos mensajes</button>
+          <form id="lobby-chat-form" class="lobby-chat-form"><input id="lobby-chat-input" maxlength="180" placeholder="Escribe al lobby o pregunta a @Monte…" aria-label="Escribe al chat del casino" autocomplete="off" /><button aria-label="Enviar mensaje">↑</button></form>
         </div>
       </section>
     </aside>
@@ -449,13 +450,14 @@
       </div>
       <div class="side-section chat-section">
         <div class="side-title"><span>CHAT DE MESA</span><i class="live-pip"></i></div>
-        <div id="chat-list" class="chat-list"></div>
+        <div id="chat-list" class="chat-list" role="log" aria-label="Chat de la mesa" aria-relevant="additions"></div>
+        <button id="chat-jump" class="chat-jump hidden" type="button">↓ Nuevos mensajes</button>
         <div class="reaction-bar" aria-label="Reacciones rápidas">
           <button data-reaction="🔥" title="Fuego">🔥</button><button data-reaction="👏" title="Aplauso">👏</button><button data-reaction="😂" title="Risa">😂</button><button data-reaction="🍀" title="Suerte">🍀</button><button data-reaction="😱" title="Sorpresa">😱</button><button data-reaction="💎" title="Diamante">💎</button><button id="quick-chat-toggle" title="Mensaje rápido">···</button>
           <div id="quick-chat-menu" class="quick-chat-menu hidden"><button data-quick-chat="¡Bien jugado!">¡Bien jugado!</button><button data-quick-chat="¡Voy con todo!">¡Voy con todo!</button><button data-quick-chat="La suerte está de mi lado">La suerte está de mi lado</button><button data-quick-chat="Otra ronda">Otra ronda</button></div>
         </div>
         <form id="chat-form" class="chat-form">
-          <input id="chat-input" maxlength="180" placeholder="Escribe un mensaje…" autocomplete="off" />
+          <input id="chat-input" maxlength="180" placeholder="Escribe un mensaje…" aria-label="Escribe un mensaje a la mesa" autocomplete="off" />
           <button aria-label="Enviar mensaje">↑</button>
         </form>
       </div>
@@ -544,50 +546,9 @@
        solo si la sección está activa, y puebla el banner (jornada, partidos en vivo y
        destacado). Con FOOTBALL_ENABLED=off, /api/estadio/state responde 404 y todo
        sigue oculto (la sección es invisible, §21 Fases A–E tras el flag). -->
-  <script>
-    (function () {
-      var LIVE = { live: 1, halftime: 1, extra_time: 1, shootout: 1 };
-      function el(id) { return document.getElementById(id); }
-      function txt(id, v) { var e = el(id); if (e && v != null) e.textContent = v; }
-      function show(id, on) { var e = el(id); if (e) e.hidden = !on; }
-      function fmtCountdown(ms) {
-        if (ms == null || !(ms >= 0)) return null;
-        var min = Math.floor(ms / 60000), h = Math.floor(min / 60), m = min % 60;
-        if (h > 0) return 'Empieza en ' + h + ' h' + (m > 0 ? ' ' + m + ' min' : '');
-        if (m > 0) return 'Empieza en ' + m + ' min';
-        return 'Empieza en breve';
-      }
-      try {
-        fetch('/api/estadio/state').then(function (r) { return r && r.ok ? r.json() : null; }).then(function (j) {
-          if (!j || !j.ok) return;
-          show('nav-estadio', true);
-          show('estadio-access', true);
-          var lobby = j.lobby || {}, teams = j.teams || {}, matches = lobby.matches || [];
-          function name(id) { return (teams[id] && teams[id].name) || id; }
-          var liveList = matches.filter(function (m) { return LIVE[m.status]; });
-          var jor = (liveList[0] || matches[0] || {}).jornada;
-          if (jor) txt('est-banner-jornada', 'Jornada ' + jor);
-          txt('est-banner-live-count', String(liveList.length));
-          show('est-banner-live', liveList.length > 0);
-          if (matches.length) { txt('est-banner-today', matches.length + ' partidos hoy'); show('est-banner-today', true); }
-          var feat = liveList[0] || matches.filter(function (m) { return m.id === lobby.featured; })[0] || matches[0];
-          if (!feat) return;
-          show('est-banner-feature', true);
-          var isLive = !!LIVE[feat.status], isFinal = feat.status === 'settled';
-          txt('est-feature-label', isLive ? 'EN VIVO' : (isFinal ? 'FINAL' : 'PRÓXIMO'));
-          var lbl = el('est-feature-label'); if (lbl) lbl.classList.toggle('is-live', isLive);
-          txt('est-feature-home', name(feat.homeId));
-          txt('est-feature-away', name(feat.awayId));
-          var mid = el('est-feature-mid');
-          if (mid) mid.textContent = (isFinal && feat.result) ? (feat.result.home + '–' + feat.result.away) : (isLive ? Math.floor(feat.minute || 0) + "'" : 'vs');
-          txt('est-feature-sub', isLive ? ('Minuto ' + Math.floor(feat.minute || 0) + ' · bloque ' + (feat.block || '—'))
-            : isFinal ? ('Jornada ' + (feat.jornada || '—') + ' · bloque ' + (feat.block || '—'))
-            : (fmtCountdown(lobby.countdownMs) || ('Bloque ' + (feat.block || '—'))));
-        }).catch(function () {});
-      } catch (e) {}
-    })();
-  </script>
+  <script src="/estadio-banner.js" defer></script>
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/chat-format.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

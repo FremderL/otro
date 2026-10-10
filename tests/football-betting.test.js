@@ -293,6 +293,19 @@ test('refundMatchBets anula y reembolsa al posponer un partido', async () => {
   h.cleanup();
 });
 
+test('cash-out en vivo: mercados distintos de 1X2 devuelven market_not_cashable, no no_price', async () => {
+  const h = setup({ chips: 1000 });
+  const r = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: 'over_under_2.5', selection: 'over', stake: 100, placedAt: 1000 });
+  assert.strictEqual(r.ok, true, r.code);
+  h.match.status = 'live';
+  const co = h.betting.cashout(h.profile, r.bet.id, { minute: 30, score: { home: 1, away: 0 } });
+  assert.strictEqual(co.ok, false);
+  assert.strictEqual(co.code, 'market_not_cashable');
+  assert.strictEqual(h.store.getBet(r.bet.id).status, 'open', 'la apuesta sigue abierta');
+  assert.strictEqual(h.profile.chips, 900, 'sin pago');
+  h.cleanup();
+});
+
 test('cash-out devuelve el valor esperado del boleto menos el margen', async () => {
   const h = setup({ chips: 1000 });
   const r = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'home', stake: 100, placedAt: 1000 });

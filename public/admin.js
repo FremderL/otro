@@ -246,6 +246,8 @@
   // --- Promociones de Estadio ---
   async function loadFootballPromotions() {
     const list = $('#football-promotions-list');
+    if (!cachedMatches.length) await loadFootballMatches();
+    fillPromoCreateMatches();
     if (!list) return;
     const response = await request('/admin/estadio/promotions');
     if (!response.ok) {
@@ -275,6 +277,7 @@
           <div class="promotion-bubble">
             <p>${escapeHtml(promotion.text)}</p>
           </div>
+          ${promotion.imageUrl ? `<figure class="promotion-media"><img src="${escapeHtml(promotion.imageUrl)}" alt="Creatividad enviada por @${escapeHtml(promotion.username || 'cuenta')} (vista previa de revisión)" loading="lazy" /><figcaption>Vista previa de revisión · se borra al rechazar o al iniciar el partido</figcaption></figure>` : ''}
           <small class="promotion-target">Ruta interna vinculada: <code>${escapeHtml(promotion.targetPath)}</code></small>
           ${promotion.unavailableReason ? `<small class="promotion-unavailable">⚠ ${escapeHtml(promotion.unavailableReason)}</small>` : ''}
         </div>
@@ -318,6 +321,58 @@
   }
 
   $('#football-promotions-refresh').addEventListener('click', loadFootballPromotions);
+
+  // --- Campaña directa (administración) ---
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+  function fillPromoCreateMatches() {
+    const select = $('#promo-create-match');
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">Elige un partido</option>' + cachedMatches.map(match => {
+      const kickoff = match.scheduledKickoffAt ? new Date(match.scheduledKickoffAt).toLocaleString() : '';
+      const label = `${cachedTeams[match.homeId]?.name || match.homeId} vs ${cachedTeams[match.awayId]?.name || match.awayId} · ${kickoff}`;
+      return `<option value="${escapeHtml(match.id)}">${escapeHtml(label)}</option>`;
+    }).join('');
+    select.value = current;
+  }
+  $('#promo-create-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const message = $('#promo-create-message');
+    const setMessage = (text, type = '') => { message.textContent = text; message.dataset.type = type; };
+    if (!cachedMatches.length) await loadFootballMatches();
+    fillPromoCreateMatches();
+    const file = $('#promo-create-image').files[0];
+    if (file && (file.size > 350 * 1024 || !/^image\/(png|jpeg)$/.test(file.type))) {
+      return setMessage('La imagen debe ser PNG o JPEG de máximo 350 KB.', 'error');
+    }
+    const payload = {
+      profileId: $('#promo-create-profile').value.trim(),
+      matchId: $('#promo-create-match').value,
+      text: $('#promo-create-text').value,
+      targetPath: $('#promo-create-target').value
+    };
+    if (file) payload.image = await readFileAsDataUrl(file);
+    setMessage('Publicando…');
+    const response = await request('/admin/estadio/promotions/create', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      if (response.code === 'recent_auth_required') show('#mfa-verify');
+      return setMessage(response.error || 'No se pudo publicar la campaña.', 'error');
+    }
+    event.target.reset();
+    setMessage('Campaña publicada: aparece en La Previa dentro de la ventana T−30 del partido.', 'success');
+    await loadFootballPromotions();
+  });
 
   // --- Calendario de Partidos y Reprogramación ---
   function renderFootballMatches() {
@@ -402,13 +457,13 @@
           </div>
           <div class="match-teams-display">
             <div class="team-unit">
-              <span class="crest-dot" style="background:${escapeHtml(home.colors?.primary || '#52e0ae')};" title="${escapeHtml(home.name)}"></span>
+              <span class="crest-dot" data-crest-color="${escapeHtml(home.colors?.primary || '#52e0ae')}" title="${escapeHtml(home.name)}"></span>
               <strong class="team-title">${escapeHtml(home.name)}</strong>
               <small class="team-short">${escapeHtml(home.short || '')}</small>
             </div>
             <span class="teams-separator">vs</span>
             <div class="team-unit">
-              <span class="crest-dot" style="background:${escapeHtml(away.colors?.primary || '#e5bd72')};" title="${escapeHtml(away.name)}"></span>
+              <span class="crest-dot" data-crest-color="${escapeHtml(away.colors?.primary || '#e5bd72')}" title="${escapeHtml(away.name)}"></span>
               <strong class="team-title">${escapeHtml(away.name)}</strong>
               <small class="team-short">${escapeHtml(away.short || '')}</small>
             </div>
@@ -432,6 +487,8 @@
     list.querySelectorAll('[data-action="reschedule"]').forEach(btn =>
       btn.addEventListener('click', () => rescheduleFootballMatch(btn))
     );
+    // Colores de equipo: se asignan por JS (la CSP de admin no permite style= en el HTML).
+    list.querySelectorAll('[data-crest-color]').forEach(dot => { dot.style.background = dot.dataset.crestColor; });
   }
 
   async function loadFootballMatches() {
@@ -516,7 +573,7 @@
     $('#moderation-form').classList.toggle('hidden', !canActOnUser);
     $('#unban-panel').classList.toggle('hidden', !(currentStaff?.role === 'admin' && canActOnUser && user.status !== 'active'));
     $('#role-form').classList.toggle('hidden', !(currentStaff?.role === 'admin' && canActOnUser));
-    $('#role-submit').textContent = user.role === 'moderator' ? 'Quitar rol de moderador' : 'Promover a moderador';
+    $('#role-select').value = user.role === 'admin' ? 'moderator' : user.role;
     $('#user-detail').classList.remove('hidden');
   }
 
@@ -534,7 +591,8 @@
     }
     resultsContainer.innerHTML = users.map(user => {
       const roleBadge = user.role === 'admin' ? 'badge-danger' :
-                        user.role === 'moderator' ? 'badge-gold' : 'badge-muted';
+                        user.role === 'moderator' ? 'badge-gold' :
+                        user.role === 'sponsor' ? 'badge-mint' : 'badge-muted';
       const statusBadge = user.status === 'active' ? 'badge-mint' :
                           user.status === 'suspended' ? 'badge-warning' : 'badge-danger';
       return `<div class="user-row">
@@ -624,8 +682,10 @@
     if (!selectedUser || currentStaff?.role !== 'admin') return;
     const reasonField = $('#role-reason');
     if (!reasonField.reportValidity()) return;
-    const nextRole = selectedUser.role === 'moderator' ? 'user' : 'moderator';
-    const actionName = nextRole === 'moderator' ? 'promover a moderador' : 'retirar los permisos de moderación';
+    const nextRole = $('#role-select').value;
+    if (nextRole === selectedUser.role) return status('La cuenta ya tiene ese rol.', 'info');
+    const roleNames = { user: 'usuario', sponsor: 'patrocinador', moderator: 'moderador' };
+    const actionName = `cambiar el rol a ${roleNames[nextRole] || nextRole}`;
     const confirmation = window.prompt(`Escribe @${selectedUser.username} para confirmar ${actionName}:`);
     if (confirmation !== `@${selectedUser.username}`) return status('Acción cancelada.', 'info');
     const userId = selectedUser.id;

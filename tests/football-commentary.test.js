@@ -203,3 +203,58 @@ test('formatScore formatea «H-A» y cae a 0-0 con entrada inválida', () => {
   assert.strictEqual(formatScore(null), '0-0');
   assert.strictEqual(formatScore({ home: NaN, away: 1 }), '0-0');
 });
+
+// --- Matices de intensidad (palo, atajada en la línea, contragolpe, gol agónico, falta dura) ---
+
+const { NUANCE_RULES, NUANCE_POOLS, nuanceOf } = require('../lib/football/commentary');
+
+test('matices — cada regla detecta su jugada y las normales no se marcan', () => {
+  assert.strictEqual(nuanceOf('goal', { minuto: 88 }), 'gol_agonico', 'gol desde el 85 es agónico');
+  assert.strictEqual(nuanceOf('goal', { minuto: 30 }), null, 'gol temprano es normal');
+  assert.strictEqual(nuanceOf('penalty_missed', { resultado: 'pegó en el poste' }), 'palo');
+  assert.strictEqual(nuanceOf('save', { xg: '0.31' }), 'atajada_linea', 'atajada de xG alto');
+  assert.strictEqual(nuanceOf('save', { xg: '0.05' }), null, 'atajada rutinaria es normal');
+  assert.strictEqual(nuanceOf('red_card', { motivo: 'serious_foul' }), 'falta_dura');
+  assert.strictEqual(nuanceOf('yellow_card', { motivo: 'foul' }), null, 'amarilla común no es dura');
+  assert.strictEqual(nuanceOf('shot', { estilo: 'counter' }), 'contragolpe');
+  assert.strictEqual(nuanceOf('shot', { estilo: 'possession' }), null);
+  assert.strictEqual(nuanceOf('corner', { estilo: 'counter' }), null, 'un córner no es contragolpe');
+  assert.strictEqual(nuanceOf('goal', null), null);
+});
+
+test('matices — cada repertorio tiene narrador y analista, y todas las plantillas caben en 140', () => {
+  for (const rule of NUANCE_RULES) {
+    const pool = NUANCE_POOLS[rule.key];
+    assert.ok(pool, `${rule.key} tiene repertorio`);
+    assert.ok(pool.narrador.length >= 3, `${rule.key}: suficientes narradores (anti-repetición)`);
+    assert.ok(pool.analista.length >= 2, `${rule.key}: analistas variados`);
+    for (const t of [...pool.narrador, ...pool.analista]) {
+      assert.ok(t.length <= MAX_LEN, `${rule.key} dentro del límite: «${t}»`);
+    }
+  }
+});
+
+test('matices — el gol agónico usa su repertorio con datos completos y sin placeholders', () => {
+  const memory = createMemory();
+  const vars = { ...FULL_VARS, minuto: 89 };
+  let usedNuance = false;
+  for (let k = 0; k < 20; k++) {
+    for (const line of generateCommentary('goal', vars, rnd(`ago-${k}`), memory)) {
+      assert.ok(!/\{\w+\}/.test(line.text), `sin placeholder («${line.text}»)`);
+      assert.ok(line.text.length <= MAX_LEN);
+      if (/EN EL MINUTO|Sobre la hora|último suspiro|vale oro|tanto agónico/.test(line.text)) usedNuance = true;
+    }
+  }
+  assert.ok(usedNuance, 'el gol del 89 recibe el repertorio agónico');
+});
+
+test('matices — con datos mínimos el matiz cae al repertorio base (nunca sale una plantilla rota)', () => {
+  const minVars = { equipo: 'Vantora FC', rival: 'United Vanguard', estadio: 'Arena Boreal', minuto: 88, marcador: '0-0' };
+  const memory = createMemory();
+  for (let k = 0; k < 15; k++) {
+    for (const line of generateCommentary('goal', minVars, rnd(`agm-${k}`), memory)) {
+      assert.ok(!/\{\w+\}/.test(line.text), `sin placeholder («${line.text}»)`);
+      assert.ok(!/\bde :|:\s*[,.;]|  /.test(line.text), `sin hueco («${line.text}»)`);
+    }
+  }
+});

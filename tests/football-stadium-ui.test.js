@@ -87,9 +87,12 @@ function createHarness(options = {}) {
   };
   let rafCallback = null;
   const drawnText = [];
+  const ballTrace = [];
   const canvasContext = new Proxy({}, {
     get(_target, key) {
       if (key === 'fillText') return value => drawnText.push(String(value));
+      // El balón se dibuja con radio BALL_R (6): se registra su posición para medir la trayectoria.
+      if (key === 'arc') return (x, y, r) => { if (r === 6) ballTrace.push({ x, y }); };
       return () => {};
     },
     set() { return true; }
@@ -158,7 +161,7 @@ function createHarness(options = {}) {
   window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
 
   return {
-    dom, window, socket, handlers, match, matchState, players, drawnText, requests,
+    dom, window, socket, handlers, match, matchState, players, drawnText, requests, ballTrace,
     get submittedPromotion() { return submittedPromotion; },
     advanceTime(ms) {
       nowMs += ms;
@@ -178,10 +181,10 @@ function createHarness(options = {}) {
       handlers.connect();
       window.document.querySelector('#est-match-list li').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
     },
-    draw() {
+    draw(offsetMs = 3000) {
       drawnText.length = 0;
       assert.equal(typeof rafCallback, 'function');
-      rafCallback(window.performance.now() + 3000);
+      rafCallback(window.performance.now() + offsetMs);
       return drawnText.slice();
     },
     close() { dom.window.close(); }
@@ -255,7 +258,7 @@ test('el formulario promocional requiere cuenta vinculada y envía solo texto y 
   const h = createHarness({
     promotionsEnabled: true,
     kickoffOffsetMs: 15 * 60 * 1000,
-    accountSession: { ok: true, profile: { id: 'linked-profile', username: 'aficionado' }, csrfToken: 'csrf-test' }
+    accountSession: { ok: true, profile: { id: 'linked-profile', username: 'aficionado', role: 'sponsor' }, csrfToken: 'csrf-test' }
   });
   t.after(h.close);
   await h.connectToMatch();
@@ -374,6 +377,63 @@ test('un partido en retraso con espera pendiente se recupera a cuenta regresiva 
   assert.equal(promo.hidden, false, 'reactiva promoción');
 });
 
+test('ráfaga de eventos: el balón recorre cada paso en orden, sin saltar al destino final', async t => {
+  const h = createHarness({ reducedMotion: false });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { handlers, match, ballTrace } = h;
+  const id = match.id;
+  handlers['football:status']({ matchId: id, code: 'live', minute: 0 });
+  // Cinco pases llegan en el mismo instante (catch-up del servidor tras un corte).
+  const targets = [.2, .4, .6, .8, .9];
+  targets.forEach((x, i) => handlers['football:event']({
+    matchId: id,
+    event: {
+      type: 'pass_sequence', team: 'home', minute: 10 + i, phase: 'build_up', playStopped: false,
+      ball: { x, y: .5 }, ballFrom: { x: i ? targets[i - 1] : .5, y: .5 }, actorPosition: { x: x - .05, y: .5 },
+      playerId: 'h2', receiverId: 'h10', ballCarrierId: null, possessionTeam: 'home'
+    }
+  }));
+  const norm = px => (px - 18) / (1050 - 36);
+  const samples = [];
+  let lastX = norm(.5 * 1050 + 18);
+  for (let ms = 0; ms <= 12000; ms += 50) {
+    ballTrace.length = 0;
+    h.draw(0);
+    if (ballTrace.length) lastX = norm(ballTrace[ballTrace.length - 1].x);
+    samples.push({ ms, x: lastX });
+    h.advanceTime(50);
+  }
+  const at = ms => samples.find(s => s.ms === ms).x;
+  // La duración de cada paso la fija lo que más tarda en recorrerse (balón a 28 m/s o jugadores
+  // a 8,5 m/s, desde su posición base); el balón viaja a velocidad constante durante todo el paso.
+  // Por eso se comprueba el orden y la continuidad, no tiempos fijos.
+  // Mitad del primer paso: el balón está en tránsito entre el origen (.5) y su destino (.2).
+  const firstHalf = samples.filter(s => s.ms > 0 && s.x < .5 && s.x > .2);
+  assert.ok(firstHalf.length > 10, 'el balón está en tránsito durante el primer paso');
+  // Cada destino intermedio se alcanza en orden, y se queda ahí antes del siguiente.
+  let after = 0;
+  const reached = target => {
+    const hit = samples.find(s => s.ms > after && Math.abs(s.x - target) < .01);
+    after = hit ? hit.ms : Infinity;
+    return after;
+  };
+  const tA = reached(.2), tB = reached(.4), tC = reached(.6), tD = reached(.8), tE = reached(.9);
+  assert.ok(tA < tB && tB < tC && tC < tD && tD < tE, `destinos en orden (${[tA, tB, tC, tD, tE].join(', ')})`);
+  // Entre dos destinos el balón no retrocede ni se pasa del siguiente (sin saltos al final).
+  const between = samples.filter(s => s.ms > tA && s.ms < tB);
+  assert.ok(between.every(s => s.x > .2 - .01 && s.x < .4 + .01), 'entre destinos el balón avanza sin pasarse');
+  // Ritmo constante: la velocidad es igual en cada tramo del paso (sin frenazos de easing).
+  const v1 = at(300) - at(0), v2 = at(650) - at(350);
+  assert.ok(Math.abs(v1 - v2) < 0.01, `velocidad lineal dentro del paso (${v1.toFixed(3)} vs ${v2.toFixed(3)})`);
+  // Nada de saltos: incrementos por muestra acotados (la ráfaga antigua saltaba de golpe).
+  for (let i = 1; i < samples.length; i++) {
+    assert.ok(Math.abs(samples[i].x - samples[i - 1].x) < 0.03, `sin saltos en ${samples[i].ms} ms`);
+  }
+  // Al final de la cola el balón queda en el último destino.
+  assert.ok(Math.abs(samples[samples.length - 1].x - .9) < .01, 'al final de la cola el balón queda en el último destino');
+});
+
 test('la UI sigue el estado del motor: kickoff, pausas, gol, sustitución y final', async t => {
   const h = createHarness();
   t.after(h.close);
@@ -460,7 +520,8 @@ test('el relato del gol espera a que termine la animación del balón', async t 
   });
   handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'Gol confirmado de Jugador 10: 1-0.' });
   assert.ok(!window.document.getElementById('est-commentary').textContent.includes('Gol confirmado'), 'el relato espera mientras la animación está en curso');
-  h.advanceTime(2000);
+  // Los jugadores parten de su posición base: el paso del gol puede durar hasta 6 s (tope).
+  h.advanceTime(9500);
   assert.match(window.document.getElementById('est-commentary').textContent, /Gol confirmado de Jugador 10: 1-0/, 'el relato aparece al completarse la animación');
 });
 
@@ -519,7 +580,9 @@ test('14 escenarios — validación integral de visualización, física y UI del
   handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'Golazo de Delantero Local: 1-0.' });
   assert.equal(window.document.getElementById('score-home').textContent, '1');
   assert.equal(window.document.getElementById('score-away').textContent, '0');
-  h.advanceTime(2100);
+  // La celebración espera a que la cola de pasos termine (cada paso alargado por distancia,
+  // tope 6 s; los jugadores aún parten de su posición base en esta prueba).
+  h.advanceTime(16000);
   assert.match(window.document.getElementById('est-commentary').textContent, /Golazo de Delantero Local/);
 
   // Saque de centro tras gol: balón a (0.5, 0.5) y saca visitante

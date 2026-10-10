@@ -907,3 +907,17 @@ pre {
     white-space: normal;
   }
 }
+
+/* Vista previa de creatividades pendientes (revisión). */
+.promotion-media { margin: 10px 0 0; }
+.promotion-media img { display: block; width: 100%; max-width: 420px; aspect-ratio: 16 / 9; object-fit: cover; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: #0b1113; }
+.promotion-media figcaption { margin-top: 4px; color: var(--muted, #9aa5a8); font-size: 11px; }
+
+/* Campaña directa de administración (dentro de la sección Estadio · La Previa) */
+.promo-create { margin-top: 16px; border-top: 1px solid rgba(255, 255, 255, .12); padding-top: 12px; }
+.promo-create > summary { cursor: pointer; font-weight: 700; }
+.promo-create-form { display: grid; gap: 10px; margin-top: 12px; max-width: 640px; }
+.promo-create-form label { display: grid; gap: 4px; font-size: 13px; }
+.promo-create-form input, .promo-create-form select, .promo-create-form textarea { font: inherit; padding: 8px; border-radius: 6px; }
+#promo-create-message[data-type="error"] { color: #ff8a80; }
+#promo-create-message[data-type="success"] { color: #7ef0c2; }

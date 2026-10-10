@@ -452,3 +452,65 @@
 @media (prefers-reduced-motion: reduce) {
   .est-enter, .est-enter * { display: none !important; animation: none !important; }
 }
+
+/* ===== La Previa: anuncio a pantalla completa con desplazamiento ===== */
+.est-preshow-promo {
+  align-items: flex-end;
+  min-height: 176px;
+  padding: 18px 18px 16px 22px;
+  overflow: hidden;
+  isolation: isolate;
+  border-color: rgba(229,189,114,.32);
+  background: #0c1314;
+}
+.est-promo-image {
+  position: absolute; inset: 0; z-index: -2;
+  width: 100%; height: 100%;
+  object-fit: cover; object-position: center;
+  pointer-events: none;
+}
+.est-preshow-promo::after {
+  position: absolute; inset: 0; z-index: -1; content: "";
+  background: linear-gradient(90deg, rgba(7,11,12,.94) 0%, rgba(7,11,12,.66) 52%, rgba(7,11,12,.32) 100%);
+  pointer-events: none;
+}
+.est-preshow-promo .est-promo-content,
+.est-preshow-promo .btn { position: relative; max-width: 62%; }
+.est-preshow-promo .est-promo-label { text-shadow: 0 1px 6px rgba(0,0,0,.6); }
+.est-preshow-promo p { font-size: 14px; font-weight: 600; text-shadow: 0 1px 8px rgba(0,0,0,.55); }
+.est-preshow-promo.is-sliding .est-promo-content,
+.est-preshow-promo.is-sliding .btn { animation: est-promo-slide .5s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes est-promo-slide {
+  from { opacity: 0; transform: translateX(42px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (max-width: 680px) {
+  .est-preshow-promo { min-height: 210px; align-items: stretch; }
+  .est-preshow-promo .est-promo-content,
+  .est-preshow-promo .btn { max-width: none; }
+  .est-preshow-promo::after { background: linear-gradient(180deg, rgba(7,11,12,.22) 0%, rgba(7,11,12,.9) 70%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .est-preshow-promo.is-sliding .est-promo-content,
+  .est-preshow-promo.is-sliding .btn { animation: none; }
+}
+
+/* La Previa a todo el espacio: el anuncio cubre el panel completo y la cuenta regresiva
+   queda encima, con un velo para que siga legible sobre la imagen. */
+.est-preshow > .est-preshow-promo {
+  position: absolute; inset: 0; z-index: 2;
+  min-height: 0; margin: 0; border: 0; border-radius: inherit;
+}
+.est-preshow > .est-preshow-head {
+  position: relative; z-index: 3;
+  padding: 12px 14px; border-radius: 14px;
+  background: linear-gradient(180deg, rgba(7,11,12,.9), rgba(7,11,12,.45));
+  border-bottom-color: transparent;
+}
+
+/* Publicidad: guía visible en la columna derecha, separada del formulario de envío. */
+.est-ads .est-ads-steps { margin: 0 0 12px; padding-left: 20px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.est-ads .est-ads-steps li { margin: 0 0 6px; }
+.est-ads .est-ads-steps b { color: var(--text); }
+.est-ads #est-ads-title { margin: 0 0 10px; font-size: 14px; letter-spacing: .04em; }
+.est-ads .est-promo-auth { margin: 0 0 10px; }
