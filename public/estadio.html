@@ -113,6 +113,10 @@
             <label id="est-promo-room-field" for="est-promo-room-code" hidden>Código de sala (5 caracteres)
               <input id="est-promo-room-code" type="text" minlength="5" maxlength="5" pattern="[A-Za-z0-9]{5}" autocomplete="off" />
             </label>
+            <label for="est-promo-image-input">Creatividad con imagen (opcional · PNG o JPEG apaisada · máx. 350 KB)
+              <input id="est-promo-image-input" type="file" accept="image/png,image/jpeg" />
+            </label>
+            <p class="est-promo-note">Si la imagen se aprueba, se muestra solo durante los 30 minutos previos al kickoff y se borra al iniciar el partido. Las rechazadas se borran al instante.</p>
             <button id="est-promo-submit" class="btn btn-primary" type="submit">Enviar a revisión · sin cobro al enviar</button>
             <p id="est-promo-message" class="est-promo-message" role="status" aria-live="polite"></p>
           </form>

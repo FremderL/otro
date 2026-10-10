@@ -53,7 +53,7 @@ const { FootballScheduler } = require('./lib/football/scheduler');
 const { createBettingService } = require('./lib/football/betting');
 const { SimulatedFlow } = require('./lib/football/simulated-flow');
 const { registerFootballSockets } = require('./lib/football/sockets');
-const { installFootballRoutes, installFootballAdminRoutes, footballHealth } = require('./lib/football/http');
+const { installFootballRoutes, installFootballAdminRoutes, footballHealth, startPromotionMediaSweep } = require('./lib/football/http');
 const footballConfig = loadFootballConfig();
 
 const app = express();
@@ -186,7 +186,16 @@ app.get('/api/perfil/:token/historial', (req, res) => {
 // los servicios se crean en bootstrap(), pero las rutas existen desde el arranque
 // y devuelven 404 mientras footballConfig.enabled sea false. El parser queda
 // limitado a esta API; no amplía el límite JSON del resto del casino.
+// El envío de promociones puede incluir una creatividad PNG/JPEG en base64 (≤350 KB).
+// Su parser va antes del límite general de 8 KB de /api/estadio, que sigue vigente.
+app.post('/api/estadio/promotions', express.json({ limit: '600kb', strict: true }));
 app.use('/api/estadio', express.json({ limit: '8kb', strict: true }));
+const promotionMediaDeps = {
+  get store() { return footballStore; },
+  get profiles() { return profiles; },
+  promotionMediaDir: process.env.PROMOTION_MEDIA_DIR || undefined,
+  now: () => Date.now()
+};
 installFootballRoutes(app, {
   get store() { return footballStore; },
   get profiles() { return profiles; },
@@ -200,6 +209,8 @@ installFootballRoutes(app, {
   log: logEvent,
   enabled: () => footballConfig.enabled
 });
+// Retención de creatividades: borra imágenes rechazadas o de partidos ya iniciados.
+startPromotionMediaSweep(promotionMediaDeps, 60 * 1000);
 
 // Estadio MonteCristo (Fase E4b): palancas operativas de administración del fútbol
 // (/admin/estadio/*): suspender mercados, forzar liquidación, posponer y cerrar un
@@ -217,6 +228,7 @@ const footballAdminGuard = makeAdminGuard({
 });
 installFootballAdminRoutes(app, {
   adminConfig,
+  promotionMediaDir: process.env.PROMOTION_MEDIA_DIR || undefined,
   guard: footballAdminGuard.fullGuard(PERMISSIONS.FOOTBALL_MANAGE),
   readGuard: (req, res, next) => footballAdminGuard.resolveAdmin(req, res, () =>
     footballAdminGuard.requirePermission(PERMISSIONS.FOOTBALL_MANAGE)(req, res, next)),

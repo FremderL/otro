@@ -102,7 +102,7 @@
       'est-preshow', 'est-preshow-status', 'est-preshow-timer', 'est-team-comparison',
       'est-compare-home', 'est-compare-away', 'est-preshow-promo', 'est-promo-image', 'est-promo-label', 'est-promo-text', 'est-promo-link',
       'est-promo-compose', 'est-promo-auth', 'est-promo-login', 'est-promo-refresh', 'est-promo-form',
-      'est-promo-copy-input', 'est-promo-target', 'est-promo-room-field', 'est-promo-room-code',
+      'est-promo-copy-input', 'est-promo-image-input', 'est-promo-target', 'est-promo-room-field', 'est-promo-room-code',
       'est-promo-submit', 'est-promo-message',
       'est-scoreboard', 'crest-home', 'crest-away', 'name-home', 'name-away', 'score-home', 'score-away',
       'est-clock', 'est-pitch', 'est-goal-banner', 'est-commentary', 'est-text-state', 'est-market-phase',
@@ -453,7 +453,9 @@
       defaultPromotion();
       return;
     }
-    setPromoCreative({ label: 'Promoción pagada', text: promotion.text, href: href, action: 'Ver promoción' });
+    // La imagen solo puede venir de la ruta interna de creatividades del servidor.
+    var image = typeof promotion.image === 'string' && promotion.image.indexOf('/api/estadio/promotion-media/') === 0 ? promotion.image : null;
+    setPromoCreative({ label: 'Promoción pagada', text: promotion.text, href: href, action: 'Ver promoción', image: image });
   }
   function stopPromotionRotation() {
     if (S.promoPollId) clearInterval(S.promoPollId);
@@ -1521,6 +1523,15 @@
     el['est-promo-room-field'].hidden = !useRoom;
     el['est-promo-room-code'].required = useRoom;
   }
+  var PROMO_IMAGE_MAX_BYTES = 350 * 1024;
+  function readFileAsDataUrl(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(String(reader.result)); };
+      reader.onerror = function () { reject(reader.error); };
+      reader.readAsDataURL(file);
+    });
+  }
   function submitPromotion(event) {
     event.preventDefault();
     if (!S.promoProfile || !S.promoProfile.username || !S.promoCsrfToken) {
@@ -1541,18 +1552,24 @@
       }
       targetPath = '/room/' + code;
     }
+    var imageFile = el['est-promo-image-input'] && el['est-promo-image-input'].files && el['est-promo-image-input'].files[0];
+    if (imageFile && (imageFile.size > PROMO_IMAGE_MAX_BYTES || !/^image\/(png|jpeg)$/.test(imageFile.type))) {
+      setPromoMessage('La imagen debe ser PNG o JPEG de máximo 350 KB.', 'error');
+      return;
+    }
     var button = el['est-promo-submit'];
     button.disabled = true;
     setPromoMessage('Enviando a revisión; no se cobran fichas al enviar…', '');
-    fetch('/api/estadio/promotions', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': S.promoCsrfToken },
-      body: JSON.stringify({
-        matchId: S.currentMatchId,
-        text: el['est-promo-copy-input'].value,
-        targetPath: targetPath
-      })
+    var payload = { matchId: S.currentMatchId, text: el['est-promo-copy-input'].value, targetPath: targetPath };
+    var imageReady = imageFile ? readFileAsDataUrl(imageFile) : Promise.resolve(null);
+    imageReady.then(function (dataUrl) {
+      if (dataUrl) payload.image = dataUrl;
+      return fetch('/api/estadio/promotions', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': S.promoCsrfToken },
+        body: JSON.stringify(payload)
+      });
     }).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (data) {
         return { ok: response.ok, data: data };

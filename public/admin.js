@@ -275,6 +275,7 @@
           <div class="promotion-bubble">
             <p>${escapeHtml(promotion.text)}</p>
           </div>
+          ${promotion.imageUrl ? `<figure class="promotion-media"><img src="${escapeHtml(promotion.imageUrl)}" alt="Creatividad enviada por @${escapeHtml(promotion.username || 'cuenta')} (vista previa de revisión)" loading="lazy" /><figcaption>Vista previa de revisión · se borra al rechazar o al iniciar el partido</figcaption></figure>` : ''}
           <small class="promotion-target">Ruta interna vinculada: <code>${escapeHtml(promotion.targetPath)}</code></small>
           ${promotion.unavailableReason ? `<small class="promotion-unavailable">⚠ ${escapeHtml(promotion.unavailableReason)}</small>` : ''}
         </div>
