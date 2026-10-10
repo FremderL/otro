@@ -9,61 +9,264 @@
 </head>
 <body>
   <main class="admin-shell">
-    <header><a href="/" class="brand">♠ MONTECRISTO</a><span>CONSOLA SEGURA</span></header>
-    <section id="admin-loading" class="card"><h1>Verificando acceso…</h1><p>Validando sesión, rol y autenticación multifactor.</p></section>
-    <section id="admin-error" class="card hidden" role="alert"><h1>Acceso no disponible</h1><p id="admin-error-copy"></p><a class="button" href="/">Volver e iniciar sesión</a></section>
+    <header class="admin-header">
+      <div class="brand-group">
+        <a href="/" class="brand" title="Volver al Casino">♠ MONTECRISTO</a>
+        <span class="badge badge-gold" id="admin-badge">CONSOLA SEGURA</span>
+      </div>
+      <nav class="admin-nav" aria-label="Navegación del casino">
+        <a href="/" class="nav-link" title="Ir al Casino principal">♠ Casino</a>
+        <a href="/estadio" class="nav-link" title="Ir al Estadio MonteCristo">⚽ Estadio</a>
+      </nav>
+    </header>
+
+    <section id="admin-loading" class="card">
+      <h1>Verificando acceso…</h1>
+      <p>Validando sesión, rol y autenticación multifactor.</p>
+    </section>
+
+    <section id="admin-error" class="card hidden" role="alert">
+      <h1>Acceso no disponible</h1>
+      <p id="admin-error-copy"></p>
+      <a class="button" href="/">Volver e iniciar sesión</a>
+    </section>
 
     <section id="mfa-enroll" class="card hidden">
-      <small>PASO OBLIGATORIO</small><h1>Protege tu cuenta con MFA</h1>
+      <small>PASO OBLIGATORIO</small>
+      <h1>Protege tu cuenta con MFA</h1>
       <p>Confirma tu contraseña. Después escanea el QR con una aplicación autenticadora y escribe el código de seis dígitos.</p>
-      <form id="mfa-start-form"><label>Contraseña actual<input id="mfa-password" type="password" autocomplete="current-password" required /></label><button class="button" type="submit">Generar configuración segura</button></form>
-      <div id="mfa-setup" class="hidden"><img id="mfa-qr" alt="Código QR para configurar MFA" /><p>Clave manual: <code id="mfa-manual"></code></p><form id="mfa-confirm-form"><label>Código de seis dígitos<input id="mfa-confirm-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required /></label><button class="button" type="submit">Confirmar y activar</button></form></div>
+      <form id="mfa-start-form">
+        <label>Contraseña actual
+          <input id="mfa-password" type="password" autocomplete="current-password" required />
+        </label>
+        <button class="button" type="submit">Generar configuración segura</button>
+      </form>
+      <div id="mfa-setup" class="hidden">
+        <img id="mfa-qr" alt="Código QR para configurar MFA" />
+        <p>Clave manual: <code id="mfa-manual"></code></p>
+        <form id="mfa-confirm-form">
+          <label>Código de seis dígitos
+            <input id="mfa-confirm-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required />
+          </label>
+          <button class="button" type="submit">Confirmar y activar</button>
+        </form>
+      </div>
     </section>
 
     <section id="mfa-verify" class="card hidden">
-      <small>VERIFICACIÓN</small><h1>Código de autenticación</h1><p>Introduce el código de tu aplicación o un código de recuperación.</p>
-      <form id="mfa-verify-form"><label>Código<input id="mfa-code" autocomplete="one-time-code" required /></label><button class="button" type="submit">Verificar</button></form>
+      <small>VERIFICACIÓN</small>
+      <h1>Código de autenticación</h1>
+      <p>Introduce el código de tu aplicación o un código de recuperación.</p>
+      <form id="mfa-verify-form">
+        <label>Código
+          <input id="mfa-code" autocomplete="one-time-code" required />
+        </label>
+        <button class="button" type="submit">Verificar</button>
+      </form>
     </section>
 
     <section id="recovery-codes" class="card hidden">
-      <small>GUARDAR AHORA</small><h1>Códigos de recuperación</h1><p>Cada código funciona una sola vez. No volverán a mostrarse.</p><pre id="recovery-list"></pre><button id="recovery-continue" class="button">Ya los guardé</button>
+      <small>GUARDAR AHORA</small>
+      <h1>Códigos de recuperación</h1>
+      <p>Cada código funciona una sola vez. No volverán a mostrarse.</p>
+      <pre id="recovery-list"></pre>
+      <button id="recovery-continue" class="button">Ya los guardé</button>
     </section>
 
     <section id="admin-dashboard" class="hidden">
-      <div class="card"><small>SESIÓN ELEVADA</small><h1 id="admin-welcome"></h1><p id="admin-role"></p></div>
-      <section class="card"><div class="detail-head"><div><small>BANDEJA</small><h2>Reportes abiertos</h2></div><button id="reports-refresh" class="text-button">Actualizar</button></div><div id="reports-list" class="user-results"></div></section>
-      <section id="report-detail" class="card hidden"><div class="detail-head"><div><small>REPORTE</small><h2 id="report-title"></h2></div><button id="report-close" class="text-button">Cerrar</button></div><p id="report-description"></p><pre id="report-evidence"></pre><form id="report-form"><label>Estado<select id="report-status"><option value="triaged">Clasificado</option><option value="investigating">En investigación</option><option value="resolved">Resuelto</option><option value="rejected">Rechazado</option></select></label><label>Prioridad<select id="report-priority"><option value="low">Baja</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label><label>Resolución<textarea id="report-resolution" maxlength="1000"></textarea></label><button class="button" type="submit">Guardar reporte</button></form></section>
-      <section id="football-promotion-panel" class="card hidden">
-        <div class="detail-head"><div><small>ESTADIO · LA PREVIA</small><h2>Promociones pendientes</h2></div><button id="football-promotions-refresh" class="text-button" type="button">Actualizar</button></div>
+      <div class="card admin-hero-card">
+        <div class="hero-top">
+          <div>
+            <small>SESIÓN ELEVADA</small>
+            <h1 id="admin-welcome"></h1>
+            <p id="admin-role"></p>
+          </div>
+          <div class="hero-badges">
+            <span class="badge badge-mint" id="staff-role-badge">Verificado</span>
+            <span class="badge badge-muted">MFA Activo</span>
+          </div>
+        </div>
+
+        <nav class="admin-tabs" aria-label="Secciones del panel de administración">
+          <button type="button" class="tab-button active" data-tab="all">★ Todo</button>
+          <button type="button" class="tab-button" data-tab="estadio">⚽ Estadio y Calendario</button>
+          <button type="button" class="tab-button" data-tab="reports">📋 Reportes</button>
+          <button type="button" class="tab-button" data-tab="users">👥 Moderación</button>
+        </nav>
+      </div>
+
+      <!-- Sección Reportes -->
+      <section id="reports-panel" class="card tab-pane">
+        <div class="detail-head">
+          <div>
+            <small>BANDEJA DE MODERACIÓN</small>
+            <h2>Reportes abiertos</h2>
+          </div>
+          <button id="reports-refresh" class="text-button" type="button">↻ Actualizar</button>
+        </div>
+        <div id="reports-list" class="user-results"></div>
+      </section>
+
+      <section id="report-detail" class="card tab-pane hidden">
+        <div class="detail-head">
+          <div>
+            <small>REPORTE SELECCIONADO</small>
+            <h2 id="report-title"></h2>
+          </div>
+          <button id="report-close" class="text-button" type="button">✕ Cerrar</button>
+        </div>
+        <p id="report-description"></p>
+        <pre id="report-evidence"></pre>
+        <form id="report-form">
+          <label>Estado
+            <select id="report-status">
+              <option value="triaged">Clasificado</option>
+              <option value="investigating">En investigación</option>
+              <option value="resolved">Resuelto</option>
+              <option value="rejected">Rechazado</option>
+            </select>
+          </label>
+          <label>Prioridad
+            <select id="report-priority">
+              <option value="low">Baja</option>
+              <option value="normal">Normal</option>
+              <option value="high">Alta</option>
+              <option value="urgent">Urgente</option>
+            </select>
+          </label>
+          <label>Resolución
+            <textarea id="report-resolution" maxlength="1000"></textarea>
+          </label>
+          <button class="button" type="submit">Guardar reporte</button>
+        </form>
+      </section>
+
+      <!-- Sección Estadio: Promociones y Partidos -->
+      <section id="football-promotion-panel" class="card tab-pane hidden">
+        <div class="detail-head">
+          <div>
+            <small>ESTADIO · LA PREVIA</small>
+            <h2>Promociones pendientes</h2>
+          </div>
+          <button id="football-promotions-refresh" class="text-button" type="button">↻ Actualizar</button>
+        </div>
         <p>Revisa el texto y el enlace interno. Solo se publican tras aprobación; aprobar descuenta 250 fichas de la cuenta vinculada.</p>
         <div id="football-promotions-list" class="user-results" aria-live="polite"></div>
       </section>
-      <section id="football-matches-panel" class="card hidden">
-        <div class="detail-head"><div><small>ESTADIO · CALENDARIO</small><h2>Reprogramar partidos</h2></div><button id="football-matches-refresh" class="text-button" type="button">Actualizar</button></div>
-        <p>Ajusta el horario de kickoff de los partidos programados. La Previa y las cuentas regresivas se adaptan inmediatamente al nuevo horario.</p>
+
+      <section id="football-matches-panel" class="card tab-pane hidden">
+        <div class="detail-head">
+          <div>
+            <small>ESTADIO · CALENDARIO</small>
+            <h2>Reprogramar partidos</h2>
+          </div>
+          <button id="football-matches-refresh" class="text-button" type="button">↻ Actualizar</button>
+        </div>
+        <p>Ajusta el horario de kickoff de los partidos programados. La Previa y las cuentas regresivas se adaptan inmediatamente en tiempo real al nuevo horario.</p>
+        
+        <div class="football-filter-bar">
+          <div class="filter-field search-field">
+            <label for="football-matches-search">Buscar equipo o ID</label>
+            <input id="football-matches-search" type="search" placeholder="Ej. Vantora, Solsticia, jornada..." />
+          </div>
+          <div class="filter-field select-field">
+            <label for="football-matches-jornada-filter">Filtrar por jornada</label>
+            <select id="football-matches-jornada-filter">
+              <option value="">Todas las jornadas</option>
+            </select>
+          </div>
+          <div id="football-matches-count" class="filter-count">0 partidos</div>
+        </div>
+
         <div id="football-matches-list" class="user-results" aria-live="polite"></div>
       </section>
-      <div class="grid"><article class="card"><b>Auditoría</b><p>Todas las acciones sensibles quedan registradas.</p></article></div>
-      <section class="card users-card"><small>MODERACIÓN</small><h2>Buscar usuarios</h2><form id="user-search-form"><label>Usuario o nombre<input id="user-search" minlength="2" maxlength="40" required /></label><button class="button" type="submit">Buscar</button></form><div id="user-results" class="user-results"></div></section>
-      <section id="user-detail" class="card hidden">
-        <div class="detail-head"><div><small>CUENTA SELECCIONADA</small><h2 id="detail-name"></h2><p id="detail-meta"></p></div><button id="detail-close" class="text-button">Cerrar</button></div>
+
+      <!-- Auditoría informativa -->
+      <div class="grid audit-grid tab-pane">
+        <article class="card">
+          <b>Auditoría y trazabilidad</b>
+          <p>Todas las acciones sensibles (moderación, reprogramaciones de partidos y revisiones de promociones) quedan registradas con identidad de staff y marca temporal.</p>
+        </article>
+      </div>
+
+      <!-- Sección Usuarios -->
+      <section class="card users-card tab-pane">
+        <small>MODERACIÓN</small>
+        <h2>Buscar usuarios</h2>
+        <form id="user-search-form">
+          <label>Usuario o nombre
+            <input id="user-search" minlength="2" maxlength="40" required />
+          </label>
+          <button class="button" type="submit">Buscar</button>
+        </form>
+        <div id="user-results" class="user-results"></div>
+      </section>
+
+      <section id="user-detail" class="card tab-pane hidden">
+        <div class="detail-head">
+          <div>
+            <small>CUENTA SELECCIONADA</small>
+            <h2 id="detail-name"></h2>
+            <p id="detail-meta"></p>
+          </div>
+          <button id="detail-close" class="text-button" type="button">✕ Cerrar</button>
+        </div>
         <div id="moderation-history"></div>
         <form id="moderation-form">
-          <label>Acción<select id="moderation-action"><option value="suspend">Suspender</option><option value="ban">Banear permanentemente</option></select></label>
-          <label id="duration-field">Duración<select id="moderation-duration"><option value="1h">1 hora</option><option value="24h">24 horas</option><option value="7d">7 días</option><option value="30d">30 días</option></select></label>
-          <label>Motivo<textarea id="moderation-reason" minlength="10" maxlength="500" required></textarea></label>
+          <label>Acción
+            <select id="moderation-action">
+              <option value="suspend">Suspender</option>
+              <option value="ban">Banear permanentemente</option>
+            </select>
+          </label>
+          <label id="duration-field">Duración
+            <select id="moderation-duration">
+              <option value="1h">1 hora</option>
+              <option value="24h">24 horas</option>
+              <option value="7d">7 días</option>
+              <option value="30d">30 días</option>
+            </select>
+          </label>
+          <label>Motivo
+            <textarea id="moderation-reason" minlength="10" maxlength="500" required></textarea>
+          </label>
           <button class="button danger" type="submit">Confirmar acción</button>
         </form>
-        <div id="unban-panel" class="unban-panel hidden"><div><b>Cuenta bloqueada o suspendida</b><small>Restablece el acceso con una acción auditada; las sesiones se revocarán.</small></div><button id="unban-user" class="button unban" type="button">🔓 Desbanear / reactivar</button></div>
+        <div id="unban-panel" class="unban-panel hidden">
+          <div>
+            <b>Cuenta bloqueada o suspendida</b>
+            <small>Restablece el acceso con una acción auditada; las sesiones se revocarán.</small>
+          </div>
+          <button id="unban-user" class="button unban" type="button">🔓 Desbanear / reactivar</button>
+        </div>
         <form id="role-form" class="role-form hidden">
-          <div><h3>Rol de la cuenta</h3><p>Solo un administrador puede otorgar o retirar permisos de moderación. El cambio revoca las sesiones actuales; al iniciar sesión como moderador se exigirá MFA.</p></div>
-          <label>Motivo<textarea id="role-reason" minlength="10" maxlength="500" required></textarea></label>
+          <div>
+            <h3>Rol de la cuenta</h3>
+            <p>Solo un administrador puede otorgar o retirar permisos de moderación. El cambio revoca las sesiones actuales; al iniciar sesión como moderador se exigirá MFA.</p>
+          </div>
+          <label>Motivo
+            <textarea id="role-reason" minlength="10" maxlength="500" required></textarea>
+          </label>
           <button id="role-submit" class="button" type="submit">Promover a moderador</button>
         </form>
-        <hr>
-        <form id="password-reset-form"><h3>Restablecer contraseña</h3><p>Genera un enlace de un solo uso; nunca solicites ni establezcas la contraseña.</p><label>Motivo de soporte<textarea id="password-reset-reason" minlength="10" maxlength="500" required></textarea></label><button class="button" type="submit">Generar enlace (15 min)</button><div id="password-reset-result" class="hidden"><label>Enlace para entregar una sola vez<input id="password-reset-url" readonly></label></div></form>
+        <hr />
+        <form id="password-reset-form">
+          <h3>Restablecer contraseña</h3>
+          <p>Genera un enlace de un solo uso; nunca solicites ni establezcas la contraseña.</p>
+          <label>Motivo de soporte
+            <textarea id="password-reset-reason" minlength="10" maxlength="500" required></textarea>
+          </label>
+          <button class="button" type="submit">Generar enlace (15 min)</button>
+          <div id="password-reset-result" class="hidden">
+            <label>Enlace para entregar una sola vez
+              <input id="password-reset-url" readonly />
+            </label>
+          </div>
+        </form>
       </section>
     </section>
+
+    <!-- Barra de estado con soporte visual de éxito y error -->
     <p id="status" class="status" aria-live="polite"></p>
   </main>
   <script src="/admin.js" defer></script>
