@@ -246,6 +246,8 @@
   // --- Promociones de Estadio ---
   async function loadFootballPromotions() {
     const list = $('#football-promotions-list');
+    if (!cachedMatches.length) await loadFootballMatches();
+    fillPromoCreateMatches();
     if (!list) return;
     const response = await request('/admin/estadio/promotions');
     if (!response.ok) {
@@ -319,6 +321,58 @@
   }
 
   $('#football-promotions-refresh').addEventListener('click', loadFootballPromotions);
+
+  // --- Campaña directa (administración) ---
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+  function fillPromoCreateMatches() {
+    const select = $('#promo-create-match');
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">Elige un partido</option>' + cachedMatches.map(match => {
+      const kickoff = match.scheduledKickoffAt ? new Date(match.scheduledKickoffAt).toLocaleString() : '';
+      const label = `${cachedTeams[match.homeId]?.name || match.homeId} vs ${cachedTeams[match.awayId]?.name || match.awayId} · ${kickoff}`;
+      return `<option value="${escapeHtml(match.id)}">${escapeHtml(label)}</option>`;
+    }).join('');
+    select.value = current;
+  }
+  $('#promo-create-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const message = $('#promo-create-message');
+    const setMessage = (text, type = '') => { message.textContent = text; message.dataset.type = type; };
+    if (!cachedMatches.length) await loadFootballMatches();
+    fillPromoCreateMatches();
+    const file = $('#promo-create-image').files[0];
+    if (file && (file.size > 350 * 1024 || !/^image\/(png|jpeg)$/.test(file.type))) {
+      return setMessage('La imagen debe ser PNG o JPEG de máximo 350 KB.', 'error');
+    }
+    const payload = {
+      profileId: $('#promo-create-profile').value.trim(),
+      matchId: $('#promo-create-match').value,
+      text: $('#promo-create-text').value,
+      targetPath: $('#promo-create-target').value
+    };
+    if (file) payload.image = await readFileAsDataUrl(file);
+    setMessage('Publicando…');
+    const response = await request('/admin/estadio/promotions/create', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      if (response.code === 'recent_auth_required') show('#mfa-verify');
+      return setMessage(response.error || 'No se pudo publicar la campaña.', 'error');
+    }
+    event.target.reset();
+    setMessage('Campaña publicada: aparece en La Previa dentro de la ventana T−30 del partido.', 'success');
+    await loadFootballPromotions();
+  });
 
   // --- Calendario de Partidos y Reprogramación ---
   function renderFootballMatches() {

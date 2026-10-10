@@ -150,8 +150,35 @@
           </div>
           <button id="football-promotions-refresh" class="text-button" type="button">↻ Actualizar</button>
         </div>
-        <p>Revisa el texto y el enlace interno. Solo se publican tras aprobación; aprobar descuenta 250 fichas de la cuenta vinculada.</p>
+        <p>Revisa el texto y el enlace interno. Las solicitudes de patrocinadores solo se publican tras aprobación; aprobar descuenta 250 fichas de la cuenta vinculada. También puedes crear campañas directas abajo.</p>
         <div id="football-promotions-list" class="user-results" aria-live="polite"></div>
+        <details id="promo-create" class="promo-create">
+          <summary>Crear campaña directa</summary>
+          <p class="field-hint">Campaña de la casa: se publica al instante, sin cargo de fichas, y solo se muestra dentro de los 30 minutos previos al kickoff. Para cuentas patrocinadoras, el cliente sigue solicitándola desde La Previa.</p>
+          <form id="promo-create-form" class="promo-create-form">
+            <label>Cuenta (ID o nombre de usuario vinculado)
+              <input id="promo-create-profile" required maxlength="80" autocomplete="off" />
+            </label>
+            <label>Partido
+              <select id="promo-create-match" required></select>
+            </label>
+            <label>Texto (3–140 caracteres)
+              <textarea id="promo-create-text" required minlength="3" maxlength="140" rows="2"></textarea>
+            </label>
+            <label>Enlace interno
+              <select id="promo-create-target" required>
+                <option value="/">Inicio</option>
+                <option value="/estadio">Estadio</option>
+                <option value="/terminos">Términos</option>
+              </select>
+            </label>
+            <label>Imagen opcional (PNG o JPEG, máx. 350 KB, apaisada)
+              <input id="promo-create-image" type="file" accept="image/png,image/jpeg" />
+            </label>
+            <button class="button" type="submit">Publicar campaña</button>
+            <small id="promo-create-message" aria-live="polite"></small>
+          </form>
+        </details>
       </section>
 
       <section id="football-matches-panel" class="card tab-pane hidden">

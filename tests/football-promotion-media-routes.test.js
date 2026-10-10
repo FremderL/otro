@@ -228,3 +228,53 @@ test('rechazada: la imagen se borra al instante', async t => {
   assert.equal(ctx.profile.promotions[0].imageFile, null);
   assert.equal(fs.readdirSync(ctx.mediaDir).length, 0);
 });
+
+test('administración crea una campaña directa: aprobada al instante, sin cargo, con imagen validada', async t => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  const { buffer, dataUrl } = pngDataUrl(1600, 900);
+  const created = await ctx.app.run('POST', '/admin/estadio/promotions/create', {
+    body: { profileId: 'promotor', matchId: ctx.match.id, text: 'Torneo de blackjack esta noche', targetPath: '/', image: dataUrl },
+    adminAuth: adminAuth()
+  });
+  assert.equal(created.statusCode, 201, JSON.stringify(created.body));
+  assert.equal(created.body.promotion.status, 'approved');
+  assert.equal(created.body.chargedAmount, 0);
+  assert.equal(ctx.profile.chips, 1000, 'no cobra fichas');
+  const stored = ctx.profile.promotions[0];
+  assert.equal(stored.reviewedBy, 'admin-01');
+  assert.match(stored.imageFile, /\.png$/);
+
+  const served = await ctx.app.run('GET', '/api/estadio/promotion-media/:promotionId', { params: { promotionId: stored.id } });
+  assert.equal(served.statusCode, 200);
+  assert.equal(served.body.length, buffer.length);
+  const state = await ctx.app.run('GET', '/api/estadio/promotions/:matchId', { params: { matchId: ctx.match.id } });
+  assert.equal(state.body.promotion.text, 'Torneo de blackjack esta noche');
+});
+
+test('la campaña directa respeta ventana T−30, texto, cuenta existente y una aprobada por partido', async t => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  const body = { profileId: ctx.profile.id, matchId: ctx.match.id, text: 'Promoción válida', targetPath: '/estadio' };
+  const early = await ctx.app.run('POST', '/admin/estadio/promotions/create', { body: { ...body }, adminAuth: adminAuth() });
+  assert.equal(early.statusCode, 201);
+  const again = await ctx.app.run('POST', '/admin/estadio/promotions/create', { body: { ...body }, adminAuth: adminAuth() });
+  assert.equal(again.statusCode, 409);
+  assert.equal(again.body.code, 'promotion_already_approved');
+
+  const unknown = await ctx.app.run('POST', '/admin/estadio/promotions/create', {
+    body: { ...body, profileId: 'nadie' }, adminAuth: adminAuth()
+  });
+  assert.equal(unknown.statusCode, 404);
+  assert.equal(unknown.body.code, 'profile_not_found');
+
+  const badPath = await ctx.app.run('POST', '/admin/estadio/promotions/create', {
+    body: { ...body, targetPath: 'https://example.com' }, adminAuth: adminAuth()
+  });
+  assert.equal(badPath.statusCode, 400);
+
+  ctx.clock.now = KICKOFF - 31 * 60 * 1000;
+  const closed = await ctx.app.run('POST', '/admin/estadio/promotions/create', {
+    body: { ...body }, adminAuth: adminAuth()
+  });
+  assert.equal(closed.statusCode, 409);
+  assert.equal(closed.body.code, 'preshow_window_closed');
+});

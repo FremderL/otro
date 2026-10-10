@@ -26,7 +26,7 @@ const { createAccountSessionStore } = require('./lib/account-session-factory');
 const { installAccountAuthRoutes, COOKIE_NAME, parseCookies } = require('./lib/account-auth-http');
 const { sessionState } = require('./lib/account-sessions');
 const { installAdminRoutes, makeAdminGuard } = require('./lib/admin-auth-http');
-const { PERMISSIONS } = require('./lib/permissions');
+const { PERMISSIONS, normalizeRole } = require('./lib/permissions');
 const { createAuditStore } = require('./lib/audit-store-factory');
 const { createModerationStore } = require('./lib/moderation-store-factory');
 const { createReportStore } = require('./lib/report-store-factory');
@@ -266,6 +266,15 @@ installFootballAdminRoutes(app, {
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const rooms = new Map();
+// Insignia pública del chat: solo el staff (administración y moderación) la muestra.
+// El patrocinador y el resto de usuarios no llevan insignia; el rol nunca se envía a quien no lo necesita.
+const PUBLIC_CHAT_ROLE = Object.freeze({ admin: 'staff', moderator: 'moderator' });
+function chatRoleField(profileId) {
+  const profile = profiles.profiles.get(profileId);
+  const role = PUBLIC_CHAT_ROLE[normalizeRole(profile?.role)];
+  return role ? { role } : {};
+}
+
 // Chat global del casino: vive en memoria y nunca se mezcla con los mensajes de una mesa.
 const lobbyChatMessages = [];
 const LOBBY_CHAT_LIMIT = 60;
@@ -1964,7 +1973,7 @@ io.on('connection', socket => {
     if (!room || (!player && !spectator) || !text) return ackError(ack, 'No se pudo enviar.');
     if (duplicateMessageWithinWindow(socket, 'table', text)) return ackError(ack, 'Ese mensaje ya fue enviado hace un momento.');
     const author = player || spectator;
-    room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: author.id, username: author._profile?.username || null, name: spectator ? `👁 ${author.name}` : author.name, text, time: Date.now() });
+    room.messages.push({ id: `${Date.now()}-${Math.random()}`, playerId: author.id, username: author._profile?.username || null, name: spectator ? `👁 ${author.name}` : author.name, text, time: Date.now(), ...(spectator ? {} : chatRoleField(author.id)) });
     room.messages = room.messages.slice(-40);
     ackOk(ack);
     broadcast(room);
@@ -2003,7 +2012,7 @@ io.on('connection', socket => {
     text = cleanMessage(text);
     if (!text) return ackError(ack, 'No se pudo enviar.');
     if (duplicateMessageWithinWindow(socket, 'lobby', text)) return ackError(ack, 'Ese mensaje ya fue enviado hace un momento.');
-    const message = { id: `${Date.now()}-${Math.random()}`, playerId: author.id, username: author.username, name: author.name, avatar: author.avatar, text, time: Date.now() };
+    const message = { id: `${Date.now()}-${Math.random()}`, playerId: author.id, username: author.username, name: author.name, avatar: author.avatar, text, time: Date.now(), ...chatRoleField(author.id) };
     lobbyChatMessages.push(message);
     while (lobbyChatMessages.length > LOBBY_CHAT_LIMIT) lobbyChatMessages.shift();
     for (const client of io.sockets.sockets.values()) {
