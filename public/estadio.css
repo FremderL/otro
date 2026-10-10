@@ -494,3 +494,16 @@
   .est-preshow-promo.is-sliding .est-promo-content,
   .est-preshow-promo.is-sliding .btn { animation: none; }
 }
+
+/* La Previa a todo el espacio: el anuncio cubre el panel completo y la cuenta regresiva
+   queda encima, con un velo para que siga legible sobre la imagen. */
+.est-preshow > .est-preshow-promo {
+  position: absolute; inset: 0; z-index: 2;
+  min-height: 0; margin: 0; border: 0; border-radius: inherit;
+}
+.est-preshow > .est-preshow-head {
+  position: relative; z-index: 3;
+  padding: 12px 14px; border-radius: 14px;
+  background: linear-gradient(180deg, rgba(7,11,12,.9), rgba(7,11,12,.45));
+  border-bottom-color: transparent;
+}

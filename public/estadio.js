@@ -89,7 +89,7 @@
     promotionsEnabled: false, promoSessionChecked: false, promoProfile: null, promoCsrfToken: null,
     promoWindowOpen: false, promoMatchId: null, promoPollId: null, promoRequestSeq: 0,
     currentMatchId: null, match: null, markets: {}, movement: {}, myBets: [],
-    slip: null, muted: false, soundOn: localStorage.getItem('montecristo-notifications') !== 'off',
+    slip: null, muted: false, soundOn: localStorage.getItem('montecristo-notifications') !== 'off', musicOn: localStorage.getItem('montecristo-music') === 'on',
     players: [], authoritativePlayers: [], possessionTeam: 'home', ballCarrierId: null, playStopped: true,
     ball: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 }, motion: null, queue: [], stepTimer: null, busyUntil: 0, plan: null,
     minute: 0, phase: 'pre', score: { home: 0, away: 0 }, possession: { home: .5, away: .5 },
@@ -98,7 +98,7 @@
 
   var el = {};
   function cacheEls() {
-    ['est-connection', 'est-chips', 'est-sound', 'est-countdown', 'est-match-list', 'est-standings',
+    ['est-connection', 'est-chips', 'est-sound', 'est-music', 'est-countdown', 'est-match-list', 'est-standings',
       'est-preshow', 'est-preshow-status', 'est-preshow-timer', 'est-team-comparison',
       'est-compare-home', 'est-compare-away', 'est-preshow-promo', 'est-promo-image', 'est-promo-label', 'est-promo-text', 'est-promo-link',
       'est-promo-compose', 'est-promo-auth', 'est-promo-login', 'est-promo-refresh', 'est-promo-form',
@@ -1607,10 +1607,41 @@
       localStorage.setItem('montecristo-notifications', S.soundOn ? 'on' : 'off');
       toast(S.soundOn ? 'Campana activada.' : 'Campana silenciada.', '');
     });
+    el['est-music'].addEventListener('click', function () {
+      S.musicOn = !S.musicOn;
+      localStorage.setItem('montecristo-music', S.musicOn ? 'on' : 'off');
+      syncMusic();
+      toast(S.musicOn ? 'Música de ambiente activada.' : 'Música de ambiente apagada.', '');
+    });
+    el['est-music'].setAttribute('aria-pressed', String(S.musicOn));
+    el['est-music'].setAttribute('aria-label', S.musicOn ? 'Apagar música de ambiente' : 'Activar música de ambiente');
+    // Si la música ya estaba activada al cargar, arranca con el primer gesto del usuario.
+    document.addEventListener('pointerdown', function firstGesture() {
+      document.removeEventListener('pointerdown', firstGesture);
+      if (S.musicOn) syncMusic();
+    });
     el['est-sound'].setAttribute('aria-pressed', String(!S.soundOn));
     el['est-help-close'].addEventListener('click', function () { el['est-help'].hidden = true; });
     document.addEventListener('keydown', onKey);
     setInterval(tickCountdown, 1000); tickCountdown();
+  }
+  // Música de ambiente de estadio: un solo bucle, solo con el sonido activado por el usuario.
+  var music = null;
+  function syncMusic() {
+    if (!music) {
+      music = new Audio('/assets/match-ambience.mp3');
+      music.loop = true; music.preload = 'auto'; music.volume = 0.32;
+    }
+    if (S.musicOn) {
+      var p = music.play();
+      if (p && typeof p.catch === 'function') p.catch(function () { /* sin gesto aún: se reintenta en el siguiente */ });
+    } else {
+      music.pause();
+    }
+    if (el['est-music']) {
+      el['est-music'].setAttribute('aria-pressed', String(S.musicOn));
+      el['est-music'].setAttribute('aria-label', S.musicOn ? 'Apagar música de ambiente' : 'Activar música de ambiente');
+    }
   }
   function onKey(e) {
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
