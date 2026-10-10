@@ -189,3 +189,56 @@ test('una temporada entera asentada produce un campeón y carryover coherente', 
   assert.strictEqual(Object.keys(carry).length, 4, 'carryover para 4 posiciones (2 arriba, 2 abajo)');
   store.close();
 });
+
+test('rescheduleMatch actualiza el horario de kickoff, el día y persiste a disco', () => {
+  const filePath = path.join(tmpDir, 'reschedule.json');
+  const store = new FootballStore(filePath);
+  const league = store.generateSeason('2026-10');
+  const target = league.calendar.matches.find(m => m.status === 'scheduled');
+  assert.ok(target, 'hay partidos programados');
+  const oldKickoff = target.scheduledKickoffAt;
+  const newKickoff = oldKickoff + 4 * 3600 * 1000; // 4 horas más tarde
+
+  const res = store.rescheduleMatch(target.id, newKickoff, { now: oldKickoff - 3600 * 1000 });
+  assert.ok(res.ok, 'reprogramación exitosa');
+  assert.strictEqual(res.match.scheduledKickoffAt, newKickoff);
+  assert.strictEqual(res.previousKickoffAt, oldKickoff);
+  store.close();
+
+  // Recarga desde disco y verifica persistencia
+  const reloaded = new FootballStore(filePath);
+  const reloadedMatch = reloaded.getMatch(target.id, '2026-10');
+  assert.strictEqual(reloadedMatch.scheduledKickoffAt, newKickoff, 'kickoff persistido');
+  assert.strictEqual(reloadedMatch.day, res.match.day, 'día persistido');
+  reloaded.close();
+});
+
+test('rescheduleMatch rechaza horas en el pasado, formato inválido y partidos ya asentados', () => {
+  const store = newStore('reschedule-invalids');
+  const league = store.generateSeason('2026-10');
+  const scheduled = league.calendar.matches.find(m => m.status === 'scheduled');
+  const now = 1800000000000;
+
+  // Pasado
+  const pastRes = store.rescheduleMatch(scheduled.id, now - 1000, { now });
+  assert.strictEqual(pastRes.ok, false);
+  assert.strictEqual(pastRes.reason, 'kickoff_in_past');
+
+  // Inválido
+  const invalidRes = store.rescheduleMatch(scheduled.id, 'fecha-invalida', { now });
+  assert.strictEqual(invalidRes.ok, false);
+  assert.strictEqual(invalidRes.reason, 'invalid_kickoff');
+
+  // Partido ya asentado
+  store.settleMatch(scheduled.id, { home: 1, away: 0 });
+  assert.strictEqual(scheduled.status, 'settled');
+  const settledRes = store.rescheduleMatch(scheduled.id, now + 10000, { now });
+  assert.strictEqual(settledRes.ok, false);
+  assert.strictEqual(settledRes.reason, 'match_not_scheduled');
+
+  // Partido inexistente
+  const missingRes = store.rescheduleMatch('no-existe', now + 10000, { now });
+  assert.strictEqual(missingRes.ok, false);
+  assert.strictEqual(missingRes.reason, 'no_match');
+  store.close();
+});

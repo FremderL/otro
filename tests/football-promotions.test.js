@@ -295,6 +295,48 @@ test('rechazar no debita; aprobar fuera de T−30 o sin saldo deja la campaña p
   assert.equal(ctx.profile.chips, 1000);
 });
 
+test('un partido reprogramado actualiza la ventana T−30 para envíos y aprobaciones de promociones', async t => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  // Inicialmente en T-10 min (ventana abierta)
+  ctx.match.scheduledKickoffAt = NOW + 10 * 60 * 1000;
+
+  // Enviar promoción dentro de la ventana inicial
+  const first = await ctx.app.run('POST', '/api/estadio/promotions', {
+    headers: ctx.userHeaders(),
+    body: { matchId: ctx.match.id, text: 'Promoción válida', targetPath: '/room/ABC12' }
+  });
+  assert.equal(first.statusCode, 201);
+
+  // Reprogramar el partido a 2 horas en el futuro (fuera de T-30)
+  ctx.match.scheduledKickoffAt = NOW + 120 * 60 * 1000;
+
+  // Intento de envío fuera de la nueva ventana T-30 se rechaza
+  const outside = await ctx.app.run('POST', '/api/estadio/promotions', {
+    headers: ctx.userHeaders(),
+    body: { matchId: ctx.match.id, text: 'Intento fuera de ventana', targetPath: '/room/XYZ89' }
+  });
+  assert.equal(outside.statusCode, 409);
+  assert.equal(outside.body.code, 'preshow_window_closed');
+
+  // Intento de aprobación por admin mientras está fuera de la nueva ventana se rechaza
+  const promoId = first.body.promotion.id;
+  const earlyReview = await ctx.app.run('POST', '/admin/estadio/promotions/:profileId/:promotionId/review', {
+    params: { profileId: ctx.profile.id, promotionId: promoId },
+    body: { decision: 'approve' }, adminAuth: adminAuth()
+  });
+  assert.equal(earlyReview.statusCode, 409);
+  assert.equal(earlyReview.body.code, 'preshow_window_closed');
+
+  // Ahora reprogramamos a 20 minutos en el futuro (dentro de la nueva ventana T-30)
+  ctx.match.scheduledKickoffAt = NOW + 20 * 60 * 1000;
+  const approvedReview = await ctx.app.run('POST', '/admin/estadio/promotions/:profileId/:promotionId/review', {
+    params: { profileId: ctx.profile.id, promotionId: promoId },
+    body: { decision: 'approve' }, adminAuth: adminAuth()
+  });
+  assert.equal(approvedReview.statusCode, 200);
+  assert.equal(ctx.profile.promotions.find(p => p.id === promoId).status, 'approved');
+});
+
 test('PgProfileStore hace perfil, auditoría e idempotencia atómicos al revisar', async () => {
   const queries = [];
   const client = {

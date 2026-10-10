@@ -52,7 +52,8 @@ function makeEngine(spy) {
   return {
     healthSnapshot: () => ({ enabled: true, seasonMonth: '2026-10', jornada: 12, matchesActive: 3, matchesScheduledToday: 8, lastSweepAgeMs: 1, lastTickAgeMs: 2, openBets: 47, escrowChips: 18400, ledgerBalanced: true, quarantined: 0, degraded: false }),
     forceFinish: (_match) => { spy.forceFinish++; return { winner: 'home' }; },
-    quarantine: (match) => { spy.quarantine++; match.status = 'postponed'; return true; }
+    quarantine: (match) => { spy.quarantine++; match.status = 'postponed'; return true; },
+    rescheduleMatch: (match, kickoff) => { spy.reschedule = (spy.reschedule || 0) + 1; match.scheduledKickoffAt = kickoff; return true; }
   };
 }
 function makeBetting(spy) {
@@ -226,6 +227,51 @@ test('admin sobre partido inexistente: 404 no_match', (t) => {
   const res = ctx.app.run('POST', '/admin/estadio/matches/:id/settle', { params: { id: 'm_x' } });
   assert.equal(res.statusCode, 404);
   assert.equal(res.body.error, 'no_match');
+});
+
+test('GET /admin/estadio/matches devuelve los partidos para gestión administrativa', (t) => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  const res = ctx.app.run('GET', '/admin/estadio/matches');
+  assert.equal(res.body.ok, true);
+  assert.ok(Array.isArray(res.body.matches));
+  assert.ok(res.body.matches.length > 0);
+  assert.equal(res.body.seasonMonth, ctx.month);
+});
+
+test('POST /admin/estadio/matches/:id/reschedule reprograma el kickoff y audita', (t) => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  const oldKickoff = ctx.scheduled.scheduledKickoffAt;
+  const newKickoff = 1000 + 3600 * 1000; // futuro respecto a now=1000
+  const res = ctx.app.run('POST', '/admin/estadio/matches/:id/reschedule', {
+    params: { id: ctx.scheduled.id },
+    body: { kickoffAt: newKickoff },
+    adminAuth: { profile: { id: 'admin1' } }
+  });
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.match.scheduledKickoffAt, newKickoff);
+  assert.equal(res.body.oldKickoffAt, oldKickoff);
+  assert.equal(ctx.store.getMatch(ctx.scheduled.id).scheduledKickoffAt, newKickoff);
+  assert.equal(ctx.spy.audit.some(a => a.type === 'football_match_rescheduled'), true);
+});
+
+test('POST /admin/estadio/matches/:id/reschedule rechaza kickoff en el pasado o partido no scheduled', (t) => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  // Pasado
+  const pastRes = ctx.app.run('POST', '/admin/estadio/matches/:id/reschedule', {
+    params: { id: ctx.scheduled.id },
+    body: { kickoffAt: 500 } // now es 1000
+  });
+  assert.equal(pastRes.statusCode, 400);
+  assert.equal(pastRes.body.code, 'kickoff_in_past');
+
+  // No scheduled
+  ctx.scheduled.status = 'live';
+  const liveRes = ctx.app.run('POST', '/admin/estadio/matches/:id/reschedule', {
+    params: { id: ctx.scheduled.id },
+    body: { kickoffAt: 5000 }
+  });
+  assert.equal(liveRes.statusCode, 409);
+  assert.equal(liveRes.body.code, 'match_not_scheduled');
 });
 
 // ===================== /healthz (§15.8) =====================

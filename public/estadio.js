@@ -297,6 +297,7 @@
     S.socket.on('football:odds', onOdds);
     S.socket.on('football:settlement', onSettlement);
     S.socket.on('football:status', onStatus);
+    S.socket.on('football:rescheduled', onRescheduled);
     S.socket.on('account_chips_updated', function (data) {
       if (!data || !S.promoProfile || data.profileId !== S.promoProfile.id) return;
       S.promoProfile.chips = Number(data.chips) || 0;
@@ -469,6 +470,7 @@
     var match = S.match;
     if (!match || match.status !== 'scheduled' || match.scheduledKickoffAt == null || !Number.isFinite(Number(match.scheduledKickoffAt))) {
       panel.hidden = true;
+      panel.removeAttribute('data-delay');
       S.promoWindowOpen = false;
       updatePromotionComposer();
       stopPromotionRotation();
@@ -478,6 +480,7 @@
     var delayed = remaining <= 0;
     if (!delayed && remaining > PRESHOW_WINDOW_MS) {
       panel.hidden = true;
+      panel.removeAttribute('data-delay');
       S.promoWindowOpen = false;
       updatePromotionComposer();
       stopPromotionRotation();
@@ -502,6 +505,21 @@
     }
   }
 
+  function updateLobbyMatchKickoff(matchId, kickoffAt, day, block) {
+    if (!S.lobby || !Array.isArray(S.lobby.matches)) return;
+    var found = S.lobby.matches.find(function (m) { return m.id === matchId; });
+    if (found) {
+      if (kickoffAt != null && Number.isFinite(Number(kickoffAt))) found.scheduledKickoffAt = Number(kickoffAt);
+      if (day != null) found.day = day;
+      if (block != null) found.block = block;
+    }
+    var next = S.lobby.matches
+      .filter(function (m) { return m.status === 'scheduled'; })
+      .sort(function (a, b) { return a.scheduledKickoffAt - b.scheduledKickoffAt; })[0] || null;
+    S.lobby.nextKickoffAt = next ? next.scheduledKickoffAt : null;
+    S.countdownTo = S.lobby.nextKickoffAt;
+  }
+
   var STATUS_LABEL = { scheduled: 'Programado', live: 'EN VIVO', halftime: 'Descanso', extra_time: 'Prórroga', shootout: 'Penales', finished: 'Final', settled: 'Final', postponed: 'Pospuesto' };
   function renderLobby(lobby) {
     if (!lobby) return;
@@ -516,6 +534,8 @@
     if (selectedMatch && S.match) {
       S.match.status = selectedMatch.status;
       S.match.scheduledKickoffAt = selectedMatch.scheduledKickoffAt;
+      if (selectedMatch.day != null) S.match.day = selectedMatch.day;
+      if (selectedMatch.block != null) S.match.block = selectedMatch.block;
     }
     if (!matches.length) { list.innerHTML = '<li class="est-muted">No hay partidos programados hoy.</li>'; }
     matches.forEach(function (m) {
@@ -1043,12 +1063,35 @@
       S.match.status = 'finished';
       S.playStopped = true;
       S.ballCarrierId = null;
+    } else if (code === 'rescheduled') {
+      if (data.scheduledKickoffAt != null && Number.isFinite(Number(data.scheduledKickoffAt))) {
+        S.match.scheduledKickoffAt = Number(data.scheduledKickoffAt);
+      }
+      if (data.day != null) S.match.day = data.day;
+      if (data.block != null) S.match.block = data.block;
+      updateLobbyMatchKickoff(data.matchId, data.scheduledKickoffAt, data.day, data.block);
+      toast('Horario del partido reprogramado.', 'info');
+    }
     }
     renderScoreboard();
     renderMarkets();
     renderMyBets();
     updateTextFallback();
     renderPreshow(currentServerTime());
+  }
+
+  function onRescheduled(data) {
+    if (!data) return;
+    updateLobbyMatchKickoff(data.matchId, data.scheduledKickoffAt, data.day, data.block);
+    if (S.currentMatchId === data.matchId && S.match) {
+      if (data.scheduledKickoffAt != null && Number.isFinite(Number(data.scheduledKickoffAt))) {
+        S.match.scheduledKickoffAt = Number(data.scheduledKickoffAt);
+      }
+      if (data.day != null) S.match.day = data.day;
+      if (data.block != null) S.match.block = data.block;
+    }
+    if (S.lobby) renderLobby(S.lobby);
+    else renderPreshow(currentServerTime());
   }
 
   // ===== Cuotas =====

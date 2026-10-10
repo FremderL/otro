@@ -294,6 +294,86 @@ test('La Previa también se oculta si el partido se pospone', async t => {
   assert.equal(h.window.document.getElementById('est-preshow').hidden, true);
 });
 
+test('La Previa se oculta de inmediato al reprogramar fuera de T−30, no aparece al horario anterior y abre en el nuevo T−30', async t => {
+  const baseNow = 1800000000000;
+  // Comienza a 15 min del kickoff (dentro de T-30)
+  const h = createHarness({ now: baseNow, kickoffOffsetMs: 15 * 60 * 1000 });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const panel = window.document.getElementById('est-preshow');
+  const promo = window.document.getElementById('est-preshow-promo');
+
+  assert.equal(panel.hidden, false, 'inicia visible en T-15');
+  assert.equal(window.document.getElementById('est-preshow-timer').textContent, '15:00');
+  assert.equal(promo.hidden, false);
+
+  // Reprogramar el partido a 90 minutos en el futuro (fuera de T-30)
+  const newKickoff = baseNow + 90 * 60 * 1000;
+  handlers['football:rescheduled']({ matchId: match.id, scheduledKickoffAt: newKickoff });
+
+  assert.equal(panel.hidden, true, 'se oculta de inmediato tras la reprogramación');
+  assert.equal(panel.hasAttribute('data-delay'), false, 'no conserva bandera de retraso');
+
+  // Avanza el tiempo al horario que tenía el partido originalmente (T+15m)
+  h.advanceTime(15 * 60 * 1000);
+  assert.equal(panel.hidden, true, 'no se muestra la previa en el horario anterior');
+  assert.notEqual(window.document.getElementById('est-preshow-status').textContent, 'Kickoff pendiente · esperando señal del partido');
+
+  // Avanza hasta T-30 del nuevo horario (faltan 45 min más para llegar a 60 min, que es 30 min antes de 90 min)
+  h.advanceTime(45 * 60 * 1000);
+  assert.equal(panel.hidden, false, 'abre exactamente en el nuevo T−30');
+  assert.equal(window.document.getElementById('est-preshow-timer').textContent, '30:00');
+  assert.equal(promo.hidden, false, 'la promoción vuelve a estar activa');
+});
+
+test('La Previa se abre de inmediato si un partido distante se reprograma dentro de T−30', async t => {
+  const baseNow = 1800000000000;
+  // Kickoff en 90 minutos (fuera de T-30)
+  const h = createHarness({ now: baseNow, kickoffOffsetMs: 90 * 60 * 1000 });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const panel = window.document.getElementById('est-preshow');
+  const promo = window.document.getElementById('est-preshow-promo');
+
+  assert.equal(panel.hidden, true, 'fuera de T-30 permanece oculta');
+
+  // Reprogramar a 20 minutos
+  const newKickoff = baseNow + 20 * 60 * 1000;
+  handlers['football:rescheduled']({ matchId: match.id, scheduledKickoffAt: newKickoff });
+
+  assert.equal(panel.hidden, false, 'se muestra inmediatamente al entrar a T-30 por reprogramación');
+  assert.equal(window.document.getElementById('est-preshow-timer').textContent, '20:00');
+  assert.equal(promo.hidden, false);
+});
+
+test('un partido en retraso con espera pendiente se recupera a cuenta regresiva al reprogramarse', async t => {
+  const baseNow = 1800000000000;
+  // Kickoff hace 5 minutos (retrasado)
+  const h = createHarness({ now: baseNow, kickoffOffsetMs: -5 * 60 * 1000 });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const panel = window.document.getElementById('est-preshow');
+  const promo = window.document.getElementById('est-preshow-promo');
+
+  assert.equal(panel.hidden, false);
+  assert.equal(panel.dataset.delay, 'true');
+  assert.match(window.document.getElementById('est-preshow-status').textContent, /Kickoff pendiente/);
+  assert.equal(promo.hidden, true, 'en retraso no muestra promoción');
+
+  // Reprogramar a 15 minutos en el futuro
+  const newKickoff = baseNow + 15 * 60 * 1000;
+  handlers['football:status']({ matchId: match.id, code: 'rescheduled', scheduledKickoffAt: newKickoff });
+
+  assert.equal(panel.hidden, false);
+  assert.equal(panel.dataset.delay, 'false', 'cancela estado de demora');
+  assert.match(window.document.getElementById('est-preshow-status').textContent, /Kickoff programado/);
+  assert.equal(window.document.getElementById('est-preshow-timer').textContent, '15:00');
+  assert.equal(promo.hidden, false, 'reactiva promoción');
+});
+
 test('la UI sigue el estado del motor: kickoff, pausas, gol, sustitución y final', async t => {
   const h = createHarness();
   t.after(h.close);

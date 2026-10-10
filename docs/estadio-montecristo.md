@@ -3647,3 +3647,25 @@ Se implementa una arquitectura completa de fidelidad de simulación y sincroniza
    - Supresión completa de vibraciones o temblores en balón detenido y en el portador.
    - Respiración táctica sutil (`0.002` de oscilación armónica) para jugadores sin balón, ofreciendo dinamismo visual natural sin teletransportación.
 
+## 32. Reprogramación de partidos y control de La Previa
+
+Se establece una arquitectura integral para la reprogramación del horario de kickoff por parte del equipo de administración y la preservación de la coherencia de «La Previa» (preshow), previniendo errores de visualización prematura o falta de apertura:
+
+1. **Palanca operativa y persistencia:**
+   - La ruta administrativa `POST /admin/estadio/matches/:id/reschedule` permite modificar el kickoff programado de un partido.
+   - Requiere autenticación de staff con rol `admin`, permiso `football:manage`, MFA reciente, origen confiable y CSRF.
+   - Valida estrictamente que el partido tenga estado `scheduled` (rechaza `live`, `finished`, `settled` o `postponed` con código `match_not_scheduled`), y que la nueva hora de kickoff sea una marca temporal válida posterior a la hora actual (`kickoff_in_past`).
+   - El método `store.rescheduleMatch(matchId, kickoffAt, options)` actualiza `scheduledKickoffAt`, recalcula `day` en la zona horaria del casino (`CASINO_TIME_ZONE`), reordena los partidos del calendario según jornada y horario, y persiste de inmediato a disco o Postgres mediante `saveNow()`.
+   - Se audita y registra el evento con `football_match_rescheduled`, conservando el horario anterior y el nuevo.
+
+2. **Sincronización en tiempo real:**
+   - El motor `FootballEngine.rescheduleMatch()` invalida la línea de tiempo simulada en caché (`invalidate`), limpia el runtime en memoria y emite `football:rescheduled` y `football:status` (`code: 'rescheduled'`).
+   - El servidor de sockets (`lib/football/sockets.js`) difunde `football:rescheduled` y `football:status` a la sala del partido (`matchRoom`) y retransmite un lobby actualizado (`football:lobby`) a `LOBBY_ROOM` recalculando `nextKickoffAt` y `countdownMs`.
+
+3. **Ciclo de vida y coherencia de La Previa:**
+   - **Cierre inmediato fuera de T−30:** si un partido que estaba dentro de la ventana de La Previa se reprograma a un horario posterior que excede los 30 minutos, el panel `#est-preshow` se oculta de inmediato (`panel.hidden = true`), se retira cualquier atributo de demora (`data-delay`), se oculta el compositor de promociones y se detiene la rotación de anuncios (`stopPromotionRotation`).
+   - **Inexistencia de previa en horario obsoleto:** al llegar el horario que tenía el partido antes de la reprogramación, el partido permanece programado para su nueva hora futura, evitando que se muestre La Previa desfasada o que entre en falso estado de retraso.
+   - **Apertura puntual en el nuevo T−30:** al alcanzarse exactamente los 30 minutos previos al nuevo horario de kickoff, La Previa se abre de manera automática (`panel.hidden = false`), el contador inicia en `30:00`, se reactiva la rotación de promociones y se actualiza el rótulo de kickoff programado.
+   - **Apertura inmediata si se acerca el kickoff:** si un partido lejano se reprograma a menos de 30 minutos del presente, La Previa abre al instante reflejando los minutos exactos restantes.
+   - **Recuperación desde estado de retraso:** si un partido en demora (`remaining <= 0`, `panel.dataset.delay = "true"`) es reprogramado hacia el futuro, el estado de retraso se cancela de inmediato (`panel.dataset.delay = "false"`), el panel restaura el temporizador activo y se reactiva el espacio promocional.
+   - **Ventana de promociones:** el envío y la revisión de promociones vinculadas (`lib/football/promotions.js`) evalúan dinámicamente `isPreshowWindow()` frente al nuevo `scheduledKickoffAt`, garantizando que solo se puedan enviar y aprobar dentro de los últimos 30 minutos reales del partido.
