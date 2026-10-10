@@ -18,7 +18,7 @@ function safeSnapshot(profile) {
 async function changeRole(client, { username, role, reason = 'bootstrap administrativo', requestId = crypto.randomUUID() }) {
   const normalized = normalizeUsername(username);
   if (!normalized) throw new Error('Usuario inválido');
-  if (!['user', 'moderator', 'admin'].includes(role)) throw new Error('Rol inválido');
+  if (!['user', 'sponsor', 'moderator', 'admin'].includes(role)) throw new Error('Rol inválido');
   if (String(reason).trim().length < 10 || String(reason).length > 500) throw new Error('El motivo debe tener entre 10 y 500 caracteres');
 
   await client.query('BEGIN');

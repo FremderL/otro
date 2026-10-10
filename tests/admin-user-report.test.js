@@ -420,7 +420,7 @@ test('panel admin muestra desbaneo directo y gestión de rol para una cuenta blo
 
   assert.equal(document.getElementById('unban-panel').classList.contains('hidden'), false);
   assert.equal(document.getElementById('role-form').classList.contains('hidden'), false);
-  assert.equal(document.getElementById('role-submit').textContent, 'Promover a moderador');
+  assert.equal(document.getElementById('role-submit').textContent, 'Aplicar rol');
   assert.equal(document.querySelector('#moderation-action option[value="unban"]'), null, 'el desbaneo directo reutiliza la ruta existente');
 });
 

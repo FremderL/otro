@@ -98,7 +98,7 @@
 
   var el = {};
   function cacheEls() {
-    ['est-connection', 'est-chips', 'est-sound', 'est-music', 'est-countdown', 'est-match-list', 'est-standings',
+    ['est-connection', 'est-chips', 'est-sound', 'est-music', 'est-ads', 'est-ads-open', 'est-countdown', 'est-match-list', 'est-standings',
       'est-preshow', 'est-preshow-status', 'est-preshow-timer', 'est-team-comparison',
       'est-compare-home', 'est-compare-away', 'est-preshow-promo', 'est-promo-image', 'est-promo-label', 'est-promo-text', 'est-promo-link',
       'est-promo-compose', 'est-promo-auth', 'est-promo-login', 'est-promo-refresh', 'est-promo-form',
@@ -223,19 +223,29 @@
     else delete el['est-promo-message'].dataset.state;
   }
 
+  // Publicidad: visible siempre para explicar el proceso; el formulario solo se abre
+  // para un patrocinador (o admin) con un partido dentro de su ventana de 30 minutos.
   function updatePromotionComposer() {
-    var details = el['est-promo-compose'];
-    if (!details) return;
-    details.hidden = !S.promotionsEnabled || !S.promoWindowOpen;
-    if (!S.promotionsEnabled || !S.promoWindowOpen) return;
+    var section = el['est-ads'], details = el['est-promo-compose'];
+    if (!section || !details) return;
+    section.hidden = !S.promotionsEnabled;
+    if (el['est-ads-open']) el['est-ads-open'].hidden = !S.promotionsEnabled;
+    if (!S.promotionsEnabled) return;
     var linked = Boolean(S.promoProfile && S.promoProfile.username);
-    el['est-promo-auth'].textContent = linked
-      ? 'Sesión vinculada: @' + S.promoProfile.username
-      : (S.promoSessionChecked ? 'Para enviar, inicia sesión con una cuenta vinculada del casino.' : 'Comprueba tu sesión de cuenta vinculada.');
-    el['est-promo-auth'].dataset.state = linked ? 'ready' : '';
+    var canSubmit = linked && (S.promoProfile.role === 'sponsor' || S.promoProfile.role === 'admin');
+    var open = canSubmit && Boolean(S.promoWindowOpen);
+    var message;
+    if (!S.promoSessionChecked) message = 'Comprobando tu sesión de cuenta…';
+    else if (!linked) message = 'Inicia sesión con tu cuenta vinculada para solicitar publicidad.';
+    else if (!canSubmit) message = 'Tu cuenta @' + S.promoProfile.username + ' aún no tiene el rol Patrocinador. Pídelo al equipo de administración.';
+    else if (!open) message = 'Eres patrocinador. Elige en la lista un partido que empiece en menos de 30 minutos para abrir su publicidad.';
+    else message = 'Patrocinador @' + S.promoProfile.username + ': envía tu creatividad para este partido.';
+    el['est-promo-auth'].textContent = message;
+    el['est-promo-auth'].dataset.state = open ? 'ready' : '';
     el['est-promo-login'].hidden = linked;
     el['est-promo-refresh'].hidden = linked;
-    el['est-promo-form'].hidden = !linked;
+    details.hidden = !open;
+    el['est-promo-form'].hidden = !open;
   }
 
   function refreshPromotionSession() {
@@ -761,11 +771,68 @@
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     plan.players[id] = { x: clamp(x, .01, .99), y: clamp(y, .02, .98) };
   }
+  // Límites de movimiento en metros reales por segundo. Cada paso dura siempre lo mismo
+  // (ritmo constante, sin cola creciente): si un jugador o el balón no pueden recorrer
+  // en ese tiempo la distancia hasta su destino, avanzan a su velocidad máxima y el
+  // resto se arrastra a los pasos siguientes. Así no hay teletransportes ni retrasos.
+  var PLAYER_VMAX = 8.5, BALL_VMAX = 28;
+  function limitToward(from, to, maxM) {
+    var d = Math.hypot((to.x - from.x) * 105, (to.y - from.y) * 68);
+    if (d <= maxM || d === 0) return { x: to.x, y: to.y };
+    var f = maxM / d;
+    return { x: from.x + (to.x - from.x) * f, y: from.y + (to.y - from.y) * f };
+  }
+  // El balón recorre sus destinos en orden: no cambia de dirección hasta llegar al anterior,
+  // aunque ya haya llegado un pase posterior (ráfaga de eventos).
+  function queueBall(plan, point) {
+    if (!point) return;
+    if (!plan.ballQueue) plan.ballQueue = [];
+    plan.ballQueue.push({ x: point.x, y: point.y });
+    if (plan.ballQueue.length > 64) plan.ballQueue.splice(0, plan.ballQueue.length - 64);
+  }
+  function advanceBall(from, queue, maxM) {
+    var pos = { x: from.x, y: from.y }, budget = maxM;
+    while (queue.length && budget > 0) {
+      var t = queue[0];
+      var d = Math.hypot((t.x - pos.x) * 105, (t.y - pos.y) * 68);
+      // Un paso termina al llegar a un destino: así la interpolación lineal del paso no
+      // da la vuelta hacia el siguiente pase.
+      if (d <= budget) { pos = { x: t.x, y: t.y }; queue.shift(); break; }
+      var f = budget / d;
+      pos = { x: pos.x + (t.x - pos.x) * f, y: pos.y + (t.y - pos.y) * f };
+      budget = 0;
+    }
+    return pos;
+  }
+  // Posición mostrada al final de cada paso (no el destino del plan): el plan conserva
+  // el destino y cada paso avanza desde donde quedó el anterior.
+  function limitStep(plan, step) {
+    if (!step.ms) return step; // movimiento reducido: sin interpolación
+    var shown = plan.shown || (plan.shown = { players: {}, ball: null });
+    var maxP = PLAYER_VMAX * step.ms / 1000, maxB = BALL_VMAX * step.ms / 1000;
+    var players = {};
+    S.players.forEach(function (pl) {
+      var target = plan.players[pl.id];
+      if (!target) return;
+      var from = shown.players[pl.id] || { x: pl.renderX, y: pl.renderY };
+      var to = limitToward(from, target, maxP);
+      shown.players[pl.id] = to;
+      players[pl.id] = to;
+    });
+    step.players = players;
+    if (plan.ball) {
+      var fb = shown.ball || (S.ball ? { x: S.ball.x, y: S.ball.y } : plan.ball);
+      var tb = advanceBall(fb, plan.ballQueue || [], maxB);
+      shown.ball = tb;
+      step.ball = { x: tb.x, y: tb.y };
+    }
+    return step;
+  }
   function planEventStep(ev, plan) {
     var step = { kind: 'event', ms: reduced.matches ? 0 : EVENT_STEP_MS, ball: null, players: {}, important: Boolean(IMPORTANT_EVENTS[ev.type]) };
     var changed = {};
     function move(id, point) { placeInPlan(plan, id, point); if (id != null) changed[id] = true; }
-    if (ev.ball) plan.ball = { x: clamp(ev.ball.x, -0.01, 1.01), y: clamp(ev.ball.y, 0, 1) };
+    if (ev.ball) { plan.ball = { x: clamp(ev.ball.x, -0.01, 1.01), y: clamp(ev.ball.y, 0, 1) }; queueBall(plan, plan.ball); }
     if (ev.playerId != null && ev.actorPosition) move(ev.playerId, ev.actorPosition);
     if (ev.receiverId != null) move(ev.receiverId, ev.ball || plan.ball);
     if (ev.keeperId != null && ev.keeperPosition) move(ev.keeperId, ev.keeperPosition);
@@ -794,11 +861,11 @@
     }
     Object.keys(changed).forEach(function (id) { step.players[id] = plan.players[id]; });
     step.ball = { x: plan.ball.x, y: plan.ball.y };
-    return step;
+    return limitStep(plan, step);
   }
   function planTickStep(data, plan) {
     var step = { kind: 'tick', ms: reduced.matches ? 0 : TICK_MS, ball: null, players: {}, important: false };
-    if (data.ball) plan.ball = { x: clamp(data.ball.x, -0.01, 1.01), y: clamp(data.ball.y, 0, 1) };
+    if (data.ball) { plan.ball = { x: clamp(data.ball.x, -0.01, 1.01), y: clamp(data.ball.y, 0, 1) }; queueBall(plan, plan.ball); }
     if (Array.isArray(data.players)) {
       data.players.forEach(function (p) {
         if (!p || !p.active || (p.team !== 'home' && p.team !== 'away')) return;
@@ -822,7 +889,7 @@
       });
     }
     step.ball = { x: plan.ball.x, y: plan.ball.y };
-    return step;
+    return limitStep(plan, step);
   }
   // Un solo paso de movimiento en vuelo a la vez. Si se acumulan demasiados pasos
   // (pestaña oculta, red lenta), se descartan los de poca relevancia: el siguiente
@@ -841,10 +908,32 @@
       if (isMotion(s) && !s.important && s.kind !== 'tick') { S.queue.splice(i, 1); i--; motion--; }
     }
   }
+  // Recorrido pendiente: destinos del balón por alcanzar o jugadores que aún no llegan
+  // (sus pasos no alcanzaron el destino porque la velocidad máxima lo impide). Se
+  // continúa a ritmo constante hasta converger; nunca se acelera.
+  function continuationStep() {
+    var plan = S.plan;
+    if (reduced.matches || !plan || !plan.shown) return null;
+    var pending = Boolean(plan.ballQueue && plan.ballQueue.length);
+    if (!pending) {
+      pending = Object.keys(plan.players).some(function (id) {
+        var sh = plan.shown.players[id], tg = plan.players[id];
+        return !sh || Math.hypot((tg.x - sh.x) * 105, (tg.y - sh.y) * 68) > 0.01;
+      });
+    }
+    if (!pending) return null;
+    var step = { kind: 'event', ms: EVENT_STEP_MS, ball: null, players: {}, important: false, continuation: true };
+    return limitStep(plan, step);
+  }
   function pump() {
     if (S.stepTimer) return; // un paso está en vuelo; su temporizador vuelve a llamar a pump
     var now = performance.now();
-    while (S.queue.length) {
+    for (;;) {
+      if (!S.queue.length) {
+        var cont = continuationStep();
+        if (!cont) break;
+        S.queue.push(cont);
+      }
       var step = S.queue.shift();
       if (!isMotion(step)) { appendCommentary(step.commentary); continue; }
       var start = step.queued ? S.busyUntil : now;
@@ -1615,6 +1704,9 @@
     });
     el['est-music'].setAttribute('aria-pressed', String(S.musicOn));
     el['est-music'].setAttribute('aria-label', S.musicOn ? 'Apagar música de ambiente' : 'Activar música de ambiente');
+    el['est-ads-open'].addEventListener('click', function () {
+      el['est-ads'].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
     // Si la música ya estaba activada al cargar, arranca con el primer gesto del usuario.
     document.addEventListener('pointerdown', function firstGesture() {
       document.removeEventListener('pointerdown', firstGesture);

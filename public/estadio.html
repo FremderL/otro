@@ -35,6 +35,7 @@
     <div class="estadio-nav-right">
       <span id="est-connection" class="connection-badge connecting"><i></i><span>Conectando</span></span>
       <span id="est-chips" class="est-chips" title="Tus fichas virtuales">— fichas</span>
+      <button id="est-ads-open" class="btn btn-ghost btn-small" type="button" aria-controls="est-ads" hidden>📢 Publicidad</button>
       <button id="est-sound" class="icon-btn" type="button" aria-label="Silenciar campana de avisos" aria-pressed="false">🔔</button>
       <button id="est-music" class="icon-btn" type="button" aria-label="Activar música de ambiente" aria-pressed="false" title="Música de ambiente">🎵</button>
       <a class="btn btn-ghost btn-small" href="/">← Casino</a>
@@ -93,12 +94,41 @@
           </div>
           <a id="est-promo-link" class="btn btn-ghost btn-small" href="/">Explorar casino</a>
         </aside>
-        <details id="est-promo-compose" class="est-promo-compose" hidden>
+      </section>
+
+      <div class="est-canvas-wrap" id="est-canvas-wrap">
+        <canvas id="est-pitch" width="1050" height="680" role="img"
+                aria-label="Cancha de fútbol en vista cenital. Marcador y minuto disponibles en el texto alternativo."></canvas>
+        <div id="est-goal-banner" class="est-goal-banner" aria-hidden="true">¡GOOOL!</div>
+      </div>
+
+      <!-- Relato de dos voces -->
+      <div class="est-commentary" id="est-commentary" aria-live="polite" aria-label="Relato del partido">
+        <p class="est-commentary-empty">El relato comenzará cuando arranque el partido…</p>
+      </div>
+
+      <!-- Fallback solo texto (accesibilidad / canvas desactivado / reduced-motion extremo) -->
+      <div class="est-text-fallback" id="est-text-fallback" aria-live="polite">
+        <strong>Texto alternativo del partido:</strong> <span id="est-text-state">Sin partido seleccionado.</span>
+      </div>
+    </section>
+
+    <!-- Columna derecha: boleta de apuesta + mis apuestas -->
+      <section class="est-panel est-ads" id="est-ads" aria-labelledby="est-ads-title" hidden>
+        <h2 id="est-ads-title">📢 Publicidad en La Previa</h2>
+        <ol class="est-ads-steps">
+          <li><b>Inicia sesión</b> con tu cuenta vinculada del casino.</li>
+          <li><b>Pide el rol Patrocinador</b> al equipo de administración. Solo ellos lo otorgan.</li>
+          <li><b>Elige un partido</b> de la lista que empiece en menos de 30 minutos. Su publicidad se abre en ese momento.</li>
+          <li><b>Escribe tu texto</b> (3–140 caracteres), elige un enlace interno y, si quieres, sube una imagen (PNG o JPEG apaisada, máx. 350 KB).</li>
+          <li><b>Espera la revisión.</b> Si se aprueba, se cobran 250 fichas y tu anuncio se muestra en La Previa. Si se rechaza, no se cobra y la imagen se borra.</li>
+        </ol>
+        <div id="est-promo-auth" class="est-promo-auth" role="status">Comprobando sesión de cuenta…</div>
+        <a id="est-promo-login" class="btn btn-ghost btn-small" href="/" hidden>Inicia sesión en el casino y vuelve a La Previa</a>
+        <button id="est-promo-refresh" class="text-button" type="button" hidden>Ya inicié sesión · verificar</button>
+        <details id="est-promo-compose" class="est-promo-compose" hidden open>
           <summary>Enviar una promoción para este partido</summary>
-          <p class="est-promo-note">Solo cuentas vinculadas. La promoción debe aprobarse antes de publicarse; se cobran 250 fichas únicamente al aprobarla.</p>
-          <div id="est-promo-auth" class="est-promo-auth" role="status">Comprobando sesión de cuenta…</div>
-          <a id="est-promo-login" class="btn btn-ghost btn-small" href="/" hidden>Inicia sesión en el casino y vuelve a La Previa</a>
-          <button id="est-promo-refresh" class="text-button" type="button" hidden>Ya inicié sesión · verificar</button>
+          <p class="est-promo-note">Solo cuentas con rol Patrocinador. La promoción debe aprobarse antes de publicarse; se cobran 250 fichas únicamente al aprobarla.</p>
           <form id="est-promo-form" class="est-promo-form" hidden>
             <label for="est-promo-copy-input">Texto breve (3–140 caracteres)
               <input id="est-promo-copy-input" name="text" type="text" minlength="3" maxlength="140" required autocomplete="off" />
@@ -123,25 +153,6 @@
           </form>
         </details>
       </section>
-
-      <div class="est-canvas-wrap" id="est-canvas-wrap">
-        <canvas id="est-pitch" width="1050" height="680" role="img"
-                aria-label="Cancha de fútbol en vista cenital. Marcador y minuto disponibles en el texto alternativo."></canvas>
-        <div id="est-goal-banner" class="est-goal-banner" aria-hidden="true">¡GOOOL!</div>
-      </div>
-
-      <!-- Relato de dos voces -->
-      <div class="est-commentary" id="est-commentary" aria-live="polite" aria-label="Relato del partido">
-        <p class="est-commentary-empty">El relato comenzará cuando arranque el partido…</p>
-      </div>
-
-      <!-- Fallback solo texto (accesibilidad / canvas desactivado / reduced-motion extremo) -->
-      <div class="est-text-fallback" id="est-text-fallback" aria-live="polite">
-        <strong>Texto alternativo del partido:</strong> <span id="est-text-state">Sin partido seleccionado.</span>
-      </div>
-    </section>
-
-    <!-- Columna derecha: boleta de apuesta + mis apuestas -->
     <aside class="est-col-right" aria-label="Apuestas">
       <section class="est-panel" id="est-bet-panel">
         <h2 class="est-panel-title">Apuestas <span id="est-market-phase" class="est-badge">Pre-partido</span></h2>

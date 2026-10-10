@@ -69,6 +69,7 @@ function setup({ promotionsEnabled = true } = {}) {
   const profiles = new ProfileStore(path.join(dir, 'profiles.json'), { deferSeasonCheck: true });
   const profile = profiles.getOrCreate('linked-profile', 'Promotor');
   profile.username = 'promotor';
+  profile.role = 'sponsor';
   profile.chips = 1000;
   profile.transactions = [];
   profile.balanceHistory = [];
@@ -161,6 +162,21 @@ test('cleanProfile preserva campañas válidas sin aceptar HTML/rutas externas n
   });
   assert.deepEqual(profile.promotions.map(item => item.id), ['good']);
   assert.equal(profile.promotions[0].status, 'pending');
+});
+
+test('solo un patrocinador puede solicitar publicidad: una cuenta vinculada sin rol recibe 403 y no crea nada', async t => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  ctx.profile.role = 'user';
+  const body = { matchId: ctx.match.id, text: 'Ven a jugar en MonteCristo', targetPath: '/estadio' };
+  const denied = await ctx.app.run('POST', '/api/estadio/promotions', { body, headers: ctx.userHeaders() });
+  assert.equal(denied.statusCode, 403);
+  assert.equal(denied.body.code, 'sponsor_required');
+  assert.equal(ctx.profile.promotions.length, 0);
+  const mine = await ctx.app.run('GET', '/api/estadio/promotions/:matchId/mine', { params: { matchId: ctx.match.id }, headers: ctx.userHeaders() });
+  assert.equal(mine.body.canSubmit, false);
+  ctx.profile.role = 'sponsor';
+  const mineSponsor = await ctx.app.run('GET', '/api/estadio/promotions/:matchId/mine', { params: { matchId: ctx.match.id }, headers: ctx.userHeaders() });
+  assert.equal(mineSponsor.body.canSubmit, true);
 });
 
 test('solo una sesión de cuenta vinculada puede enviar durante T−30; el envío no debita', async t => {

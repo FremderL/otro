@@ -507,3 +507,10 @@
   background: linear-gradient(180deg, rgba(7,11,12,.9), rgba(7,11,12,.45));
   border-bottom-color: transparent;
 }
+
+/* Publicidad: guía visible en la columna derecha, separada del formulario de envío. */
+.est-ads .est-ads-steps { margin: 0 0 12px; padding-left: 20px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.est-ads .est-ads-steps li { margin: 0 0 6px; }
+.est-ads .est-ads-steps b { color: var(--text); }
+.est-ads #est-ads-title { margin: 0 0 10px; font-size: 14px; letter-spacing: .04em; }
+.est-ads .est-promo-auth { margin: 0 0 10px; }

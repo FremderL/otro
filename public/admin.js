@@ -517,7 +517,7 @@
     $('#moderation-form').classList.toggle('hidden', !canActOnUser);
     $('#unban-panel').classList.toggle('hidden', !(currentStaff?.role === 'admin' && canActOnUser && user.status !== 'active'));
     $('#role-form').classList.toggle('hidden', !(currentStaff?.role === 'admin' && canActOnUser));
-    $('#role-submit').textContent = user.role === 'moderator' ? 'Quitar rol de moderador' : 'Promover a moderador';
+    $('#role-select').value = user.role === 'admin' ? 'moderator' : user.role;
     $('#user-detail').classList.remove('hidden');
   }
 
@@ -535,7 +535,8 @@
     }
     resultsContainer.innerHTML = users.map(user => {
       const roleBadge = user.role === 'admin' ? 'badge-danger' :
-                        user.role === 'moderator' ? 'badge-gold' : 'badge-muted';
+                        user.role === 'moderator' ? 'badge-gold' :
+                        user.role === 'sponsor' ? 'badge-mint' : 'badge-muted';
       const statusBadge = user.status === 'active' ? 'badge-mint' :
                           user.status === 'suspended' ? 'badge-warning' : 'badge-danger';
       return `<div class="user-row">
@@ -625,8 +626,10 @@
     if (!selectedUser || currentStaff?.role !== 'admin') return;
     const reasonField = $('#role-reason');
     if (!reasonField.reportValidity()) return;
-    const nextRole = selectedUser.role === 'moderator' ? 'user' : 'moderator';
-    const actionName = nextRole === 'moderator' ? 'promover a moderador' : 'retirar los permisos de moderación';
+    const nextRole = $('#role-select').value;
+    if (nextRole === selectedUser.role) return status('La cuenta ya tiene ese rol.', 'info');
+    const roleNames = { user: 'usuario', sponsor: 'patrocinador', moderator: 'moderador' };
+    const actionName = `cambiar el rol a ${roleNames[nextRole] || nextRole}`;
     const confirmation = window.prompt(`Escribe @${selectedUser.username} para confirmar ${actionName}:`);
     if (confirmation !== `@${selectedUser.username}`) return status('Acción cancelada.', 'info');
     const userId = selectedUser.id;

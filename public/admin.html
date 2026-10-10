@@ -242,12 +242,19 @@
         <form id="role-form" class="role-form hidden">
           <div>
             <h3>Rol de la cuenta</h3>
-            <p>Solo un administrador puede otorgar o retirar permisos de moderación. El cambio revoca las sesiones actuales; al iniciar sesión como moderador se exigirá MFA.</p>
+            <p>Solo un administrador puede cambiar el rol. <b>Patrocinador</b> permite solicitar publicidad en La Previa (sin acceso al panel). <b>Moderador</b> exige MFA. El cambio revoca las sesiones actuales.</p>
           </div>
+          <label>Nuevo rol
+            <select id="role-select" name="role">
+              <option value="user">Usuario</option>
+              <option value="sponsor">Patrocinador</option>
+              <option value="moderator">Moderador</option>
+            </select>
+          </label>
           <label>Motivo
             <textarea id="role-reason" minlength="10" maxlength="500" required></textarea>
           </label>
-          <button id="role-submit" class="button" type="submit">Promover a moderador</button>
+          <button id="role-submit" class="button" type="submit">Aplicar rol</button>
         </form>
         <hr />
         <form id="password-reset-form">

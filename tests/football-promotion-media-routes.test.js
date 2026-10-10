@@ -95,6 +95,7 @@ function setup({ promotionsEnabled = true } = {}) {
   const profiles = new ProfileStore(path.join(dir, 'profiles.json'), { deferSeasonCheck: true });
   const profile = profiles.getOrCreate('linked-profile', 'Promotor');
   profile.username = 'promotor';
+  profile.role = 'sponsor';
   profile.chips = 1000;
   profile.transactions = [];
   profile.balanceHistory = [];
