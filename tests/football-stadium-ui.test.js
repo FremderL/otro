@@ -87,9 +87,12 @@ function createHarness(options = {}) {
   };
   let rafCallback = null;
   const drawnText = [];
+  const ballTrace = [];
   const canvasContext = new Proxy({}, {
     get(_target, key) {
       if (key === 'fillText') return value => drawnText.push(String(value));
+      // El balón se dibuja con radio BALL_R (6): se registra su posición para medir la trayectoria.
+      if (key === 'arc') return (x, y, r) => { if (r === 6) ballTrace.push({ x, y }); };
       return () => {};
     },
     set() { return true; }
@@ -158,7 +161,7 @@ function createHarness(options = {}) {
   window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
 
   return {
-    dom, window, socket, handlers, match, matchState, players, drawnText, requests,
+    dom, window, socket, handlers, match, matchState, players, drawnText, requests, ballTrace,
     get submittedPromotion() { return submittedPromotion; },
     advanceTime(ms) {
       nowMs += ms;
@@ -178,10 +181,10 @@ function createHarness(options = {}) {
       handlers.connect();
       window.document.querySelector('#est-match-list li').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
     },
-    draw() {
+    draw(offsetMs = 3000) {
       drawnText.length = 0;
       assert.equal(typeof rafCallback, 'function');
-      rafCallback(window.performance.now() + 3000);
+      rafCallback(window.performance.now() + offsetMs);
       return drawnText.slice();
     },
     close() { dom.window.close(); }
@@ -372,6 +375,48 @@ test('un partido en retraso con espera pendiente se recupera a cuenta regresiva 
   assert.match(window.document.getElementById('est-preshow-status').textContent, /Kickoff programado/);
   assert.equal(window.document.getElementById('est-preshow-timer').textContent, '15:00');
   assert.equal(promo.hidden, false, 'reactiva promoción');
+});
+
+test('ráfaga de eventos: el balón recorre cada paso en orden, sin saltar al destino final', async t => {
+  const h = createHarness({ reducedMotion: false });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { handlers, match, ballTrace } = h;
+  const id = match.id;
+  handlers['football:status']({ matchId: id, code: 'live', minute: 0 });
+  // Cinco pases llegan en el mismo instante (catch-up del servidor tras un corte).
+  const targets = [.2, .4, .6, .8, .9];
+  targets.forEach((x, i) => handlers['football:event']({
+    matchId: id,
+    event: {
+      type: 'pass_sequence', team: 'home', minute: 10 + i, phase: 'build_up', playStopped: false,
+      ball: { x, y: .5 }, ballFrom: { x: i ? targets[i - 1] : .5, y: .5 }, actorPosition: { x: x - .05, y: .5 },
+      playerId: 'h2', receiverId: 'h10', ballCarrierId: null, possessionTeam: 'home'
+    }
+  }));
+  const norm = px => (px - 18) / (1050 - 36);
+  const samples = [];
+  for (let ms = 0; ms <= 3600; ms += 50) {
+    ballTrace.length = 0;
+    h.draw(0);
+    samples.push({ ms, x: norm(ballTrace[ballTrace.length - 1].x) });
+    h.advanceTime(50);
+  }
+  const at = ms => samples.find(s => s.ms === ms).x;
+  // Cada paso dura 700 ms: a mitad del primer paso el balón está entre el origen (.5) y su destino (.2).
+  assert.ok(at(350) < .5 && at(350) > .2, `mitad del primer paso en tránsito (${at(350).toFixed(3)})`);
+  // Al terminar cada paso, el balón llega a su destino intermedio (no al final).
+  assert.ok(Math.abs(at(700) - .2) < .01, `primer destino (${at(700).toFixed(3)})`);
+  assert.ok(Math.abs(at(1400) - .4) < .01, `segundo destino (${at(1400).toFixed(3)})`);
+  assert.ok(Math.abs(at(2800) - .8) < .01, `cuarto destino (${at(2800).toFixed(3)})`);
+  // Ritmo constante: la velocidad es igual en cada tramo del paso (sin frenazos de easing).
+  const v1 = at(300) - at(0), v2 = at(650) - at(350);
+  assert.ok(Math.abs(v1 - v2) < 0.01, `velocidad lineal dentro del paso (${v1.toFixed(3)} vs ${v2.toFixed(3)})`);
+  // Nada de saltos: incrementos por muestra acotados (la ráfaga antigua saltaba de golpe).
+  for (let i = 1; i < samples.length; i++) {
+    assert.ok(Math.abs(samples[i].x - samples[i - 1].x) < 0.03, `sin saltos en ${samples[i].ms} ms`);
+  }
+  assert.ok(Math.abs(at(3600) - .9) < .01, 'al final de la cola el balón queda en el último destino');
 });
 
 test('la UI sigue el estado del motor: kickoff, pausas, gol, sustitución y final', async t => {

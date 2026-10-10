@@ -209,8 +209,9 @@
           </form>
         </div>
         <div id="lobby-chat-content" class="lobby-chat-content">
-          <div id="lobby-chat-messages" class="lobby-chat-messages"></div>
-          <form id="lobby-chat-form" class="lobby-chat-form"><input id="lobby-chat-input" maxlength="180" placeholder="Escribe al lobby o pregunta a @Monte…" autocomplete="off" /><button aria-label="Enviar mensaje">↑</button></form>
+          <div id="lobby-chat-messages" class="lobby-chat-messages" role="log" aria-label="Chat del casino" aria-relevant="additions"></div>
+          <button id="lobby-chat-jump" class="chat-jump hidden" type="button">↓ Nuevos mensajes</button>
+          <form id="lobby-chat-form" class="lobby-chat-form"><input id="lobby-chat-input" maxlength="180" placeholder="Escribe al lobby o pregunta a @Monte…" aria-label="Escribe al chat del casino" autocomplete="off" /><button aria-label="Enviar mensaje">↑</button></form>
         </div>
       </section>
     </aside>
@@ -449,13 +450,14 @@
       </div>
       <div class="side-section chat-section">
         <div class="side-title"><span>CHAT DE MESA</span><i class="live-pip"></i></div>
-        <div id="chat-list" class="chat-list"></div>
+        <div id="chat-list" class="chat-list" role="log" aria-label="Chat de la mesa" aria-relevant="additions"></div>
+        <button id="chat-jump" class="chat-jump hidden" type="button">↓ Nuevos mensajes</button>
         <div class="reaction-bar" aria-label="Reacciones rápidas">
           <button data-reaction="🔥" title="Fuego">🔥</button><button data-reaction="👏" title="Aplauso">👏</button><button data-reaction="😂" title="Risa">😂</button><button data-reaction="🍀" title="Suerte">🍀</button><button data-reaction="😱" title="Sorpresa">😱</button><button data-reaction="💎" title="Diamante">💎</button><button id="quick-chat-toggle" title="Mensaje rápido">···</button>
           <div id="quick-chat-menu" class="quick-chat-menu hidden"><button data-quick-chat="¡Bien jugado!">¡Bien jugado!</button><button data-quick-chat="¡Voy con todo!">¡Voy con todo!</button><button data-quick-chat="La suerte está de mi lado">La suerte está de mi lado</button><button data-quick-chat="Otra ronda">Otra ronda</button></div>
         </div>
         <form id="chat-form" class="chat-form">
-          <input id="chat-input" maxlength="180" placeholder="Escribe un mensaje…" autocomplete="off" />
+          <input id="chat-input" maxlength="180" placeholder="Escribe un mensaje…" aria-label="Escribe un mensaje a la mesa" autocomplete="off" />
           <button aria-label="Enviar mensaje">↑</button>
         </form>
       </div>
@@ -588,6 +590,7 @@
     })();
   </script>
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/chat-format.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

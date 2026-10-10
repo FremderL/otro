@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "check:syntax": "node scripts/check-syntax.js",
     "check": "npm run lint && npm run check:syntax",
-    "test:unit": "node --test tests/football-betting.test.js tests/football-commentary.test.js tests/football-engine.test.js tests/football-fixtures.test.js tests/football-market-exclusivity.test.js tests/football-match-engine.test.js tests/football-odds.test.js tests/football-prng.test.js tests/football-progression.test.js tests/football-ratings.test.js tests/football-simulated-flow.test.js tests/football-store.test.js tests/football-teams.test.js tests/season-reset-gate.test.js tests/lobby-chat-assistant.test.js",
+    "test:unit": "node --test tests/football-betting.test.js tests/football-commentary.test.js tests/football-engine.test.js tests/football-fixtures.test.js tests/football-market-exclusivity.test.js tests/football-match-engine.test.js tests/football-odds.test.js tests/football-prng.test.js tests/football-progression.test.js tests/football-ratings.test.js tests/football-simulated-flow.test.js tests/football-store.test.js tests/football-teams.test.js tests/season-reset-gate.test.js tests/lobby-chat-assistant.test.js tests/chat-format.test.js",
     "test:integration": "node --test tests/admin-user-report.test.js tests/football-admin-guard.test.js tests/football-http.test.js tests/football-promotions.test.js tests/football-sockets.test.js tests/football-stadium-ui.test.js tests/lobby-chat-integration.test.js tests/football-store-pg.test.js",
     "test": "npm run check && npm run test:unit && npm run test:integration",
     "migrate:db": "node scripts/migrate-db.js",

@@ -11,6 +11,13 @@
   var TOS_KEY = 'montecristo-tos';
   var TOS_FALLBACK = '2026-09-28';
   var TICK_MS = 2000;              // cadencia del tick del servidor (§8.1)
+  var EVENT_STEP_MS = 700;         // duración fija de cada paso de evento: ritmo visual constante
+  var MAX_MOTION_BACKLOG = 8;      // pasos de movimiento en cola antes de descartar los menos relevantes
+  var IMPORTANT_EVENTS = {         // eventos que nunca se descartan de la cola de movimiento
+    goal: true, penalty_scored: true, penalty_awarded: true, red_card: true, second_yellow: true,
+    kickoff: true, goal_restart: true, halftime: true, second_half: true, substitution: true,
+    extra_time_start: true, extra_time_end: true, shootout_start: true, shootout_end: true, full_time: true
+  };
   var PRESHOW_WINDOW_MS = 30 * 60 * 1000;
   var PROMOTION_ROTATION_MS = 15 * 1000;
   var HOUSE_PROMOTIONS = [
@@ -33,7 +40,6 @@
   function $(id) { return document.getElementById(id); }
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   function lerp(a, b, t) { return a + (b - a) * t; }
-  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
   function nx(x) { return PAD + x * FIELD_W; }
   function ny(y) { return PAD + y * FIELD_H; }
   function fmt(n) { return Number(n || 0).toLocaleString('es-MX'); }
@@ -85,9 +91,9 @@
     currentMatchId: null, match: null, markets: {}, movement: {}, myBets: [],
     slip: null, muted: false, soundOn: localStorage.getItem('montecristo-notifications') !== 'off',
     players: [], authoritativePlayers: [], possessionTeam: 'home', ballCarrierId: null, playStopped: true,
-    ball: { x: .5, y: .5 }, ballStart: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 },
-    tweenT0: 0, minute: 0, phase: 'pre', score: { home: 0, away: 0 }, possession: { home: .5, away: .5 },
-    goalFlashUntil: 0, goalAnimUntil: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false
+    ball: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 }, motion: null, queue: [], stepTimer: null, busyUntil: 0, plan: null,
+    minute: 0, phase: 'pre', score: { home: 0, away: 0 }, possession: { home: .5, away: .5 },
+    goalFlashUntil: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false
   };
 
   var el = {};
@@ -598,13 +604,12 @@
     S.possessionTeam = ms.state && ms.state.possessionTeam ? ms.state.possessionTeam : 'home';
     S.ballCarrierId = ms.state ? ms.state.ballCarrierId : null;
     S.playStopped = ms.state ? Boolean(ms.state.playStopped) : true;
-    S.goalAnimUntil = 0;
+    clearMotion();
     S.authoritativePlayers = ms.state && Array.isArray(ms.state.players) ? ms.state.players : [];
     var ball = ms.state && ms.state.ball ? ms.state.ball : { x: .5, y: .5 };
-    S.ball = { x: ball.x, y: ball.y }; S.ballStart = { x: ball.x, y: ball.y }; S.ballDest = { x: ball.x, y: ball.y };
+    S.ball = { x: ball.x, y: ball.y }; S.ballDest = { x: ball.x, y: ball.y };
     resolveKits();
     initPlayers();
-    S.tweenT0 = performance.now();
     renderScoreboard();
     renderMarkets();
     renderMyBets();
@@ -695,32 +700,182 @@
       p.startX = p.baseX; p.startY = p.baseY; p.destX = t.x; p.destY = t.y;
     });
   }
-  function movePlayerTo(id, point) {
-    if (!point || !Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y))) return;
-    var player = S.players.find(function (p) { return p.id === id; });
-    if (!player) return;
-    player.startX = player.renderX; player.startY = player.renderY;
-    player.destX = clamp(Number(point.x), .01, .99);
-    player.destY = clamp(Number(point.y), .02, .98);
+  // ===== Reproducción de movimiento: cola de pasos (60 fps) =====
+  // Los mensajes del servidor llegan a ráfagas (eventos revelados en lote tras un
+  // corte de red o de pestaña) y los ticks cada 2 s. Aplicarlos al instante
+  // reiniciaba el tween: el balón y los jugadores se congelaban y luego saltaban.
+  // Ahora cada mensaje de movimiento se planifica como un «paso» de duración fija;
+  // los pasos se reproducen en orden con interpolación lineal desde la pose que se
+  // ve en pantalla hasta el destino del paso. Marcador, mercados y plantilla siguen
+  // actualizándose al instante; solo el movimiento y el relato esperan su turno.
+  function motionP(now) {
+    var m = S.motion;
+    if (!m || !(m.ms > 0)) return 1;
+    return clamp((now - m.t0) / m.ms, 0, 1);
+  }
+  function poseOf(pl, p) {
+    var m = S.motion;
+    var f = m && m.from[pl.id], t = m && m.to[pl.id];
+    if (!f || !t) return { x: pl.baseX, y: pl.baseY };
+    return { x: lerp(f.x, t.x, p), y: lerp(f.y, t.y, p) };
+  }
+  function ballAt(p) {
+    var m = S.motion;
+    if (!m) return { x: S.ball.x, y: S.ball.y };
+    return { x: lerp(m.ballFrom.x, m.ballTo.x, p), y: lerp(m.ballFrom.y, m.ballTo.y, p) };
+  }
+  function isMotion(step) { return !step.commentary; }
+  function snapshotRender() {
+    var players = {};
+    S.players.forEach(function (pl) { players[pl.id] = { x: pl.renderX, y: pl.renderY }; });
+    return { players: players, ball: { x: S.ball.x, y: S.ball.y } };
+  }
+  // El plan es el destino acumulado de los pasos pendientes. Sin pasos pendientes
+  // parte de lo que se ve en pantalla, para no arrastrar desfases antiguos.
+  function planBase() {
+    if (!S.plan || (!S.stepTimer && S.queue.length === 0)) S.plan = snapshotRender();
+    return S.plan;
+  }
+  function plannedAt(plan, pl) { return plan.players[pl.id] || { x: pl.renderX, y: pl.renderY }; }
+  function placeInPlan(plan, id, point) {
+    if (id == null || !point) return;
+    var x = Number(point.x), y = Number(point.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    plan.players[id] = { x: clamp(x, .01, .99), y: clamp(y, .02, .98) };
+  }
+  function planEventStep(ev, plan) {
+    var step = { kind: 'event', ms: reduced.matches ? 0 : EVENT_STEP_MS, ball: null, players: {}, important: Boolean(IMPORTANT_EVENTS[ev.type]) };
+    var changed = {};
+    function move(id, point) { placeInPlan(plan, id, point); if (id != null) changed[id] = true; }
+    if (ev.ball) plan.ball = { x: clamp(ev.ball.x, -0.01, 1.01), y: clamp(ev.ball.y, 0, 1) };
+    if (ev.playerId != null && ev.actorPosition) move(ev.playerId, ev.actorPosition);
+    if (ev.receiverId != null) move(ev.receiverId, ev.ball || plan.ball);
+    if (ev.keeperId != null && ev.keeperPosition) move(ev.keeperId, ev.keeperPosition);
+    if (ev.type === 'kickoff' || ev.type === 'goal_restart') {
+      S.players.forEach(function (pl) {
+        var c = plannedAt(plan, pl);
+        if (pl.team === 'home' && c.x > 0.485) move(pl.id, { x: 0.485, y: c.y });
+        else if (pl.team === 'away' && c.x < 0.515) move(pl.id, { x: 0.515, y: c.y });
+      });
+      if (ev.playerId != null) move(ev.playerId, { x: 0.5, y: 0.5 });
+    }
+    // El defensor más cercano al balón se acerca (presión) si hay posesión rival.
+    if (ev.ball && !S.playStopped && S.possessionTeam && ['goal_celebration', 'halftime', 'ended'].indexOf(ev.phase) < 0) {
+      var defSide = S.possessionTeam === 'home' ? 'away' : 'home';
+      var nearest = null, minDist = Infinity;
+      S.players.forEach(function (pl) {
+        if (pl.team !== defSide || pl.role === 'GK' || pl.id === ev.playerId) return;
+        var c = plannedAt(plan, pl);
+        var d = Math.hypot(c.x - plan.ball.x, c.y - plan.ball.y);
+        if (d < minDist) { minDist = d; nearest = pl; }
+      });
+      if (nearest) {
+        var from = plannedAt(plan, nearest);
+        move(nearest.id, { x: from.x + (plan.ball.x - from.x) * 0.35, y: from.y + (plan.ball.y - from.y) * 0.35 });
+      }
+    }
+    Object.keys(changed).forEach(function (id) { step.players[id] = plan.players[id]; });
+    step.ball = { x: plan.ball.x, y: plan.ball.y };
+    return step;
+  }
+  function planTickStep(data, plan) {
+    var step = { kind: 'tick', ms: reduced.matches ? 0 : TICK_MS, ball: null, players: {}, important: false };
+    if (data.ball) plan.ball = { x: clamp(data.ball.x, -0.01, 1.01), y: clamp(data.ball.y, 0, 1) };
+    if (Array.isArray(data.players)) {
+      data.players.forEach(function (p) {
+        if (!p || !p.active || (p.team !== 'home' && p.team !== 'away')) return;
+        placeInPlan(plan, p.id, { x: p.x, y: p.y });
+        if (plan.players[p.id]) step.players[p.id] = plan.players[p.id];
+      });
+    } else if (Array.isArray(S.authoritativePlayers) && S.authoritativePlayers.length) {
+      // Sin posiciones en este tick: se mantienen las últimas autoritativas conocidas.
+      S.authoritativePlayers.forEach(function (p) {
+        if (!p || !p.active) return;
+        placeInPlan(plan, p.id, { x: p.x, y: p.y });
+        if (plan.players[p.id]) step.players[p.id] = plan.players[p.id];
+      });
+    } else {
+      // Sin posiciones del servidor: formación alrededor del balón.
+      S.players.forEach(function (pl) {
+        if (!pl.slot) return;
+        var t = targetFor(pl.slot, pl.mirror, plan.ball.x, plan.ball.y);
+        placeInPlan(plan, pl.id, { x: t.x, y: t.y });
+        step.players[pl.id] = plan.players[pl.id];
+      });
+    }
+    step.ball = { x: plan.ball.x, y: plan.ball.y };
+    return step;
+  }
+  // Un solo paso de movimiento en vuelo a la vez. Si se acumulan demasiados pasos
+  // (pestaña oculta, red lenta), se descartan los de poca relevancia: el siguiente
+  // tick reubica a todos. Nunca se acelera la reproducción.
+  function enqueueStep(step) {
+    if (step.kind === 'tick') S.queue = S.queue.filter(function (s) { return s.kind !== 'tick'; });
+    step.queued = Boolean(S.stepTimer) || S.queue.length > 0;
+    S.queue.push(step);
+    trimMotionBacklog();
+    pump();
+  }
+  function trimMotionBacklog() {
+    var motion = S.queue.filter(isMotion).length;
+    for (var i = 0; motion > MAX_MOTION_BACKLOG && i < S.queue.length; i++) {
+      var s = S.queue[i];
+      if (isMotion(s) && !s.important && s.kind !== 'tick') { S.queue.splice(i, 1); i--; motion--; }
+    }
+  }
+  function pump() {
+    if (S.stepTimer) return; // un paso está en vuelo; su temporizador vuelve a llamar a pump
+    var now = performance.now();
+    while (S.queue.length) {
+      var step = S.queue.shift();
+      if (!isMotion(step)) { appendCommentary(step.commentary); continue; }
+      var start = step.queued ? S.busyUntil : now;
+      var end = start + step.ms;
+      applyMotion(step, start);
+      S.busyUntil = end;
+      if (end > now) {
+        S.stepTimer = setTimeout(function () { S.stepTimer = null; pump(); }, end - now);
+        return;
+      }
+      // Paso ya vencido (pestaña en segundo plano): se aplica su destino y se sigue.
+    }
+  }
+  function applyMotion(step, t0) {
+    var now = performance.now();
+    var p = motionP(now);
+    var from = {}, to = {};
+    S.players.forEach(function (pl) {
+      var pose = poseOf(pl, p);
+      from[pl.id] = pose;
+      to[pl.id] = step.players[pl.id] || pose;
+    });
+    var ballFrom = ballAt(p);
+    S.motion = {
+      t0: t0, ms: step.ms, from: from, to: to,
+      ballFrom: ballFrom, ballTo: step.ball ? { x: step.ball.x, y: step.ball.y } : ballFrom
+    };
+  }
+  function clearMotion() {
+    if (S.stepTimer) clearTimeout(S.stepTimer);
+    S.stepTimer = null; S.queue = []; S.motion = null; S.plan = null; S.busyUntil = 0;
   }
 
-  // ===== Ciclo de render (tweening 60 fps) =====
+  // ===== Ciclo de render (60 fps, lineal) =====
   function frame(now) {
     S.rafId = requestAnimationFrame(frame);
-    var p = clamp((now - S.tweenT0) / TICK_MS, 0, 1);
-    var e = reduced.matches ? 1 : easeOutCubic(p);
-    S.ball.x = lerp(S.ballStart.x, S.ballDest.x, e);
-    S.ball.y = lerp(S.ballStart.y, S.ballDest.y, e);
+    var m = S.motion;
+    var p = motionP(now);
+    S.ball = ballAt(p);
 
     var carrier = null;
     if (S.ballCarrierId != null) {
-      carrier = S.players.find(function (p) { return p.id === S.ballCarrierId; });
+      carrier = S.players.find(function (q) { return q.id === S.ballCarrierId; });
     }
 
     for (var i = 0; i < S.players.length; i++) {
       var pl = S.players[i];
-      pl.baseX = lerp(pl.startX, pl.destX, e);
-      pl.baseY = lerp(pl.startY, pl.destY, e);
+      var pose = poseOf(pl, p);
+      pl.baseX = pose.x; pl.baseY = pose.y;
       if (reduced.matches || S.playStopped) {
         pl.renderX = pl.baseX; pl.renderY = pl.baseY;
       } else if (carrier && pl.id === carrier.id) {
@@ -732,7 +887,8 @@
     }
 
     if (carrier && !S.playStopped) {
-      if (e >= 0.8 || (Math.hypot(S.ballDest.x - S.ballStart.x, S.ballDest.y - S.ballStart.y) < 0.06)) {
+      var travel = m ? Math.hypot(m.ballTo.x - m.ballFrom.x, m.ballTo.y - m.ballFrom.y) : 0;
+      if (p >= 0.8 || travel < 0.06) {
         var dir = carrier.team === 'home' ? 1 : -1;
         S.ball.x = clamp(carrier.renderX + dir * 0.012, -0.01, 1.01);
         S.ball.y = carrier.renderY;
@@ -852,11 +1008,12 @@
   }
   function drawBall(now) {
     var bx = nx(S.ball.x), by = ny(S.ball.y);
-    var p = clamp((now - S.tweenT0) / TICK_MS, 0, 1);
-    var dist = Math.hypot(S.ballDest.x - S.ballStart.x, S.ballDest.y - S.ballStart.y);
-    if (!reduced.matches && !S.playStopped && p < 1 && dist > 0.05) {
+    var m = S.motion;
+    var p = motionP(now);
+    var dist = m ? Math.hypot(m.ballTo.x - m.ballFrom.x, m.ballTo.y - m.ballFrom.y) : 0;
+    if (!reduced.matches && !S.playStopped && m && p < 1 && dist > 0.05) {
       ctx.beginPath();
-      ctx.moveTo(nx(S.ballStart.x), ny(S.ballStart.y));
+      ctx.moveTo(nx(m.ballFrom.x), ny(m.ballFrom.y));
       ctx.lineTo(bx, by);
       ctx.strokeStyle = 'rgba(229,189,114,' + (0.18 * (1 - p)) + ')';
       ctx.lineWidth = 3;
@@ -907,24 +1064,16 @@
   }
   function onCommentary(data) {
     if (!data || data.matchId !== S.currentMatchId) return;
-    var delay = (!reduced.matches && S.goalAnimUntil && S.goalAnimUntil > performance.now())
-      ? Math.max(0, S.goalAnimUntil - performance.now())
-      : 0;
-    if (delay > 0) {
-      setTimeout(function () {
-        if (data.matchId !== S.currentMatchId) return;
-        appendCommentary({ voice: data.voice, text: data.text });
-      }, delay);
-    } else {
-      appendCommentary({ voice: data.voice, text: data.text });
-    }
+    var item = { voice: data.voice, text: data.text };
+    // El relato de un gol espera a que termine su animación (en la cola, tras el
+    // paso del gol); el resto del relato aparece de inmediato, como antes.
+    if (S.lastEventGoal && (S.stepTimer || S.queue.length)) enqueueStep({ commentary: item });
+    else appendCommentary(item);
   }
 
   // ===== Eventos del motor =====
   function onTick(data) {
     if (!data || data.matchId !== S.currentMatchId) return;
-    S.ballStart = { x: S.ball.x, y: S.ball.y };
-    S.ballDest = data.ball ? { x: clamp(data.ball.x, -0.01, 1.01), y: clamp(data.ball.y, 0, 1) } : S.ballDest;
     var wasStopped = S.playStopped;
     S.minute = Math.round(data.displayMinute != null ? data.displayMinute : (data.minute != null ? data.minute : S.minute));
     S.phase = data.phase || S.phase;
@@ -934,8 +1083,7 @@
     if (Object.prototype.hasOwnProperty.call(data, 'ballCarrierId')) S.ballCarrierId = data.ballCarrierId;
     if (Object.prototype.hasOwnProperty.call(data, 'playStopped')) S.playStopped = Boolean(data.playStopped);
     if (Array.isArray(data.players)) syncAuthoritativePlayers(data.players, true);
-    else recomputeTargets(S.ballDest.x, S.ballDest.y);
-    S.tweenT0 = performance.now();
+    enqueueStep(planTickStep(data, planBase()));
     renderScoreboard();
     updateTextFallback();
     if (wasStopped !== S.playStopped) {
@@ -973,58 +1121,21 @@
     if (!data || data.matchId !== S.currentMatchId || !data.event) return;
     var ev = data.event;
     var wasStopped = S.playStopped;
-    S.players.forEach(function (player) {
-      player.startX = player.renderX;
-      player.startY = player.renderY;
-    });
-    if (ev.ball) {
-      S.ballStart = ev.ballFrom
-        ? { x: clamp(ev.ballFrom.x, -0.01, 1.01), y: clamp(ev.ballFrom.y, 0, 1) }
-        : { x: S.ball.x, y: S.ball.y };
-      S.ballDest = { x: clamp(ev.ball.x, -0.01, 1.01), y: clamp(ev.ball.y, 0, 1) };
-    }
-    if (ev.playerId != null && ev.actorPosition) movePlayerTo(ev.playerId, ev.actorPosition);
-    if (ev.receiverId != null) movePlayerTo(ev.receiverId, ev.ball || S.ballDest);
-    if (ev.keeperId != null && ev.keeperPosition) movePlayerTo(ev.keeperId, ev.keeperPosition);
-    if (ev.type === 'kickoff' || ev.type === 'goal_restart') {
-      S.players.forEach(function (pl) {
-        if (pl.team === 'home') pl.destX = Math.min(pl.destX, 0.485);
-        else if (pl.team === 'away') pl.destX = Math.max(pl.destX, 0.515);
-      });
-      if (ev.playerId != null) movePlayerTo(ev.playerId, { x: 0.5, y: 0.5 });
-    }
-    if (ev.ball && !S.playStopped && S.possessionTeam && !['goal_celebration', 'halftime', 'ended'].includes(ev.phase)) {
-      var defSide = S.possessionTeam === 'home' ? 'away' : 'home';
-      var nearestDef = null, minDist = Infinity;
-      S.players.forEach(function (pl) {
-        if (pl.team === defSide && pl.role !== 'GK' && pl.id !== ev.playerId) {
-          var d = Math.hypot(pl.renderX - S.ballDest.x, pl.renderY - S.ballDest.y);
-          if (d < minDist) { minDist = d; nearestDef = pl; }
-        }
-      });
-      if (nearestDef) {
-        nearestDef.destX = clamp(nearestDef.destX + (S.ballDest.x - nearestDef.destX) * 0.35, 0.02, 0.98);
-        nearestDef.destY = clamp(nearestDef.destY + (S.ballDest.y - nearestDef.destY) * 0.35, 0.02, 0.98);
-      }
-    }
     if (Object.prototype.hasOwnProperty.call(ev, 'possessionTeam')) S.possessionTeam = ev.possessionTeam;
     if (Object.prototype.hasOwnProperty.call(ev, 'ballCarrierId')) S.ballCarrierId = ev.ballCarrierId;
     if (Object.prototype.hasOwnProperty.call(ev, 'playStopped')) S.playStopped = Boolean(ev.playStopped);
     if (ev.phase) S.phase = ev.phase;
     if (ev.minute != null) S.minute = ev.minute;
     applyRosterEvent(ev);
-    S.tweenT0 = performance.now();
-    if (ev.type === 'goal' || ev.type === 'penalty_scored') {
-      S.goalAnimUntil = performance.now() + (reduced.matches ? 0 : TICK_MS);
+    S.lastEventGoal = ev.type === 'goal' || ev.type === 'penalty_scored';
+    enqueueStep(planEventStep(ev, planBase()));
+    if (S.lastEventGoal) {
       S.goalFlashUntil = performance.now() + 1400;
       showGoalBanner();
       if (ev.marcador) { var parts = String(ev.marcador).split('-'); if (parts.length === 2) { S.score = { home: Number(parts[0]) || 0, away: Number(parts[1]) || 0 }; } }
       bell('goal');
-    } else {
-      S.goalAnimUntil = 0;
-      if (ev.type === 'red_card' || ev.type === 'second_yellow') {
-        bell('card');
-      }
+    } else if (ev.type === 'red_card' || ev.type === 'second_yellow') {
+      bell('card');
     }
     renderScoreboard();
     updateTextFallback();

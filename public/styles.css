@@ -1338,3 +1338,92 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) {
   .game-feature-grid .game-card, .quick-game-card, .ranking-row, .player-row { transition: none; }
 }
+
+/* =====================================================================
+   Ronda de pulido: mesas de juego, chat y responsive
+   ---------------------------------------------------------------------
+   · Jerarquía de la mesa: el resultado y la acción quedan donde el ojo los busca.
+   · Tabletas: la mesa ocupa el ancho y el chat pasa a una franja inferior que
+     no tapa el tapete.
+   · Móviles: los asientos de las mesas rápidas se apilan en lugar de flotar
+     sobre el tapete; los botones de acción tienen área táctil de 44 px.
+   · Chat: burbujas propias, menciones, roles, y un botón «↓ nuevos» cuando
+     el usuario lee historial (el scroll ya no lo arrastra al final).
+   ===================================================================== */
+
+/* --- Chat: burbujas, menciones y roles (escritorio y móvil) --- */
+.chat-section { position: relative; }
+.chat-list { overscroll-behavior: contain; }
+.chat-list:focus-visible, .lobby-chat-messages:focus-visible { outline: 2px solid var(--mint-2); outline-offset: 2px; }
+.chat-bubble { min-width: 0; max-width: 100%; padding: 7px 9px 6px; border: 1px solid rgba(255,255,255,.06); border-radius: 10px 10px 10px 3px; background: rgba(255,255,255,.03); }
+.chat-bubble b { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.chat-msg.is-mine { flex-direction: row-reverse; }
+.chat-msg.is-mine .chat-bubble { border-color: rgba(82,224,174,.22); border-radius: 10px 10px 3px 10px; background: rgba(82,224,174,.075); text-align: right; }
+.chat-msg.is-mine .chat-bubble b { justify-content: flex-end; }
+.chat-msg.is-mine .chat-report { margin-left: auto; }
+.chat-msg.mentions-me .chat-bubble { border-color: rgba(229,189,114,.45); box-shadow: 0 0 0 1px rgba(229,189,114,.12); }
+.lobby-chat-message.mentions-me p { padding: 4px 7px; border-radius: 8px; background: rgba(229,189,114,.07); color: #d9cfb2; }
+.chat-mention { padding: 0 3px; border-radius: 4px; background: rgba(229,189,114,.12); color: var(--gold-2); font-weight: 750; }
+.chat-mention.is-me { background: rgba(229,189,114,.28); color: #fff3d1; }
+.chat-mention.is-monte { background: rgba(82,224,174,.12); color: var(--mint-2); }
+.chat-role { display: inline-block; padding: 1px 5px; border-radius: 4px; color: #07120f; font-size: 7px; font-weight: 900; letter-spacing: .08em; line-height: 1.5; }
+.chat-role-staff { background: var(--gold); }
+.chat-role-moderator { background: var(--mint); }
+.chat-role-bot { background: #4ddbe8; }
+.chat-report { margin-top: 3px; padding: 0; border: 0; color: #5f7376; background: transparent; font-size: 8px; cursor: pointer; }
+.chat-report:hover, .chat-report:focus-visible { color: var(--coral); }
+
+/* Botón «↓ N nuevos»: aparece solo cuando el usuario no está al fondo. */
+.chat-jump { position: absolute; left: 50%; bottom: 96px; z-index: 6; transform: translateX(-50%); min-height: 30px; padding: 0 13px; border: 1px solid rgba(82,224,174,.45); border-radius: 15px; color: #07120f; background: var(--mint); box-shadow: 0 8px 20px rgba(0,0,0,.4); font-size: 9px; font-weight: 850; letter-spacing: .03em; white-space: nowrap; cursor: pointer; animation: messageIn .2s ease; }
+.chat-jump:hover { background: var(--mint-2); }
+.chat-jump:focus-visible { outline: 2px solid var(--gold-2); outline-offset: 3px; }
+.chat-jump.hidden { display: none; }
+.lobby-chat-content { position: relative; }
+#lobby-chat-jump { bottom: 64px; }
+
+/* Caja de escritura con foco visible (teclado). */
+.chat-form:focus-within, .lobby-chat-form:focus-within { box-shadow: 0 0 0 3px rgba(82,224,174,.09); }
+
+/* --- Mesas rápidas: asientos apilados en pantallas pequeñas --- */
+@media (max-width: 760px) {
+  .quick-table-shell { width: 100%; height: auto; padding: 22px 12px 16px; display: flex; flex-direction: column; align-items: stretch; gap: 14px; border-width: 10px; border-radius: 26px; }
+  .quick-table-shell::before { border-radius: 20px; }
+  .quick-game-core { order: -1; }
+  .quick-bets-around { position: static; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; pointer-events: auto; }
+  .quick-bet-seat { position: static; transform: none; padding: 5px 9px 5px 5px; }
+  .quick-bet-seat div b { max-width: 96px; }
+  .casino-table { width: 94%; height: 330px; border-width: 10px; }
+  .table-seat { width: 104px; }
+  .seat-info { min-width: 0; max-width: 62px; }
+  .seat-info b { font-size: 8.5px; }
+  .seat-cards .play-card { width: 26px; height: 37px; }
+  .seat-bet { font-size: 7.5px; }
+}
+
+/* --- Tabletas y móviles: la mesa primero, el chat abajo --- */
+@media (max-width: 1023.98px) {
+  .room-app { grid-template-columns: minmax(0,1fr); }
+  .game-main { order: 1; min-height: auto; }
+  .sidebar { order: 2; position: relative; top: auto; height: auto; max-height: 46vh; border-right: 0; border-top: 1px solid var(--line); overflow-y: auto; }
+  .game-stage { min-height: 0; padding: 12px 14px 10px; }
+  .table-wrap { min-height: 0; }
+  .lobby-chat-panel { width: min(340px, calc(100vw - 32px)); height: min(455px, 62vh); }
+}
+@media (max-width: 680px) {
+  .sidebar { max-height: 40vh; }
+  .table-hud { width: 100%; }
+  .status-pill { font-size: 7.5px; }
+  .action-panel { width: 100%; min-height: 0; }
+  .action-bar { flex-direction: column; align-items: stretch; gap: 10px; padding: 10px; }
+  .action-info { text-align: center; }
+  .action-buttons { flex-wrap: wrap; justify-content: center; }
+  .action-buttons .game-btn { flex: 1 1 96px; min-height: 44px; }
+  .raise-box { justify-content: center; }
+  .raise-box input { height: 40px; }
+  .bet-options { justify-content: center; flex-wrap: wrap; }
+  .lobby-chat-widget { right: 12px; bottom: 12px; }
+  .lobby-chat-panel { width: calc(100vw - 24px); height: min(62vh, 470px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-jump { animation: none; }
+}

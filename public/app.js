@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  // Utilidades puras del chat (public/chat-format.js), disponibles desde el arranque.
+  const { formatChatText, chatMentionsName, chatRoleBadge, countAdded, bindJump, paintList } = window.MonteChat;
+
   // La presencia del lobby se cuenta por dispositivo, no por pestaña. La
   // migración debe ocurrir antes de abrir Socket.IO para que quienes vienen de
   // la versión anterior conserven también su identidad de presencia.
@@ -43,11 +46,11 @@
     lobbyChatWidget: $('#lobby-chat-widget'), lobbyChatBubble: $('#lobby-chat-bubble'), lobbyChatPanel: $('#lobby-chat-panel'),
     lobbyChatClose: $('#lobby-chat-close'), lobbyChatUnread: $('#lobby-chat-unread'), lobbyChatProfile: $('#lobby-chat-profile'),
     lobbyChatProfileForm: $('#lobby-chat-profile-form'), lobbyChatName: $('#lobby-chat-name'), lobbyChatTos: $('#lobby-chat-tos'),
-    lobbyChatContent: $('#lobby-chat-content'), lobbyChatMessages: $('#lobby-chat-messages'), lobbyChatForm: $('#lobby-chat-form'), lobbyChatInput: $('#lobby-chat-input'),
+    lobbyChatContent: $('#lobby-chat-content'), lobbyChatMessages: $('#lobby-chat-messages'), lobbyChatJump: $('#lobby-chat-jump'), lobbyChatForm: $('#lobby-chat-form'), lobbyChatInput: $('#lobby-chat-input'),
     gameName: $('#game-name'), phaseLabel: $('#phase-label'), roomTitle: $('#room-title'), headerCode: $('#header-code'),
     tournamentBanner: $('#tournament-banner'),
     profileCard: $('#profile-card'), playersList: $('#players-list'), playerCount: $('#player-count'),
-    chatList: $('#chat-list'), chatForm: $('#chat-form'), chatInput: $('#chat-input'),
+    chatList: $('#chat-list'), chatJump: $('#chat-jump'), chatForm: $('#chat-form'), chatInput: $('#chat-input'),
     gameStatus: $('#game-status'), turnClock: $('#turn-clock'), clockValue: $('#clock-value'),
     clockPlayer: $('#clock-player'), tableWrap: $('#table-wrap'), actionPanel: $('#action-panel'),
     toastStack: $('#toast-stack'), roundFlash: $('#round-flash'),
@@ -475,6 +478,7 @@
     els.lobbyChatBubble?.setAttribute('aria-expanded', String(ui.lobbyChat.open));
     if (ui.lobbyChat.open) {
       ui.lobbyChat.unread = 0;
+      ui.lobbyChat.stickNext = true; // al abrir, siempre se muestra lo más reciente
       renderLobbyChat();
       if (!ui.lobbyChat.joined) {
         els.lobbyChatProfile?.classList.remove('hidden');
@@ -490,17 +494,25 @@
   function renderLobbyChat() {
     if (!els.lobbyChatMessages) return;
     const messages = ui.lobbyChat.messages || [];
-    els.lobbyChatMessages.innerHTML = messages.length
+    const selfName = ui.playerName || '';
+    const ids = messages.map(message => message.id);
+    const added = countAdded(ids, ui.lobbyChat.lastIds);
+    ui.lobbyChat.lastIds = ids;
+    const force = Boolean(ui.lobbyChat.stickNext);
+    ui.lobbyChat.stickNext = false;
+    const html = messages.length
       ? messages.map(message => {
         const botClass = message.bot ? ' lobby-chat-message-bot' : '';
         const botBadge = message.bot ? ' <span class="lobby-chat-bot-badge" aria-label="asistente automático">BOT</span>' : '';
+        const mentionsMe = chatMentionsName(message.text, selfName);
         const reportButton = message.playerId && !message.system
           ? `<button type="button" class="chat-report" aria-label="Reportar el mensaje de ${escapeHtml(message.name)}" data-report-message="${escapeHtml(message.id)}">⚑ Reportar</button>`
           : '';
-        return `<div class="lobby-chat-message${botClass}"><span class="lobby-chat-avatar" style="background:${avatarColor(message.playerId)}">${avatarEmoji(message.avatar)}</span><div><b>${escapeHtml(message.name)}${botBadge}</b><p>${escapeHtml(message.text)}</p>${reportButton}</div></div>`;
+        return `<div class="lobby-chat-message${botClass}${mentionsMe ? ' mentions-me' : ''}"><span class="lobby-chat-avatar" style="background:${avatarColor(message.playerId)}">${avatarEmoji(message.avatar)}</span><div><b>${chatRoleBadge(message.role)}${escapeHtml(message.name)}${botBadge}</b><p>${formatChatText(message.text, selfName)}</p>${reportButton}</div></div>`;
       }).join('')
       : '<div class="lobby-chat-empty">Sé el primero en saludar al casino.</div>';
-    els.lobbyChatMessages.scrollTop = els.lobbyChatMessages.scrollHeight;
+    bindJump(els.lobbyChatMessages, els.lobbyChatJump);
+    paintList(els.lobbyChatMessages, els.lobbyChatJump, html, added, { force });
     const unread = Number(ui.lobbyChat.unread) || 0;
     els.lobbyChatUnread?.classList.toggle('hidden', unread < 1);
     if (els.lobbyChatUnread) els.lobbyChatUnread.textContent = unread > 99 ? '99+' : String(unread);
@@ -1090,16 +1102,33 @@
       if (!response.ok) showToast('No se pudo retirar el bot', response.error, 'error');
     }));
   }
+  // ---------- Chat: render con scroll inteligente (utilidades en chat-format.js) ----------
+  function chatMessageHtml(message, player, selfName) {
+    const mine = Boolean(message.playerId) && ui.me?.id === message.playerId;
+    const mentionsMe = !mine && chatMentionsName(message.text, selfName);
+    const report = message.playerId && !mine
+      ? `<button type="button" class="chat-report" aria-label="Reportar el mensaje de ${escapeHtml(message.name)}" data-report-message="${escapeHtml(message.id)}">⚑ Reportar</button>`
+      : '';
+    return `<div class="chat-msg${mine ? ' is-mine' : ''}${mentionsMe ? ' mentions-me' : ''}"><div class="chat-avatar" style="background:${avatarColor(message.playerId)}">${avatarEmoji(player?.avatar)}</div><div class="chat-bubble"><b>${chatRoleBadge(message.role)}${escapeHtml(message.name)}</b><p>${formatChatText(message.text, selfName)}</p>${report}</div></div>`;
+  }
   function renderChat() {
     const messages = ui.room.messages || [];
     const signature = messages.map(message => message.id).join('|');
     if (signature === ui.lastChatSignature) return;
     ui.lastChatSignature = signature;
-    els.chatList.innerHTML = messages.length ? messages.map(message => message.system
-      ? `<div class="chat-system">${escapeHtml(message.text)}</div>`
-      : `<div class="chat-msg"><div class="chat-avatar" style="background:${avatarColor(message.playerId)}">${avatarEmoji(ui.room.players.find(player => player.id === message.playerId)?.avatar)}</div><div class="chat-bubble"><b>${escapeHtml(message.name)}</b><p>${escapeHtml(message.text)}</p>${message.playerId ? `<button type="button" class="chat-report" aria-label="Reportar el mensaje de ${escapeHtml(message.name)}" data-report-message="${escapeHtml(message.id)}">⚑ Reportar</button>` : ''}</div></div>`).join('')
+    const selfName = ui.me?.name || ui.playerName || '';
+    const ids = messages.map(message => message.id);
+    const added = countAdded(ids, ui.lastChatIds);
+    const roomChanged = ui.lastChatRoom !== ui.room.code;
+    ui.lastChatIds = ids;
+    ui.lastChatRoom = ui.room.code;
+    const html = messages.length
+      ? messages.map(message => message.system
+        ? `<div class="chat-system">${escapeHtml(message.text)}</div>`
+        : chatMessageHtml(message, ui.room.players.find(player => player.id === message.playerId), selfName)).join('')
       : '<div class="chat-system">El chat está listo para la primera jugada.</div>';
-    els.chatList.scrollTop = els.chatList.scrollHeight;
+    bindJump(els.chatList, els.chatJump);
+    paintList(els.chatList, els.chatJump, html, added, { force: roomChanged });
   }
   function renderStatus() {
     const room = ui.room;
