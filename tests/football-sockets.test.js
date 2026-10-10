@@ -454,6 +454,19 @@ test('status del motor: avisa a la sala del partido Y refresca el lobby', (t) =>
   assert.ok(ctx.io.lastTo(LOBBY_ROOM, 'football:lobby'), 'lobby refrescado');
 });
 
+test('reprogramación del motor: difunde football:rescheduled y status con nuevo kickoff y actualiza el lobby', (t) => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const s = ctx.io.connect();
+  subscribe(ctx, s, { scope: 'match', matchId: ctx.scheduled.id, name: 'Reprogramado' });
+  const newKickoff = ctx.scheduled.scheduledKickoffAt + 7200000;
+  ctx.engine.emit('football:rescheduled', { matchId: ctx.scheduled.id, scheduledKickoffAt: newKickoff, day: 15, block: 'estelar' });
+  const reschedEv = ctx.io.lastTo(matchRoom(ctx.scheduled.id), 'football:rescheduled');
+  assert.ok(reschedEv, 'evento football:rescheduled recibido');
+  assert.equal(reschedEv.scheduledKickoffAt, newKickoff);
+  assert.ok(ctx.io.lastTo(LOBBY_ROOM, 'football:lobby'), 'lobby refrescado al reprogramar');
+});
+
 test('stop() desregistra los listeners del motor', (t) => {
   const ctx = setup();
   t.after(ctx.cleanup);

@@ -87,7 +87,7 @@
     players: [], authoritativePlayers: [], possessionTeam: 'home', ballCarrierId: null, playStopped: true,
     ball: { x: .5, y: .5 }, ballStart: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 },
     tweenT0: 0, minute: 0, phase: 'pre', score: { home: 0, away: 0 }, possession: { home: .5, away: .5 },
-    goalFlashUntil: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false
+    goalFlashUntil: 0, goalAnimUntil: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false
   };
 
   var el = {};
@@ -297,6 +297,7 @@
     S.socket.on('football:odds', onOdds);
     S.socket.on('football:settlement', onSettlement);
     S.socket.on('football:status', onStatus);
+    S.socket.on('football:rescheduled', onRescheduled);
     S.socket.on('account_chips_updated', function (data) {
       if (!data || !S.promoProfile || data.profileId !== S.promoProfile.id) return;
       S.promoProfile.chips = Number(data.chips) || 0;
@@ -469,6 +470,7 @@
     var match = S.match;
     if (!match || match.status !== 'scheduled' || match.scheduledKickoffAt == null || !Number.isFinite(Number(match.scheduledKickoffAt))) {
       panel.hidden = true;
+      panel.removeAttribute('data-delay');
       S.promoWindowOpen = false;
       updatePromotionComposer();
       stopPromotionRotation();
@@ -478,6 +480,7 @@
     var delayed = remaining <= 0;
     if (!delayed && remaining > PRESHOW_WINDOW_MS) {
       panel.hidden = true;
+      panel.removeAttribute('data-delay');
       S.promoWindowOpen = false;
       updatePromotionComposer();
       stopPromotionRotation();
@@ -502,6 +505,21 @@
     }
   }
 
+  function updateLobbyMatchKickoff(matchId, kickoffAt, day, block) {
+    if (!S.lobby || !Array.isArray(S.lobby.matches)) return;
+    var found = S.lobby.matches.find(function (m) { return m.id === matchId; });
+    if (found) {
+      if (kickoffAt != null && Number.isFinite(Number(kickoffAt))) found.scheduledKickoffAt = Number(kickoffAt);
+      if (day != null) found.day = day;
+      if (block != null) found.block = block;
+    }
+    var next = S.lobby.matches
+      .filter(function (m) { return m.status === 'scheduled'; })
+      .sort(function (a, b) { return a.scheduledKickoffAt - b.scheduledKickoffAt; })[0] || null;
+    S.lobby.nextKickoffAt = next ? next.scheduledKickoffAt : null;
+    S.countdownTo = S.lobby.nextKickoffAt;
+  }
+
   var STATUS_LABEL = { scheduled: 'Programado', live: 'EN VIVO', halftime: 'Descanso', extra_time: 'Prórroga', shootout: 'Penales', finished: 'Final', settled: 'Final', postponed: 'Pospuesto' };
   function renderLobby(lobby) {
     if (!lobby) return;
@@ -516,6 +534,8 @@
     if (selectedMatch && S.match) {
       S.match.status = selectedMatch.status;
       S.match.scheduledKickoffAt = selectedMatch.scheduledKickoffAt;
+      if (selectedMatch.day != null) S.match.day = selectedMatch.day;
+      if (selectedMatch.block != null) S.match.block = selectedMatch.block;
     }
     if (!matches.length) { list.innerHTML = '<li class="est-muted">No hay partidos programados hoy.</li>'; }
     matches.forEach(function (m) {
@@ -578,6 +598,7 @@
     S.possessionTeam = ms.state && ms.state.possessionTeam ? ms.state.possessionTeam : 'home';
     S.ballCarrierId = ms.state ? ms.state.ballCarrierId : null;
     S.playStopped = ms.state ? Boolean(ms.state.playStopped) : true;
+    S.goalAnimUntil = 0;
     S.authoritativePlayers = ms.state && Array.isArray(ms.state.players) ? ms.state.players : [];
     var ball = ms.state && ms.state.ball ? ms.state.ball : { x: .5, y: .5 };
     S.ball = { x: ball.x, y: ball.y }; S.ballStart = { x: ball.x, y: ball.y }; S.ballDest = { x: ball.x, y: ball.y };
@@ -690,16 +711,34 @@
     var e = reduced.matches ? 1 : easeOutCubic(p);
     S.ball.x = lerp(S.ballStart.x, S.ballDest.x, e);
     S.ball.y = lerp(S.ballStart.y, S.ballDest.y, e);
+
+    var carrier = null;
+    if (S.ballCarrierId != null) {
+      carrier = S.players.find(function (p) { return p.id === S.ballCarrierId; });
+    }
+
     for (var i = 0; i < S.players.length; i++) {
       var pl = S.players[i];
       pl.baseX = lerp(pl.startX, pl.destX, e);
       pl.baseY = lerp(pl.startY, pl.destY, e);
-      if (reduced.matches) { pl.renderX = pl.baseX; pl.renderY = pl.baseY; }
-      else {
-        pl.renderX = clamp(pl.baseX + Math.sin(now / 700 + pl.seed) * 0.006, .01, .99);
-        pl.renderY = clamp(pl.baseY + Math.cos(now / 830 + pl.seed * 1.3) * 0.006, .02, .98);
+      if (reduced.matches || S.playStopped) {
+        pl.renderX = pl.baseX; pl.renderY = pl.baseY;
+      } else if (carrier && pl.id === carrier.id) {
+        pl.renderX = pl.baseX; pl.renderY = pl.baseY;
+      } else {
+        pl.renderX = clamp(pl.baseX + Math.sin(now / 900 + pl.seed) * 0.002, .01, .99);
+        pl.renderY = clamp(pl.baseY + Math.cos(now / 1000 + pl.seed * 1.3) * 0.002, .02, .98);
       }
     }
+
+    if (carrier && !S.playStopped) {
+      if (e >= 0.8 || (Math.hypot(S.ballDest.x - S.ballStart.x, S.ballDest.y - S.ballStart.y) < 0.06)) {
+        var dir = carrier.team === 'home' ? 1 : -1;
+        S.ball.x = clamp(carrier.renderX + dir * 0.012, -0.01, 1.01);
+        S.ball.y = carrier.renderY;
+      }
+    }
+
     draw(now);
   }
 
@@ -798,6 +837,9 @@
     ctx.restore();
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.lineWidth = inPoss ? 2.6 : 1.4;
     ctx.strokeStyle = inPoss ? 'rgba(255,255,255,.95)' : 'rgba(0,0,0,.55)'; ctx.stroke();
+    var dir = pl.team === 'home' ? 1 : -1;
+    ctx.beginPath(); ctx.arc(cx + dir * (r * 0.72), cy, 2, 0, TAU);
+    ctx.fillStyle = inPoss ? '#ffe3a5' : 'rgba(255,255,255,.55)'; ctx.fill();
     ctx.fillStyle = pl.dorsalColor; ctx.font = '700 ' + Math.round(r * .95) + 'px ' + font();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(pl.number), cx, cy + .5);
   }
@@ -810,7 +852,16 @@
   }
   function drawBall(now) {
     var bx = nx(S.ball.x), by = ny(S.ball.y);
-    if (!reduced.matches) { ctx.beginPath(); ctx.moveTo(nx(S.ballStart.x), ny(S.ballStart.y)); ctx.lineTo(bx, by); ctx.strokeStyle = 'rgba(229,189,114,.18)'; ctx.lineWidth = 3; ctx.stroke(); }
+    var p = clamp((now - S.tweenT0) / TICK_MS, 0, 1);
+    var dist = Math.hypot(S.ballDest.x - S.ballStart.x, S.ballDest.y - S.ballStart.y);
+    if (!reduced.matches && !S.playStopped && p < 1 && dist > 0.05) {
+      ctx.beginPath();
+      ctx.moveTo(nx(S.ballStart.x), ny(S.ballStart.y));
+      ctx.lineTo(bx, by);
+      ctx.strokeStyle = 'rgba(229,189,114,' + (0.18 * (1 - p)) + ')';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
     ctx.beginPath(); ctx.arc(bx, by, BALL_R + 2, 0, TAU); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill();
     ctx.beginPath(); ctx.arc(bx, by, BALL_R, 0, TAU); ctx.fillStyle = '#ffe3a5'; ctx.fill();
     ctx.lineWidth = 1; ctx.strokeStyle = '#0a5a45'; ctx.stroke();
@@ -856,14 +907,24 @@
   }
   function onCommentary(data) {
     if (!data || data.matchId !== S.currentMatchId) return;
-    appendCommentary({ voice: data.voice, text: data.text });
+    var delay = (!reduced.matches && S.goalAnimUntil && S.goalAnimUntil > performance.now())
+      ? Math.max(0, S.goalAnimUntil - performance.now())
+      : 0;
+    if (delay > 0) {
+      setTimeout(function () {
+        if (data.matchId !== S.currentMatchId) return;
+        appendCommentary({ voice: data.voice, text: data.text });
+      }, delay);
+    } else {
+      appendCommentary({ voice: data.voice, text: data.text });
+    }
   }
 
   // ===== Eventos del motor =====
   function onTick(data) {
     if (!data || data.matchId !== S.currentMatchId) return;
     S.ballStart = { x: S.ball.x, y: S.ball.y };
-    S.ballDest = data.ball ? { x: clamp(data.ball.x, 0, 1), y: clamp(data.ball.y, 0, 1) } : S.ballDest;
+    S.ballDest = data.ball ? { x: clamp(data.ball.x, -0.01, 1.01), y: clamp(data.ball.y, 0, 1) } : S.ballDest;
     var wasStopped = S.playStopped;
     S.minute = Math.round(data.displayMinute != null ? data.displayMinute : (data.minute != null ? data.minute : S.minute));
     S.phase = data.phase || S.phase;
@@ -888,11 +949,15 @@
     if ((ev.type === 'red_card' || ev.type === 'second_yellow') && ev.playerId) {
       var dismissed = S.authoritativePlayers.find(function (p) { return p.id === ev.playerId; });
       if (dismissed) { dismissed.active = false; dismissed.status = 'sent_off'; }
+      if (S.ballCarrierId === ev.playerId) S.ballCarrierId = null;
     } else if (ev.type === 'substitution') {
       var incomingId = ev.playerInId || ev.playerId;
       var incoming = incomingId && S.authoritativePlayers.find(function (p) { return p.id === incomingId; });
       var visibleOutgoing = outgoing && S.players.find(function (p) { return p.id === outgoing.id; });
-      if (outgoing) { outgoing.active = false; outgoing.status = 'substituted'; }
+      if (outgoing) {
+        outgoing.active = false; outgoing.status = 'substituted';
+        if (S.ballCarrierId === outgoing.id) S.ballCarrierId = null;
+      }
       if (incoming) {
         incoming.active = true; incoming.status = 'active';
         incoming.slotIndex = outgoing ? outgoing.slotIndex : incoming.slotIndex;
@@ -914,12 +979,34 @@
     });
     if (ev.ball) {
       S.ballStart = ev.ballFrom
-        ? { x: clamp(ev.ballFrom.x, 0, 1), y: clamp(ev.ballFrom.y, 0, 1) }
+        ? { x: clamp(ev.ballFrom.x, -0.01, 1.01), y: clamp(ev.ballFrom.y, 0, 1) }
         : { x: S.ball.x, y: S.ball.y };
-      S.ballDest = { x: clamp(ev.ball.x, 0, 1), y: clamp(ev.ball.y, 0, 1) };
+      S.ballDest = { x: clamp(ev.ball.x, -0.01, 1.01), y: clamp(ev.ball.y, 0, 1) };
     }
     if (ev.playerId != null && ev.actorPosition) movePlayerTo(ev.playerId, ev.actorPosition);
+    if (ev.receiverId != null) movePlayerTo(ev.receiverId, ev.ball || S.ballDest);
     if (ev.keeperId != null && ev.keeperPosition) movePlayerTo(ev.keeperId, ev.keeperPosition);
+    if (ev.type === 'kickoff' || ev.type === 'goal_restart') {
+      S.players.forEach(function (pl) {
+        if (pl.team === 'home') pl.destX = Math.min(pl.destX, 0.485);
+        else if (pl.team === 'away') pl.destX = Math.max(pl.destX, 0.515);
+      });
+      if (ev.playerId != null) movePlayerTo(ev.playerId, { x: 0.5, y: 0.5 });
+    }
+    if (ev.ball && !S.playStopped && S.possessionTeam && !['goal_celebration', 'halftime', 'ended'].includes(ev.phase)) {
+      var defSide = S.possessionTeam === 'home' ? 'away' : 'home';
+      var nearestDef = null, minDist = Infinity;
+      S.players.forEach(function (pl) {
+        if (pl.team === defSide && pl.role !== 'GK' && pl.id !== ev.playerId) {
+          var d = Math.hypot(pl.renderX - S.ballDest.x, pl.renderY - S.ballDest.y);
+          if (d < minDist) { minDist = d; nearestDef = pl; }
+        }
+      });
+      if (nearestDef) {
+        nearestDef.destX = clamp(nearestDef.destX + (S.ballDest.x - nearestDef.destX) * 0.35, 0.02, 0.98);
+        nearestDef.destY = clamp(nearestDef.destY + (S.ballDest.y - nearestDef.destY) * 0.35, 0.02, 0.98);
+      }
+    }
     if (Object.prototype.hasOwnProperty.call(ev, 'possessionTeam')) S.possessionTeam = ev.possessionTeam;
     if (Object.prototype.hasOwnProperty.call(ev, 'ballCarrierId')) S.ballCarrierId = ev.ballCarrierId;
     if (Object.prototype.hasOwnProperty.call(ev, 'playStopped')) S.playStopped = Boolean(ev.playStopped);
@@ -928,12 +1015,16 @@
     applyRosterEvent(ev);
     S.tweenT0 = performance.now();
     if (ev.type === 'goal' || ev.type === 'penalty_scored') {
+      S.goalAnimUntil = performance.now() + (reduced.matches ? 0 : TICK_MS);
       S.goalFlashUntil = performance.now() + 1400;
       showGoalBanner();
       if (ev.marcador) { var parts = String(ev.marcador).split('-'); if (parts.length === 2) { S.score = { home: Number(parts[0]) || 0, away: Number(parts[1]) || 0 }; } }
       bell('goal');
-    } else if (ev.type === 'red_card' || ev.type === 'second_yellow') {
-      bell('card');
+    } else {
+      S.goalAnimUntil = 0;
+      if (ev.type === 'red_card' || ev.type === 'second_yellow') {
+        bell('card');
+      }
     }
     renderScoreboard();
     updateTextFallback();
@@ -971,12 +1062,35 @@
     } else if (code === 'full_time' || code === 'settled' || code === 'finished') {
       S.match.status = 'finished';
       S.playStopped = true;
+      S.ballCarrierId = null;
+    } else if (code === 'rescheduled') {
+      if (data.scheduledKickoffAt != null && Number.isFinite(Number(data.scheduledKickoffAt))) {
+        S.match.scheduledKickoffAt = Number(data.scheduledKickoffAt);
+      }
+      if (data.day != null) S.match.day = data.day;
+      if (data.block != null) S.match.block = data.block;
+      updateLobbyMatchKickoff(data.matchId, data.scheduledKickoffAt, data.day, data.block);
+      toast('Horario del partido reprogramado.', 'info');
     }
     renderScoreboard();
     renderMarkets();
     renderMyBets();
     updateTextFallback();
     renderPreshow(currentServerTime());
+  }
+
+  function onRescheduled(data) {
+    if (!data) return;
+    updateLobbyMatchKickoff(data.matchId, data.scheduledKickoffAt, data.day, data.block);
+    if (S.currentMatchId === data.matchId && S.match) {
+      if (data.scheduledKickoffAt != null && Number.isFinite(Number(data.scheduledKickoffAt))) {
+        S.match.scheduledKickoffAt = Number(data.scheduledKickoffAt);
+      }
+      if (data.day != null) S.match.day = data.day;
+      if (data.block != null) S.match.block = data.block;
+    }
+    if (S.lobby) renderLobby(S.lobby);
+    else renderPreshow(currentServerTime());
   }
 
   // ===== Cuotas =====

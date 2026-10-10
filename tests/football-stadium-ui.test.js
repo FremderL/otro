@@ -109,14 +109,23 @@ function createHarness(options = {}) {
   style.textContent = STYLES;
   window.document.head.appendChild(style);
   window.localStorage.setItem('montecristo-tos', '2026-09-28');
-  window.matchMedia = () => ({ matches: true, addListener() {}, addEventListener() {} });
+  const reducedMotion = options.reducedMotion !== undefined ? Boolean(options.reducedMotion) : true;
+  window.matchMedia = () => ({ matches: reducedMotion, addListener() {}, addEventListener() {} });
   window.HTMLCanvasElement.prototype.getContext = () => canvasContext;
   window.requestAnimationFrame = callback => { rafCallback = callback; return 1; };
   window.cancelAnimationFrame = () => {};
   window.setInterval = (callback, delay) => { intervals.push({ callback, delay }); return intervals.length; };
   window.clearInterval = () => {};
-  window.setTimeout = () => 1;
-  window.clearTimeout = () => {};
+  const timeouts = [];
+  window.setTimeout = (callback, delay) => {
+    const timer = { callback, at: perfNow + (delay || 0) };
+    timeouts.push(timer);
+    return timer;
+  };
+  window.clearTimeout = timer => {
+    const idx = timeouts.indexOf(timer);
+    if (idx >= 0) timeouts.splice(idx, 1);
+  };
   window.fetch = async (url, requestOptions = {}) => {
     const target = String(url);
     requests.push({ url: target, options: requestOptions });
@@ -156,6 +165,12 @@ function createHarness(options = {}) {
       perfNow += ms;
       intervals.filter(interval => interval.delay === 1000 || (interval.delay === 15000 && ms >= interval.delay))
         .forEach(interval => interval.callback());
+      const due = timeouts.filter(t => t.at <= perfNow);
+      for (const t of due) {
+        const idx = timeouts.indexOf(t);
+        if (idx >= 0) timeouts.splice(idx, 1);
+        t.callback();
+      }
     },
     async connectToMatch() {
       await new Promise(resolve => setImmediate(resolve));
@@ -279,6 +294,86 @@ test('La Previa también se oculta si el partido se pospone', async t => {
   assert.equal(h.window.document.getElementById('est-preshow').hidden, true);
 });
 
+test('La Previa se oculta de inmediato al reprogramar fuera de T−30, no aparece al horario anterior y abre en el nuevo T−30', async t => {
+  const baseNow = 1800000000000;
+  // Comienza a 15 min del kickoff (dentro de T-30)
+  const h = createHarness({ now: baseNow, kickoffOffsetMs: 15 * 60 * 1000 });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const panel = window.document.getElementById('est-preshow');
+  const promo = window.document.getElementById('est-preshow-promo');
+
+  assert.equal(panel.hidden, false, 'inicia visible en T-15');
+  assert.equal(window.document.getElementById('est-preshow-timer').textContent, '15:00');
+  assert.equal(promo.hidden, false);
+
+  // Reprogramar el partido a 90 minutos en el futuro (fuera de T-30)
+  const newKickoff = baseNow + 90 * 60 * 1000;
+  handlers['football:rescheduled']({ matchId: match.id, scheduledKickoffAt: newKickoff });
+
+  assert.equal(panel.hidden, true, 'se oculta de inmediato tras la reprogramación');
+  assert.equal(panel.hasAttribute('data-delay'), false, 'no conserva bandera de retraso');
+
+  // Avanza el tiempo al horario que tenía el partido originalmente (T+15m)
+  h.advanceTime(15 * 60 * 1000);
+  assert.equal(panel.hidden, true, 'no se muestra la previa en el horario anterior');
+  assert.notEqual(window.document.getElementById('est-preshow-status').textContent, 'Kickoff pendiente · esperando señal del partido');
+
+  // Avanza hasta T-30 del nuevo horario (faltan 45 min más para llegar a 60 min, que es 30 min antes de 90 min)
+  h.advanceTime(45 * 60 * 1000);
+  assert.equal(panel.hidden, false, 'abre exactamente en el nuevo T−30');
+  assert.equal(window.document.getElementById('est-preshow-timer').textContent, '30:00');
+  assert.equal(promo.hidden, false, 'la promoción vuelve a estar activa');
+});
+
+test('La Previa se abre de inmediato si un partido distante se reprograma dentro de T−30', async t => {
+  const baseNow = 1800000000000;
+  // Kickoff en 90 minutos (fuera de T-30)
+  const h = createHarness({ now: baseNow, kickoffOffsetMs: 90 * 60 * 1000 });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const panel = window.document.getElementById('est-preshow');
+  const promo = window.document.getElementById('est-preshow-promo');
+
+  assert.equal(panel.hidden, true, 'fuera de T-30 permanece oculta');
+
+  // Reprogramar a 20 minutos
+  const newKickoff = baseNow + 20 * 60 * 1000;
+  handlers['football:rescheduled']({ matchId: match.id, scheduledKickoffAt: newKickoff });
+
+  assert.equal(panel.hidden, false, 'se muestra inmediatamente al entrar a T-30 por reprogramación');
+  assert.equal(window.document.getElementById('est-preshow-timer').textContent, '20:00');
+  assert.equal(promo.hidden, false);
+});
+
+test('un partido en retraso con espera pendiente se recupera a cuenta regresiva al reprogramarse', async t => {
+  const baseNow = 1800000000000;
+  // Kickoff hace 5 minutos (retrasado)
+  const h = createHarness({ now: baseNow, kickoffOffsetMs: -5 * 60 * 1000 });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const panel = window.document.getElementById('est-preshow');
+  const promo = window.document.getElementById('est-preshow-promo');
+
+  assert.equal(panel.hidden, false);
+  assert.equal(panel.dataset.delay, 'true');
+  assert.match(window.document.getElementById('est-preshow-status').textContent, /Kickoff pendiente/);
+  assert.equal(promo.hidden, true, 'en retraso no muestra promoción');
+
+  // Reprogramar a 15 minutos en el futuro
+  const newKickoff = baseNow + 15 * 60 * 1000;
+  handlers['football:status']({ matchId: match.id, code: 'rescheduled', scheduledKickoffAt: newKickoff });
+
+  assert.equal(panel.hidden, false);
+  assert.equal(panel.dataset.delay, 'false', 'cancela estado de demora');
+  assert.match(window.document.getElementById('est-preshow-status').textContent, /Kickoff programado/);
+  assert.equal(window.document.getElementById('est-preshow-timer').textContent, '15:00');
+  assert.equal(promo.hidden, false, 'reactiva promoción');
+});
+
 test('la UI sigue el estado del motor: kickoff, pausas, gol, sustitución y final', async t => {
   const h = createHarness();
   t.after(h.close);
@@ -319,7 +414,7 @@ test('la UI sigue el estado del motor: kickoff, pausas, gol, sustitución y fina
 
   fireEvent({ type: 'goal', team: 'home', playerId: 'h10', playerName: 'Jugador 10', minute: 61,
     phase: 'goal_celebration', playStopped: true, marcador: '1-0',
-    ball: { x: 1, y: .5 }, ballFrom: { x: .86, y: .5 }, actorPosition: { x: .86, y: .5 },
+    ball: { x: 1.01, y: .5 }, ballFrom: { x: .86, y: .5 }, actorPosition: { x: .86, y: .5 },
     ballCarrierId: null, possessionTeam: null });
   handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'Gol confirmado de Jugador 10: 1-0.' });
   assert.equal(window.document.getElementById('score-home').textContent, '1');
@@ -328,7 +423,7 @@ test('la UI sigue el estado del motor: kickoff, pausas, gol, sustitución y fina
   assert.ok(marketButtons().every(button => button.disabled), 'el festejo detiene el mercado');
 
   fireEvent({ type: 'goal_restart', team: 'away', minute: 62, phase: 'kickoff', playStopped: false,
-    ball: { x: .5, y: .5 }, ballFrom: { x: 1, y: .5 }, actorPosition: { x: .5, y: .5 },
+    ball: { x: .5, y: .5 }, ballFrom: { x: 1.01, y: .5 }, actorPosition: { x: .5, y: .5 },
     ballCarrierId: 'a2', possessionTeam: 'away' });
   assert.ok(marketButtons().every(button => !button.disabled), 'el saque desde el centro reanuda el mercado');
 
@@ -345,4 +440,206 @@ test('la UI sigue el estado del motor: kickoff, pausas, gol, sustitución y fina
   handlers['football:status']({ matchId: id, code: 'full_time', minute: 94 });
   assert.equal(window.document.getElementById('est-clock').textContent, 'Final');
   assert.ok(marketButtons().every(button => button.disabled), 'el final cierra el mercado');
+});
+
+test('el relato del gol espera a que termine la animación del balón', async t => {
+  const h = createHarness({ reducedMotion: false });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const id = match.id;
+  handlers['football:status']({ matchId: id, code: 'live', minute: 20 });
+  handlers['football:event']({
+    matchId: id,
+    event: {
+      type: 'goal', team: 'home', playerId: 'h10', playerName: 'Jugador 10', minute: 21,
+      phase: 'goal_celebration', playStopped: true, marcador: '1-0',
+      ball: { x: 1.01, y: .5 }, ballFrom: { x: .86, y: .5 }, actorPosition: { x: .86, y: .5 },
+      ballCarrierId: null, possessionTeam: null
+    }
+  });
+  handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'Gol confirmado de Jugador 10: 1-0.' });
+  assert.ok(!window.document.getElementById('est-commentary').textContent.includes('Gol confirmado'), 'el relato espera mientras la animación está en curso');
+  h.advanceTime(2000);
+  assert.match(window.document.getElementById('est-commentary').textContent, /Gol confirmado de Jugador 10: 1-0/, 'el relato aparece al completarse la animación');
+});
+
+test('14 escenarios — validación integral de visualización, física y UI del estadio', async t => {
+  const h = createHarness({ reducedMotion: false });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const id = match.id;
+  const fireEvent = event => handlers['football:event']({ matchId: id, event });
+
+  // 1. Kickoff inicial: jugadores en sus mitades
+  handlers['football:status']({ matchId: id, code: 'live', minute: 0 });
+  fireEvent({
+    type: 'kickoff', team: 'home', minute: 0, phase: 'kickoff', playStopped: false,
+    ball: { x: .5, y: .5 }, ballFrom: { x: .5, y: .5 }, ballCarrierId: 'h2', possessionTeam: 'home',
+    playerId: 'h2', actorPosition: { x: .485, y: .5 }
+  });
+  h.advanceTime(100);
+  let numbers = h.draw();
+  assert.ok(numbers.length >= 22, 'todos los jugadores en cancha');
+
+  // 2. Pase, recepción y conducción de balón
+  fireEvent({
+    type: 'pass_sequence', team: 'home', minute: 5, phase: 'build_up', playStopped: false,
+    ball: { x: .65, y: .45 }, ballFrom: { x: .485, y: .5 }, actorPosition: { x: .485, y: .5 },
+    playerId: 'h2', receiverId: 'h10', ballCarrierId: 'h10', possessionTeam: 'home'
+  });
+  h.advanceTime(1000);
+  h.draw();
+
+  // 3. Disparo y llegada a meta
+  fireEvent({
+    type: 'shot', team: 'home', minute: 15, phase: 'attack', playStopped: false,
+    ball: { x: 1.0, y: .5 }, ballFrom: { x: .85, y: .5 }, actorPosition: { x: .85, y: .5 },
+    playerId: 'h10', keeperId: 'a1', keeperPosition: { x: .96, y: .5 }
+  });
+  h.advanceTime(500);
+
+  // 4. Atajada del guardameta
+  fireEvent({
+    type: 'save', team: 'away', minute: 15, phase: 'build_up', playStopped: false,
+    ball: { x: .96, y: .5 }, ballFrom: { x: 1.0, y: .5 }, actorPosition: { x: .96, y: .5 },
+    playerId: 'a1', keeperId: 'a1', keeperPosition: { x: .96, y: .5 },
+    ballCarrierId: 'a1', possessionTeam: 'away'
+  });
+  h.advanceTime(500);
+
+  // 5. Gol, banner, celebración, y saque de centro del equipo que recibió el gol
+  fireEvent({
+    type: 'goal', team: 'home', playerId: 'h9', playerName: 'Delantero Local', minute: 28,
+    phase: 'goal_celebration', playStopped: true, marcador: '1-0',
+    ball: { x: 1.01, y: .5 }, ballFrom: { x: .88, y: .5 }, actorPosition: { x: .88, y: .5 },
+    ballCarrierId: null, possessionTeam: null
+  });
+  handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'Golazo de Delantero Local: 1-0.' });
+  assert.equal(window.document.getElementById('score-home').textContent, '1');
+  assert.equal(window.document.getElementById('score-away').textContent, '0');
+  h.advanceTime(2100);
+  assert.match(window.document.getElementById('est-commentary').textContent, /Golazo de Delantero Local/);
+
+  // Saque de centro tras gol: balón a (0.5, 0.5) y saca visitante
+  fireEvent({
+    type: 'goal_restart', team: 'away', minute: 29, phase: 'kickoff', playStopped: false,
+    ball: { x: .5, y: .5 }, ballFrom: { x: 1.01, y: .5 }, actorPosition: { x: .515, y: .5 },
+    playerId: 'a9', ballCarrierId: 'a9', possessionTeam: 'away'
+  });
+  h.advanceTime(500);
+
+  // 6. Falta y detención de juego
+  fireEvent({
+    type: 'foul', team: 'home', minute: 34, phase: 'set_piece', playStopped: true,
+    ball: { x: .40, y: .30 }, ballFrom: { x: .40, y: .30 }, actorPosition: { x: .40, y: .30 },
+    ballCarrierId: null, possessionTeam: 'away'
+  });
+  assert.ok(Array.from(window.document.querySelectorAll('#est-markets .est-sel')).every(b => b.disabled), 'mercados bloqueados en falta');
+
+  // 7. Tarjeta amarilla
+  fireEvent({
+    type: 'yellow_card', team: 'home', playerId: 'h3', playerName: 'Defensor Local', minute: 35,
+    phase: 'set_piece', playStopped: true, ball: { x: .40, y: .30 }
+  });
+  handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'Tarjeta amarilla para Defensor Local.' });
+  assert.match(window.document.getElementById('est-commentary').textContent, /Tarjeta amarilla para Defensor Local/);
+
+  // 8. Expulsión (tarjeta roja)
+  fireEvent({
+    type: 'red_card', team: 'home', playerId: 'h3', playerName: 'Defensor Local', minute: 40,
+    phase: 'set_piece', playStopped: true, ball: { x: .40, y: .30 }
+  });
+  numbers = h.draw();
+  assert.ok(!numbers.includes('3'), 'el jugador con tarjeta roja sale de la cancha');
+
+  // 9. Sustitución
+  fireEvent({
+    type: 'substitution', team: 'home', playerId: 'h12', playerInId: 'h12', playerOutId: 'h9',
+    minute: 42, phase: 'set_piece', playStopped: true, ball: { x: .5, y: .01 }
+  });
+  numbers = h.draw();
+  assert.ok(numbers.includes('12'), 'suplente h12 ingresa al campo');
+  assert.ok(!numbers.includes('9'), 'titular h9 abandona el campo');
+
+  // 10. Saque de banda
+  fireEvent({
+    type: 'throw_in', team: 'away', minute: 44, phase: 'set_piece', playStopped: true,
+    ball: { x: .60, y: 1.0 }, ballFrom: { x: .60, y: 1.0 }, actorPosition: { x: .60, y: 1.0 },
+    playerId: 'a2', ballCarrierId: 'a2', possessionTeam: 'away'
+  });
+
+  // 11. Córner y saque de meta
+  fireEvent({
+    type: 'corner', team: 'away', minute: 45, phase: 'set_piece', playStopped: true,
+    ball: { x: 0.0, y: 0.0 }, ballFrom: { x: 0.0, y: 0.0 }, actorPosition: { x: 0.0, y: 0.0 },
+    playerId: 'a2', ballCarrierId: 'a2', possessionTeam: 'away'
+  });
+  fireEvent({
+    type: 'goal_kick', team: 'home', minute: 45.5, phase: 'set_piece', playStopped: true,
+    ball: { x: 0.045, y: .5 }, ballFrom: { x: 0.045, y: .5 }, actorPosition: { x: 0.045, y: .5 },
+    playerId: 'h1', ballCarrierId: 'h1', possessionTeam: 'home'
+  });
+
+  // 12. Descanso y segundo tiempo
+  fireEvent({
+    type: 'halftime', minute: 45, phase: 'halftime', playStopped: true,
+    ball: { x: .5, y: .5 }, ballCarrierId: null, possessionTeam: null
+  });
+  handlers['football:status']({ matchId: id, code: 'halftime', minute: 45 });
+  assert.match(window.document.getElementById('est-clock').textContent, /Descanso/);
+
+  fireEvent({
+    type: 'second_half', team: 'away', minute: 46, phase: 'build_up', playStopped: false,
+    ball: { x: .5, y: .5 }, ballFrom: { x: .5, y: .5 }, actorPosition: { x: .515, y: .5 },
+    playerId: 'a9', ballCarrierId: 'a9', possessionTeam: 'away'
+  });
+  handlers['football:status']({ matchId: id, code: 'live', minute: 46 });
+
+  // 13. Pitazo final
+  handlers['football:status']({ matchId: id, code: 'full_time', minute: 90 });
+  assert.equal(window.document.getElementById('est-clock').textContent, 'Final');
+  assert.ok(Array.from(window.document.querySelectorAll('#est-markets .est-sel')).every(b => b.disabled), 'mercados cerrados al terminar el partido');
+});
+
+test('QA de usuario: reconexión a mitad de juego, expulsión del portador y limpieza de estela de tiro', async t => {
+  const h = createHarness({ reducedMotion: false });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const id = match.id;
+  const fireEvent = event => handlers['football:event']({ matchId: id, event });
+
+  // 1. Portador con el balón recibe tarjeta roja
+  handlers['football:status']({ matchId: id, code: 'live', minute: 25 });
+  fireEvent({
+    type: 'pass_sequence', team: 'home', minute: 25, phase: 'build_up', playStopped: false,
+    ball: { x: .55, y: .45 }, ballFrom: { x: .50, y: .50 }, actorPosition: { x: .50, y: .50 },
+    playerId: 'h2', receiverId: 'h10', ballCarrierId: 'h10', possessionTeam: 'home'
+  });
+  h.advanceTime(500);
+
+  // La tarjeta roja se muestra sobre el portador h10
+  fireEvent({
+    type: 'red_card', team: 'home', playerId: 'h10', playerName: 'Jugador 10', minute: 26,
+    phase: 'set_piece', playStopped: true, ball: { x: .55, y: .45 }, ballCarrierId: null
+  });
+  h.advanceTime(100);
+  const numbers = h.draw();
+  assert.ok(!numbers.includes('10'), 'el portador expulsado desaparece de la cancha de inmediato');
+
+  // 2. Comprobar que tras el viaje del balón (p >= 1), el render se ejecuta sin fallos
+  h.advanceTime(2500);
+  assert.doesNotThrow(() => h.draw(), 'el ciclo de dibujo no genera errores con balón detenido y estela concluida');
+
+  // 3. Reconexión: recibir un tick con juego detenido suspende mercados y actualiza el reloj
+  handlers['football:tick']({
+    matchId: id, minute: 30, displayMinute: 30, phase: 'set_piece', playStopped: true,
+    score: { home: 1, away: 0 }, possessionTeam: 'away', ballCarrierId: null,
+    ball: { x: .55, y: .45 }
+  });
+  const marketButtons = Array.from(window.document.querySelectorAll('#est-markets .est-sel'));
+  assert.ok(marketButtons.every(b => b.disabled), 'los mercados permanecen bloqueados en tick con juego detenido');
+  assert.match(window.document.getElementById('est-clock').textContent, /30' Balón parado/);
 });

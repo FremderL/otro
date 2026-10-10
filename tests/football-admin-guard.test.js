@@ -65,7 +65,10 @@ async function runOnce({
         touch: async () => {}
       })
     }).fullGuard(PERMISSIONS.FOOTBALL_MANAGE),
-    store: { getMatch: (id) => (id === 'm1' ? { id: 'm1', status: 'live' } : null) },
+    store: {
+      getMatch: (id) => (id === 'm1' ? { id: 'm1', status: 'scheduled', scheduledKickoffAt: NOW + 10000 } : null),
+      rescheduleMatch: (_id, k) => { spies.reschedule = (spies.reschedule || 0) + 1; return { ok: true, match: { id: 'm1', scheduledKickoffAt: k } }; }
+    },
     betting: { suspend: () => { spies.suspend++; }, closeMarket: () => { spies.closeMarket++; } },
     engine: { forceFinish: () => { spies.forceFinish++; }, quarantine: () => { spies.quarantine++; } },
     audit: () => {}, log: () => {}, now: () => NOW
@@ -140,6 +143,17 @@ test('admin válido (sesión+permiso+MFA reciente+CSRF+origen): 200 y la palanca
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.ok, true);
   assert.ok(r.spies.suspend >= 1, 'suspend ejecutado');
+});
+
+test('reschedule requiere sesión admin con football:manage y rechaza a moderador', async () => {
+  const denied = await runOnce({ role: 'moderator', path: '/admin/estadio/matches/m1/reschedule', body: { kickoffAt: NOW + 60000 } });
+  assert.equal(denied.status, 403);
+  assert.equal(denied.json.code, 'permission_denied');
+
+  const allowed = await runOnce({ role: 'admin', path: '/admin/estadio/matches/m1/reschedule', body: { kickoffAt: NOW + 60000 } });
+  assert.equal(allowed.status, 200);
+  assert.equal(allowed.json.ok, true);
+  assert.equal(allowed.json.match.scheduledKickoffAt, NOW + 60000);
 });
 
 // --- Regresión del refactor (E4b): installAdminRoutes ahora consume makeAdminGuard.

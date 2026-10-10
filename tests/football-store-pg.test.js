@@ -182,7 +182,7 @@ test('paridad de interfaz con FootballStore (todos los métodos públicos)', asy
 
   const expected = [
     'generateSeason', 'ensureSeason', 'closeSeason', 'computeCarryover', 'getLeague',
-    'getCurrentSeasonMonth', 'getMatches', 'getMatch', 'getStandings', 'settleMatch',
+    'getCurrentSeasonMonth', 'getMatches', 'getMatch', 'getStandings', 'settleMatch', 'rescheduleMatch',
     'insertBet', 'markBetDebited', 'confirmBet', 'getBet', 'getBets', 'getOpenBetsForMatch',
     'countOpenBets', 'sumOpenStake', 'hasOpenBets', 'countOpenBetsByProfile', 'settleBet',
     'voidBet', 'removeBet', 'insertParlay', 'markParlayDebited', 'confirmParlay', 'getParlay',

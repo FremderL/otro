@@ -3588,3 +3588,84 @@ La lógica comprobable está en `lib/football/promotions.js` y `lib/football/htt
 Postgres en `PgProfileStore.applyPromotionReviewAtomic()`. Las regresiones están en
 `tests/football-promotions.test.js` e incluyen allowlist, autenticación, ventana, moderación, cobro
 único, no-cobro al rechazar y selección rotativa.
+
+## 30. Coherencia entre relato y animación de gol (porterías y sincronización)
+
+Se corrige la coherencia visual y narrativa de los goles en el Estadio MonteCristo:
+
+- **Posicionamiento del balón en portería:** anteriormente, los goles ubicaban el balón justo
+  en la línea de gol (`x = 0` para visita o `x = 1` para local), mientras el cliente dibujaba la
+  portería fuera del campo (`nx(0) - 6` y `nx(1)`) y limitaba la posición del balón a `[0, 1]`.
+  Esto impedía que el balón cruzara la línea y entrara visualmente a la red.
+- **Margen dentro de la red:** el motor (`lib/football/match-state.js`) ahora coloca los goles
+  claramente dentro de la red (`-0.01` para la visita, `1.01` para el local) y el cliente
+  (`public/estadio.js`) conserva ese margen (`[-0.01, 1.01]`) tanto en los ticks como en los eventos.
+- **Sincronización del relato:** cuando la animación con tweening está activa, el relato del gol
+  espera a que termine el desplazamiento del balón antes de mostrar el mensaje del narrador y
+  analista, evitando revelar el gol antes de que el balón llegue a la portería. Con
+  `prefers-reduced-motion` activo, el relato se muestra inmediatamente.
+
+## 31. Realismo integral: IA de jugadores, cinemática del balón y sincronización del relato
+
+Se implementa una arquitectura completa de fidelidad de simulación y sincronización visual entre el motor autoritativo (`lib/football/match-state.js`), el transporte de sockets (`lib/football/sockets.js`) y la interfaz de usuario (`public/estadio.js`):
+
+1. **Fuente de verdad centralizada:**
+   - La simulación conserva un estado unificado con balón (`x`, `y`, `vx`, `vy`, `zone`, `controlled`, `carrierId`, `crossedGoalLine`), equipo en posesión (`possessionTeam`), portador (`ballCarrierId`), jugadores con posición, rol, velocidad (`vx`, `vy`), orientación, atributos (`speed`, `stamina`, `passing`, `shooting`, `control`, `defending`, `goalkeeping`) y estado disciplinario.
+   - El relato sigue con rigor estricto los eventos confirmados por el motor sin bifurcaciones especulativas.
+
+2. **Inteligencia táctica y cinemática de jugadores:**
+   - **Conducción vinculada:** el portador del balón mantiene la pelota físicamente anclada en sus pies a lo largo de su avance, eliminando despegues o rezagos visuales.
+   - **Presión defensiva inteligente:** únicamente el defensor rival más cercano al balón sale a presionar con velocidad dirigida por sus atributos (`pac`), mientras el resto de los defensores resguarda su estructura zonal y compacta las líneas.
+   - **Apoyos ofensivos y desmarques:** los compañeros de equipo en ataque se desmarcan hacia espacios libres en función de su rol ofensivo (`FW`), habilitando líneas de pase diagonales.
+   - **Comportamiento en festejos:** tras un gol, los compañeros del autor del tanto se aproximan para celebrar de forma conjunta durante la ventana de festejo.
+   - **Restricción estricta de saque de centro:** durante el saque inicial y tras un gol (`kickoff`, `goal_restart`), ningún jugador puede invadir la mitad del campo contraria (`x <= 0.485` para local y `x >= 0.515` para visitante), y el equipo defensor permanece fuera del círculo central (`x <= 0.40` o `x >= 0.60`). El ejecutor se posiciona con precisión en el punto de saque.
+
+3. **Física del balón y coherencia de jugadas:**
+   - Los pases vinculan la posición de salida del pasador (`ballFrom` / `actorPosition`) con la carrera y destino del receptor (`receiverPosition` / `receiverId`).
+   - Los remates viajan a la portería y las atajadas ubican al guardameta en el ángulo exacto del balón, conteniendo la pelota en el área de meta y transfiriendo la posesión.
+   - Los saques de esquina se ubican con precisión en los banderines de córner, los saques de banda en la línea lateral y los saques de meta en el área chica.
+
+4. **Secuencia post-gol en 10 pasos:**
+   - 1) Balón cruza la línea hacia la red (`1.01` o `-0.01`).
+   - 2) Validación del gol y confirmación de autor y asistencia.
+   - 3) Actualización atómica del marcador una sola vez.
+   - 4) Registro del evento en el historial del partido.
+   - 5) Pausa reglamentaria y celebración del equipo goleador.
+   - 6) Detención temporal de mercados de apuestas (`playStopped = true`).
+   - 7) Reposicionamiento táctico de ambos planteles en sus propias mitades de cancha.
+   - 8) Colocación del balón en el punto central `(0.5, 0.5)`.
+   - 9) Saque de centro ejecutado por el equipo que recibió el gol (`goal_restart`).
+   - 10) Reanudación de la fluidez del partido y apertura del mercado.
+
+5. **Disciplina, sustituciones e interrupciones:**
+   - Faltas detienen el reloj y el mercado (`playStopped = true`), colocando el balón en el punto de la infracción.
+   - Tarjetas amarillas y rojas se registran en `state.cards`. Las expulsiones (roja directa o doble amarilla) marcan al jugador como `sent_off`, desactivándolo del campo (`active = false`), reduciendo el conteo de jugadores a 10 y excluyéndolo de toda jugada posterior.
+   - Sustituciones atómicas retiran al jugador saliente (`substituted`) e incorporan al suplente (`active = true`), preservando la posición táctica en cancha y actualizando el relato con el nombre del jugador reemplazado (`sale`).
+   - El medio tiempo y el pitazo final cierran mercados y fases sin admitir jugadas huérfanas.
+
+6. **Renderizado visual orgánico:**
+   - Supresión completa de vibraciones o temblores en balón detenido y en el portador.
+   - Respiración táctica sutil (`0.002` de oscilación armónica) para jugadores sin balón, ofreciendo dinamismo visual natural sin teletransportación.
+
+## 32. Reprogramación de partidos y control de La Previa
+
+Se establece una arquitectura integral para la reprogramación del horario de kickoff por parte del equipo de administración y la preservación de la coherencia de «La Previa» (preshow), previniendo errores de visualización prematura o falta de apertura:
+
+1. **Palanca operativa y persistencia:**
+   - La ruta administrativa `POST /admin/estadio/matches/:id/reschedule` permite modificar el kickoff programado de un partido.
+   - Requiere autenticación de staff con rol `admin`, permiso `football:manage`, MFA reciente, origen confiable y CSRF.
+   - Valida estrictamente que el partido tenga estado `scheduled` (rechaza `live`, `finished`, `settled` o `postponed` con código `match_not_scheduled`), y que la nueva hora de kickoff sea una marca temporal válida posterior a la hora actual (`kickoff_in_past`).
+   - El método `store.rescheduleMatch(matchId, kickoffAt, options)` actualiza `scheduledKickoffAt`, recalcula `day` en la zona horaria del casino (`CASINO_TIME_ZONE`), reordena los partidos del calendario según jornada y horario, y persiste de inmediato a disco o Postgres mediante `saveNow()`.
+   - Se audita y registra el evento con `football_match_rescheduled`, conservando el horario anterior y el nuevo.
+
+2. **Sincronización en tiempo real:**
+   - El motor `FootballEngine.rescheduleMatch()` invalida la línea de tiempo simulada en caché (`invalidate`), limpia el runtime en memoria y emite `football:rescheduled` y `football:status` (`code: 'rescheduled'`).
+   - El servidor de sockets (`lib/football/sockets.js`) difunde `football:rescheduled` y `football:status` a la sala del partido (`matchRoom`) y retransmite un lobby actualizado (`football:lobby`) a `LOBBY_ROOM` recalculando `nextKickoffAt` y `countdownMs`.
+
+3. **Ciclo de vida y coherencia de La Previa:**
+   - **Cierre inmediato fuera de T−30:** si un partido que estaba dentro de la ventana de La Previa se reprograma a un horario posterior que excede los 30 minutos, el panel `#est-preshow` se oculta de inmediato (`panel.hidden = true`), se retira cualquier atributo de demora (`data-delay`), se oculta el compositor de promociones y se detiene la rotación de anuncios (`stopPromotionRotation`).
+   - **Inexistencia de previa en horario obsoleto:** al llegar el horario que tenía el partido antes de la reprogramación, el partido permanece programado para su nueva hora futura, evitando que se muestre La Previa desfasada o que entre en falso estado de retraso.
+   - **Apertura puntual en el nuevo T−30:** al alcanzarse exactamente los 30 minutos previos al nuevo horario de kickoff, La Previa se abre de manera automática (`panel.hidden = false`), el contador inicia en `30:00`, se reactiva la rotación de promociones y se actualiza el rótulo de kickoff programado.
+   - **Apertura inmediata si se acerca el kickoff:** si un partido lejano se reprograma a menos de 30 minutos del presente, La Previa abre al instante reflejando los minutos exactos restantes.
+   - **Recuperación desde estado de retraso:** si un partido en demora (`remaining <= 0`, `panel.dataset.delay = "true"`) es reprogramado hacia el futuro, el estado de retraso se cancela de inmediato (`panel.dataset.delay = "false"`), el panel restaura el temporizador activo y se reactiva el espacio promocional.
+   - **Ventana de promociones:** el envío y la revisión de promociones vinculadas (`lib/football/promotions.js`) evalúan dinámicamente `isPreshowWindow()` frente al nuevo `scheduledKickoffAt`, garantizando que solo se puedan enviar y aprobar dentro de los últimos 30 minutos reales del partido.
