@@ -34,6 +34,7 @@
     playerName: $('#player-name'), roomName: $('#room-name'), roomNameField: $('#room-name-field'),
     roomCode: $('#room-code'), codeField: $('#code-field'), gameChoice: $('#game-choice'),
     modalKicker: $('#modal-kicker'), modalTitle: $('#modal-title'), modalSubtitle: $('#modal-subtitle'), modalSymbol: $('.modal-symbol'),
+    setupPreviewSymbol: $('#setup-preview-symbol'), setupPreviewTitle: $('#setup-preview-title'), setupPreviewDetail: $('#setup-preview-detail'), setupPreviewAvatar: $('#setup-preview-avatar'),
     modalSubmit: $('#modal-submit'), overlay: $('#connection-overlay'), loadingMessage: $('#loading-message'),
     navConnection: $('#nav-connection'), headerConnection: $('#header-connection'), connectionStatus: $('#connection-status'),
     liveRooms: $('#live-rooms'), liveRoomCount: $('#live-room-count'), onlinePlayerCount: $('#online-player-count'),
@@ -63,7 +64,7 @@
     quickChatToggle: $('#quick-chat-toggle'), quickChatMenu: $('#quick-chat-menu'),
     botMenuToggle: $('#bot-menu-toggle'), botControls: $('#bot-controls'), botMenuClose: $('#bot-menu-close'),
     botDifficulty: $('#bot-difficulty'), botStyle: $('#bot-style'), botAdd: $('#bot-add'), botFill: $('#bot-fill'),
-    reportOpenBtn: $('#report-open-btn'), reportModal: $('#report-modal'), reportForm: $('#report-form'), reportedUsername: $('#reported-username'), reportCategory: $('#report-category'), reportDescription: $('#report-description'), reportError: $('#report-error'), myReportsList: $('#my-reports-list'), myReportsRefresh: $('#my-reports-refresh'),
+    reportOpenBtn: $('#report-open-btn'), reportModal: $('#report-modal'), reportForm: $('#report-form'), reportTitle: $('#report-title'), reportCopy: $('#report-copy'), reportUserField: $('#report-user-field'), reportedUsername: $('#reported-username'), reportCategory: $('#report-category'), reportDescription: $('#report-description'), reportError: $('#report-error'), myReportsList: $('#my-reports-list'), myReportsRefresh: $('#my-reports-refresh'),
     accountOpenBtn: $('#account-open-btn'), accountModal: $('#account-modal'), accountForm: $('#account-form'),
     accountModalTitle: $('#account-modal-title'), accountModalCopy: $('#account-modal-copy'),
     accountUsername: $('#account-username'), accountPassword: $('#account-password'), accountError: $('#account-error'),
@@ -490,7 +491,14 @@
     if (!els.lobbyChatMessages) return;
     const messages = ui.lobbyChat.messages || [];
     els.lobbyChatMessages.innerHTML = messages.length
-      ? messages.map(message => `<div class="lobby-chat-message"><span class="lobby-chat-avatar" style="background:${avatarColor(message.playerId)}">${avatarEmoji(message.avatar)}</span><div><b>${escapeHtml(message.name)}</b><p>${escapeHtml(message.text)}</p>${message.username ? `<button class="chat-report" data-report-message="${escapeHtml(message.id)}" data-report-user="${escapeHtml(message.username)}">Reportar</button>` : ''}</div></div>`).join('')
+      ? messages.map(message => {
+        const botClass = message.bot ? ' lobby-chat-message-bot' : '';
+        const botBadge = message.bot ? ' <span class="lobby-chat-bot-badge" aria-label="asistente automático">BOT</span>' : '';
+        const reportButton = message.playerId && !message.system
+          ? `<button type="button" class="chat-report" aria-label="Reportar el mensaje de ${escapeHtml(message.name)}" data-report-message="${escapeHtml(message.id)}">⚑ Reportar</button>`
+          : '';
+        return `<div class="lobby-chat-message${botClass}"><span class="lobby-chat-avatar" style="background:${avatarColor(message.playerId)}">${avatarEmoji(message.avatar)}</span><div><b>${escapeHtml(message.name)}${botBadge}</b><p>${escapeHtml(message.text)}</p>${reportButton}</div></div>`;
+      }).join('')
       : '<div class="lobby-chat-empty">Sé el primero en saludar al casino.</div>';
     els.lobbyChatMessages.scrollTop = els.lobbyChatMessages.scrollHeight;
     const unread = Number(ui.lobbyChat.unread) || 0;
@@ -624,6 +632,13 @@
   socket.on('connect_error', () => { setConnection('reconnecting'); });
 
   // ---------- Modal and landing ----------
+  function updateTableSetupPreview() {
+    const selected = $$('[data-select-game]').find(button => button.dataset.selectGame === ui.selectedGame);
+    if (els.setupPreviewSymbol) els.setupPreviewSymbol.textContent = selected?.querySelector('span')?.textContent.trim() || GAME_META[ui.selectedGame]?.icon || '♠';
+    if (els.setupPreviewTitle) els.setupPreviewTitle.textContent = selected?.querySelector('b')?.textContent.trim() || GAME_META[ui.selectedGame]?.name || 'Mesa MonteCristo';
+    if (els.setupPreviewDetail) els.setupPreviewDetail.textContent = selected?.querySelector('small')?.textContent.trim() || 'Juega con tu grupo';
+    if (els.setupPreviewAvatar) els.setupPreviewAvatar.textContent = avatarEmoji(ui.selectedAvatar);
+  }
   function openModal(mode = 'create', options = {}) {
     ui.modalMode = mode;
     ui.selectedGame = options.game === 'blackjack' ? 'blackjack' : (options.game || ui.selectedGame || 'poker');
@@ -632,6 +647,7 @@
     els.roomName.value = options.roomName || '';
     const spectating = mode === 'spectate'; // Fase 8: entrar como espectador
     const joining = mode === 'join' || spectating;
+    els.modal.dataset.mode = spectating ? 'spectate' : joining ? 'join' : 'create';
     els.modalKicker.textContent = spectating ? 'VER UNA MESA' : joining ? 'UNIRSE A UNA MESA' : 'NUEVA SALA';
     els.modalTitle.textContent = spectating ? 'Entra a la tribuna' : joining ? 'Toma tu asiento' : 'Prepara la mesa';
     els.modalSubtitle.textContent = spectating
@@ -654,6 +670,7 @@
       button.classList.toggle('active', selected);
       button.setAttribute('aria-pressed', String(selected));
     });
+    updateTableSetupPreview();
     els.modal.classList.add('open');
     els.modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
@@ -675,6 +692,7 @@
       item.classList.toggle('active', selected);
       item.setAttribute('aria-pressed', String(selected));
     });
+    updateTableSetupPreview();
   }));
   $$('[data-select-avatar]').forEach(button => button.addEventListener('click', () => {
     ui.selectedAvatar = button.dataset.selectAvatar;
@@ -684,6 +702,7 @@
       item.classList.toggle('active', selected);
       item.setAttribute('aria-pressed', String(selected));
     });
+    updateTableSetupPreview();
   }));
   document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeModal(); closeProfileModal(); closeAccountModal(); toggleShortcutHelp(false); } });
   // Fases 5 y 6: saltar animaciones (botones presentes en mesa o panel de acciones)
@@ -787,18 +806,34 @@
     // Fase 11.4: junto al nombre, el banner dorado (único, de por vida) y las
     // medallas de oro (una por cada temporada ganada, se coleccionan).
     const badgesFor = entry => `${entry.championBanner ? '<span class="ranking-champion-flag" title="Banner dorado de por vida: fue líder de una temporada">🎖️</span>' : ''}${entry.medals ? `<span class="ranking-medals" title="${entry.medals} temporada${entry.medals === 1 ? '' : 's'} ganada${entry.medals === 1 ? '' : 's'}">🥇×${entry.medals}</span>` : ''}`;
+    const leader = season.ranking[0];
+    const feature = $('#ranking-feature');
+    feature.innerHTML = leader ? `
+      <div class="ranking-feature-top"><span>LÍDER DE TEMPORADA</span><i>♛</i></div>
+      <div class="ranking-feature-player"><span class="ranking-feature-avatar">${avatarEmoji(leader.avatar)}</span><div><small>PRIMER LUGAR</small><b>${escapeHtml(leader.name)}${badgesFor(leader)}</b></div></div>
+      <div class="ranking-feature-balance"><b>◆ ${formatChips(leader.chips)}</b><small>FICHAS EN TEMPORADA</small></div>
+      <div class="ranking-feature-footer"><span>Victorias</span><b>${formatChips(leader.wins || 0)}</b></div>` : '';
     $('#ranking-list').innerHTML = season.ranking.map((entry, index) => `
-      <div class="ranking-row ${index === 0 ? 'leader' : ''}">
-        <span class="ranking-pos">${posIcons[index] || `#${index + 1}`}</span>
-        <span class="ranking-avatar">${avatarEmoji(entry.avatar)}</span>
-        <span class="ranking-name">${escapeHtml(entry.name)}${badgesFor(entry)}</span>
-        <span class="ranking-wins">${formatChips(entry.wins || 0)} ${entry.wins === 1 ? 'victoria' : 'victorias'}</span>
-        <span class="ranking-chips">◆ ${formatChips(entry.chips)}</span>
+      <div class="ranking-row ${index === 0 ? 'leader' : ''}" role="row">
+        <span class="ranking-pos" role="cell">${posIcons[index] || `#${index + 1}`}</span>
+        <span class="ranking-player" role="cell"><span class="ranking-avatar">${avatarEmoji(entry.avatar)}</span><span class="ranking-name">${escapeHtml(entry.name)}${badgesFor(entry)}</span></span>
+        <span class="ranking-wins" role="cell"><b>${formatChips(entry.wins || 0)}</b><small>${entry.wins === 1 ? 'victoria' : 'victorias'}</small></span>
+        <span class="ranking-chips" role="cell"><b>◆ ${formatChips(entry.chips)}</b><small>fichas</small></span>
       </div>`).join('');
     const previousBox = $('#ranking-previous');
     if (season.previous?.podium?.length) {
+      const previousMonth = escapeHtml(season.previous.month || 'la temporada anterior');
       previousBox.classList.remove('hidden');
-      previousBox.innerHTML = `<small>PODIO DE ${escapeHtml(season.previous.month)}:</small> ${season.previous.podium.map((entry, index) => `<span>${posIcons[index] || ''} ${escapeHtml(entry.name)}${badgesFor(entry)} (◆ ${formatChips(entry.chips)})</span>`).join(' · ')}`;
+      previousBox.innerHTML = `
+        <div class="previous-podium-heading"><div><span class="kicker">PODIO ANTERIOR</span><b>${previousMonth}</b></div><small>Clasificación final · fichas virtuales</small></div>
+        <div class="previous-podium-grid" role="list" aria-label="Podio de ${previousMonth}">
+          ${season.previous.podium.map((entry, index) => `
+            <div class="previous-podium-place place-${index + 1}" role="listitem">
+              <span class="previous-podium-rank">${posIcons[index] || `#${index + 1}`}</span>
+              <span class="previous-podium-avatar">${avatarEmoji(entry.avatar)}</span>
+              <div class="previous-podium-info"><b>${escapeHtml(entry.name)}${badgesFor(entry)}</b><span>◆ ${formatChips(entry.chips)} <small>FICHAS</small></span></div>
+            </div>`).join('')}
+        </div>`;
     } else previousBox.classList.add('hidden');
   }
 
@@ -1062,7 +1097,7 @@
     ui.lastChatSignature = signature;
     els.chatList.innerHTML = messages.length ? messages.map(message => message.system
       ? `<div class="chat-system">${escapeHtml(message.text)}</div>`
-      : `<div class="chat-msg"><div class="chat-avatar" style="background:${avatarColor(message.playerId)}">${avatarEmoji(ui.room.players.find(player => player.id === message.playerId)?.avatar)}</div><div class="chat-bubble"><b>${escapeHtml(message.name)}</b><p>${escapeHtml(message.text)}</p>${message.username ? `<button class="chat-report" data-report-message="${escapeHtml(message.id)}" data-report-user="${escapeHtml(message.username)}">Reportar</button>` : ''}</div></div>`).join('')
+      : `<div class="chat-msg"><div class="chat-avatar" style="background:${avatarColor(message.playerId)}">${avatarEmoji(ui.room.players.find(player => player.id === message.playerId)?.avatar)}</div><div class="chat-bubble"><b>${escapeHtml(message.name)}</b><p>${escapeHtml(message.text)}</p>${message.playerId ? `<button type="button" class="chat-report" aria-label="Reportar el mensaje de ${escapeHtml(message.name)}" data-report-message="${escapeHtml(message.id)}">⚑ Reportar</button>` : ''}</div></div>`).join('')
       : '<div class="chat-system">El chat está listo para la primera jugada.</div>';
     els.chatList.scrollTop = els.chatList.scrollHeight;
   }
@@ -2095,12 +2130,76 @@
     }
   }
   async function loadMyReports(){const response=await secureAuthRequest('/api/reports/mine');if(!response.ok){els.myReportsList.textContent=response.error||'No se pudieron cargar.';return;}const labels={open:'Recibido',triaged:'Clasificado',investigating:'En revisión',resolved:'Resuelto',rejected:'Cerrado'};els.myReportsList.innerHTML=response.reports.map(report=>`<div class="my-report"><b>${escapeHtml(report.category)}</b><span>${escapeHtml(labels[report.status]||report.status)}</span><small>${new Date(report.createdAt).toLocaleDateString()} · ${escapeHtml(report.id.slice(0,8))}</small></div>`).join('')||'<small>No has enviado reportes.</small>';}
-  async function openReportModal(username='',messageId=null){if(!ui.accountSession&&!messageId)return showToast('Inicia sesión','Los invitados solo pueden reportar mensajes visibles.','notice');ui.reportMessageId=messageId;els.reportedUsername.value=username;els.reportedUsername.readOnly=Boolean(username);els.reportModal.classList.add('open');els.reportModal.setAttribute('aria-hidden','false');document.body.classList.add('modal-open');if(ui.accountSession){if(!ui.csrfToken){const current=await secureAuthRequest('/api/auth/session');if(current.ok)ui.csrfToken=current.csrfToken;}await loadMyReports();}else{els.myReportsList.textContent='El seguimiento requiere una cuenta.';}els.reportedUsername.focus();}
-  els.reportOpenBtn?.addEventListener('click',()=>openReportModal());
-  els.myReportsRefresh?.addEventListener('click',loadMyReports);
-  document.addEventListener('click',event=>{const button=event.target.closest('[data-report-message]');if(button)openReportModal(button.dataset.reportUser,button.dataset.reportMessage);});
-  $$('[data-close-report]').forEach(element=>element.addEventListener('click',()=>{els.reportModal.classList.remove('open');els.reportModal.setAttribute('aria-hidden','true');els.reportedUsername.readOnly=false;ui.reportMessageId=null;document.body.classList.remove('modal-open');}));
-  els.reportForm?.addEventListener('submit',async event=>{event.preventDefault();els.reportError.classList.add('hidden');const response=await secureAuthRequest('/api/reports',{method:'POST',headers:ui.accountSession?(ui.csrfToken?{'X-CSRF-Token':ui.csrfToken}:{}):{'X-Device-Token':deviceToken},body:JSON.stringify({reportedUsername:els.reportedUsername.value.trim(),category:els.reportCategory.value,description:els.reportDescription.value,messageId:ui.reportMessageId||undefined})});if(!response.ok){els.reportError.textContent=response.error||'No se pudo enviar el reporte.';els.reportError.classList.remove('hidden');return;}els.reportForm.reset();els.reportModal.classList.remove('open');document.body.classList.remove('modal-open');showToast('Reporte recibido',`Folio ${response.reportId}`,'notice',5000,'🛡️');});
+  async function openReportModal(username = '', messageId = null) {
+    const isMessageReport = Boolean(messageId);
+    if (!ui.accountSession && !isMessageReport) return showToast('Inicia sesión', 'Los invitados solo pueden reportar mensajes visibles.', 'notice');
+    ui.reportMessageId = messageId || null;
+    els.reportedUsername.value = username;
+    els.reportedUsername.readOnly = Boolean(username);
+    els.reportedUsername.required = !isMessageReport;
+    els.reportUserField?.classList.toggle('hidden', isMessageReport);
+    els.reportTitle.textContent = isMessageReport ? 'Reportar mensaje' : 'Reportar un usuario';
+    els.reportCopy.textContent = isMessageReport
+      ? 'El mensaje se adjuntará como evidencia y el autor se identificará de forma segura.'
+      : 'Describe lo ocurrido. Los reportes falsos o abusivos también pueden revisarse.';
+    els.reportModal.classList.add('open');
+    els.reportModal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    if (ui.accountSession) {
+      if (!ui.csrfToken) {
+        const current = await secureAuthRequest('/api/auth/session');
+        if (current.ok) ui.csrfToken = current.csrfToken;
+      }
+      await loadMyReports();
+    } else {
+      els.myReportsList.textContent = 'El seguimiento requiere una cuenta.';
+    }
+    (isMessageReport ? els.reportCategory : els.reportedUsername).focus();
+  }
+  function closeReportModal() {
+    els.reportModal.classList.remove('open');
+    els.reportModal.setAttribute('aria-hidden', 'true');
+    els.reportedUsername.readOnly = false;
+    els.reportedUsername.required = true;
+    els.reportUserField?.classList.remove('hidden');
+    els.reportTitle.textContent = 'Reportar un usuario';
+    els.reportCopy.textContent = 'Describe lo ocurrido. Los reportes falsos o abusivos también pueden revisarse.';
+    ui.reportMessageId = null;
+    document.body.classList.remove('modal-open');
+  }
+  els.reportOpenBtn?.addEventListener('click', () => openReportModal());
+  els.myReportsRefresh?.addEventListener('click', loadMyReports);
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-report-message]');
+    if (button) openReportModal('', button.dataset.reportMessage);
+  });
+  $$('[data-close-report]').forEach(element => element.addEventListener('click', closeReportModal));
+  els.reportForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    els.reportError.classList.add('hidden');
+    const payload = {
+      category: els.reportCategory.value,
+      description: els.reportDescription.value,
+      ...(ui.reportMessageId
+        ? { messageId: ui.reportMessageId }
+        : { reportedUsername: els.reportedUsername.value.trim() })
+    };
+    const response = await secureAuthRequest('/api/reports', {
+      method: 'POST',
+      headers: ui.accountSession
+        ? (ui.csrfToken ? { 'X-CSRF-Token': ui.csrfToken } : {})
+        : { 'X-Device-Token': deviceToken },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      els.reportError.textContent = response.error || 'No se pudo enviar el reporte.';
+      els.reportError.classList.remove('hidden');
+      return;
+    }
+    els.reportForm.reset();
+    closeReportModal();
+    showToast('Reporte recibido', `Folio ${response.reportId}`, 'notice', 5000, '🛡️');
+  });
   els.accountOpenBtn?.addEventListener('click', openAccountModal);
   $$('[data-close-account]').forEach(element => element.addEventListener('click', closeAccountModal));
   els.accountPasswordToggle?.addEventListener('click', () => {

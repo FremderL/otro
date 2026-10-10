@@ -59,13 +59,64 @@
       </section>
     </aside>
 
-    <!-- Columna central: cancha + marcador + relato -->
-    <section class="est-col-center" aria-label="Partido en juego">
+    <!-- Columna central: previa + cancha + marcador + relato -->
+    <section class="est-col-center" aria-label="Partido y previa">
       <div class="est-scoreboard" id="est-scoreboard">
         <div class="est-team est-team-home"><span class="est-crest" id="crest-home"></span><span id="name-home">Local</span></div>
         <div class="est-score"><b id="score-home">0</b><span class="est-clock" id="est-clock">—</span><b id="score-away">0</b></div>
         <div class="est-team est-team-away"><span id="name-away">Visita</span><span class="est-crest" id="crest-away"></span></div>
       </div>
+
+      <section id="est-preshow" class="est-preshow" aria-labelledby="est-preshow-title" hidden>
+        <div class="est-preshow-head">
+          <div>
+            <p class="est-preshow-kicker">La previa · últimos 30 minutos</p>
+            <h2 id="est-preshow-title">Así llegan los equipos</h2>
+          </div>
+          <div class="est-preshow-countdown" aria-label="Cuenta regresiva del partido">
+            <span id="est-preshow-status" role="status" aria-live="polite">Kickoff programado</span>
+            <time id="est-preshow-timer" aria-live="off">30:00</time>
+          </div>
+        </div>
+        <div class="est-compare-wrap">
+          <table id="est-team-comparison" class="est-team-comparison" aria-label="Comparativa de los equipos">
+            <thead><tr><th scope="col">Indicador</th><th id="est-compare-home" scope="col">Local</th><th id="est-compare-away" scope="col">Visita</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <aside id="est-preshow-promo" class="est-preshow-promo" aria-label="Espacio promocional de La Previa">
+          <div class="est-promo-content">
+            <span id="est-promo-label" class="est-promo-label">Promoción propia</span>
+            <p id="est-promo-text">Mientras llega el partido, descubre más juegos de MonteCristo.</p>
+          </div>
+          <a id="est-promo-link" class="btn btn-ghost btn-small" href="/">Explorar casino</a>
+        </aside>
+        <details id="est-promo-compose" class="est-promo-compose" hidden>
+          <summary>Enviar una promoción para este partido</summary>
+          <p class="est-promo-note">Solo cuentas vinculadas. La promoción debe aprobarse antes de publicarse; se cobran 250 fichas únicamente al aprobarla.</p>
+          <div id="est-promo-auth" class="est-promo-auth" role="status">Comprobando sesión de cuenta…</div>
+          <a id="est-promo-login" class="btn btn-ghost btn-small" href="/" hidden>Inicia sesión en el casino y vuelve a La Previa</a>
+          <button id="est-promo-refresh" class="text-button" type="button" hidden>Ya inicié sesión · verificar</button>
+          <form id="est-promo-form" class="est-promo-form" hidden>
+            <label for="est-promo-copy-input">Texto breve (3–140 caracteres)
+              <input id="est-promo-copy-input" name="text" type="text" minlength="3" maxlength="140" required autocomplete="off" />
+            </label>
+            <label for="est-promo-target">Enlace interno de MonteCristo
+              <select id="est-promo-target" name="targetPath">
+                <option value="/">Inicio del casino</option>
+                <option value="/estadio">Estadio</option>
+                <option value="/terminos">Términos</option>
+                <option value="/room">Sala con código</option>
+              </select>
+            </label>
+            <label id="est-promo-room-field" for="est-promo-room-code" hidden>Código de sala (5 caracteres)
+              <input id="est-promo-room-code" type="text" minlength="5" maxlength="5" pattern="[A-Za-z0-9]{5}" autocomplete="off" />
+            </label>
+            <button id="est-promo-submit" class="btn btn-primary" type="submit">Enviar a revisión · sin cobro al enviar</button>
+            <p id="est-promo-message" class="est-promo-message" role="status" aria-live="polite"></p>
+          </form>
+        </details>
+      </section>
 
       <div class="est-canvas-wrap" id="est-canvas-wrap">
         <canvas id="est-pitch" width="1050" height="680" role="img"

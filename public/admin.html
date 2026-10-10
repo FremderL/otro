@@ -33,9 +33,31 @@
       <div class="card"><small>SESIÓN ELEVADA</small><h1 id="admin-welcome"></h1><p id="admin-role"></p></div>
       <section class="card"><div class="detail-head"><div><small>BANDEJA</small><h2>Reportes abiertos</h2></div><button id="reports-refresh" class="text-button">Actualizar</button></div><div id="reports-list" class="user-results"></div></section>
       <section id="report-detail" class="card hidden"><div class="detail-head"><div><small>REPORTE</small><h2 id="report-title"></h2></div><button id="report-close" class="text-button">Cerrar</button></div><p id="report-description"></p><pre id="report-evidence"></pre><form id="report-form"><label>Estado<select id="report-status"><option value="triaged">Clasificado</option><option value="investigating">En investigación</option><option value="resolved">Resuelto</option><option value="rejected">Rechazado</option></select></label><label>Prioridad<select id="report-priority"><option value="low">Baja</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label><label>Resolución<textarea id="report-resolution" maxlength="1000"></textarea></label><button class="button" type="submit">Guardar reporte</button></form></section>
+      <section id="football-promotion-panel" class="card hidden">
+        <div class="detail-head"><div><small>ESTADIO · LA PREVIA</small><h2>Promociones pendientes</h2></div><button id="football-promotions-refresh" class="text-button" type="button">Actualizar</button></div>
+        <p>Revisa el texto y el enlace interno. Solo se publican tras aprobación; aprobar descuenta 250 fichas de la cuenta vinculada.</p>
+        <div id="football-promotions-list" class="user-results" aria-live="polite"></div>
+      </section>
       <div class="grid"><article class="card"><b>Auditoría</b><p>Todas las acciones sensibles quedan registradas.</p></article></div>
       <section class="card users-card"><small>MODERACIÓN</small><h2>Buscar usuarios</h2><form id="user-search-form"><label>Usuario o nombre<input id="user-search" minlength="2" maxlength="40" required /></label><button class="button" type="submit">Buscar</button></form><div id="user-results" class="user-results"></div></section>
-      <section id="user-detail" class="card hidden"><div class="detail-head"><div><small>CUENTA SELECCIONADA</small><h2 id="detail-name"></h2><p id="detail-meta"></p></div><button id="detail-close" class="text-button">Cerrar</button></div><div id="moderation-history"></div><form id="moderation-form"><label>Acción<select id="moderation-action"><option value="suspend">Suspender</option><option value="ban">Banear permanentemente</option><option value="unban">Desbanear</option></select></label><label id="duration-field">Duración<select id="moderation-duration"><option value="1h">1 hora</option><option value="24h">24 horas</option><option value="7d">7 días</option><option value="30d">30 días</option></select></label><label>Motivo<textarea id="moderation-reason" minlength="10" maxlength="500" required></textarea></label><button class="button danger" type="submit">Confirmar acción</button></form><hr><form id="password-reset-form"><h3>Restablecer contraseña</h3><p>Genera un enlace de un solo uso; nunca solicites ni establezcas la contraseña.</p><label>Motivo de soporte<textarea id="password-reset-reason" minlength="10" maxlength="500" required></textarea></label><button class="button" type="submit">Generar enlace (15 min)</button><div id="password-reset-result" class="hidden"><label>Enlace para entregar una sola vez<input id="password-reset-url" readonly></label></div></form></section>
+      <section id="user-detail" class="card hidden">
+        <div class="detail-head"><div><small>CUENTA SELECCIONADA</small><h2 id="detail-name"></h2><p id="detail-meta"></p></div><button id="detail-close" class="text-button">Cerrar</button></div>
+        <div id="moderation-history"></div>
+        <form id="moderation-form">
+          <label>Acción<select id="moderation-action"><option value="suspend">Suspender</option><option value="ban">Banear permanentemente</option></select></label>
+          <label id="duration-field">Duración<select id="moderation-duration"><option value="1h">1 hora</option><option value="24h">24 horas</option><option value="7d">7 días</option><option value="30d">30 días</option></select></label>
+          <label>Motivo<textarea id="moderation-reason" minlength="10" maxlength="500" required></textarea></label>
+          <button class="button danger" type="submit">Confirmar acción</button>
+        </form>
+        <div id="unban-panel" class="unban-panel hidden"><div><b>Cuenta bloqueada o suspendida</b><small>Restablece el acceso con una acción auditada; las sesiones se revocarán.</small></div><button id="unban-user" class="button unban" type="button">🔓 Desbanear / reactivar</button></div>
+        <form id="role-form" class="role-form hidden">
+          <div><h3>Rol de la cuenta</h3><p>Solo un administrador puede otorgar o retirar permisos de moderación. El cambio revoca las sesiones actuales; al iniciar sesión como moderador se exigirá MFA.</p></div>
+          <label>Motivo<textarea id="role-reason" minlength="10" maxlength="500" required></textarea></label>
+          <button id="role-submit" class="button" type="submit">Promover a moderador</button>
+        </form>
+        <hr>
+        <form id="password-reset-form"><h3>Restablecer contraseña</h3><p>Genera un enlace de un solo uso; nunca solicites ni establezcas la contraseña.</p><label>Motivo de soporte<textarea id="password-reset-reason" minlength="10" maxlength="500" required></textarea></label><button class="button" type="submit">Generar enlace (15 min)</button><div id="password-reset-result" class="hidden"><label>Enlace para entregar una sola vez<input id="password-reset-url" readonly></label></div></form>
+      </section>
     </section>
     <p id="status" class="status" aria-live="polite"></p>
   </main>

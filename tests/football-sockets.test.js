@@ -211,6 +211,17 @@ test('token ausente: subscribe rechaza con token_required', (t) => {
   assert.equal(res.code, 'token_required');
 });
 
+test('el lobby expone hora del servidor y estilo táctico público para La Previa', (t) => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const s = ctx.io.connect();
+  const res = subscribe(ctx, s, { name: 'Aficionado' });
+  assert.equal(res.ok, true);
+  assert.equal(res.lobby.serverNow, ctx.scheduled.scheduledKickoffAt);
+  assert.equal(res.teams.vantora_fc.formation, CLUB_BY_ID.vantora_fc.tactics.formation);
+  assert.equal(res.teams.vantora_fc.style, CLUB_BY_ID.vantora_fc.tactics.style);
+});
+
 // ===================== PRIVACIDAD DEL ESTADO REVELADO (T7) =====================
 
 test('T7 — match_state SOLO lleva estado revelado: el timeline nunca viaja', (t) => {
@@ -244,6 +255,36 @@ test('T7 — match_state SOLO lleva estado revelado: el timeline nunca viaja', (
   assert.ok(!('timeline' in ms.state) && !('futureEvents' in ms.state) && !('seed' in ms.state));
 });
 
+test('match_state anuncia mercado suspendido durante una interrupción del juego', (t) => {
+  const derive = () => {
+    const base = defaultDerive();
+    base.minute = 30;
+    base.matchEnd = 90;
+    base.phase = 'first_half';
+    base.state.minute = 30;
+    base.state.phase = 'set_piece';
+    base.state.playStopped = true;
+    base.state.players = [{
+      id: 'h9', team: 'home', name: 'A. Vitale', number: 9, pos: 'ST', role: 'FW', slotIndex: 10,
+      x: 0.82, y: 0.5, status: 'active', active: true, shooting: 91
+    }];
+    return base;
+  };
+  const ctx = setup({ derive });
+  t.after(ctx.cleanup);
+  ctx.scheduled.status = 'live';
+  const socket = ctx.io.connect();
+  const res = subscribe(ctx, socket, { scope: 'match', matchId: ctx.scheduled.id, name: 'Pausa' });
+  assert.equal(res.ok, true);
+  assert.equal(res.matchState.state.playStopped, true);
+  assert.equal(res.matchState.suspended, true);
+  assert.ok(Array.isArray(res.matchState.markets['1x2']));
+  assert.deepEqual(Object.keys(res.matchState.state.players[0]).sort(), [
+    'active', 'id', 'name', 'number', 'pos', 'role', 'slotIndex', 'status', 'team', 'x', 'y'
+  ]);
+  assert.ok(!('shooting' in res.matchState.state.players[0]), 'no se filtran atributos internos del jugador');
+});
+
 test('T7 — tick lleva solo minute/score/phase/ball/possession (subconjunto revelado)', (t) => {
   const ctx = setup();
   t.after(ctx.cleanup);
@@ -257,11 +298,49 @@ test('T7 — tick lleva solo minute/score/phase/ball/possession (subconjunto rev
   const tick = ctx.io.lastTo(matchRoom(ctx.scheduled.id), 'football:tick');
   assert.ok(tick, 'tick difundido');
   assert.equal(tick.minute, 12);
-  assert.deepEqual(Object.keys(tick).sort(), ['ball', 'matchId', 'minute', 'phase', 'possession', 'score'].sort());
+  assert.deepEqual(Object.keys(tick).sort(), [
+    'ball', 'ballCarrierId', 'displayMinute', 'half', 'matchId', 'minute', 'phase',
+    'playStopped', 'players', 'possession', 'possessionTeam', 'score'
+  ].sort());
   assert.ok(!JSON.stringify(tick).includes('timeline'));
 });
 
 // ===================== CABLEADO DE APUESTAS =====================
+
+test('tick en vivo difunde cuotas con el estado de suspensión actualizado', (t) => {
+  let paused = true;
+  const derive = () => {
+    const base = defaultDerive();
+    base.minute = 30;
+    base.matchEnd = 95;
+    base.phase = 'first_half';
+    base.state.minute = 30;
+    base.state.score = { home: 1, away: 0 };
+    base.state.redCards = { home: 1, away: 0 };
+    base.state.playStopped = paused;
+    return base;
+  };
+  const ctx = setup({ derive });
+  t.after(ctx.cleanup);
+  ctx.scheduled.status = 'live';
+  const socket = ctx.io.connect();
+  subscribe(ctx, socket, { scope: 'match', matchId: ctx.scheduled.id, name: 'Cuotas' });
+  const room = matchRoom(ctx.scheduled.id);
+  ctx.engine.emit('football:status', { matchId: ctx.scheduled.id, code: 'halftime', minute: 45 });
+  assert.equal(ctx.io.lastTo(room, 'football:odds').suspended, true, 'el status de descanso publica la suspensión de inmediato');
+  ctx.engine.emit('football:tick', { matchId: ctx.scheduled.id, state: derive().state, minute: 30 });
+  assert.equal(ctx.io.lastTo(room, 'football:odds').suspended, true);
+  assert.equal(ctx.io.lastTo(room, 'football:odds').selections.length, 3);
+  paused = false;
+  ctx.engine.emit('football:event', {
+    matchId: ctx.scheduled.id,
+    event: { t: 0, type: 'kickoff', team: 'home', phase: 'kickoff', commentary: [] },
+    catchUp: false, replay: false
+  });
+  assert.equal(ctx.io.lastTo(room, 'football:odds').suspended, false, 'el saque inicial reactiva cuotas sin esperar al siguiente tick');
+  ctx.engine.emit('football:tick', { matchId: ctx.scheduled.id, state: derive().state, minute: 30.5 });
+  assert.equal(ctx.io.lastTo(room, 'football:odds').suspended, false);
+});
 
 test('bet suscrito: debita, guarda y devuelve publicBet sin fugas', async (t) => {
   const ctx = setup();
@@ -445,6 +524,32 @@ test('relato: un gol real (con playerName) genera comentario que nombra club y j
   const ev = ctx.io.lastTo(room, 'football:event');
   assert.equal(ev.event.marcador, '1-0');
   assert.equal(ev.event.importance, 'high');
+});
+
+test('relato: Socket.IO reutiliza el comentario confirmado y publica el balón del mismo evento', (t) => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const s = ctx.io.connect();
+  subscribe(ctx, s, { scope: 'match', matchId: ctx.scheduled.id, name: 'Ivo' });
+  const room = matchRoom(ctx.scheduled.id);
+  const authoritative = [{ voice: 'narrador', text: 'Texto sellado por el motor para esta acción.' }];
+  ctx.engine.emit('football:event', {
+    matchId: ctx.scheduled.id,
+    event: {
+      i: 14, t: 22.5, type: 'shot_on_target', team: 'home', playerId: 'h9', playerName: 'A. Vitale',
+      ball: { x: 0.96, y: 0.5 }, ballAction: 'shot', outcome: 'saved', ballCarrierId: null,
+      possessionTeam: 'home', commentary: authoritative, sequenceId: 'private-sequence'
+    },
+    catchUp: false, replay: false
+  });
+  const commentary = ctx.io.emittedTo(room, 'football:commentary').map(item => item.payload);
+  assert.deepEqual(commentary.map(item => ({ voice: item.voice, text: item.text })), authoritative);
+  const event = ctx.io.lastTo(room, 'football:event').event;
+  assert.deepEqual(event.ball, { x: 0.96, y: 0.5 });
+  assert.equal(event.ballAction, 'shot');
+  assert.equal(event.outcome, 'saved');
+  assert.equal(event.id, 14);
+  assert.ok(!('sequenceId' in event), 'no expone metadatos internos de secuencia');
 });
 
 test('relato: dos eventos iguales seguidos no repiten la misma plantilla (memoria §9)', (t) => {

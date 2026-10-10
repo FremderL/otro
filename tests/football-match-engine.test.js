@@ -17,12 +17,13 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const prng = require('../lib/football/prng');
+const { normalizeTransitions } = require('../lib/football/match-state');
 const { buildSeasonClubs } = require('../lib/football/teams');
 const {
   RHO, PENALTY_XG, SHOOTOUT_INITIAL,
   poissonPmf, dcTau, scoreMatrix, sampleScore, samplePoisson,
   computePossession, planPenalties, planShots,
-  generateTimeline, deriveState
+  generateTimeline, generateShootout, deriveState
 } = require('../lib/football/match-engine');
 
 const CLUBS = buildSeasonClubs(prng.mulberry32(prng.hash32('tests-fase-b')));
@@ -46,6 +47,8 @@ test('T1 — poissonPmf es una distribución válida', () => {
   for (let k = 0; k < 40; k++) s += poissonPmf(k, 1.4);
   assert.ok(Math.abs(s - 1) < 1e-6, `la PMF de Poisson suma ~1 (obtenido ${s})`);
   assert.strictEqual(poissonPmf(-1, 1.4), 0);
+  assert.strictEqual(poissonPmf(0, 0), 1, 'λ=0 concentra toda la masa en cero goles');
+  assert.strictEqual(poissonPmf(1, 0), 0);
   assert.ok(poissonPmf(1, 1.4) > poissonPmf(5, 1.4), 'el modo está cerca de λ');
 });
 
@@ -137,6 +140,229 @@ test('§7.2 — todo evento tiene la forma del contrato', () => {
       assert.ok(!/\{\w+\}/.test(c.text), `sin placeholders sin resolver: ${c.text}`);
     }
   }
+});
+
+test('estado autoritativo — alineación, portador y balón parten del saque inicial', () => {
+  const r = generateTimeline(HOME, AWAY, ctxBase, rnd('authoritative-state'));
+  const kickoff = r.timeline[0];
+  const { state, revealedIndex } = deriveState(r.timeline, 0);
+  assert.equal(kickoff.type, 'kickoff');
+  assert.deepEqual(kickoff.ball, { x: 0.5, y: 0.5 });
+  assert.ok(kickoff.playerId, 'el saque tiene un jugador identificado');
+  assert.equal(state.ballCarrierId, kickoff.playerId);
+  assert.equal(state.ball.carrierId, kickoff.playerId);
+  assert.equal(state.possessionTeam, 'home');
+  assert.equal(revealedIndex, kickoff.i);
+  assert.equal(state.players.filter(player => player.active && player.team === 'home').length, 11);
+  assert.equal(state.players.filter(player => player.active && player.team === 'away').length, 11);
+  assert.ok(state.players.filter(player => player.active).every(player => player.x >= 0 && player.x <= 1 && player.y >= 0 && player.y <= 1));
+  assert.equal(r.lineups.home.players.length, HOME.squad.length);
+});
+
+test('límites de período — no hay saque tras el silbatazo ni reinicio de centro en la tanda', () => {
+  const timeline = normalizeTransitions([
+    { t: 10, type: 'goal', team: 'home', half: 1 },
+    { t: 47.99, type: 'goal', team: 'away', half: 1 },
+    { t: 48, type: 'halftime', team: null, half: 1 },
+    { t: 48, type: 'second_half', team: 'away', half: 2 },
+    { t: 94.99, type: 'goal', team: 'home', half: 2 },
+    { t: 95, type: 'full_time', team: null, half: 2 },
+    { t: 100, type: 'penalty_scored', team: 'home', half: 4, sequenceId: 'shootout-kick-1' },
+    { t: 101, type: 'shootout_end', team: 'home', half: 4 }
+  ], { firstHalfEnd: 48, matchEnd: 95, shootoutEnd: 101 });
+  const restarts = timeline.filter(event => event.type === 'goal_restart');
+  assert.equal(restarts.length, 1);
+  assert.equal(restarts[0].t, 10.22);
+  assert.ok(!timeline.some(event => event.type === 'goal_restart' && (event.t >= 48 || event.half === 4)));
+});
+
+test('normalización — las acciones relacionadas permanecen juntas frente a pausas superpuestas', () => {
+  const timeline = normalizeTransitions([
+    { t: 10, type: 'goal', team: 'home', half: 1 },
+    { t: 10.1, type: 'foul', team: 'away', half: 1, sequenceId: 'card-seq' },
+    { t: 10.1, type: 'yellow_card', team: 'away', half: 1, sequenceId: 'card-seq' },
+    { t: 10.11, type: 'foul', team: 'home', half: 1, sequenceId: 'overlapping-foul' },
+    { t: 20, type: 'penalty_awarded', team: 'home', half: 1, sequenceId: 'penalty-seq' },
+    { t: 20.4, type: 'penalty_scored', team: 'home', half: 1, sequenceId: 'penalty-seq' },
+    { t: 20.2, type: 'substitution', team: 'away', half: 1, sequenceId: 'penalty-overlap-sub' },
+    { t: 30, type: 'shot_on_target', team: 'home', half: 1, sequenceId: 'shot-seq' },
+    { t: 30.05, type: 'save', team: 'away', half: 1, sequenceId: 'shot-seq' },
+    { t: 30.02, type: 'substitution', team: 'away', half: 1, sequenceId: 'shot-overlap-sub' },
+    { t: 40, type: 'shot', team: 'home', half: 1, sequenceId: 'wide-seq', outcome: 'wide' },
+    { t: 40.16, type: 'goal_kick', team: 'away', half: 1, sequenceId: 'goal_kick_wide-seq' },
+    { t: 40.02, type: 'pass_sequence', team: 'away', half: 1 }
+  ], { firstHalfEnd: 45, matchEnd: 90 });
+  const bySequence = (sequenceId, type) => timeline.find(event => event.sequenceId === sequenceId && event.type === type);
+
+  const cardFoul = bySequence('card-seq', 'foul');
+  const card = bySequence('card-seq', 'yellow_card');
+  assert.equal(card.t, cardFoul.t, 'la tarjeta sigue a la falta aunque otra pausa ocurra en medio');
+  assert.ok(card.t >= timeline.find(event => event.type === 'goal_restart').t, 'el incidente espera al saque tras el gol');
+
+  const awarded = bySequence('penalty-seq', 'penalty_awarded');
+  const scored = bySequence('penalty-seq', 'penalty_scored');
+  assert.equal(Number((scored.t - awarded.t).toFixed(2)), 0.4, 'el resultado conserva la duración del penal');
+  assert.ok(bySequence('penalty-overlap-sub', 'substitution').t > scored.t, 'ningún cambio interrumpe la ejecución del penal');
+
+  const shot = bySequence('shot-seq', 'shot_on_target');
+  const save = bySequence('shot-seq', 'save');
+  assert.equal(Number((save.t - shot.t).toFixed(2)), 0.05, 'la atajada conserva su posición relativa al remate');
+  assert.ok(bySequence('shot-overlap-sub', 'substitution').t > save.t, 'un cambio no se intercala entre remate y atajada');
+
+  const wideShot = bySequence('wide-seq', 'shot');
+  const goalKick = bySequence('goal_kick_wide-seq', 'goal_kick');
+  assert.ok(timeline.find(event => event.type === 'pass_sequence').t > goalKick.t,
+    'no hay una acción de juego entre el tiro desviado y su saque de meta');
+  assert.ok(goalKick.t > wideShot.t);
+});
+
+test('identificadores — dos remates del mismo minuto conservan secuencias independientes', () => {
+  const r = generateTimeline(CLUBS[2], CLUBS[13], ctxBase, rnd('seq-collision-2'));
+  const shots = r.timeline.filter(event => ['shot', 'big_chance', 'shot_on_target'].includes(event.type));
+  const ids = shots.map(event => event.sequenceId);
+  assert.ok(ids.every(Boolean), 'cada remate recibe un id de secuencia');
+  assert.equal(new Set(ids).size, ids.length, 'los ids no dependen de minutos redondeados y no colisionan');
+  for (const shot of shots.filter(event => event.outcome === 'wide')) {
+    assert.ok(r.timeline.some(event => event.type === 'goal_kick' && event.sequenceId === `goal_kick_${shot.sequenceId}`),
+      'el saque de meta corresponde al remate que salió');
+  }
+});
+
+test('transiciones — goles, tiros atajados y balón parado tienen reinicio coherente', () => {
+  let sawGoal = false, sawSetPiece = false, sawSave = false, sawWide = false;
+  for (let seed = 0; seed < 32; seed++) {
+    const r = generateTimeline(CLUBS[seed % 16], CLUBS[(seed * 5 + 3) % 16], ctxBase, rnd('transitions-' + seed));
+    const tl = r.timeline;
+    for (const goal of tl.filter(event => event.type === 'goal' || event.type === 'penalty_scored')) {
+      const restart = tl.find(event => event.type === 'goal_restart' && event.t >= goal.t && event.team !== goal.team);
+      if (restart) {
+        sawGoal = true;
+        assert.ok(restart.t >= goal.t, 'el saque de centro no precede al gol');
+        assert.deepEqual(restart.ball, { x: 0.5, y: 0.5 });
+        assert.deepEqual(restart.ballFrom, { x: 0.5, y: 0.5 }, 'el saque de centro comienza en el círculo, no vuela desde la portería');
+        assert.ok(restart.playerId, 'el saque de centro tiene ejecutor');
+      }
+    }
+    for (const stop of tl.filter(event => ['foul', 'offside', 'corner', 'throw_in', 'goal_kick'].includes(event.type))) {
+      const restart = tl.find(event => event.type === 'restart' && event.restartFor === stop.sequenceId);
+      if (restart) {
+        sawSetPiece = true;
+        assert.ok(restart.t >= stop.t && restart.t - stop.t <= 0.081, 'el reinicio sigue a la interrupción');
+        assert.equal(restart.team, stop.beneficiaryTeam || stop.team);
+        assert.ok(restart.playerId, 'el reinicio asigna ejecutor');
+      }
+    }
+    for (const sub of tl.filter(event => event.type === 'substitution')) {
+      const restart = tl.find(event => event.type === 'restart' && event.restartFor === sub.sequenceId);
+      assert.ok(restart, 'la sustitución se reanuda con una acción explícita');
+      assert.ok(restart.t > sub.t && restart.t - sub.t <= 0.081);
+      const { state } = deriveState(tl, sub.t, r.lineups, sub.i);
+      assert.equal(state.playStopped, true);
+      const outgoing = state.players.find(player => player.id === sub.playerOutId);
+      const incoming = state.players.find(player => player.id === sub.playerInId);
+      assert.equal(outgoing.status, 'substituted');
+      assert.equal(incoming.status, 'active');
+      assert.equal(incoming.slotIndex, outgoing.slotIndex);
+      assert.equal(incoming.role, outgoing.role);
+    }
+    for (const shot of tl.filter(event => ['shot', 'big_chance'].includes(event.type) && event.outcome === 'wide')) {
+      sawWide = true;
+      assert.equal(shot.phase, 'set_piece', 'el balón queda detenido cuando el tiro sale');
+      assert.equal(shot.crossedGoalLine, true);
+      assert.ok(tl.some(event => event.type === 'goal_kick' && event.sequenceId === `goal_kick_${shot.sequenceId}`), 'el tiro desviado termina en saque de meta');
+    }
+    for (const pass of tl.filter(event => event.type === 'pass_sequence')) {
+      assert.ok(pass.actorPosition, 'el pase tiene un jugador ejecutor visible');
+      assert.deepEqual(pass.ballFrom, pass.actorPosition, 'el balón sale del jugador que lo controla');
+    }
+    for (const shot of tl.filter(event => event.type === 'shot_on_target')) {
+      const save = tl.find(event => event.type === 'save' && event.sequenceId === shot.sequenceId);
+      assert.equal(Boolean(save), Boolean(shot.saved), 'la atajada coincide con el resultado del tiro');
+      if (save) {
+        sawSave = true;
+        assert.equal(save.team, shot.team === 'home' ? 'away' : 'home');
+        assert.equal(save.playerId, shot.keeperId);
+        assert.equal(save.keeperId, shot.keeperId, 'la identidad del guardameta coincide en toda la secuencia');
+        const recovered = deriveState(tl, save.t, r.lineups, save.i).state;
+        assert.equal(recovered.phase, 'build_up', 'el guardameta que controla el balón pasa a salida, no sigue en peligro');
+        assert.equal(recovered.possessionTeam, save.team, 'la posesión pasa al equipo del guardameta');
+        assert.equal(recovered.ballCarrierId, save.playerId, 'el guardameta queda identificado como portador');
+      }
+    }
+  }
+  assert.ok(sawGoal, 'se ejercitó un gol con saque de centro');
+  assert.ok(sawSetPiece, 'se ejercitó al menos un reinicio a balón parado');
+  assert.ok(sawSave, 'se ejercitó al menos una atajada');
+  assert.ok(sawWide, 'se ejercitó un tiro fuera y su saque de meta');
+});
+
+test('disciplina — una expulsión retira al jugador de las acciones posteriores', () => {
+  const r = generateTimeline(HOME, AWAY, ctxBase, rnd('red-card-2'));
+  const red = r.timeline.find(event => event.type === 'red_card' || event.type === 'second_yellow');
+  assert.ok(red, 'la semilla fija debe contener una expulsión');
+  const references = event => [event.playerId, event.receiverId, event.assistId, event.keeperId, event.victimId, event.fouledId, event.foulerId, event.shooterId];
+  assert.ok(!r.timeline.some(event => event.i > red.i && references(event).includes(red.playerId)), 'el expulsado no reaparece como participante');
+  assert.ok(!r.timeline.some(event => event.type === 'substitution' && event.playerOutId === red.playerId && event.i > red.i), 'no se sustituye a un expulsado');
+  const { state } = deriveState(r.timeline, red.t, r.lineups);
+  assert.equal(state.redCards[red.team], 1);
+  assert.equal(state.players.filter(player => player.active && player.team === red.team).length, 10);
+});
+
+test('acciones — todos los participantes siguen activos y pertenecen al partido', () => {
+  for (let seed = 0; seed < 24; seed++) {
+    const home = CLUBS[seed % 16], away = CLUBS[(seed * 5 + 3) % 16];
+    const { timeline, lineups } = generateTimeline(home, away, ctxBase, rnd('active-roster-' + seed));
+    const playerTeam = new Map([
+      ...lineups.home.players.map(player => [player.id, 'home']),
+      ...lineups.away.players.map(player => [player.id, 'away'])
+    ]);
+    const status = {
+      home: new Map(lineups.home.players.map(player => [player.id, player.initialStatus])),
+      away: new Map(lineups.away.players.map(player => [player.id, player.initialStatus]))
+    };
+    for (const event of timeline) {
+      if (event.type === 'substitution') {
+        assert.equal(status[event.team].get(event.playerOutId), 'active', 'sale un titular activo');
+        assert.equal(status[event.team].get(event.playerInId), 'bench', 'entra un suplente');
+        status[event.team].set(event.playerOutId, 'substituted');
+        status[event.team].set(event.playerInId, 'active');
+      }
+      for (const [field, id] of Object.entries({
+        playerId: event.playerId, receiverId: event.receiverId, assistId: event.assistId,
+        keeperId: event.keeperId, victimId: event.victimId, fouledId: event.fouledId,
+        foulerId: event.foulerId, shooterId: event.shooterId
+      })) {
+        if (!id) continue;
+        const team = playerTeam.get(id);
+        assert.ok(team, `${field} siempre pertenece a una alineación (${event.type})`);
+        assert.equal(status[team].get(id), 'active', `${field} pertenece a alguien en cancha (${event.type})`);
+      }
+      if (event.ballCarrierId) {
+        const carrierTeam = playerTeam.get(event.ballCarrierId);
+        assert.equal(status[carrierTeam].get(event.ballCarrierId), 'active', 'el portador no está en la banca ni expulsado');
+        assert.equal(event.possessionTeam, carrierTeam, 'portador y posesión coinciden');
+      }
+      if (event.type === 'red_card' || event.type === 'second_yellow') status[event.team].set(event.playerId, 'sent_off');
+    }
+  }
+});
+
+test('penal atajado — el guardameta controla el balón, suma la falta y el juego se reanuda', () => {
+  const r = generateTimeline(HOME, AWAY, ctxBase, rnd('pen-save-7'));
+  const missed = r.timeline.find(event => event.type === 'penalty_missed' && event.outcome === 'saved');
+  assert.ok(missed, 'la semilla fija debe contener un penal atajado');
+  const { state } = deriveState(r.timeline, missed.t, r.lineups);
+  assert.equal(state.phase, 'build_up');
+  assert.equal(state.playStopped, false);
+  assert.equal(state.possessionTeam, missed.team === 'home' ? 'away' : 'home');
+  assert.equal(state.ballCarrierId, missed.keeperId);
+
+  const award = r.timeline.find(event => event.type === 'penalty_awarded' && event.sequenceId === missed.sequenceId);
+  assert.ok(award, 'el penal fallado tiene una infracción previa');
+  const before = deriveState(r.timeline, award.t, r.lineups, award.i - 1).state;
+  const after = deriveState(r.timeline, award.t, r.lineups, award.i).state;
+  const defending = award.team === 'home' ? 'away' : 'home';
+  assert.equal(after.fouls[defending], before.fouls[defending] + 1, 'la infracción del penal suma al equipo que la cometió');
 });
 
 test('§7.2 — índices secuenciales y tiempo monótono', () => {
@@ -366,6 +592,10 @@ test('§7.5 — el desempate empatado al 90 va a prórroga y, si sigue, a tanda 
 
     if (r.shootout) {
       tandas++;
+      const shootoutStart = r.timeline.find(event => event.type === 'shootout_start').t;
+      const breakState = deriveState(r.timeline, (etEnd + shootoutStart) / 2, r.lineups).state;
+      assert.equal(breakState.phase, 'halftime', 'el descanso antes de la tanda no se anuncia como final');
+      assert.equal(breakState.playStopped, true, 'no se reabren acciones durante el descanso');
       assert.ok(tipos.includes('shootout_start') && tipos.includes('shootout_end'), 'tanda completa');
       // SIEMPRE hay ganador: los marcadores difieren.
       assert.notStrictEqual(r.shootout.marks.home, r.shootout.marks.away, 'la tanda no queda empatada');
@@ -381,6 +611,14 @@ test('§7.5 — el desempate empatado al 90 va a prórroga y, si sigue, a tanda 
   }
   assert.ok(prorrogas > 0, 'se ejercitó la prórroga');
   assert.ok(tandas > 0, 'se ejercitó la tanda');
+});
+
+test('§7.5 — el tope de la muerte súbita nunca deja el ganador empatado', () => {
+  const base = generateTimeline(HOME, AWAY, ctxBase, rnd('shootout-guard-base'));
+  const result = generateShootout(base, HOME, AWAY, () => 0.99, base.clock.matchEnd);
+  assert.notStrictEqual(result.shootout.marks.home, result.shootout.marks.away);
+  assert.equal(result.shootout.winner, result.shootout.marks.home > result.shootout.marks.away ? 'home' : 'away');
+  assert.equal(result.shootout.suddenDeathRounds, 40, 'la secuencia adversa alcanza el tope antes del desempate forzado');
 });
 
 test('§7.5 — la tanda respeta la eliminación temprana (no lanza de más)', () => {

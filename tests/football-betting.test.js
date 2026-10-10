@@ -242,6 +242,28 @@ test('T15: stake fuera de límites, mercado suspendido y rate limit rechazan con
   h.cleanup();
 });
 
+test('mercado en vivo: apuestas se suspenden durante una pausa confirmada', async () => {
+  const h = setup({ chips: 1000 });
+  h.match.status = 'live';
+  const paused = { minute: 30, score: { home: 0, away: 0 }, matchEnd: 90, playStopped: true };
+  const market = h.betting.getMarket(h.match, '1x2', paused);
+  assert.equal(market.suspended, true);
+  const result = await h.betting.placeBet({
+    profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'home', stake: 100, state: paused, placedAt: 1000
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'market_suspended');
+  const running = await h.betting.placeBet({
+    profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'home', stake: 100,
+    state: { ...paused, playStopped: false }, placedAt: 2000
+  });
+  assert.equal(running.ok, true);
+  const cashout = h.betting.cashout(h.profile, running.bet.id, paused);
+  assert.equal(cashout.ok, false);
+  assert.equal(cashout.code, 'market_suspended');
+  h.cleanup();
+});
+
 test('T15: no se apuesta en un partido terminado y el saldo insuficiente se rechaza', async () => {
   const h = setup({ chips: 1000 });
   h.match.status = 'settled';

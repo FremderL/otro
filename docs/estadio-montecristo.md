@@ -2418,7 +2418,7 @@ cupo — mismo criterio que los 12 espectadores por mesa actual.
 
 | Evento | Frecuencia | Contenido |
 | --- | --- | --- |
-| `football:lobby` | al suscribir + cada 10 s | partidos de hoy con bloque y estado, cuenta regresiva al próximo kickoff, tabla de posiciones, destacados |
+| `football:lobby` | al suscribir + cada 10 s | partidos de hoy con bloque y estado, cuenta regresiva al próximo kickoff, tabla de posiciones, destacados y `serverNow` (época Unix en ms) |
 | `football:match_state` | al suscribir / reconectar | prefijo revelado completo: estado, estadísticas, últimos 40 comentarios, mercados con cuotas, apuestas propias |
 | `football:tick` | 2 s por partido suscrito | minuto, marcador, balón, `phase`, destinos de 3–6 jugadores |
 | `football:event` | inmediato | evento de alta relevancia + comentario + `importance` |
@@ -3529,3 +3529,62 @@ límites en la boleta: rango del campo, denominaciones filtradas por `[mín, má
 colateral documentada: con mínimo del 10 %, diez apuestas agotan el saldo, así que el rate limit
 (10/10 s) rara vez es la restricción operativa que limita al jugador —lo es el propio saldo—; la
 prueba T15 relaja exposición y da saldo alto precisamente para aislar el rate limit.
+
+## 28. La Previa (primera entrega)
+
+La experiencia de espera vive en el Estadio existente y aparece solo para el **partido seleccionado**
+cuando su estado sigue `scheduled` y faltan **30 minutos o menos** para `scheduledKickoffAt`. Antes
+de T−30 el panel permanece oculto. La cuenta regresiva usa `serverNow` incluido en el payload
+del lobby y el tiempo monotónico del navegador para no depender del huso horario ni de que el reloj
+local esté unos segundos adelantado o atrasado.
+
+La comparativa se deriva de la tabla pública vigente (posición, PJ, G–E–P, GF–GC, puntos y forma de
+los últimos cinco) y de la formación/estilo táctico público de cada club. Los valores ausentes se
+muestran como tales; no se inventan estadísticas, alineaciones ni resultados. `publicTeams()` añade
+el estilo táctico a la metadata que ya compartía y `buildLobby()` entrega la referencia temporal del
+servidor. No se añade acceso al timeline ni a eventos futuros.
+
+Durante la ventana activa se muestra una única promoción propia de MonteCristo, identificada como
+«Promoción propia», con enlace al lobby del casino. No es un inventario publicitario ni se cobran
+fichas. Al llegar la hora programada, si el partido todavía sigue `scheduled`, la comparativa puede
+permanecer como espera neutral, pero la promoción se oculta; al recibirse kickoff, estado en vivo o
+pospuesto, el panel desaparece. La reprogramación oficial vuelve a usar el nuevo `scheduledKickoffAt`.
+
+**Fuera de esta primera entrega:** anuncios de usuarios pagados con fichas, segmentación personal,
+redes publicitarias externas y música. No se altera el motor, las cuotas, las apuestas, el relato ni
+la política de audio; la reproducción de música requiere una decisión y activos con licencia aparte.
+
+Regresiones de UI cubren T−30:01/T−30:00, comparativa, espera sin promoción al llegar la hora,
+kickoff y posposición en `tests/football-stadium-ui.test.js`; `tests/football-sockets.test.js`
+verifica la referencia de hora y la metadata táctica pública.
+
+## 29. La Previa — promociones de cuentas vinculadas (segunda entrega)
+
+Esta entrega amplía el apartado §28: añade promociones pagadas de **solo texto** al mismo y único
+espacio de La Previa. No añade inventario paralelo, imágenes, video, audio, segmentación personal ni
+redes publicitarias externas.
+
+- **Envío y revisión:** solo se acepta una sesión segura válida de una cuenta vinculada. El servidor
+  comprueba CSRF/origen, que el partido siga programado y que el envío ocurra dentro de T−30.
+  El texto permite de 3 a 140 caracteres; no admite marcado HTML. Cada cuenta tiene como máximo una
+  promoción pendiente o aprobada por partido y puede reintentar tras rechazo (hasta tres envíos).
+- **Enlace interno:** allowlist cerrada: `/`, `/estadio`, `/terminos` y `/room/ABCDE` (cinco
+  caracteres alfanuméricos). No se admiten protocolos, dominios, query strings, fragmentos ni otras
+  rutas; el enlace se vuelve a validar al leer el perfil y al servir la promoción.
+- **Cobro:** 250 fichas por promoción aprobada para ese partido. Enviar o rechazar no debita. La
+  aprobación requiere administrador con `football:manage`, MFA reciente, CSRF e idempotencia; el
+  cambio de estado, el débito y la auditoría se escriben juntos en Postgres. Reintentar la aprobación
+  no vuelve a cobrar. Si se cierra T−30 antes de la revisión, la promoción no se puede aprobar ni
+  cobrar.
+- **Rotación:** las campañas aprobadas que correspondan a ese partido se muestran de una en una en
+  el slot existente y cambian cada **15 segundos** en orden determinista. No hay selección basada en
+  identidad, perfil ni comportamiento. Sin campañas aprobadas se conserva la promoción propia de
+  MonteCristo; la previsualización pagada sigue oculta fuera de T−30.
+- **Persistencia:** las campañas viven como historial privado en el JSON del perfil (archivo o campo
+  `data` de `montecristo_profiles` en Postgres); no se expone el historial en el perfil público ni
+  hace falta una tabla/migración nueva. Las rutas de la bandeja viven en `/admin/estadio/promotions`.
+
+La lógica comprobable está en `lib/football/promotions.js` y `lib/football/http.js`; el cargo atómico
+Postgres en `PgProfileStore.applyPromotionReviewAtomic()`. Las regresiones están en
+`tests/football-promotions.test.js` e incluyen allowlist, autenticación, ventana, moderación, cobro
+único, no-cobro al rechazar y selección rotativa.
