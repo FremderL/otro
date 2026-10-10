@@ -522,3 +522,44 @@ test('14 escenarios — validación integral de visualización, física y UI del
   assert.equal(window.document.getElementById('est-clock').textContent, 'Final');
   assert.ok(Array.from(window.document.querySelectorAll('#est-markets .est-sel')).every(b => b.disabled), 'mercados cerrados al terminar el partido');
 });
+
+test('QA de usuario: reconexión a mitad de juego, expulsión del portador y limpieza de estela de tiro', async t => {
+  const h = createHarness({ reducedMotion: false });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const id = match.id;
+  const fireEvent = event => handlers['football:event']({ matchId: id, event });
+
+  // 1. Portador con el balón recibe tarjeta roja
+  handlers['football:status']({ matchId: id, code: 'live', minute: 25 });
+  fireEvent({
+    type: 'pass_sequence', team: 'home', minute: 25, phase: 'build_up', playStopped: false,
+    ball: { x: .55, y: .45 }, ballFrom: { x: .50, y: .50 }, actorPosition: { x: .50, y: .50 },
+    playerId: 'h2', receiverId: 'h10', ballCarrierId: 'h10', possessionTeam: 'home'
+  });
+  h.advanceTime(500);
+
+  // La tarjeta roja se muestra sobre el portador h10
+  fireEvent({
+    type: 'red_card', team: 'home', playerId: 'h10', playerName: 'Jugador 10', minute: 26,
+    phase: 'set_piece', playStopped: true, ball: { x: .55, y: .45 }, ballCarrierId: null
+  });
+  h.advanceTime(100);
+  const numbers = h.draw();
+  assert.ok(!numbers.includes('10'), 'el portador expulsado desaparece de la cancha de inmediato');
+
+  // 2. Comprobar que tras el viaje del balón (p >= 1), el render se ejecuta sin fallos
+  h.advanceTime(2500);
+  assert.doesNotThrow(() => h.draw(), 'el ciclo de dibujo no genera errores con balón detenido y estela concluida');
+
+  // 3. Reconexión: recibir un tick con juego detenido suspende mercados y actualiza el reloj
+  handlers['football:tick']({
+    matchId: id, minute: 30, displayMinute: 30, phase: 'set_piece', playStopped: true,
+    score: { home: 1, away: 0 }, possessionTeam: 'away', ballCarrierId: null,
+    ball: { x: .55, y: .45 }
+  });
+  const marketButtons = Array.from(window.document.querySelectorAll('#est-markets .est-sel'));
+  assert.ok(marketButtons.every(b => b.disabled), 'los mercados permanecen bloqueados en tick con juego detenido');
+  assert.match(window.document.getElementById('est-clock').textContent, /30' Balón parado/);
+});

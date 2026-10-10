@@ -832,7 +832,16 @@
   }
   function drawBall(now) {
     var bx = nx(S.ball.x), by = ny(S.ball.y);
-    if (!reduced.matches) { ctx.beginPath(); ctx.moveTo(nx(S.ballStart.x), ny(S.ballStart.y)); ctx.lineTo(bx, by); ctx.strokeStyle = 'rgba(229,189,114,.18)'; ctx.lineWidth = 3; ctx.stroke(); }
+    var p = clamp((now - S.tweenT0) / TICK_MS, 0, 1);
+    var dist = Math.hypot(S.ballDest.x - S.ballStart.x, S.ballDest.y - S.ballStart.y);
+    if (!reduced.matches && !S.playStopped && p < 1 && dist > 0.05) {
+      ctx.beginPath();
+      ctx.moveTo(nx(S.ballStart.x), ny(S.ballStart.y));
+      ctx.lineTo(bx, by);
+      ctx.strokeStyle = 'rgba(229,189,114,' + (0.18 * (1 - p)) + ')';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
     ctx.beginPath(); ctx.arc(bx, by, BALL_R + 2, 0, TAU); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill();
     ctx.beginPath(); ctx.arc(bx, by, BALL_R, 0, TAU); ctx.fillStyle = '#ffe3a5'; ctx.fill();
     ctx.lineWidth = 1; ctx.strokeStyle = '#0a5a45'; ctx.stroke();
@@ -920,11 +929,15 @@
     if ((ev.type === 'red_card' || ev.type === 'second_yellow') && ev.playerId) {
       var dismissed = S.authoritativePlayers.find(function (p) { return p.id === ev.playerId; });
       if (dismissed) { dismissed.active = false; dismissed.status = 'sent_off'; }
+      if (S.ballCarrierId === ev.playerId) S.ballCarrierId = null;
     } else if (ev.type === 'substitution') {
       var incomingId = ev.playerInId || ev.playerId;
       var incoming = incomingId && S.authoritativePlayers.find(function (p) { return p.id === incomingId; });
       var visibleOutgoing = outgoing && S.players.find(function (p) { return p.id === outgoing.id; });
-      if (outgoing) { outgoing.active = false; outgoing.status = 'substituted'; }
+      if (outgoing) {
+        outgoing.active = false; outgoing.status = 'substituted';
+        if (S.ballCarrierId === outgoing.id) S.ballCarrierId = null;
+      }
       if (incoming) {
         incoming.active = true; incoming.status = 'active';
         incoming.slotIndex = outgoing ? outgoing.slotIndex : incoming.slotIndex;
@@ -1029,6 +1042,7 @@
     } else if (code === 'full_time' || code === 'settled' || code === 'finished') {
       S.match.status = 'finished';
       S.playStopped = true;
+      S.ballCarrierId = null;
     }
     renderScoreboard();
     renderMarkets();
