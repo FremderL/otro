@@ -28,9 +28,9 @@
     <span class="brand-mark"><span>♠</span></span>
     <h1>MonteCristo es para computadoras</h1>
     <p>Este casino social está diseñado exclusivamente para jugarse en una computadora de escritorio o laptop, con una ventana de al menos 1024 píxeles de ancho.</p>
-    <button type="button" class="gate-bypass-btn" onclick="document.documentElement.classList.add('gate-bypass');try{localStorage.setItem('montecristo-gate-bypass','1')}catch(e){}">Entrar de todos modos →</button>
+    <button type="button" class="gate-bypass-btn">Entrar de todos modos →</button>
   </div>
-  <script>try { if (localStorage.getItem('montecristo-gate-bypass') === '1') document.documentElement.classList.add('gate-bypass'); } catch (e) {}</script>
+  <script src="/gate.js"></script>
 
   <main class="legal-shell">
     <header class="legal-head">

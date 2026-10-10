@@ -457,13 +457,13 @@
           </div>
           <div class="match-teams-display">
             <div class="team-unit">
-              <span class="crest-dot" style="background:${escapeHtml(home.colors?.primary || '#52e0ae')};" title="${escapeHtml(home.name)}"></span>
+              <span class="crest-dot" data-crest-color="${escapeHtml(home.colors?.primary || '#52e0ae')}" title="${escapeHtml(home.name)}"></span>
               <strong class="team-title">${escapeHtml(home.name)}</strong>
               <small class="team-short">${escapeHtml(home.short || '')}</small>
             </div>
             <span class="teams-separator">vs</span>
             <div class="team-unit">
-              <span class="crest-dot" style="background:${escapeHtml(away.colors?.primary || '#e5bd72')};" title="${escapeHtml(away.name)}"></span>
+              <span class="crest-dot" data-crest-color="${escapeHtml(away.colors?.primary || '#e5bd72')}" title="${escapeHtml(away.name)}"></span>
               <strong class="team-title">${escapeHtml(away.name)}</strong>
               <small class="team-short">${escapeHtml(away.short || '')}</small>
             </div>
@@ -487,6 +487,8 @@
     list.querySelectorAll('[data-action="reschedule"]').forEach(btn =>
       btn.addEventListener('click', () => rescheduleFootballMatch(btn))
     );
+    // Colores de equipo: se asignan por JS (la CSP de admin no permite style= en el HTML).
+    list.querySelectorAll('[data-crest-color]').forEach(dot => { dot.style.background = dot.dataset.crestColor; });
   }
 
   async function loadFootballMatches() {
