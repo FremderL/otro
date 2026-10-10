@@ -11,6 +11,14 @@
   var TOS_KEY = 'montecristo-tos';
   var TOS_FALLBACK = '2026-09-28';
   var TICK_MS = 2000;              // cadencia del tick del servidor (§8.1)
+  var PRESHOW_WINDOW_MS = 30 * 60 * 1000;
+  var PROMOTION_ROTATION_MS = 15 * 1000;
+  var HOUSE_PROMOTIONS = [
+    { text: 'Póker, blackjack y más juegos: encuentra tu próxima mesa en MonteCristo.', href: '/', action: 'Explorar juegos' },
+    { text: '¿Faltan rivales? Completa tu mesa de póker o blackjack con bots del servidor.', href: '/', action: 'Ver mesas' },
+    { text: 'Reúne a tus amigos: crea una sala privada y comparte el código para jugar.', href: '/', action: 'Crear una sala' },
+    { text: 'Sigue la liga de Estadio MonteCristo, con relato en vivo y fichas virtuales.', href: '/estadio', action: 'Entrar al Estadio' }
+  ];
   var W = 1050, H = 680, PAD = 18; // canvas 105×68 m a 10 px/m
   var FIELD_W = W - PAD * 2, FIELD_H = H - PAD * 2;
   var PLAYER_R = 13, BALL_R = 6, TAU = Math.PI * 2;
@@ -36,7 +44,13 @@
   function contrast(a, b) { var l1 = relLum(a), l2 = relLum(b); var hi = Math.max(l1, l2), lo = Math.min(l1, l2); return (hi + 0.05) / (lo + 0.05); }
   function bestText(bg) { return contrast(bg, '#ffffff') >= contrast(bg, '#111111') ? '#ffffff' : '#111111'; }
   var FONT = null;
-  function font() { if (FONT === null) { try { FONT = font() || 'sans-serif'; } catch (e) { FONT = 'sans-serif'; } } return FONT; }
+  function font() {
+    if (FONT === null) {
+      try { FONT = window.getComputedStyle(document.body).fontFamily || 'sans-serif'; }
+      catch (e) { FONT = 'sans-serif'; }
+    }
+    return FONT;
+  }
   function deviceToken() {
     var t = localStorage.getItem('montecristo-device');
     if (!t) { t = (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)); localStorage.setItem('montecristo-device', t); }
@@ -64,10 +78,14 @@
   var S = {
     socket: null, token: null, name: null, avatar: null, tosVersion: TOS_FALLBACK,
     teams: {}, profile: null, chips: 0,
-    lobby: null, standings: [], countdownTo: null,
+    lobby: null, standings: [], countdownTo: null, lobbyServerNow: null, lobbyReceivedAt: null,
+    preshowDataMatchId: null, preshowDataStandings: null,
+    promotionsEnabled: false, promoSessionChecked: false, promoProfile: null, promoCsrfToken: null,
+    promoWindowOpen: false, promoMatchId: null, promoPollId: null, promoRequestSeq: 0,
     currentMatchId: null, match: null, markets: {}, movement: {}, myBets: [],
     slip: null, muted: false, soundOn: localStorage.getItem('montecristo-notifications') !== 'off',
-    players: [], ball: { x: .5, y: .5 }, ballStart: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 },
+    players: [], authoritativePlayers: [], possessionTeam: 'home', ballCarrierId: null, playStopped: true,
+    ball: { x: .5, y: .5 }, ballStart: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 },
     tweenT0: 0, minute: 0, phase: 'pre', score: { home: 0, away: 0 }, possession: { home: .5, away: .5 },
     goalFlashUntil: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false
   };
@@ -75,6 +93,11 @@
   var el = {};
   function cacheEls() {
     ['est-connection', 'est-chips', 'est-sound', 'est-countdown', 'est-match-list', 'est-standings',
+      'est-preshow', 'est-preshow-status', 'est-preshow-timer', 'est-team-comparison',
+      'est-compare-home', 'est-compare-away', 'est-preshow-promo', 'est-promo-label', 'est-promo-text', 'est-promo-link',
+      'est-promo-compose', 'est-promo-auth', 'est-promo-login', 'est-promo-refresh', 'est-promo-form',
+      'est-promo-copy-input', 'est-promo-target', 'est-promo-room-field', 'est-promo-room-code',
+      'est-promo-submit', 'est-promo-message',
       'est-scoreboard', 'crest-home', 'crest-away', 'name-home', 'name-away', 'score-home', 'score-away',
       'est-clock', 'est-pitch', 'est-goal-banner', 'est-commentary', 'est-text-state', 'est-market-phase',
       'est-markets', 'est-bet-slip', 'est-slip-pick', 'est-slip-clear', 'est-slip-odds', 'est-slip-implied',
@@ -162,6 +185,9 @@
     fetch('/healthz', { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (health) {
+        S.promotionsEnabled = Boolean(health && health.promotionsEnabled);
+        updatePromotionComposer();
+        if (S.promotionsEnabled) refreshPromotionSession();
         if (health && health.football && health.football.enabled === false) return gateTosThenConnect();
         return fetch('/api/estadio/state')
           .then(function (r) { return r.json(); })
@@ -184,6 +210,74 @@
   }
   function tosAccepted() { return localStorage.getItem(TOS_KEY) === S.tosVersion; }
 
+  function setPromoMessage(text, state) {
+    if (!el['est-promo-message']) return;
+    el['est-promo-message'].textContent = text || '';
+    if (state) el['est-promo-message'].dataset.state = state;
+    else delete el['est-promo-message'].dataset.state;
+  }
+
+  function updatePromotionComposer() {
+    var details = el['est-promo-compose'];
+    if (!details) return;
+    details.hidden = !S.promotionsEnabled || !S.promoWindowOpen;
+    if (!S.promotionsEnabled || !S.promoWindowOpen) return;
+    var linked = Boolean(S.promoProfile && S.promoProfile.username);
+    el['est-promo-auth'].textContent = linked
+      ? 'Sesión vinculada: @' + S.promoProfile.username
+      : (S.promoSessionChecked ? 'Para enviar, inicia sesión con una cuenta vinculada del casino.' : 'Comprueba tu sesión de cuenta vinculada.');
+    el['est-promo-auth'].dataset.state = linked ? 'ready' : '';
+    el['est-promo-login'].hidden = linked;
+    el['est-promo-refresh'].hidden = linked;
+    el['est-promo-form'].hidden = !linked;
+  }
+
+  function refreshPromotionSession() {
+    if (!S.promotionsEnabled) return Promise.resolve(null);
+    return fetch('/api/auth/session', { cache: 'no-store', credentials: 'same-origin' })
+      .then(function (response) { return response.json().catch(function () { return {}; }); })
+      .then(function (data) {
+        S.promoSessionChecked = true;
+        if (data && data.ok && data.profile && data.profile.username) {
+          S.promoProfile = data.profile;
+          S.promoCsrfToken = data.csrfToken || null;
+        } else {
+          S.promoProfile = null;
+          S.promoCsrfToken = null;
+        }
+        updatePromotionComposer();
+        if (S.promoProfile && S.promoMatchId) loadOwnPromotion(S.promoMatchId);
+        return S.promoProfile;
+      })
+      .catch(function () {
+        S.promoSessionChecked = true;
+        S.promoProfile = null;
+        S.promoCsrfToken = null;
+        updatePromotionComposer();
+        return null;
+      });
+  }
+
+  function loadOwnPromotion(matchId) {
+    if (!S.promoProfile || !matchId) return Promise.resolve(null);
+    return fetch('/api/estadio/promotions/' + encodeURIComponent(matchId) + '/mine', {
+      cache: 'no-store', credentials: 'same-origin'
+    }).then(function (response) { return response.json().catch(function () { return {}; }); })
+      .then(function (data) {
+        if (S.promoMatchId !== matchId || !data || !data.ok) return null;
+        var promotion = data.promotion;
+        if (!promotion) { setPromoMessage('', ''); return null; }
+        if (promotion.status === 'pending') {
+          setPromoMessage('En revisión administrativa. No se han cobrado fichas.', 'success');
+        } else if (promotion.status === 'approved') {
+          setPromoMessage('Aprobada: se cobraron ' + fmt(promotion.chargedAmount || 250) + ' fichas.', 'success');
+        } else if (promotion.status === 'rejected') {
+          setPromoMessage('No aprobada. Sin cobro.' + (promotion.reviewReason ? ' ' + promotion.reviewReason : ''), 'error');
+        }
+        return promotion;
+      }).catch(function () { return null; });
+  }
+
   // ===== Socket =====
   function setConn(state) {
     var b = el['est-connection'];
@@ -200,10 +294,19 @@
     S.socket.on('football:tick', onTick);
     S.socket.on('football:event', onEvent);
     S.socket.on('football:commentary', onCommentary);
-    S.socket.on('football:goal', onGoalEvent);
     S.socket.on('football:odds', onOdds);
     S.socket.on('football:settlement', onSettlement);
     S.socket.on('football:status', onStatus);
+    S.socket.on('account_chips_updated', function (data) {
+      if (!data || !S.promoProfile || data.profileId !== S.promoProfile.id) return;
+      S.promoProfile.chips = Number(data.chips) || 0;
+      if (S.profile && S.profile.id === data.profileId) {
+        S.profile.chips = S.promoProfile.chips;
+        S.chips = S.promoProfile.chips;
+        updateChips();
+      }
+      if (data.matchId === S.promoMatchId) loadOwnPromotion(data.matchId);
+    });
   }
   function subscribeLobby() {
     S.socket.emit('football:subscribe', { scope: 'lobby', token: S.token, name: S.name, avatar: S.avatar, tos: S.tosVersion }, function (res) {
@@ -238,13 +341,182 @@
   function teamName(id) { var t = S.teams[id]; return t ? t.short || t.name : String(id || '?').slice(0, 3).toUpperCase(); }
   function teamFull(id) { var t = S.teams[id]; return t ? t.name : id; }
   function teamColor(id) { var t = S.teams[id]; return t ? t.colors.primary : '#888'; }
+  function currentServerTime() {
+    if (Number.isFinite(S.lobbyServerNow) && Number.isFinite(S.lobbyReceivedAt)) {
+      return S.lobbyServerNow + Math.max(0, performance.now() - S.lobbyReceivedAt);
+    }
+    return Date.now();
+  }
+  function preshowTeamColor(id) {
+    var color = teamColor(id);
+    return /^#[0-9a-f]{3,8}$/i.test(color) ? color : '#888';
+  }
+  function tacticSummary(teamId) {
+    var team = S.teams[teamId] || {};
+    var styleLabels = { possession: 'Posesión', pressing: 'Presión alta', counter: 'Contraataque', direct: 'Juego directo', balanced: 'Equilibrado' };
+    return [team.formation, styleLabels[team.style]].filter(Boolean).join(' · ') || '—';
+  }
+  function standingFor(teamId) {
+    return (S.standings || []).find(function (row) { return (row.teamId || row.id) === teamId; }) || null;
+  }
+  function standingValue(row, key) {
+    return row && row[key] != null ? fmt(row[key]) : '—';
+  }
+  function formMarkup(row) {
+    var labels = { W: { short: 'G', full: 'Ganó', cls: 'win' }, D: { short: 'E', full: 'Empató', cls: 'draw' }, L: { short: 'P', full: 'Perdió', cls: 'loss' } };
+    var form = row && Array.isArray(row.form) ? row.form.slice(-5).filter(function (result) { return Boolean(labels[result]); }) : [];
+    if (!form.length) return '<span class="est-comparison-empty">Sin resultados</span>';
+    var accessible = form.map(function (result) { return labels[result].full; }).join(', ');
+    return '<span class="est-form-results" aria-label="Forma reciente: ' + esc(accessible) + '">' + form.map(function (result) {
+      var label = labels[result];
+      return '<span class="est-form-result ' + label.cls + '" title="' + label.full + '">' + label.short + '</span>';
+    }).join('') + '</span>';
+  }
+  function renderTeamComparison() {
+    if (!S.match || !el['est-team-comparison']) return;
+    var homeId = S.match.homeId, awayId = S.match.awayId;
+    var homeColor = preshowTeamColor(homeId), awayColor = preshowTeamColor(awayId);
+    el['est-compare-home'].innerHTML = '<span class="est-compare-club"><i class="est-compare-dot" aria-hidden="true" style="background-color:' + homeColor + ';color:' + homeColor + '"></i>' + esc(teamFull(homeId)) + '</span>';
+    el['est-compare-away'].innerHTML = '<span class="est-compare-club"><i class="est-compare-dot" aria-hidden="true" style="background-color:' + awayColor + ';color:' + awayColor + '"></i>' + esc(teamFull(awayId)) + '</span>';
+    var home = standingFor(homeId), away = standingFor(awayId);
+    var homePos = (S.standings || []).findIndex(function (row) { return (row.teamId || row.id) === homeId; });
+    var awayPos = (S.standings || []).findIndex(function (row) { return (row.teamId || row.id) === awayId; });
+    var position = function (index) { return index >= 0 ? '#' + (index + 1) : '—'; };
+    var record = function (row) {
+      return row ? [standingValue(row, 'won'), standingValue(row, 'drawn'), standingValue(row, 'lost')].join('–') : '—';
+    };
+    var goals = function (row) {
+      return row ? standingValue(row, 'goalsFor') + '–' + standingValue(row, 'goalsAgainst') : '—';
+    };
+    var goalDifference = function (row) {
+      if (!row) return '—';
+      var difference = row.goalDiff != null
+        ? Number(row.goalDiff)
+        : Number(row.goalsFor) - Number(row.goalsAgainst);
+      if (!Number.isFinite(difference)) return '—';
+      return (difference > 0 ? '+' : '') + fmt(difference);
+    };
+    var rows = [
+      ['Formación / estilo', tacticSummary(homeId), tacticSummary(awayId)],
+      ['Posición', position(homePos), position(awayPos)],
+      ['PJ', standingValue(home, 'played'), standingValue(away, 'played')],
+      ['G–E–P', record(home), record(away)],
+      ['Puntos', standingValue(home, 'points'), standingValue(away, 'points')],
+      ['GF–GC', goals(home), goals(away)],
+      ['DG', goalDifference(home), goalDifference(away)],
+      ['Forma (5)', formMarkup(home), formMarkup(away)]
+    ];
+    el['est-team-comparison'].querySelector('tbody').innerHTML = rows.map(function (row) {
+      return '<tr><th scope="row">' + esc(row[0]) + '</th><td>' + (row[0] === 'Forma (5)' ? row[1] : esc(row[1])) + '</td><td>' + (row[0] === 'Forma (5)' ? row[2] : esc(row[2])) + '</td></tr>';
+    }).join('');
+  }
+  function formatPreshowCountdown(ms) {
+    var seconds = Math.max(0, Math.ceil(ms / 1000));
+    return String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
+  }
+  function defaultPromotion() {
+    var slot = Math.floor(Date.now() / PROMOTION_ROTATION_MS);
+    var index = ((slot % HOUSE_PROMOTIONS.length) + HOUSE_PROMOTIONS.length) % HOUSE_PROMOTIONS.length;
+    var promotion = HOUSE_PROMOTIONS[index];
+    el['est-promo-label'].textContent = 'Promoción de MonteCristo';
+    el['est-promo-text'].textContent = promotion.text;
+    el['est-promo-link'].href = promotion.href;
+    el['est-promo-link'].textContent = promotion.action;
+  }
+  function renderPromotion(promotion) {
+    var href = promotion && promotion.href;
+    var allowed = href === '/' || href === '/estadio' || href === '/terminos' || /^\/room\/[A-Z0-9]{5}$/.test(String(href || ''));
+    if (!promotion || !allowed || typeof promotion.text !== 'string') {
+      defaultPromotion();
+      return;
+    }
+    el['est-promo-label'].textContent = 'Promoción pagada';
+    el['est-promo-text'].textContent = promotion.text;
+    el['est-promo-link'].href = href;
+    el['est-promo-link'].textContent = 'Ver promoción';
+  }
+  function stopPromotionRotation() {
+    if (S.promoPollId) clearInterval(S.promoPollId);
+    S.promoPollId = null;
+    S.promoMatchId = null;
+    S.promoRequestSeq++;
+    defaultPromotion();
+  }
+  function loadPromotion(matchId) {
+    if (!matchId) return;
+    var requestSeq = ++S.promoRequestSeq;
+    fetch('/api/estadio/promotions/' + encodeURIComponent(matchId), { cache: 'no-store' })
+      .then(function (response) { return response.json().catch(function () { return {}; }); })
+      .then(function (data) {
+        if (requestSeq !== S.promoRequestSeq || S.promoMatchId !== matchId) return;
+        renderPromotion(data && data.ok ? data.promotion : null);
+      })
+      .catch(function () {
+        if (requestSeq === S.promoRequestSeq && S.promoMatchId === matchId) defaultPromotion();
+      });
+  }
+  function startPromotionRotation(matchId) {
+    if (S.promoMatchId === matchId) return;
+    stopPromotionRotation();
+    S.promoMatchId = matchId;
+    loadPromotion(matchId);
+    if (S.promoProfile) loadOwnPromotion(matchId);
+    S.promoPollId = setInterval(function () { loadPromotion(matchId); }, PROMOTION_ROTATION_MS);
+  }
+  function renderPreshow(nowMs) {
+    var panel = el['est-preshow'];
+    if (!panel) return;
+    var match = S.match;
+    if (!match || match.status !== 'scheduled' || match.scheduledKickoffAt == null || !Number.isFinite(Number(match.scheduledKickoffAt))) {
+      panel.hidden = true;
+      S.promoWindowOpen = false;
+      updatePromotionComposer();
+      stopPromotionRotation();
+      return;
+    }
+    var remaining = Number(match.scheduledKickoffAt) - (Number.isFinite(nowMs) ? nowMs : currentServerTime());
+    var delayed = remaining <= 0;
+    if (!delayed && remaining > PRESHOW_WINDOW_MS) {
+      panel.hidden = true;
+      S.promoWindowOpen = false;
+      updatePromotionComposer();
+      stopPromotionRotation();
+      return;
+    }
+    panel.hidden = false;
+    panel.dataset.delay = String(delayed);
+    S.promoWindowOpen = !delayed;
+    updatePromotionComposer();
+    if (delayed) stopPromotionRotation();
+    else startPromotionRotation(match.id);
+    var statusText = delayed
+      ? 'Kickoff pendiente · esperando señal del partido'
+      : 'Kickoff programado · ' + kickoffTime(match.scheduledKickoffAt);
+    if (el['est-preshow-status'].textContent !== statusText) el['est-preshow-status'].textContent = statusText;
+    el['est-preshow-timer'].textContent = delayed ? '' : formatPreshowCountdown(remaining);
+    el['est-preshow-promo'].hidden = delayed;
+    if (S.preshowDataMatchId !== match.id || S.preshowDataStandings !== S.standings) {
+      renderTeamComparison();
+      S.preshowDataMatchId = match.id;
+      S.preshowDataStandings = S.standings;
+    }
+  }
 
   var STATUS_LABEL = { scheduled: 'Programado', live: 'EN VIVO', halftime: 'Descanso', extra_time: 'Prórroga', shootout: 'Penales', finished: 'Final', settled: 'Final', postponed: 'Pospuesto' };
   function renderLobby(lobby) {
     if (!lobby) return;
     S.lobby = lobby; S.standings = lobby.standings || []; S.countdownTo = lobby.nextKickoffAt;
+    if (lobby.serverNow != null && Number.isFinite(Number(lobby.serverNow))) {
+      S.lobbyServerNow = Number(lobby.serverNow);
+      S.lobbyReceivedAt = performance.now();
+    }
     var list = el['est-match-list']; list.innerHTML = '';
     var matches = lobby.matches || [];
+    var selectedMatch = S.currentMatchId && matches.find(function (match) { return match.id === S.currentMatchId; });
+    if (selectedMatch && S.match) {
+      S.match.status = selectedMatch.status;
+      S.match.scheduledKickoffAt = selectedMatch.scheduledKickoffAt;
+    }
     if (!matches.length) { list.innerHTML = '<li class="est-muted">No hay partidos programados hoy.</li>'; }
     matches.forEach(function (m) {
       var li = document.createElement('li');
@@ -262,6 +534,7 @@
       list.appendChild(li);
     });
     renderStandings();
+    renderPreshow(currentServerTime());
   }
   function blockLabel(b) { return ({ matutino: 'Matutino', vespertino: 'Vespertino', estelar: 'Estelar' })[b] || b; }
   function kickoffTime(ms) { if (!ms) return ''; try { return new Date(ms).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
@@ -279,11 +552,18 @@
     });
   }
   function tickCountdown() {
-    if (!S.countdownTo) { el['est-countdown'].textContent = 'Sin próximo kickoff programado.'; return; }
-    var ms = S.countdownTo - Date.now();
-    if (ms <= 0) { el['est-countdown'].innerHTML = 'Próximo kickoff: <b>en juego</b>'; return; }
-    var h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000), s = Math.floor(ms % 60000 / 1000);
-    el['est-countdown'].innerHTML = 'Próximo kickoff en <b>' + (h > 0 ? h + 'h ' : '') + m + 'm ' + s + 's</b>';
+    var nowMs = currentServerTime();
+    if (!S.countdownTo) {
+      el['est-countdown'].textContent = 'Sin próximo kickoff programado.';
+    } else {
+      var ms = S.countdownTo - nowMs;
+      if (ms <= 0) el['est-countdown'].innerHTML = 'Próximo kickoff: <b>en juego</b>';
+      else {
+        var h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000), s = Math.floor(ms % 60000 / 1000);
+        el['est-countdown'].innerHTML = 'Próximo kickoff en <b>' + (h > 0 ? h + 'h ' : '') + m + 'm ' + s + 's</b>';
+      }
+    }
+    renderPreshow(nowMs);
   }
 
   // ===== Estado del partido =====
@@ -291,10 +571,14 @@
     if (!ms) return;
     S.match = ms.match; S.markets = ms.markets || {}; S.movement = {};
     S.myBets = (ms.myBets || []).slice();
-    S.minute = ms.state ? ms.state.minute : 0;
+    S.minute = ms.state ? Math.round(ms.state.displayMinute != null ? ms.state.displayMinute : ms.state.minute) : 0;
     S.phase = ms.state ? ms.state.phase : 'pre';
     S.score = ms.state ? ms.state.score : { home: 0, away: 0 };
     S.possession = ms.state && ms.state.possession ? ms.state.possession : { home: .5, away: .5 };
+    S.possessionTeam = ms.state && ms.state.possessionTeam ? ms.state.possessionTeam : 'home';
+    S.ballCarrierId = ms.state ? ms.state.ballCarrierId : null;
+    S.playStopped = ms.state ? Boolean(ms.state.playStopped) : true;
+    S.authoritativePlayers = ms.state && Array.isArray(ms.state.players) ? ms.state.players : [];
     var ball = ms.state && ms.state.ball ? ms.state.ball : { x: .5, y: .5 };
     S.ball = { x: ball.x, y: ball.y }; S.ballStart = { x: ball.x, y: ball.y }; S.ballDest = { x: ball.x, y: ball.y };
     resolveKits();
@@ -305,6 +589,7 @@
     renderMyBets();
     renderCommentary(ms.commentary || []);
     updateTextFallback();
+    renderPreshow(currentServerTime());
     if (!S.rafId) S.rafId = requestAnimationFrame(frame);
   }
 
@@ -327,12 +612,40 @@
 
   function initPlayers() {
     S.players = [];
+    if (Array.isArray(S.authoritativePlayers) && S.authoritativePlayers.length) {
+      syncAuthoritativePlayers(S.authoritativePlayers, false);
+      return;
+    }
     var hf = S.teams[S.match.homeId] ? S.teams[S.match.homeId].formation : '4-4-2';
     var af = S.teams[S.match.awayId] ? S.teams[S.match.awayId].formation : '4-4-2';
     buildTeam('home', hf, false, S.homeKit, S.homeSec, S.homePattern);
     buildTeam('away', af, true, S.awayKit, S.awaySec, S.awayPattern);
     recomputeTargets(S.ballDest.x, S.ballDest.y);
     S.players.forEach(function (p) { p.baseX = p.destX; p.baseY = p.destY; p.startX = p.destX; p.startY = p.destY; p.renderX = p.destX; p.renderY = p.destY; });
+  }
+  function syncAuthoritativePlayers(serverPlayers, animate) {
+    var previous = {};
+    S.players.forEach(function (p) { if (p.id != null) previous[p.id] = p; });
+    S.authoritativePlayers = Array.isArray(serverPlayers) ? serverPlayers : [];
+    S.players = S.authoritativePlayers.filter(function (p) { return p && p.active && (p.team === 'home' || p.team === 'away'); }).map(function (p, index) {
+      var old = previous[p.id];
+      var team = p.team;
+      var x = Number.isFinite(Number(p.x)) ? clamp(Number(p.x), .01, .99) : .5;
+      var y = Number.isFinite(Number(p.y)) ? clamp(Number(p.y), .02, .98) : .5;
+      var kitBase = team === 'home' ? S.homeKit : S.awayKit;
+      var kitSec = team === 'home' ? S.homeSec : S.awaySec;
+      var kitPattern = team === 'home' ? S.homePattern : S.awayPattern;
+      var fromX = animate && old ? old.renderX : x;
+      var fromY = animate && old ? old.renderY : y;
+      return {
+        id: p.id, name: p.name, pos: p.pos, role: p.role, team: team, active: true,
+        number: p.number, speed: p.speed, stamina: p.stamina, status: p.status,
+        seed: index * 7.3 + (team === 'home' ? 100 : 200),
+        kitBase: kitBase, kitSec: kitSec, kitPattern: kitPattern, dorsalColor: bestText(kitBase),
+        startX: fromX, startY: fromY, baseX: fromX, baseY: fromY,
+        destX: x, destY: y, renderX: fromX, renderY: fromY
+      };
+    });
   }
   function buildTeam(team, formation, mirror, base, sec, pattern) {
     slots(formation).forEach(function (slot, i) {
@@ -344,10 +657,30 @@
     });
   }
   function recomputeTargets(bx, by) {
+    if (Array.isArray(S.authoritativePlayers) && S.authoritativePlayers.length) {
+      var byId = {};
+      S.authoritativePlayers.forEach(function (p) { if (p && p.id != null) byId[p.id] = p; });
+      S.players.forEach(function (p) {
+        var authoritative = byId[p.id];
+        if (!authoritative || !authoritative.active) return;
+        p.startX = p.renderX; p.startY = p.renderY;
+        p.destX = clamp(Number(authoritative.x), .01, .99);
+        p.destY = clamp(Number(authoritative.y), .02, .98);
+      });
+      return;
+    }
     S.players.forEach(function (p) {
       var t = targetFor(p.slot, p.mirror, bx, by);
       p.startX = p.baseX; p.startY = p.baseY; p.destX = t.x; p.destY = t.y;
     });
+  }
+  function movePlayerTo(id, point) {
+    if (!point || !Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y))) return;
+    var player = S.players.find(function (p) { return p.id === id; });
+    if (!player) return;
+    player.startX = player.renderX; player.startY = player.renderY;
+    player.destX = clamp(Number(point.x), .01, .99);
+    player.destY = clamp(Number(point.y), .02, .98);
   }
 
   // ===== Ciclo de render (tweening 60 fps) =====
@@ -450,8 +783,10 @@
     // Destello de gol.
     if (now < S.goalFlashUntil) { ctx.fillStyle = 'rgba(229,189,114,' + (0.18 * (S.goalFlashUntil - now) / 1400) + ')'; ctx.fillRect(0, 0, W, H); }
     // Jugadores (posesión contorneada).
-    var homeHas = S.possession.home >= S.possession.away;
-    S.players.forEach(function (pl) { drawPlayer(pl, pl.team === 'home' ? homeHas : !homeHas); });
+    S.players.forEach(function (pl) {
+      var inPoss = S.ballCarrierId != null ? pl.id === S.ballCarrierId : pl.team === S.possessionTeam;
+      drawPlayer(pl, inPoss);
+    });
     drawBall(now);
   }
   function drawPlayer(pl, inPoss) {
@@ -484,7 +819,11 @@
 
   // ===== Marcador / reloj =====
   function phaseLabel(ph) {
-    return ({ kickoff: 'Inicio', first_half: '1T', halftime: 'Descanso', second_half: '2T', extra_time: 'Prórroga', shootout: 'Penales', ended: 'Final', pre: '—' })[ph] || ph;
+    return ({
+      kickoff: 'Inicio', first_half: '1T', halftime: 'Descanso', second_half: '2T',
+      build_up: 'En juego', attack: 'Ataque', danger: 'Peligro', set_piece: 'Balón parado',
+      goal_celebration: 'Gol', extra_time: 'Prórroga', shootout: 'Penales', ended: 'Final', pre: '—'
+    })[ph] || ph;
   }
   function renderScoreboard() {
     if (!S.match) return;
@@ -525,39 +864,119 @@
     if (!data || data.matchId !== S.currentMatchId) return;
     S.ballStart = { x: S.ball.x, y: S.ball.y };
     S.ballDest = data.ball ? { x: clamp(data.ball.x, 0, 1), y: clamp(data.ball.y, 0, 1) } : S.ballDest;
-    S.minute = data.minute != null ? data.minute : S.minute;
+    var wasStopped = S.playStopped;
+    S.minute = Math.round(data.displayMinute != null ? data.displayMinute : (data.minute != null ? data.minute : S.minute));
     S.phase = data.phase || S.phase;
     if (data.score) S.score = data.score;
     if (data.possession) S.possession = data.possession;
-    recomputeTargets(S.ballDest.x, S.ballDest.y);
+    if (Object.prototype.hasOwnProperty.call(data, 'possessionTeam')) S.possessionTeam = data.possessionTeam;
+    if (Object.prototype.hasOwnProperty.call(data, 'ballCarrierId')) S.ballCarrierId = data.ballCarrierId;
+    if (Object.prototype.hasOwnProperty.call(data, 'playStopped')) S.playStopped = Boolean(data.playStopped);
+    if (Array.isArray(data.players)) syncAuthoritativePlayers(data.players, true);
+    else recomputeTargets(S.ballDest.x, S.ballDest.y);
     S.tweenT0 = performance.now();
     renderScoreboard();
     updateTextFallback();
+    if (wasStopped !== S.playStopped) {
+      renderMarkets();
+      renderMyBets();
+    }
   }
+  function applyRosterEvent(ev) {
+    if (!Array.isArray(S.authoritativePlayers)) return;
+    var outgoing = ev.playerOutId && S.authoritativePlayers.find(function (p) { return p.id === ev.playerOutId; });
+    if ((ev.type === 'red_card' || ev.type === 'second_yellow') && ev.playerId) {
+      var dismissed = S.authoritativePlayers.find(function (p) { return p.id === ev.playerId; });
+      if (dismissed) { dismissed.active = false; dismissed.status = 'sent_off'; }
+    } else if (ev.type === 'substitution') {
+      var incomingId = ev.playerInId || ev.playerId;
+      var incoming = incomingId && S.authoritativePlayers.find(function (p) { return p.id === incomingId; });
+      var visibleOutgoing = outgoing && S.players.find(function (p) { return p.id === outgoing.id; });
+      if (outgoing) { outgoing.active = false; outgoing.status = 'substituted'; }
+      if (incoming) {
+        incoming.active = true; incoming.status = 'active';
+        incoming.slotIndex = outgoing ? outgoing.slotIndex : incoming.slotIndex;
+        incoming.role = outgoing ? outgoing.role : incoming.role;
+        if (visibleOutgoing) { incoming.x = visibleOutgoing.renderX; incoming.y = visibleOutgoing.renderY; }
+        else if (outgoing) { incoming.x = outgoing.x; incoming.y = outgoing.y; }
+      }
+    } else return;
+    syncAuthoritativePlayers(S.authoritativePlayers, true);
+  }
+
   function onEvent(data) {
     if (!data || data.matchId !== S.currentMatchId || !data.event) return;
     var ev = data.event;
+    var wasStopped = S.playStopped;
+    S.players.forEach(function (player) {
+      player.startX = player.renderX;
+      player.startY = player.renderY;
+    });
+    if (ev.ball) {
+      S.ballStart = ev.ballFrom
+        ? { x: clamp(ev.ballFrom.x, 0, 1), y: clamp(ev.ballFrom.y, 0, 1) }
+        : { x: S.ball.x, y: S.ball.y };
+      S.ballDest = { x: clamp(ev.ball.x, 0, 1), y: clamp(ev.ball.y, 0, 1) };
+    }
+    if (ev.playerId != null && ev.actorPosition) movePlayerTo(ev.playerId, ev.actorPosition);
+    if (ev.keeperId != null && ev.keeperPosition) movePlayerTo(ev.keeperId, ev.keeperPosition);
+    if (Object.prototype.hasOwnProperty.call(ev, 'possessionTeam')) S.possessionTeam = ev.possessionTeam;
+    if (Object.prototype.hasOwnProperty.call(ev, 'ballCarrierId')) S.ballCarrierId = ev.ballCarrierId;
+    if (Object.prototype.hasOwnProperty.call(ev, 'playStopped')) S.playStopped = Boolean(ev.playStopped);
+    if (ev.phase) S.phase = ev.phase;
+    if (ev.minute != null) S.minute = ev.minute;
+    applyRosterEvent(ev);
+    S.tweenT0 = performance.now();
     if (ev.type === 'goal' || ev.type === 'penalty_scored') {
       S.goalFlashUntil = performance.now() + 1400;
       showGoalBanner();
-      if (ev.marcador) { var parts = String(ev.marcador).split('-'); if (parts.length === 2) { S.score = { home: Number(parts[0]) || 0, away: Number(parts[1]) || 0 }; renderScoreboard(); } }
+      if (ev.marcador) { var parts = String(ev.marcador).split('-'); if (parts.length === 2) { S.score = { home: Number(parts[0]) || 0, away: Number(parts[1]) || 0 }; } }
       bell('goal');
     } else if (ev.type === 'red_card' || ev.type === 'second_yellow') {
       bell('card');
     }
+    renderScoreboard();
+    updateTextFallback();
+    if (wasStopped !== S.playStopped) {
+      renderMarkets();
+      renderMyBets();
+    }
   }
-  function onGoalEvent(data) { if (data && data.matchId === S.currentMatchId) { S.goalFlashUntil = performance.now() + 1400; showGoalBanner(); } }
   function showGoalBanner() {
     var b = el['est-goal-banner']; b.classList.add('show'); b.setAttribute('aria-hidden', 'false');
     setTimeout(function () { b.classList.remove('show'); b.setAttribute('aria-hidden', 'true'); }, 2200);
   }
   function onStatus(data) {
-    if (!data) return;
-    if (data.matchId === S.currentMatchId) {
-      if (data.code === 'postponed') { toast('Partido pospuesto. Tus apuestas fueron reembolsadas.', 'lose'); if (S.match) S.match.status = 'postponed'; renderScoreboard(); }
-      else if (data.code === 'match_started') { if (S.match) S.match.status = 'live'; renderScoreboard(); }
-      else if (data.code === 'settled' || data.code === 'finished') { if (S.match) S.match.status = 'settled'; renderScoreboard(); renderMarkets(); }
+    if (!data || data.matchId !== S.currentMatchId || !S.match) return;
+    var code = data.code;
+    if (code === 'postponed') {
+      toast('Partido pospuesto. Tus apuestas fueron reembolsadas.', 'lose');
+      S.match.status = 'postponed';
+      S.playStopped = true;
+    } else if (code === 'kickoff' || code === 'late_kickoff' || code === 'match_started' || code === 'live') {
+      S.match.status = 'live';
+      if (code === 'live' || code === 'match_started') S.playStopped = false;
+      var liveMarket = S.markets['1x2'];
+      S.markets = liveMarket ? { '1x2': liveMarket } : {};
+      if (S.slip && S.slip.market !== '1x2') {
+        S.slip = null;
+        el['est-bet-slip'].hidden = true;
+        betMsg('La boleta pre-partido se cerró al iniciar el juego.', false);
+      }
+    } else if (code === 'halftime' || code === 'extra_time' || code === 'shootout') {
+      S.match.status = code;
+      S.playStopped = code === 'halftime' || code === 'shootout';
+      var currentLiveMarket = S.markets['1x2'];
+      S.markets = currentLiveMarket ? { '1x2': currentLiveMarket } : {};
+    } else if (code === 'full_time' || code === 'settled' || code === 'finished') {
+      S.match.status = 'finished';
+      S.playStopped = true;
     }
+    renderScoreboard();
+    renderMarkets();
+    renderMyBets();
+    updateTextFallback();
+    renderPreshow(currentServerTime());
   }
 
   // ===== Cuotas =====
@@ -590,8 +1009,16 @@
     var box = el['est-markets'];
     var keys = Object.keys(S.markets || {});
     var ended = S.match && ['settled', 'finished', 'postponed'].indexOf(S.match.status) >= 0;
+    var live = S.match && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0;
+    var suspended = Boolean(live && S.playStopped);
+    if (el['est-place-bet']) el['est-place-bet'].disabled = Boolean(S.submitting || ended || suspended || !S.slip);
     if (!keys.length) { box.innerHTML = '<p class="est-muted">' + (ended ? 'Partido finalizado: mercados cerrados.' : 'Sin mercados disponibles todavía.') + '</p>'; return; }
     box.innerHTML = '';
+    if (suspended) {
+      var notice = document.createElement('p'); notice.className = 'est-muted';
+      notice.textContent = 'Mercado suspendido mientras el juego está detenido.';
+      box.appendChild(notice);
+    }
     // Una sola selección por categoría: los mercados donde ya hay una apuesta abierta
     // quedan bloqueados (el servidor también lo valida; esto solo evita el clic).
     var taken = {};
@@ -607,14 +1034,15 @@
         var btn = document.createElement('button');
         btn.type = 'button'; btn.className = 'est-sel' + (S.slip && S.slip.market === mk && S.slip.selection === s.key ? ' selected' : '');
         var locked = lockedBy !== undefined && lockedBy !== s.key;
-        btn.disabled = ended || locked;
-        if (locked) btn.title = 'Ya apostaste en esta categoría. Solo se permite una selección por mercado.';
+        btn.disabled = ended || suspended || locked;
+        if (suspended) btn.title = 'Mercado suspendido durante la pausa del juego.';
+        else if (locked) btn.title = 'Ya apostaste en esta categoría. Solo se permite una selección por mercado.';
         var arrow = mv && mv.dir === 'up' ? '<span class="est-sel-move up">▲</span>' : mv && mv.dir === 'down' ? '<span class="est-sel-move down">▼</span>' : '';
         btn.innerHTML = '<span class="est-sel-key">' + esc(selLabel(mk, s.key)) + '</span>' +
           '<span class="est-sel-odds">' + Number(s.price).toFixed(2) + arrow + '</span>' +
           '<span class="est-sel-implied">impl. ' + pct(s.implied) + '</span>';
         btn.setAttribute('aria-label', (MARKET_LABEL[mk] || mk) + ' ' + selLabel(mk, s.key) + ', cuota ' + Number(s.price).toFixed(2) + ', probabilidad implícita ' + pct(s.implied));
-        btn.addEventListener('click', function () { if (!ended && !locked) openSlip(mk, s); });
+        btn.addEventListener('click', function () { if (!ended && !suspended && !locked) openSlip(mk, s); });
         row.appendChild(btn);
       });
       group.appendChild(row); box.appendChild(group);
@@ -662,12 +1090,17 @@
   function closeSlip() { S.slip = null; el['est-bet-slip'].hidden = true; renderMarkets(); }
   function placeBet() {
     if (!S.slip || S.submitting) return;
+    if (S.match && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0 && S.playStopped) {
+      betMsg('Mercado suspendido mientras el juego está detenido.', false);
+      return;
+    }
     var stake = Math.floor(Number(el['est-stake'].value || 0));
     var b = stakeBounds();
     if (stake < b.min || stake > b.max) { betMsg('Monto fuera de rango (' + fmt(b.min) + '–' + fmt(b.max) + ').', false); return; }
     S.submitting = true; el['est-place-bet'].disabled = true; betMsg('Enviando…', true);
     S.socket.emit('football:bet', { matchId: S.currentMatchId, market: S.slip.market, selection: S.slip.selection, stake: stake }, function (res) {
-      S.submitting = false; el['est-place-bet'].disabled = false;
+      S.submitting = false;
+      renderMarkets();
       if (!res || !res.ok) { betMsg(humanError(res && res.code), false); return; }
       S.chips = res.chips; updateChips();
       if (res.bet) S.myBets.push(res.bet);
@@ -702,6 +1135,8 @@
         '<span class="est-mybet-meta">Paga ' + fmt(b.potentialPayout) + '</span>';
       if (b.status === 'open' && S.match && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0) {
         var co = document.createElement('button'); co.type = 'button'; co.className = 'est-cashout'; co.textContent = 'Cobrar ahora (cash-out)';
+        co.disabled = Boolean(S.playStopped);
+        if (S.playStopped) co.title = 'Cash-out suspendido durante la pausa del juego.';
         co.addEventListener('click', function () { cashout(b.id, co); });
         li.appendChild(co);
       }
@@ -709,6 +1144,7 @@
     });
   }
   function cashout(betId, btn) {
+    if (S.playStopped) { toast('Cash-out suspendido durante la pausa del juego.', ''); return; }
     btn.disabled = true; btn.textContent = 'Cobrando…';
     S.socket.emit('football:cashout', { betId: betId }, function (res) {
       if (!res || !res.ok) { btn.disabled = false; btn.textContent = 'Cobrar ahora (cash-out)'; toast(humanError(res && res.code), 'lose'); return; }
@@ -758,11 +1194,72 @@
     } catch (e) { /* audio no disponible */ }
   }
 
+  function updatePromotionRoomField() {
+    var useRoom = el['est-promo-target'].value === '/room';
+    el['est-promo-room-field'].hidden = !useRoom;
+    el['est-promo-room-code'].required = useRoom;
+  }
+  function submitPromotion(event) {
+    event.preventDefault();
+    if (!S.promoProfile || !S.promoProfile.username || !S.promoCsrfToken) {
+      setPromoMessage('Inicia sesión con una cuenta vinculada y vuelve a verificar la sesión.', 'error');
+      return;
+    }
+    if (!S.currentMatchId || !S.promoWindowOpen) {
+      setPromoMessage('El envío solo está disponible durante los últimos 30 minutos antes del kickoff.', 'error');
+      return;
+    }
+    var targetPath = el['est-promo-target'].value;
+    if (targetPath === '/room') {
+      var code = el['est-promo-room-code'].value.trim().toUpperCase();
+      if (!/^[A-Z0-9]{5}$/.test(code)) {
+        setPromoMessage('Escribe un código de sala de cinco caracteres.', 'error');
+        el['est-promo-room-code'].focus();
+        return;
+      }
+      targetPath = '/room/' + code;
+    }
+    var button = el['est-promo-submit'];
+    button.disabled = true;
+    setPromoMessage('Enviando a revisión; no se cobran fichas al enviar…', '');
+    fetch('/api/estadio/promotions', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': S.promoCsrfToken },
+      body: JSON.stringify({
+        matchId: S.currentMatchId,
+        text: el['est-promo-copy-input'].value,
+        targetPath: targetPath
+      })
+    }).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (data) {
+        return { ok: response.ok, data: data };
+      });
+    }).then(function (result) {
+      button.disabled = false;
+      if (!result.ok) {
+        setPromoMessage(result.data.error || 'No se pudo enviar la promoción.', 'error');
+        if (result.data.code === 'account_session_required') refreshPromotionSession();
+        return;
+      }
+      el['est-promo-copy-input'].value = '';
+      setPromoMessage('Enviada y pendiente de revisión. No se han cobrado fichas.', 'success');
+      loadOwnPromotion(S.currentMatchId);
+    }).catch(function () {
+      button.disabled = false;
+      setPromoMessage('No se pudo contactar al servidor. Inténtalo de nuevo.', 'error');
+    });
+  }
+
   // ===== UI: enlaces, atajos, TOS =====
   function bindUI() {
     el['est-tos-accept'].addEventListener('click', function () {
       localStorage.setItem(TOS_KEY, S.tosVersion); el['est-tos'].hidden = true; connect();
     });
+    el['est-promo-refresh'].addEventListener('click', refreshPromotionSession);
+    el['est-promo-form'].addEventListener('submit', submitPromotion);
+    el['est-promo-target'].addEventListener('change', updatePromotionRoomField);
+    updatePromotionRoomField();
     el['est-slip-clear'].addEventListener('click', closeSlip);
     el['est-place-bet'].addEventListener('click', placeBet);
     el['est-stake'].addEventListener('keydown', function (e) { if (e.key === 'Enter') placeBet(); });

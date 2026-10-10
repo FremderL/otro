@@ -45,11 +45,11 @@ function isolate(store, index = 0) {
 }
 
 function collect(engine) {
-  const bag = { events: [], goals: [], statuses: [], ticks: 0, logs: [] };
+  const bag = { events: [], goals: [], statuses: [], ticks: 0, tickPayloads: [], logs: [] };
   engine.on('football:event', p => bag.events.push(p.event.i));
   engine.on('football:goal', p => bag.goals.push(p.event.i));
   engine.on('football:status', p => bag.statuses.push(p.code));
-  engine.on('football:tick', () => bag.ticks++);
+  engine.on('football:tick', p => { bag.ticks++; bag.tickPayloads.push(p); });
   const origLog = engine.logEvent;
   engine.logEvent = (type, data) => { bag.logs.push({ type, data }); origLog(type, data); };
   return bag;
@@ -80,7 +80,36 @@ test('phaseToStatus mapea fases a estados válidos', () => {
   assert.strictEqual(phaseToStatus('first_half'), 'live');
   assert.strictEqual(phaseToStatus('halftime'), 'halftime');
   assert.strictEqual(phaseToStatus('second_half'), 'live');
+  assert.strictEqual(phaseToStatus('extra_time'), 'extra_time');
+  assert.strictEqual(phaseToStatus('shootout'), 'shootout');
   assert.strictEqual(phaseToStatus('ended'), 'finished');
+});
+
+test('T7 — kickoff y segundo tiempo no se revelan antes de su fase de reloj', () => {
+  const { store } = freshStore();
+  const m = isolate(store);
+  const engine = new FootballEngine(store, { secondsPerMinute: 10, halftimeMs: 45000 });
+  const bag = collect(engine);
+  const timeline = engine._ensureTimeline(m).timeline;
+  const halftime = timeline.find(event => event.type === 'halftime');
+  const secondHalf = timeline.find(event => event.type === 'second_half');
+
+  const pre = engine.deriveMatchState(m, T0 - 1);
+  assert.equal(pre.revealedIndex, -1, 'antes del kickoff no se revela el evento t=0');
+
+  engine.startMatch(m, T0);
+  const atHalf = T0 + halftime.t * MS_MIN + 1;
+  const halftimeState = engine.advance(m, atHalf);
+  assert.equal(halftimeState.phase, 'halftime');
+  assert.equal(halftimeState.state.phase, 'halftime');
+  assert.equal(halftimeState.revealedIndex, halftime.i);
+  assert.ok(!bag.events.includes(secondHalf.i), 'el saque del segundo tiempo espera al fin del descanso');
+
+  const afterBreak = T0 + halftime.t * MS_MIN + 45000 + 1;
+  const resumed = engine.advance(m, afterBreak);
+  assert.equal(resumed.phase, 'second_half');
+  assert.ok(resumed.revealedIndex >= secondHalf.i);
+  assert.ok(bag.events.includes(secondHalf.i), 'el segundo tiempo se revela al reanudar el reloj');
 });
 
 // --- Ciclo de vida ---
@@ -105,6 +134,7 @@ test('un partido arranca, revela eventos y se asienta con el marcador del seed',
   assert.ok(m.result && Number.isInteger(m.result.home) && Number.isInteger(m.result.away), 'resultado entero registrado');
   assert.ok(bag.statuses.includes('full_time'), 'emite el final');
   assert.ok(bag.events.length > 40, 'reveló la línea de tiempo');
+  assert.ok(bag.tickPayloads.length > 0 && bag.tickPayloads.every(tick => tick.matchEnd === engine._ensureTimeline(m).clock.matchEnd), 'el tick interno lleva el límite real para calcular cuotas sin derivar de nuevo');
   assert.ok(bag.goals.length === m.result.home + m.result.away, 'los goles emitidos cuadran con el marcador');
 });
 

@@ -14,6 +14,12 @@ const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
 const { HAND_NAMES, compareScores, bestPokerScore } = require('./lib/poker-evaluator');
 const { DIFFICULTIES, STYLES, createBot, publicBot } = require('./lib/bots/catalog');
 const { BotController } = require('./lib/bots/bot-controller');
+const {
+  MONTE_ASSISTANT_NAME,
+  MONTE_ASSISTANT_AVATAR,
+  getLobbyAssistantReply,
+  canReplyToLobbyAssistant
+} = require('./lib/lobby-chat-assistant');
 const { TOS_VERSION } = require('./lib/terms');
 const { loadAdminConfig } = require('./lib/admin-config');
 const { createAccountSessionStore } = require('./lib/account-session-factory');
@@ -84,7 +90,8 @@ process.on('unhandledRejection', reason => {
 
 // Fase administrativa 1: API de sesión segura. Las rutas existen detrás de
 // ACCOUNT_SESSIONS_ENABLED y resuelven stores cargados por bootstrap().
-installAccountAuthRoutes(app, {
+let accountAuth = null;
+accountAuth = installAccountAuthRoutes(app, {
   config: adminConfig,
   getProfiles: () => profiles,
   getSessionStore: () => accountSessionStore,
@@ -104,6 +111,9 @@ installAdminRoutes(app, {
     const roomName = `account:${target.id}`;
     io.to(roomName).emit('account_moderated', { status:state.status, until:state.until });
     io.in(roomName).disconnectSockets(true);
+  },
+  onRoleChanged: async target => {
+    io.in(`account:${target.id}`).disconnectSockets(true);
   }
 });
 installReportRoutes(app, {
@@ -111,10 +121,15 @@ installReportRoutes(app, {
   getProfiles: () => profiles,
   getSessionStore: () => accountSessionStore,
   getReportStore: () => reportStore,
-  findEvidence: (messageId, targetId) => {
+  findEvidence: messageId => {
     const messages = [...lobbyChatMessages, ...[...rooms.values()].flatMap(room => room.messages || [])];
-    const message = messages.find(item => item.id === messageId && item.playerId === targetId);
-    return message ? { messageId:message.id, authorProfileId:message.playerId, text:message.text, time:message.time } : null;
+    const message = messages.find(item => item.id === messageId && item.playerId && !item.system);
+    return message ? {
+      messageId: message.id,
+      authorProfileId: String(message.playerId),
+      text: message.text,
+      time: message.time
+    } : null;
   }
 });
 installPasswordResetRoutes(app,{config:adminConfig,getProfiles:()=>profiles,getSessionStore:()=>accountSessionStore,getPasswordResetStore:()=>passwordResetStore,getAuditStore:()=>auditStore});
@@ -137,6 +152,7 @@ app.get('/healthz', (_req, res) => {
     casinoTimeZone: CASINO_TIME_ZONE,
     tosVersion: TOS_VERSION,
     accountSessionsEnabled: adminConfig.accountSessionsEnabled,
+    promotionsEnabled: footballConfig.enabled && adminConfig.enabled && adminConfig.accountSessionsEnabled,
     // Estadio MonteCristo (§15.8): bloque de salud del motor. Con el flag apagado
     // (o antes de bootstrap) queda reducido a { enabled: false }; footballHealth
     // nunca lanza, así que el health check de Render no puede fallar por el motor.
@@ -168,13 +184,19 @@ app.get('/api/perfil/:token/historial', (req, res) => {
 // del catch-all para que /estadio y /api/estadio/* no queden atrapados por él
 // (§14.3, igual que /terminos). Las deps se resuelven en diferido con getters:
 // los servicios se crean en bootstrap(), pero las rutas existen desde el arranque
-// y devuelven 404 mientras footballConfig.enabled sea false.
+// y devuelven 404 mientras footballConfig.enabled sea false. El parser queda
+// limitado a esta API; no amplía el límite JSON del resto del casino.
+app.use('/api/estadio', express.json({ limit: '8kb', strict: true }));
 installFootballRoutes(app, {
   get store() { return footballStore; },
   get profiles() { return profiles; },
   get buildLobby() { return footballSockets ? footballSockets.buildLobby : null; },
   get buildMatchState() { return footballSockets ? footballSockets.buildMatchState : null; },
   get config() { return { tosVersion: TOS_VERSION }; },
+  get accountConfig() { return adminConfig; },
+  getAccountAuth: () => accountAuth,
+  promotionsEnabled: () => footballConfig.enabled && adminConfig.enabled && adminConfig.accountSessionsEnabled,
+  now: () => Date.now(),
   log: logEvent,
   enabled: () => footballConfig.enabled
 });
@@ -188,13 +210,23 @@ installFootballRoutes(app, {
 // un parser JSON propio bajo /admin/estadio porque los del casino solo cubren
 // /api/auth y /api/admin; sin él, req.body llegaría undefined a estas rutas.
 app.use('/admin/estadio', express.json({ limit: '16kb', strict: true }));
+const footballAdminGuard = makeAdminGuard({
+  config: adminConfig,
+  getProfiles: () => profiles,
+  getSessionStore: () => accountSessionStore
+});
 installFootballAdminRoutes(app, {
   adminConfig,
-  guard: makeAdminGuard({
-    config: adminConfig,
-    getProfiles: () => profiles,
-    getSessionStore: () => accountSessionStore
-  }).fullGuard(PERMISSIONS.FOOTBALL_MANAGE),
+  guard: footballAdminGuard.fullGuard(PERMISSIONS.FOOTBALL_MANAGE),
+  readGuard: (req, res, next) => footballAdminGuard.resolveAdmin(req, res, () =>
+    footballAdminGuard.requirePermission(PERMISSIONS.FOOTBALL_MANAGE)(req, res, next)),
+  getProfiles: () => profiles,
+  getAuditStore: () => auditStore,
+  getIdempotencyStore: () => idempotencyStore,
+  onPromotionCharged: (profile, promotion) => io.to(`account:${profile.id}`).emit('account_chips_updated', {
+    profileId: profile.id, chips: profile.chips, reason: 'promotion_approved',
+    promotionId: promotion.id, matchId: promotion.matchId
+  }),
   get store() { return footballStore; },
   get betting() { return footballBetting; },
   get engine() { return footballEngine; },
@@ -1937,6 +1969,9 @@ io.on('connection', socket => {
     // al de otra persona del casino (la unicidad global cubre a todas las
     // personas conectadas al chat: todas tienen perfil). Renombrar el perfil
     // también se valida contra la mesa donde esté sentado, si hay una.
+    if (sameDisplayName(name, MONTE_ASSISTANT_NAME)) {
+      return ackError(ack, 'Ese apodo está reservado para el asistente BOT del servidor.');
+    }
     const chatProfile = profiles.profiles.get(id);
     const lobbyIssue = nameIssue(name, { room: roomOfProfile(chatProfile), exceptId: id });
     if (lobbyIssue) return ackError(ack, lobbyIssue);
@@ -1961,6 +1996,30 @@ io.on('connection', socket => {
     while (lobbyChatMessages.length > LOBBY_CHAT_LIMIT) lobbyChatMessages.shift();
     for (const client of io.sockets.sockets.values()) {
       if (client.data.lobbyChat) client.emit('lobby_chat_message', message);
+    }
+
+    // Monte es una FAQ determinista: solo recibe el texto invocado, nunca el
+    // estado de una mesa, cartas, perfil ni historial privado. La pausa se aplica
+    // por perfil para evitar que varias conexiones conviertan una mención en spam.
+    const assistantReply = getLobbyAssistantReply(text);
+    if (assistantReply && canReplyToLobbyAssistant(author.id)) {
+      const assistantTime = Date.now();
+      const assistantMessage = {
+        id: `monte:${assistantTime}:${Math.random().toString(36).slice(2, 8)}`,
+        playerId: null,
+        username: null,
+        name: MONTE_ASSISTANT_NAME,
+        avatar: MONTE_ASSISTANT_AVATAR,
+        text: assistantReply,
+        time: assistantTime,
+        system: true,
+        bot: true
+      };
+      lobbyChatMessages.push(assistantMessage);
+      while (lobbyChatMessages.length > LOBBY_CHAT_LIMIT) lobbyChatMessages.shift();
+      for (const client of io.sockets.sockets.values()) {
+        if (client.data.lobbyChat) client.emit('lobby_chat_message', assistantMessage);
+      }
     }
     ackOk(ack, { message });
   });

@@ -59,7 +59,7 @@
       <div class="hero-bg" aria-hidden="true"></div>
       <div class="hero-content shell">
         <div class="hero-copy">
-          <div class="eyebrow"><span class="eyebrow-dot"></span> 5 JUEGOS · FICHAS 100% VIRTUALES</div>
+          <div class="eyebrow"><span class="eyebrow-dot"></span> 6 JUEGOS · FICHAS 100% VIRTUALES</div>
           <h1>La noche es<br/><em>de su mesa.</em></h1>
           <p>Crea un espacio privado para tu grupo y empieza en segundos. Cartas, minijuegos, chat y reacciones, todo sincronizado en vivo.</p>
           <div class="hero-actions">
@@ -126,12 +126,17 @@
     </section>
 
     <section id="games" class="lobby-section shell">
-      <div class="section-heading">
+      <div class="section-heading game-section-heading">
         <div><span class="kicker">LOBBY DE JUEGOS</span><h2>Elige tu próxima partida</h2></div>
-        <p>Clásicos de casino reinterpretados para jugar, conversar y competir con amigos.</p>
+        <div class="game-discovery-meta" aria-label="Catálogo de juegos">
+          <span><b>02</b><small>MESAS CLÁSICAS</small></span><i></i>
+          <span><b>04</b><small>PARTIDAS RÁPIDAS</small></span>
+          <p>Clásicos para jugar, conversar y competir con amigos. Todas las fichas son virtuales.</p>
+        </div>
       </div>
+      <div class="game-shelf-label"><span>MESAS PRINCIPALES</span><small>Estrategia y cartas en grupo</small></div>
 
-      <div class="game-grid">
+      <div class="game-grid game-feature-grid" aria-label="Juegos principales">
         <article class="game-card poker-card">
           <img loading="lazy" decoding="async" src="/assets/poker-lounge.jpg" alt="Mesa futurista de Texas Hold’em con cartas y fichas" />
           <div class="game-card-shade"></div>
@@ -194,7 +199,7 @@
         <span>💬</span><b id="lobby-chat-unread" class="lobby-chat-unread hidden">0</b>
       </button>
       <section id="lobby-chat-panel" class="lobby-chat-panel hidden" aria-hidden="true">
-        <header class="lobby-chat-head"><div><span class="kicker">CHAT COMPARTIDO</span><h3>Lobby del casino</h3></div><button id="lobby-chat-close" type="button" aria-label="Cerrar chat">×</button></header>
+        <header class="lobby-chat-head"><div><span class="kicker">CHAT COMPARTIDO · @MONTE / AYUDA</span><h3>Lobby del casino</h3></div><button id="lobby-chat-close" type="button" aria-label="Cerrar chat">×</button></header>
         <div id="lobby-chat-profile" class="lobby-chat-profile hidden">
           <b>Elige tu apodo</b><p>Será visible para todo el casino. Usaremos tu dispositivo y la aceptación vigente de Términos y Condiciones.</p>
           <form id="lobby-chat-profile-form">
@@ -205,7 +210,7 @@
         </div>
         <div id="lobby-chat-content" class="lobby-chat-content">
           <div id="lobby-chat-messages" class="lobby-chat-messages"></div>
-          <form id="lobby-chat-form" class="lobby-chat-form"><input id="lobby-chat-input" maxlength="180" placeholder="Escribe al lobby…" autocomplete="off" /><button aria-label="Enviar mensaje">↑</button></form>
+          <form id="lobby-chat-form" class="lobby-chat-form"><input id="lobby-chat-input" maxlength="180" placeholder="Escribe al lobby o pregunta a @Monte…" autocomplete="off" /><button aria-label="Enviar mensaje">↑</button></form>
         </div>
       </section>
     </aside>
@@ -240,14 +245,20 @@
         <div id="live-rooms" class="live-rooms" aria-live="polite">
           <div class="rooms-loading"><i></i><span>Buscando mesas disponibles…</span></div>
         </div>
-        <div id="season-ranking" class="season-ranking hidden">
+        <section id="season-ranking" class="season-ranking hidden" aria-label="Ranking mensual del casino">
           <div class="ranking-head">
             <div><span class="kicker">🏅 RANKING DEL MES</span><h3 id="ranking-title">Temporada en curso</h3></div>
             <small id="ranking-note">Los puntos se reinician el día 1 de cada mes: todos vuelven a 1000 fichas y el bono diario de 100 sigue disponible.</small>
           </div>
-          <div id="ranking-list" class="ranking-list"></div>
-          <div id="ranking-previous" class="ranking-previous hidden"></div>
-        </div>
+          <div class="ranking-content">
+            <div id="ranking-feature" class="ranking-feature" aria-label="Líder de la temporada"></div>
+            <div class="ranking-table" role="table" aria-label="Clasificación de la temporada">
+              <div class="ranking-table-head" role="row"><span role="columnheader">PUESTO</span><span role="columnheader">JUGADOR</span><span role="columnheader">VICTORIAS</span><span role="columnheader">FICHAS</span></div>
+              <div id="ranking-list" class="ranking-list" role="rowgroup"></div>
+            </div>
+          </div>
+          <div id="ranking-previous" class="ranking-previous hidden" role="region" aria-label="Podio anterior"></div>
+        </section>
       </div>
     </section>
 
@@ -273,58 +284,77 @@
     </footer>
   </section>
 
-  <div id="join-modal" class="modal" aria-hidden="true">
+  <div id="join-modal" class="modal setup-modal" aria-hidden="true">
     <div class="modal-backdrop" data-close-modal></div>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card setup-modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div class="modal-glow"></div>
       <button class="modal-close" data-close-modal aria-label="Cerrar">×</button>
-      <div class="modal-heading">
-        <div class="modal-symbol">♠</div>
-        <div><span class="kicker" id="modal-kicker">NUEVA SALA</span><h2 id="modal-title">Prepara la mesa</h2></div>
+      <div class="table-setup-layout">
+        <div class="table-setup-main">
+          <div class="modal-heading">
+            <div class="modal-symbol">♠</div>
+            <div><span class="kicker" id="modal-kicker">NUEVA SALA</span><h2 id="modal-title">Prepara la mesa</h2></div>
+          </div>
+          <p id="modal-subtitle" class="table-setup-subtitle">Configura tu partida. Podrás invitar a tus amigos cuando entres.</p>
+          <form id="join-form">
+            <div class="form-row">
+              <div class="form-field">
+                <label for="player-name">Tu nombre</label>
+                <div class="input-wrap"><span>◎</span><input id="player-name" maxlength="18" autocomplete="nickname" placeholder="Ej. Ale" required /></div>
+              </div>
+              <div id="room-name-field" class="form-field">
+                <label for="room-name">Nombre de la sala</label>
+                <div class="input-wrap"><span>◇</span><input id="room-name" maxlength="28" autocomplete="off" placeholder="Noche de cartas" /></div>
+              </div>
+            </div>
+            <div class="field-group avatar-field">
+              <label>Elige tu avatar</label>
+              <div id="avatar-choice" class="avatar-choice" role="radiogroup" aria-label="Elige un avatar">
+                <button type="button" data-select-avatar="fox" class="active" aria-label="Zorro">🦊</button>
+                <button type="button" data-select-avatar="tiger" aria-label="Tigre">🐯</button>
+                <button type="button" data-select-avatar="panda" aria-label="Panda">🐼</button>
+                <button type="button" data-select-avatar="owl" aria-label="Búho">🦉</button>
+                <button type="button" data-select-avatar="alien" aria-label="Alien">👽</button>
+                <button type="button" data-select-avatar="robot" aria-label="Robot">🤖</button>
+                <button type="button" data-select-avatar="crown" aria-label="Corona">👑</button>
+                <button type="button" data-select-avatar="diamond" aria-label="Diamante">💎</button>
+              </div>
+            </div>
+            <div id="game-choice" class="field-group">
+              <label>Elige el juego <small>La selección define el formato de la mesa</small></label>
+              <div class="segmented game-segmented" role="group" aria-label="Juegos disponibles">
+                <button type="button" data-select-game="poker" class="active" aria-pressed="true"><span>♠</span><b>Texas Hold’em</b><small>2–6 jugadores</small></button>
+                <button type="button" data-select-game="blackjack" aria-pressed="false"><span>21</span><b>Blackjack</b><small>1–6 jugadores</small></button>
+                <button type="button" data-select-game="roulette" aria-pressed="false"><span>◉</span><b>Ruleta Nova</b><small>Rondas rápidas</small></button>
+                <button type="button" data-select-game="dice" aria-pressed="false"><span>⚄</span><b>Dados Cósmicos</b><small>Bajo, alto o exacto</small></button>
+                <button type="button" data-select-game="coinflip" aria-pressed="false"><span>◐</span><b>Cara o Cruz</b><small>Duelo instantáneo</small></button>
+                <button type="button" data-select-game="slots" aria-pressed="false"><span>🎰</span><b>Tragamonedas</b><small>Tres rodillos animados</small></button>
+              </div>
+            </div>
+            <div id="code-field" class="field-group hidden">
+              <label for="room-code">Código de sala</label>
+              <div class="input-wrap code-input"><span>#</span><input id="room-code" maxlength="5" autocomplete="off" placeholder="ABCDE" /></div>
+            </div>
+            <button id="modal-submit" class="btn btn-primary btn-full" type="submit"><span class="btn-label">Crear sala</span><span class="arrow">→</span></button>
+          </form>
+          <div class="modal-note"><span>✓</span> No necesitas cuenta <i></i><span>✓</span> Solo fichas virtuales</div>
+        </div>
+        <aside class="table-setup-preview" aria-label="Resumen de la mesa">
+          <div class="setup-preview-stage">
+            <span class="setup-preview-kicker">VISTA PREVIA · MONTECRISTO</span>
+            <div class="setup-preview-table" aria-hidden="true"><span class="setup-preview-rim"></span><b id="setup-preview-symbol">♠</b><i>◆</i><i>♣</i><i>♦</i></div>
+            <strong id="setup-preview-title">Texas Hold’em</strong>
+            <small id="setup-preview-detail">2–6 jugadores</small>
+            <div class="setup-preview-avatar" aria-hidden="true"><span id="setup-preview-avatar">🦊</span></div>
+          </div>
+          <div class="setup-preview-facts">
+            <span class="kicker">RESUMEN DE MESA</span>
+            <div><small>ACCESO</small><b>Enlace + código</b></div>
+            <div><small>FICHAS</small><b><i>◆</i> Solo virtuales</b></div>
+            <p>Al crearla recibirás un código de 5 caracteres para invitar a tu grupo.</p>
+          </div>
+        </aside>
       </div>
-      <p id="modal-subtitle">Configura tu partida. Podrás invitar a tus amigos cuando entres.</p>
-      <form id="join-form">
-        <div class="form-row">
-          <div class="form-field">
-            <label for="player-name">Tu nombre</label>
-            <div class="input-wrap"><span>◎</span><input id="player-name" maxlength="18" autocomplete="nickname" placeholder="Ej. Ale" required /></div>
-          </div>
-          <div id="room-name-field" class="form-field">
-            <label for="room-name">Nombre de la sala</label>
-            <div class="input-wrap"><span>◇</span><input id="room-name" maxlength="28" autocomplete="off" placeholder="Noche de cartas" /></div>
-          </div>
-        </div>
-        <div class="field-group avatar-field">
-          <label>Elige tu avatar</label>
-          <div id="avatar-choice" class="avatar-choice" role="radiogroup">
-            <button type="button" data-select-avatar="fox" class="active" aria-label="Zorro">🦊</button>
-            <button type="button" data-select-avatar="tiger" aria-label="Tigre">🐯</button>
-            <button type="button" data-select-avatar="panda" aria-label="Panda">🐼</button>
-            <button type="button" data-select-avatar="owl" aria-label="Búho">🦉</button>
-            <button type="button" data-select-avatar="alien" aria-label="Alien">👽</button>
-            <button type="button" data-select-avatar="robot" aria-label="Robot">🤖</button>
-            <button type="button" data-select-avatar="crown" aria-label="Corona">👑</button>
-            <button type="button" data-select-avatar="diamond" aria-label="Diamante">💎</button>
-          </div>
-        </div>
-        <div id="game-choice" class="field-group">
-          <label>Elige el juego</label>
-          <div class="segmented game-segmented">
-            <button type="button" data-select-game="poker" class="active"><span>♠</span><b>Texas Hold’em</b><small>2–6 jugadores</small></button>
-            <button type="button" data-select-game="blackjack"><span>21</span><b>Blackjack</b><small>1–6 jugadores</small></button>
-            <button type="button" data-select-game="roulette"><span>◉</span><b>Ruleta Nova</b><small>Rondas rápidas</small></button>
-            <button type="button" data-select-game="dice"><span>⚄</span><b>Dados Cósmicos</b><small>Bajo, alto o exacto</small></button>
-            <button type="button" data-select-game="coinflip"><span>◐</span><b>Cara o Cruz</b><small>Duelo instantáneo</small></button>
-            <button type="button" data-select-game="slots"><span>🎰</span><b>Tragamonedas</b><small>Tres rodillos animados</small></button>
-          </div>
-        </div>
-        <div id="code-field" class="field-group hidden">
-          <label for="room-code">Código de sala</label>
-          <div class="input-wrap code-input"><span>#</span><input id="room-code" maxlength="5" autocomplete="off" placeholder="ABCDE" /></div>
-        </div>
-        <button id="modal-submit" class="btn btn-primary btn-full" type="submit"><span class="btn-label">Crear sala</span><span class="arrow">→</span></button>
-      </form>
-      <div class="modal-note"><span>✓</span> No necesitas cuenta <i></i><span>✓</span> Solo fichas virtuales</div>
     </div>
   </div>
 
@@ -332,44 +362,51 @@
     <div class="modal-backdrop" data-close-profile></div>
     <div class="modal-card profile-modal-card" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
       <button class="modal-close" data-close-profile aria-label="Cerrar">×</button>
-      <div class="profile-modal-head">
-        <div id="profile-big-avatar" class="profile-big-avatar">🦊</div>
-        <div><span class="kicker">PERFIL DEL JUGADOR</span><h2 id="profile-modal-title">Tu progreso</h2><p>Las fichas son virtuales y no tienen valor monetario. <a class="tos-link" href="/terminos" target="_blank" rel="noopener">Términos y Condiciones</a></p><p id="profile-account-status" class="profile-account-status"></p><div id="profile-badges" class="profile-badges hidden"></div></div>
+      <div class="profile-dashboard">
+        <aside class="profile-overview">
+          <div class="profile-modal-head">
+            <div id="profile-big-avatar" class="profile-big-avatar">🦊</div>
+            <div><span class="kicker">PERFIL DEL JUGADOR</span><h2 id="profile-modal-title">Tu progreso</h2><p>Las fichas son virtuales y no tienen valor monetario. <a class="tos-link" href="/terminos" target="_blank" rel="noopener">Términos y Condiciones</a></p><p id="profile-account-status" class="profile-account-status"></p><div id="profile-badges" class="profile-badges hidden"></div></div>
+          </div>
+          <form id="profile-form" class="profile-edit-form">
+            <div class="form-field"><label for="profile-name-input">Nombre</label><div class="input-wrap"><span>◎</span><input id="profile-name-input" maxlength="18" required /></div></div>
+            <div class="form-field"><label>Avatar</label><div id="profile-avatar-choice" class="avatar-choice compact"></div></div>
+            <button class="btn btn-primary" type="submit">Guardar perfil</button>
+            <button class="account-switch" id="account-password-toggle" type="button">Cambiar contraseña</button>
+            <button class="account-switch" id="account-logout" type="button">Cerrar sesión</button>
+            <small class="profile-account-note">La cuenta es opcional; puedes seguir jugando sin cuenta.</small>
+          </form>
+          <form id="password-change-form" class="password-change-form hidden" autocomplete="off">
+            <div class="progress-title"><span>SEGURIDAD DE LA CUENTA</span><small>Se cerrarán las demás sesiones</small></div>
+            <div class="password-change-fields">
+              <div class="form-field"><label for="current-password">Contraseña actual</label><div class="input-wrap"><span>●</span><input id="current-password" type="password" autocomplete="current-password" required /></div></div>
+              <div class="form-field"><label for="new-password">Nueva contraseña</label><div class="input-wrap"><span>●</span><input id="new-password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required /></div></div>
+              <div class="form-field"><label for="confirm-password">Confirmar contraseña</label><div class="input-wrap"><span>●</span><input id="confirm-password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required /></div></div>
+            </div>
+            <p id="password-change-error" class="account-error hidden" role="alert"></p>
+            <div class="password-change-actions"><button class="btn btn-primary" id="password-change-submit" type="submit">Actualizar contraseña</button><button class="btn btn-secondary" id="password-change-cancel" type="button">Cancelar</button></div>
+          </form>
+          <div class="profile-reward-note"><span>🎁</span><div><b>Bono diario · +100 fichas</b><small id="daily-bonus-status">Se entrega una vez al día al entrar.</small></div><time id="daily-bonus-countdown" class="daily-bonus-countdown">DISPONIBLE</time></div>
+        </aside>
+        <main class="profile-main">
+          <div class="profile-main-heading"><div><span class="kicker">PROGRESO Y RESULTADOS</span><h3>Tu recorrido</h3></div><span>◆ Saldo solo virtual</span></div>
+          <div id="profile-stats" class="profile-stats"></div>
+          <section class="featured-achievements-box"><div class="progress-title"><span>VITRINA DE LOGROS</span><small>Elige hasta 3 para destacar</small></div><div id="featured-achievements" class="featured-achievements"></div></section>
+          <div class="profile-analytics">
+            <section class="analytics-box"><div class="progress-title"><span>EVOLUCIÓN DEL SALDO</span><small id="balance-chart-note">Tus últimos movimientos</small></div><div id="balance-chart" class="balance-chart" role="img" aria-label="Gráfica de evolución del saldo"></div><a id="history-download" class="history-download-link" download>⬇ Descargar mi historial completo</a></section>
+            <section class="analytics-box"><div class="progress-title"><span>HISTORIAL POR JUEGO</span><small>Rondas · victorias · balance</small></div><div id="game-breakdown" class="game-breakdown"></div></section>
+          </div>
+          <section class="rotating-challenges-box"><div class="progress-title"><span>RETOS ACTIVOS</span><small>Se renuevan automáticamente</small></div><div id="rotating-challenge-list" class="rotating-challenge-list"></div></section>
+          <div class="progress-columns">
+            <section><div class="progress-title"><span>RETOS PERMANENTES</span><small>Recompensas automáticas</small></div><div id="challenge-list" class="challenge-list"></div></section>
+            <section><div class="progress-title"><span>LOGROS</span><small>Colección personal</small></div><div id="achievement-list" class="achievement-list"></div></section>
+          </div>
+        </main>
       </div>
-      <form id="profile-form" class="profile-edit-form">
-        <div class="form-field"><label for="profile-name-input">Nombre</label><div class="input-wrap"><span>◎</span><input id="profile-name-input" maxlength="18" required /></div></div>
-        <div class="form-field"><label>Avatar</label><div id="profile-avatar-choice" class="avatar-choice compact"></div></div>
-        <button class="btn btn-primary" type="submit">Guardar perfil</button>
-        <button class="account-switch" id="account-password-toggle" type="button">Cambiar contraseña</button>
-        <button class="account-switch" id="account-logout" type="button">Cerrar sesión</button>
-        <small class="profile-account-note">La cuenta es opcional; puedes seguir jugando sin cuenta.</small>
-      </form>
-      <form id="password-change-form" class="password-change-form hidden" autocomplete="off">
-        <div class="progress-title"><span>SEGURIDAD DE LA CUENTA</span><small>Se cerrarán las demás sesiones</small></div>
-        <div class="password-change-fields">
-          <div class="form-field"><label for="current-password">Contraseña actual</label><div class="input-wrap"><span>●</span><input id="current-password" type="password" autocomplete="current-password" required /></div></div>
-          <div class="form-field"><label for="new-password">Nueva contraseña</label><div class="input-wrap"><span>●</span><input id="new-password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required /></div></div>
-          <div class="form-field"><label for="confirm-password">Confirmar contraseña</label><div class="input-wrap"><span>●</span><input id="confirm-password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required /></div></div>
-        </div>
-        <p id="password-change-error" class="account-error hidden" role="alert"></p>
-        <div class="password-change-actions"><button class="btn btn-primary" id="password-change-submit" type="submit">Actualizar contraseña</button><button class="btn btn-secondary" id="password-change-cancel" type="button">Cancelar</button></div>
-      </form>
-      <div id="profile-stats" class="profile-stats"></div>
-      <section class="featured-achievements-box"><div class="progress-title"><span>VITRINA DE LOGROS</span><small>Elige hasta 3 para destacar</small></div><div id="featured-achievements" class="featured-achievements"></div></section>
-      <div class="profile-analytics">
-        <section class="analytics-box"><div class="progress-title"><span>EVOLUCIÓN DEL SALDO</span><small id="balance-chart-note">Tus últimos movimientos</small></div><div id="balance-chart" class="balance-chart" role="img" aria-label="Gráfica de evolución del saldo"></div><a id="history-download" class="history-download-link" download>⬇ Descargar mi historial completo</a></section>
-        <section class="analytics-box"><div class="progress-title"><span>HISTORIAL POR JUEGO</span><small>Rondas · victorias · balance</small></div><div id="game-breakdown" class="game-breakdown"></div></section>
-      </div>
-      <section class="rotating-challenges-box"><div class="progress-title"><span>RETOS ACTIVOS</span><small>Se renuevan automáticamente</small></div><div id="rotating-challenge-list" class="rotating-challenge-list"></div></section>
-      <div class="progress-columns">
-        <section><div class="progress-title"><span>RETOS PERMANENTES</span><small>Recompensas automáticas</small></div><div id="challenge-list" class="challenge-list"></div></section>
-        <section><div class="progress-title"><span>LOGROS</span><small>Colección personal</small></div><div id="achievement-list" class="achievement-list"></div></section>
-      </div>
-      <div class="profile-reward-note"><span>🎁</span><div><b>Bono diario · +100 fichas</b><small id="daily-bonus-status">Se entrega una vez al día al entrar.</small></div><time id="daily-bonus-countdown" class="daily-bonus-countdown">DISPONIBLE</time></div>
     </div>
   </div>
 
-  <div id="report-modal" class="modal account-modal" aria-hidden="true"><div class="modal-backdrop" data-close-report></div><div class="modal-card account-modal-card" role="dialog" aria-modal="true" aria-labelledby="report-title"><button class="modal-close" data-close-report>×</button><span class="kicker">SEGURIDAD</span><h2 id="report-title">Reportar un usuario</h2><p>Describe lo ocurrido. Los reportes falsos o abusivos también pueden revisarse.</p><form id="report-form" class="account-form"><div class="form-field"><label for="reported-username">Usuario</label><div class="input-wrap"><span>@</span><input id="reported-username" maxlength="20" required /></div></div><div class="form-field"><label for="report-category">Categoría</label><select id="report-category"><option value="harassment">Acoso</option><option value="hate">Odio o discriminación</option><option value="threat">Amenaza</option><option value="spam">Spam</option><option value="impersonation">Suplantación</option><option value="cheating">Trampas</option><option value="account_trade">Comercio de cuentas</option><option value="other">Otro</option></select></div><div class="form-field"><label for="report-description">Descripción</label><textarea id="report-description" minlength="10" maxlength="1000" required></textarea></div><p id="report-error" class="account-error hidden"></p><button class="btn btn-primary" type="submit">Enviar reporte</button></form><div class="progress-title"><span>MIS REPORTES</span><button id="my-reports-refresh" class="text-button" type="button">Actualizar</button></div><div id="my-reports-list" class="my-reports-list"></div></div></div>
+  <div id="report-modal" class="modal account-modal" aria-hidden="true"><div class="modal-backdrop" data-close-report></div><div class="modal-card account-modal-card" role="dialog" aria-modal="true" aria-labelledby="report-title"><button class="modal-close" data-close-report>×</button><span class="kicker">SEGURIDAD</span><h2 id="report-title">Reportar un usuario</h2><p id="report-copy">Describe lo ocurrido. Los reportes falsos o abusivos también pueden revisarse.</p><form id="report-form" class="account-form"><div id="report-user-field" class="form-field"><label for="reported-username">Usuario</label><div class="input-wrap"><span>@</span><input id="reported-username" maxlength="20" required /></div></div><div class="form-field"><label for="report-category">Categoría</label><select id="report-category"><option value="harassment">Acoso</option><option value="hate">Odio o discriminación</option><option value="threat">Amenaza</option><option value="spam">Spam</option><option value="impersonation">Suplantación</option><option value="cheating">Trampas</option><option value="account_trade">Comercio de cuentas</option><option value="other">Otro</option></select></div><div class="form-field"><label for="report-description">Descripción</label><textarea id="report-description" minlength="10" maxlength="1000" required></textarea></div><p id="report-error" class="account-error hidden"></p><button class="btn btn-primary" type="submit">Enviar reporte</button></form><div class="progress-title"><span>MIS REPORTES</span><button id="my-reports-refresh" class="text-button" type="button">Actualizar</button></div><div id="my-reports-list" class="my-reports-list"></div></div></div>
 
   <div id="account-modal" class="modal account-modal" aria-hidden="true">
     <div class="modal-backdrop" data-close-account></div>
