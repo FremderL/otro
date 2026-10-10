@@ -1072,7 +1072,6 @@
       updateLobbyMatchKickoff(data.matchId, data.scheduledKickoffAt, data.day, data.block);
       toast('Horario del partido reprogramado.', 'info');
     }
-    }
     renderScoreboard();
     renderMarkets();
     renderMyBets();
