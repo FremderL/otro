@@ -21,10 +21,10 @@
   var PRESHOW_WINDOW_MS = 30 * 60 * 1000;
   var PROMOTION_ROTATION_MS = 15 * 1000;
   var HOUSE_PROMOTIONS = [
-    { text: 'Póker, blackjack y más juegos: encuentra tu próxima mesa en MonteCristo.', href: '/', action: 'Explorar juegos' },
-    { text: '¿Faltan rivales? Completa tu mesa de póker o blackjack con bots del servidor.', href: '/', action: 'Ver mesas' },
-    { text: 'Reúne a tus amigos: crea una sala privada y comparte el código para jugar.', href: '/', action: 'Crear una sala' },
-    { text: 'Sigue la liga de Estadio MonteCristo, con relato en vivo y fichas virtuales.', href: '/estadio', action: 'Entrar al Estadio' }
+    { text: 'Póker, blackjack y más juegos: encuentra tu próxima mesa en MonteCristo.', href: '/', action: 'Explorar juegos', image: '/assets/poker-lounge.jpg' },
+    { text: '¿Faltan rivales? Completa tu mesa de póker o blackjack con bots del servidor.', href: '/', action: 'Ver mesas', image: '/assets/blackjack-lounge.jpg' },
+    { text: 'Reúne a tus amigos: crea una sala privada y comparte el código para jugar.', href: '/', action: 'Crear una sala', image: '/assets/coin-lounge.jpg' },
+    { text: 'Sigue la liga de Estadio MonteCristo, con relato en vivo y fichas virtuales.', href: '/estadio', action: 'Entrar al Estadio', image: '/assets/estadio-tunnel.jpg' }
   ];
   var W = 1050, H = 680, PAD = 18; // canvas 105×68 m a 10 px/m
   var FIELD_W = W - PAD * 2, FIELD_H = H - PAD * 2;
@@ -100,7 +100,7 @@
   function cacheEls() {
     ['est-connection', 'est-chips', 'est-sound', 'est-countdown', 'est-match-list', 'est-standings',
       'est-preshow', 'est-preshow-status', 'est-preshow-timer', 'est-team-comparison',
-      'est-compare-home', 'est-compare-away', 'est-preshow-promo', 'est-promo-label', 'est-promo-text', 'est-promo-link',
+      'est-compare-home', 'est-compare-away', 'est-preshow-promo', 'est-promo-image', 'est-promo-label', 'est-promo-text', 'est-promo-link',
       'est-promo-compose', 'est-promo-auth', 'est-promo-login', 'est-promo-refresh', 'est-promo-form',
       'est-promo-copy-input', 'est-promo-target', 'est-promo-room-field', 'est-promo-room-code',
       'est-promo-submit', 'est-promo-message',
@@ -421,14 +421,30 @@
     var seconds = Math.max(0, Math.ceil(ms / 1000));
     return String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
   }
+  // Pinta el anuncio a pantalla completa de La Previa. Si el texto o la imagen
+  // cambian, el contenido entra desde la derecha y se desplaza hacia la izquierda.
+  var PROMO_FALLBACK_IMAGE = '/assets/casino-hero.jpg';
+  function setPromoCreative(c) {
+    var stage = el['est-preshow-promo'];
+    var image = el['est-promo-image'];
+    var changed = el['est-promo-text'].textContent !== c.text || image.getAttribute('src') !== (c.image || PROMO_FALLBACK_IMAGE);
+    el['est-promo-label'].textContent = c.label;
+    el['est-promo-text'].textContent = c.text;
+    el['est-promo-link'].href = c.href;
+    el['est-promo-link'].textContent = c.action;
+    image.src = c.image || PROMO_FALLBACK_IMAGE;
+    image.alt = '';
+    if (changed && stage && el['est-preshow'] && !el['est-preshow'].hidden) {
+      stage.classList.remove('is-sliding');
+      void stage.offsetWidth; // reinicia la animación
+      stage.classList.add('is-sliding');
+    }
+  }
   function defaultPromotion() {
     var slot = Math.floor(Date.now() / PROMOTION_ROTATION_MS);
     var index = ((slot % HOUSE_PROMOTIONS.length) + HOUSE_PROMOTIONS.length) % HOUSE_PROMOTIONS.length;
     var promotion = HOUSE_PROMOTIONS[index];
-    el['est-promo-label'].textContent = 'Promoción de MonteCristo';
-    el['est-promo-text'].textContent = promotion.text;
-    el['est-promo-link'].href = promotion.href;
-    el['est-promo-link'].textContent = promotion.action;
+    setPromoCreative({ label: 'Promoción de MonteCristo', text: promotion.text, href: promotion.href, action: promotion.action, image: promotion.image });
   }
   function renderPromotion(promotion) {
     var href = promotion && promotion.href;
@@ -437,10 +453,7 @@
       defaultPromotion();
       return;
     }
-    el['est-promo-label'].textContent = 'Promoción pagada';
-    el['est-promo-text'].textContent = promotion.text;
-    el['est-promo-link'].href = href;
-    el['est-promo-link'].textContent = 'Ver promoción';
+    setPromoCreative({ label: 'Promoción pagada', text: promotion.text, href: href, action: 'Ver promoción' });
   }
   function stopPromotionRotation() {
     if (S.promoPollId) clearInterval(S.promoPollId);
@@ -563,7 +576,10 @@
     renderPreshow(currentServerTime());
   }
   function blockLabel(b) { return ({ matutino: 'Matutino', vespertino: 'Vespertino', estelar: 'Estelar' })[b] || b; }
-  function kickoffTime(ms) { if (!ms) return ''; try { return new Date(ms).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+  // Los horarios de partido son de la zona del casino (America/Mexico_City), no
+  // de la del navegador: un aficionado en otra zona debe ver la misma hora.
+  var CASINO_TIME_ZONE = 'America/Mexico_City';
+  function kickoffTime(ms) { if (!ms) return ''; try { return new Date(ms).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: CASINO_TIME_ZONE }); } catch (e) { return ''; } }
   function renderStandings() {
     var tb = el['est-standings'].querySelector('tbody'); tb.innerHTML = '';
     (S.standings || []).slice(0, 16).forEach(function (row, i) {
@@ -1133,7 +1149,9 @@
       S.goalFlashUntil = performance.now() + 1400;
       showGoalBanner();
       if (ev.marcador) { var parts = String(ev.marcador).split('-'); if (parts.length === 2) { S.score = { home: Number(parts[0]) || 0, away: Number(parts[1]) || 0 }; } }
-      bell('goal');
+      playSfx('goal');
+    } else if (WHISTLE_EVENTS[ev.type]) {
+      playSfx(WHISTLE_EVENTS[ev.type]);
     } else if (ev.type === 'red_card' || ev.type === 'second_yellow') {
       bell('card');
     }
@@ -1347,6 +1365,16 @@
     })[code] || ('No se pudo apostar (' + (code || 'error') + ').');
   }
 
+  function humanCashoutError(code) {
+    return ({
+      market_not_cashable: 'Este mercado no admite cash-out en vivo (solo 1X2).',
+      price_unavailable: 'Precio no disponible en este momento; intenta de nuevo en unos segundos.',
+      market_suspended: 'Cash-out suspendido momentáneamente.', match_ended: 'El partido ya terminó.',
+      not_open: 'Esta apuesta ya no está abierta.', not_your_bet: 'Apuesta no encontrada.',
+      no_identity: 'Vuelve a entrar al Estadio (sesión no resuelta).', rate_limit: 'Demasiadas acciones seguidas; espera un momento.'
+    })[code] || ('No se pudo cobrar la apuesta (' + (code || 'error') + ').');
+  }
+
   // ===== Mis apuestas + liquidación =====
   function renderMyBets() {
     var box = el['est-mybets']; box.innerHTML = '';
@@ -1358,7 +1386,12 @@
         '<span class="est-mybet-odds">' + Number(b.odds).toFixed(2) + '</span>' +
         '<span class="est-mybet-meta">' + esc(MARKET_LABEL[b.market] || b.market) + ' · ' + fmt(b.stake) + ' fichas' + (b.inPlay ? ' · en vivo ' + b.minuteAtPlacement + "'" : '') + '</span>' +
         '<span class="est-mybet-meta">Paga ' + fmt(b.potentialPayout) + '</span>';
-      if (b.status === 'open' && S.match && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0) {
+      var inPlayNow = S.match && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0;
+      if (b.status === 'open' && inPlayNow && b.market !== '1x2') {
+        var note = document.createElement('span'); note.className = 'est-mybet-meta';
+        note.textContent = 'Cash-out no disponible en vivo para este mercado (solo 1X2).';
+        li.appendChild(note);
+      } else if (b.status === 'open' && inPlayNow) {
         var co = document.createElement('button'); co.type = 'button'; co.className = 'est-cashout'; co.textContent = 'Cobrar ahora (cash-out)';
         co.disabled = Boolean(S.playStopped);
         if (S.playStopped) co.title = 'Cash-out suspendido durante la pausa del juego.';
@@ -1372,7 +1405,7 @@
     if (S.playStopped) { toast('Cash-out suspendido durante la pausa del juego.', ''); return; }
     btn.disabled = true; btn.textContent = 'Cobrando…';
     S.socket.emit('football:cashout', { betId: betId }, function (res) {
-      if (!res || !res.ok) { btn.disabled = false; btn.textContent = 'Cobrar ahora (cash-out)'; toast(humanError(res && res.code), 'lose'); return; }
+      if (!res || !res.ok) { btn.disabled = false; btn.textContent = 'Cobrar ahora (cash-out)'; toast(humanCashoutError(res && res.code), 'lose'); return; }
       S.chips = res.chips; updateChips();
       S.myBets = S.myBets.filter(function (b) { return b.id !== betId; });
       renderMyBets();
@@ -1406,6 +1439,70 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.hidden = true; }, 4200);
   }
   var actx = null;
+  // Efectos sintetizados con Web Audio (sin archivos ni licencias).
+  // Silbato: tono agudo con vibrato leve y armónicos + aliento de ruido.
+  // Público: ruido rosado filtrado con envolvente lenta, más un acorde de subida.
+  var noiseBuffer = null;
+  function audioCtx() {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended' && actx.resume) actx.resume();
+    return actx;
+  }
+  function getNoise(ctx) {
+    if (noiseBuffer && noiseBuffer.sampleRate === ctx.sampleRate) return noiseBuffer;
+    var len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), data = buf.getChannelData(0);
+    var b0 = 0, b1 = 0, b2 = 0; // filtro de ruido rosado (Paul Kellet)
+    for (var i = 0; i < len; i++) {
+      var white = Math.random() * 2 - 1;
+      b0 = 0.99886 * b0 + white * 0.0555179; b1 = 0.99332 * b1 + white * 0.0750759; b2 = 0.969 * b2 + white * 0.153852;
+      data[i] = (b0 + b1 + b2 + white * 0.5362) * 0.11;
+    }
+    noiseBuffer = buf; return buf;
+  }
+  function whistle(ctx, t0, dur, gain) {
+    var base = ctx.createOscillator(), lfo = ctx.createOscillator(), lfoGain = ctx.createGain(), g = ctx.createGain();
+    var h2 = ctx.createOscillator(), h2g = ctx.createGain();
+    base.type = 'sine'; base.frequency.setValueAtTime(2550, t0); base.frequency.linearRampToValueAtTime(2700, t0 + dur * 0.4);
+    base.frequency.linearRampToValueAtTime(2620, t0 + dur);
+    lfo.type = 'sine'; lfo.frequency.value = 36; lfoGain.gain.value = 55; lfo.connect(lfoGain); lfoGain.connect(base.frequency);
+    h2.type = 'sine'; h2.frequency.value = 5100; h2g.gain.value = 0.22; h2.connect(h2g); h2g.connect(g);
+    base.connect(g); g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.03); g.gain.setValueAtTime(gain, t0 + dur - 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    g.connect(ctx.destination);
+    var breath = ctx.createBufferSource(), bf = ctx.createBiquadFilter(), bg = ctx.createGain();
+    breath.buffer = getNoise(ctx); bf.type = 'bandpass'; bf.frequency.value = 3200; bf.Q.value = 6;
+    bg.gain.setValueAtTime(0.0001, t0); bg.gain.exponentialRampToValueAtTime(gain * 0.3, t0 + 0.04); bg.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    breath.connect(bf); bf.connect(bg); bg.connect(ctx.destination);
+    [base, lfo, h2].forEach(function (o) { o.start(t0); o.stop(t0 + dur + 0.05); });
+    breath.start(t0); breath.stop(t0 + dur + 0.05);
+  }
+  function crowdRoar(ctx, t0) {
+    var src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = getNoise(ctx); src.loop = true;
+    bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 0.7;
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.5, t0 + 0.25);
+    g.gain.setValueAtTime(0.5, t0 + 1.1); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 2.4);
+    src.connect(bp); bp.connect(g); g.connect(ctx.destination);
+    src.start(t0); src.stop(t0 + 2.5);
+    [523.25, 659.25, 783.99].forEach(function (f, i) {
+      var o = ctx.createOscillator(), og = ctx.createGain(), start = t0 + 0.15 + i * 0.09;
+      o.type = 'triangle'; o.frequency.value = f; og.gain.setValueAtTime(0.0001, start);
+      og.gain.exponentialRampToValueAtTime(0.07, start + 0.04); og.gain.exponentialRampToValueAtTime(0.0001, start + 0.9);
+      o.connect(og); og.connect(ctx.destination); o.start(start); o.stop(start + 1);
+    });
+  }
+  function playSfx(kind) {
+    if (!S.soundOn) return;
+    try {
+      var ctx = audioCtx(), t0 = ctx.currentTime + 0.01;
+      if (kind === 'whistle') whistle(ctx, t0, 0.55, 0.16);
+      else if (kind === 'final_whistle') { whistle(ctx, t0, 0.5, 0.16); whistle(ctx, t0 + 0.65, 0.5, 0.16); whistle(ctx, t0 + 1.3, 0.9, 0.16); }
+      else if (kind === 'goal') { crowdRoar(ctx, t0); whistle(ctx, t0, 0.35, 0.12); }
+    } catch (e) { /* audio no disponible */ }
+  }
+  var WHISTLE_EVENTS = { kickoff: 'whistle', goal_restart: 'whistle', halftime: 'whistle', second_half: 'whistle', full_time: 'final_whistle' };
+
   function bell(kind) {
     if (!S.soundOn) return;
     try {
