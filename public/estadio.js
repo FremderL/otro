@@ -87,7 +87,7 @@
     players: [], authoritativePlayers: [], possessionTeam: 'home', ballCarrierId: null, playStopped: true,
     ball: { x: .5, y: .5 }, ballStart: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 },
     tweenT0: 0, minute: 0, phase: 'pre', score: { home: 0, away: 0 }, possession: { home: .5, away: .5 },
-    goalFlashUntil: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false
+    goalFlashUntil: 0, goalAnimUntil: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false
   };
 
   var el = {};
@@ -578,6 +578,7 @@
     S.possessionTeam = ms.state && ms.state.possessionTeam ? ms.state.possessionTeam : 'home';
     S.ballCarrierId = ms.state ? ms.state.ballCarrierId : null;
     S.playStopped = ms.state ? Boolean(ms.state.playStopped) : true;
+    S.goalAnimUntil = 0;
     S.authoritativePlayers = ms.state && Array.isArray(ms.state.players) ? ms.state.players : [];
     var ball = ms.state && ms.state.ball ? ms.state.ball : { x: .5, y: .5 };
     S.ball = { x: ball.x, y: ball.y }; S.ballStart = { x: ball.x, y: ball.y }; S.ballDest = { x: ball.x, y: ball.y };
@@ -856,14 +857,24 @@
   }
   function onCommentary(data) {
     if (!data || data.matchId !== S.currentMatchId) return;
-    appendCommentary({ voice: data.voice, text: data.text });
+    var delay = (!reduced.matches && S.goalAnimUntil && S.goalAnimUntil > performance.now())
+      ? Math.max(0, S.goalAnimUntil - performance.now())
+      : 0;
+    if (delay > 0) {
+      setTimeout(function () {
+        if (data.matchId !== S.currentMatchId) return;
+        appendCommentary({ voice: data.voice, text: data.text });
+      }, delay);
+    } else {
+      appendCommentary({ voice: data.voice, text: data.text });
+    }
   }
 
   // ===== Eventos del motor =====
   function onTick(data) {
     if (!data || data.matchId !== S.currentMatchId) return;
     S.ballStart = { x: S.ball.x, y: S.ball.y };
-    S.ballDest = data.ball ? { x: clamp(data.ball.x, 0, 1), y: clamp(data.ball.y, 0, 1) } : S.ballDest;
+    S.ballDest = data.ball ? { x: clamp(data.ball.x, -0.01, 1.01), y: clamp(data.ball.y, 0, 1) } : S.ballDest;
     var wasStopped = S.playStopped;
     S.minute = Math.round(data.displayMinute != null ? data.displayMinute : (data.minute != null ? data.minute : S.minute));
     S.phase = data.phase || S.phase;
@@ -914,9 +925,9 @@
     });
     if (ev.ball) {
       S.ballStart = ev.ballFrom
-        ? { x: clamp(ev.ballFrom.x, 0, 1), y: clamp(ev.ballFrom.y, 0, 1) }
+        ? { x: clamp(ev.ballFrom.x, -0.01, 1.01), y: clamp(ev.ballFrom.y, 0, 1) }
         : { x: S.ball.x, y: S.ball.y };
-      S.ballDest = { x: clamp(ev.ball.x, 0, 1), y: clamp(ev.ball.y, 0, 1) };
+      S.ballDest = { x: clamp(ev.ball.x, -0.01, 1.01), y: clamp(ev.ball.y, 0, 1) };
     }
     if (ev.playerId != null && ev.actorPosition) movePlayerTo(ev.playerId, ev.actorPosition);
     if (ev.keeperId != null && ev.keeperPosition) movePlayerTo(ev.keeperId, ev.keeperPosition);
@@ -928,12 +939,16 @@
     applyRosterEvent(ev);
     S.tweenT0 = performance.now();
     if (ev.type === 'goal' || ev.type === 'penalty_scored') {
+      S.goalAnimUntil = performance.now() + (reduced.matches ? 0 : TICK_MS);
       S.goalFlashUntil = performance.now() + 1400;
       showGoalBanner();
       if (ev.marcador) { var parts = String(ev.marcador).split('-'); if (parts.length === 2) { S.score = { home: Number(parts[0]) || 0, away: Number(parts[1]) || 0 }; } }
       bell('goal');
-    } else if (ev.type === 'red_card' || ev.type === 'second_yellow') {
-      bell('card');
+    } else {
+      S.goalAnimUntil = 0;
+      if (ev.type === 'red_card' || ev.type === 'second_yellow') {
+        bell('card');
+      }
     }
     renderScoreboard();
     updateTextFallback();

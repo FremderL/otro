@@ -129,7 +129,7 @@ test('§7.2 — todo evento tiene la forma del contrato', () => {
   for (const e of r.timeline) {
     for (const k of REQUIRED_KEYS) assert.ok(k in e, `falta la clave ${k} en ${e.type}`);
     assert.ok(Number.isFinite(e.t) && e.t >= 0, 't es un minuto finito no negativo');
-    assert.ok(e.ball && Number.isFinite(e.ball.x) && e.ball.x >= 0 && e.ball.x <= 1, 'ball.x en [0,1]');
+    assert.ok(e.ball && Number.isFinite(e.ball.x) && e.ball.x >= -0.01 && e.ball.x <= 1.01, 'ball.x en [-0.01,1.01]');
     assert.ok(Number.isFinite(e.ball.y) && e.ball.y >= 0 && e.ball.y <= 1, 'ball.y en [0,1]');
     assert.ok(e.formation && e.formation.home && e.formation.away, 'formación de ambos equipos');
     assert.ok(Number.isInteger(e.importance) && e.importance >= 1 && e.importance <= 5, 'importance 1-5');
@@ -234,6 +234,7 @@ test('transiciones — goles, tiros atajados y balón parado tienen reinicio coh
     const r = generateTimeline(CLUBS[seed % 16], CLUBS[(seed * 5 + 3) % 16], ctxBase, rnd('transitions-' + seed));
     const tl = r.timeline;
     for (const goal of tl.filter(event => event.type === 'goal' || event.type === 'penalty_scored')) {
+      assert.equal(goal.ball.x, goal.team === 'home' ? 1.01 : -0.01, 'el gol entra en la red');
       const restart = tl.find(event => event.type === 'goal_restart' && event.t >= goal.t && event.team !== goal.team);
       if (restart) {
         sawGoal = true;

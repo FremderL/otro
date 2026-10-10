@@ -109,14 +109,23 @@ function createHarness(options = {}) {
   style.textContent = STYLES;
   window.document.head.appendChild(style);
   window.localStorage.setItem('montecristo-tos', '2026-09-28');
-  window.matchMedia = () => ({ matches: true, addListener() {}, addEventListener() {} });
+  const reducedMotion = options.reducedMotion !== undefined ? Boolean(options.reducedMotion) : true;
+  window.matchMedia = () => ({ matches: reducedMotion, addListener() {}, addEventListener() {} });
   window.HTMLCanvasElement.prototype.getContext = () => canvasContext;
   window.requestAnimationFrame = callback => { rafCallback = callback; return 1; };
   window.cancelAnimationFrame = () => {};
   window.setInterval = (callback, delay) => { intervals.push({ callback, delay }); return intervals.length; };
   window.clearInterval = () => {};
-  window.setTimeout = () => 1;
-  window.clearTimeout = () => {};
+  const timeouts = [];
+  window.setTimeout = (callback, delay) => {
+    const timer = { callback, at: perfNow + (delay || 0) };
+    timeouts.push(timer);
+    return timer;
+  };
+  window.clearTimeout = timer => {
+    const idx = timeouts.indexOf(timer);
+    if (idx >= 0) timeouts.splice(idx, 1);
+  };
   window.fetch = async (url, requestOptions = {}) => {
     const target = String(url);
     requests.push({ url: target, options: requestOptions });
@@ -156,6 +165,12 @@ function createHarness(options = {}) {
       perfNow += ms;
       intervals.filter(interval => interval.delay === 1000 || (interval.delay === 15000 && ms >= interval.delay))
         .forEach(interval => interval.callback());
+      const due = timeouts.filter(t => t.at <= perfNow);
+      for (const t of due) {
+        const idx = timeouts.indexOf(t);
+        if (idx >= 0) timeouts.splice(idx, 1);
+        t.callback();
+      }
     },
     async connectToMatch() {
       await new Promise(resolve => setImmediate(resolve));
@@ -319,7 +334,7 @@ test('la UI sigue el estado del motor: kickoff, pausas, gol, sustitución y fina
 
   fireEvent({ type: 'goal', team: 'home', playerId: 'h10', playerName: 'Jugador 10', minute: 61,
     phase: 'goal_celebration', playStopped: true, marcador: '1-0',
-    ball: { x: 1, y: .5 }, ballFrom: { x: .86, y: .5 }, actorPosition: { x: .86, y: .5 },
+    ball: { x: 1.01, y: .5 }, ballFrom: { x: .86, y: .5 }, actorPosition: { x: .86, y: .5 },
     ballCarrierId: null, possessionTeam: null });
   handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'Gol confirmado de Jugador 10: 1-0.' });
   assert.equal(window.document.getElementById('score-home').textContent, '1');
@@ -328,7 +343,7 @@ test('la UI sigue el estado del motor: kickoff, pausas, gol, sustitución y fina
   assert.ok(marketButtons().every(button => button.disabled), 'el festejo detiene el mercado');
 
   fireEvent({ type: 'goal_restart', team: 'away', minute: 62, phase: 'kickoff', playStopped: false,
-    ball: { x: .5, y: .5 }, ballFrom: { x: 1, y: .5 }, actorPosition: { x: .5, y: .5 },
+    ball: { x: .5, y: .5 }, ballFrom: { x: 1.01, y: .5 }, actorPosition: { x: .5, y: .5 },
     ballCarrierId: 'a2', possessionTeam: 'away' });
   assert.ok(marketButtons().every(button => !button.disabled), 'el saque desde el centro reanuda el mercado');
 
@@ -345,4 +360,26 @@ test('la UI sigue el estado del motor: kickoff, pausas, gol, sustitución y fina
   handlers['football:status']({ matchId: id, code: 'full_time', minute: 94 });
   assert.equal(window.document.getElementById('est-clock').textContent, 'Final');
   assert.ok(marketButtons().every(button => button.disabled), 'el final cierra el mercado');
+});
+
+test('el relato del gol espera a que termine la animación del balón', async t => {
+  const h = createHarness({ reducedMotion: false });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const id = match.id;
+  handlers['football:status']({ matchId: id, code: 'live', minute: 20 });
+  handlers['football:event']({
+    matchId: id,
+    event: {
+      type: 'goal', team: 'home', playerId: 'h10', playerName: 'Jugador 10', minute: 21,
+      phase: 'goal_celebration', playStopped: true, marcador: '1-0',
+      ball: { x: 1.01, y: .5 }, ballFrom: { x: .86, y: .5 }, actorPosition: { x: .86, y: .5 },
+      ballCarrierId: null, possessionTeam: null
+    }
+  });
+  handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'Gol confirmado de Jugador 10: 1-0.' });
+  assert.ok(!window.document.getElementById('est-commentary').textContent.includes('Gol confirmado'), 'el relato espera mientras la animación está en curso');
+  h.advanceTime(2000);
+  assert.match(window.document.getElementById('est-commentary').textContent, /Gol confirmado de Jugador 10: 1-0/, 'el relato aparece al completarse la animación');
 });

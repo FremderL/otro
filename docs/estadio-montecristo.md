@@ -3588,3 +3588,19 @@ La lógica comprobable está en `lib/football/promotions.js` y `lib/football/htt
 Postgres en `PgProfileStore.applyPromotionReviewAtomic()`. Las regresiones están en
 `tests/football-promotions.test.js` e incluyen allowlist, autenticación, ventana, moderación, cobro
 único, no-cobro al rechazar y selección rotativa.
+
+## 30. Coherencia entre relato y animación de gol (porterías y sincronización)
+
+Se corrige la coherencia visual y narrativa de los goles en el Estadio MonteCristo:
+
+- **Posicionamiento del balón en portería:** anteriormente, los goles ubicaban el balón justo
+  en la línea de gol (`x = 0` para visita o `x = 1` para local), mientras el cliente dibujaba la
+  portería fuera del campo (`nx(0) - 6` y `nx(1)`) y limitaba la posición del balón a `[0, 1]`.
+  Esto impedía que el balón cruzara la línea y entrara visualmente a la red.
+- **Margen dentro de la red:** el motor (`lib/football/match-state.js`) ahora coloca los goles
+  claramente dentro de la red (`-0.01` para la visita, `1.01` para el local) y el cliente
+  (`public/estadio.js`) conserva ese margen (`[-0.01, 1.01]`) tanto en los ticks como en los eventos.
+- **Sincronización del relato:** cuando la animación con tweening está activa, el relato del gol
+  espera a que termine el desplazamiento del balón antes de mostrar el mensaje del narrador y
+  analista, evitando revelar el gol antes de que el balón llegue a la portería. Con
+  `prefers-reduced-motion` activo, el relato se muestra inmediatamente.
