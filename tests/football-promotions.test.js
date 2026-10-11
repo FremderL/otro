@@ -232,11 +232,20 @@ test('la ruta pública muestra solo promociones aprobadas dentro de T−30', asy
   assert.equal(visible.body.promotion.label, 'Promoción pagada');
   assert.equal(visible.body.promotion.text, 'Visita nuestra mesa de juegos');
   assert.equal(visible.body.promotion.href, '/');
+  assert.equal(visible.body.promotions.length, 1, 'la respuesta pública incluye todas las campañas activas');
+  assert.equal(visible.body.promotions[0].id, 'approved');
   assert.equal(visible.body.rotationIntervalMs, PROMOTION_ROTATION_MS);
+
+  ctx.profile.promotions.push({
+    ...pendingPromotion('approved-2'), status: 'approved', reviewedAt: NOW, text: 'Una segunda campaña activa', targetPath: '/estadio'
+  });
+  const allVisible = await ctx.app.run('GET', '/api/estadio/promotions/:matchId', { params: { matchId: ctx.match.id } });
+  assert.deepEqual(allVisible.body.promotions.map(item => item.id), ['approved', 'approved-2'], 'no se limita a una sola publicidad patrocinada');
 
   ctx.match.scheduledKickoffAt = NOW + 31 * 60 * 1000;
   const hidden = await ctx.app.run('GET', '/api/estadio/promotions/:matchId', { params: { matchId: ctx.match.id } });
   assert.equal(hidden.body.promotion, null);
+  assert.deepEqual(hidden.body.promotions, [], 'fuera de La Previa no se publican campañas');
 });
 
 test('rotación determinista alterna una sola promoción cada 15 segundos', () => {
