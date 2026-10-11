@@ -13,6 +13,7 @@
   var TICK_MS = 2000;              // cadencia del tick del servidor (§8.1)
   var PRESHOW_WINDOW_MS = 30 * 60 * 1000;
   var PROMOTION_ROTATION_MS = 15 * 1000;
+  var TEAM_INDICATOR_ROTATION_MS = PROMOTION_ROTATION_MS;
   var HOUSE_PROMOTIONS = [
     { text: 'Póker, blackjack y más juegos: encuentra tu próxima mesa en MonteCristo.', href: '/', action: 'Explorar juegos', image: '/assets/poker-lounge.jpg' },
     { text: '¿Faltan rivales? Completa tu mesa de póker o blackjack con bots del servidor.', href: '/', action: 'Ver mesas', image: '/assets/blackjack-lounge.jpg' },
@@ -79,7 +80,7 @@
     socket: null, token: null, name: null, avatar: null, tosVersion: TOS_FALLBACK,
     teams: {}, profile: null, chips: 0,
     lobby: null, standings: [], countdownTo: null, lobbyServerNow: null, lobbyReceivedAt: null,
-    preshowDataMatchId: null, preshowDataStandings: null,
+    preshowDataMatchId: null, preshowDataStandings: null, teamIndicators: [], teamIndicatorIndex: 0, teamIndicatorRotationId: null,
     promotionsEnabled: false, promoSessionChecked: false, promoProfile: null, promoCsrfToken: null,
     promoWindowOpen: false, promoMatchId: null, promoPollId: null, promoRequestSeq: 0,
     currentMatchId: null, match: null, markets: {}, movement: {}, myBets: [],
@@ -95,10 +96,10 @@
   var el = {};
   function cacheEls() {
     ['est-connection', 'est-chips', 'est-sound', 'est-music', 'est-ads', 'est-ads-open', 'est-countdown', 'est-match-list', 'est-standings',
-      'est-preshow', 'est-preshow-status', 'est-preshow-timer', 'est-team-comparison',
-      'est-compare-home', 'est-compare-away', 'est-preshow-promo', 'est-promo-image', 'est-promo-label', 'est-promo-text', 'est-promo-link',
+      'est-preshow', 'est-preshow-status', 'est-preshow-timer', 'est-team-comparison', 'est-team-comparison-track',
+      'est-compare-home', 'est-compare-away', 'est-compare-count', 'est-compare-prev', 'est-compare-next', 'est-compare-dots', 'est-preshow-promo', 'est-promo-image', 'est-promo-label', 'est-promo-text', 'est-promo-link',
       'est-promo-compose', 'est-promo-auth', 'est-promo-login', 'est-promo-refresh', 'est-promo-form',
-      'est-studio-card-preview', 'est-studio-preview-img', 'est-studio-preview-content', 'est-studio-preview-label', 'est-studio-preview-text', 'est-studio-preview-btn',
+      'est-studio-card-preview', 'est-studio-preview-img', 'est-studio-preview-size', 'est-studio-preview-label', 'est-studio-preview-text', 'est-studio-preview-btn',
       'est-promo-char-count', 'est-promo-text-pos', 'est-promo-text-size', 'est-promo-text-align', 'est-promo-theme-color', 'est-promo-cta-input',
       'est-upload-dropzone', 'est-dropzone-file-name', 'est-dropzone-clear-btn', 'est-studio-text-fields', 'est-studio-presets-row',
       'est-promo-copy-input', 'est-promo-image-input', 'est-promo-target', 'est-promo-room-field', 'est-promo-room-code',
@@ -389,11 +390,11 @@
     }).join('') + '</span>';
   }
   function renderTeamComparison() {
-    if (!S.match || !el['est-team-comparison']) return;
+    if (!S.match || !el['est-team-comparison'] || !el['est-team-comparison-track']) return;
     var homeId = S.match.homeId, awayId = S.match.awayId;
     var homeColor = preshowTeamColor(homeId), awayColor = preshowTeamColor(awayId);
-    el['est-compare-home'].innerHTML = '<span class="est-compare-club"><i class="est-compare-dot" aria-hidden="true" style="background-color:' + homeColor + ';color:' + homeColor + '"></i>' + esc(teamFull(homeId)) + '</span>';
-    el['est-compare-away'].innerHTML = '<span class="est-compare-club"><i class="est-compare-dot" aria-hidden="true" style="background-color:' + awayColor + ';color:' + awayColor + '"></i>' + esc(teamFull(awayId)) + '</span>';
+    el['est-compare-home'].innerHTML = '<i class="est-compare-dot" aria-hidden="true" style="background-color:' + homeColor + ';color:' + homeColor + '"></i><span>' + esc(teamFull(homeId)) + '</span>';
+    el['est-compare-away'].innerHTML = '<i class="est-compare-dot" aria-hidden="true" style="background-color:' + awayColor + ';color:' + awayColor + '"></i><span>' + esc(teamFull(awayId)) + '</span>';
     var home = standingFor(homeId), away = standingFor(awayId);
     var homePos = (S.standings || []).findIndex(function (row) { return (row.teamId || row.id) === homeId; });
     var awayPos = (S.standings || []).findIndex(function (row) { return (row.teamId || row.id) === awayId; });
@@ -422,9 +423,76 @@
       ['DG', goalDifference(home), goalDifference(away)],
       ['Forma (5)', formMarkup(home), formMarkup(away)]
     ];
-    el['est-team-comparison'].querySelector('tbody').innerHTML = rows.map(function (row) {
-      return '<tr><th scope="row">' + esc(row[0]) + '</th><td>' + (row[0] === 'Forma (5)' ? row[1] : esc(row[1])) + '</td><td>' + (row[0] === 'Forma (5)' ? row[2] : esc(row[2])) + '</td></tr>';
+    var previousIndex = S.preshowDataMatchId === S.match.id ? S.teamIndicatorIndex : 0;
+    S.teamIndicators = rows;
+    var total = rows.length;
+    el['est-team-comparison-track'].style.width = (total * 100) + '%';
+    el['est-team-comparison-track'].innerHTML = rows.map(function (row, index) {
+      var homeValue = row[0] === 'Forma (5)' ? row[1] : esc(row[1]);
+      var awayValue = row[0] === 'Forma (5)' ? row[2] : esc(row[2]);
+      return '<article class="est-comparison-slide" data-indicator-index="' + index + '" aria-hidden="' + String(index !== 0) + '" aria-label="' + (index + 1) + ' de ' + total + ': ' + esc(row[0]) + '">' +
+        '<h4 class="est-comparison-label">' + esc(row[0]) + '</h4>' +
+        '<div class="est-comparison-values"><div class="est-comparison-value home">' + homeValue + '</div><span class="est-comparison-vs" aria-hidden="true">VS</span><div class="est-comparison-value away">' + awayValue + '</div></div>' +
+        '</article>';
     }).join('');
+    var slides = el['est-team-comparison-track'].children;
+    Array.prototype.forEach.call(slides, function (slide) {
+      slide.style.flex = '0 0 ' + (100 / total) + '%';
+    });
+    if (el['est-compare-dots']) {
+      el['est-compare-dots'].innerHTML = rows.map(function (row, index) {
+        return '<button class="est-compare-dot-button' + (index === 0 ? ' active' : '') + '" type="button" data-indicator-index="' + index + '" aria-label="Ver indicador: ' + esc(row[0]) + '" aria-pressed="' + String(index === 0) + '" title="' + esc(row[0]) + '"><span></span></button>';
+      }).join('');
+      el['est-compare-dots'].querySelectorAll('[data-indicator-index]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          setTeamIndicatorIndex(Number(button.getAttribute('data-indicator-index')));
+          restartTeamIndicatorRotation();
+        });
+      });
+    }
+    setTeamIndicatorIndex(previousIndex);
+  }
+
+  function setTeamIndicatorIndex(index) {
+    var total = S.teamIndicators.length;
+    if (!total) return;
+    S.teamIndicatorIndex = ((index % total) + total) % total;
+    var current = S.teamIndicatorIndex;
+    var viewport = el['est-team-comparison'];
+    var track = el['est-team-comparison-track'];
+    if (track) track.style.transform = 'translate3d(-' + (current * 100 / total) + '%, 0, 0)';
+    if (viewport) viewport.setAttribute('data-index', String(current));
+    if (el['est-compare-count']) el['est-compare-count'].textContent = (current + 1) + ' / ' + total;
+    if (track) {
+      Array.prototype.forEach.call(track.children, function (slide, slideIndex) {
+        slide.setAttribute('aria-hidden', String(slideIndex !== current));
+      });
+    }
+    if (el['est-compare-dots']) {
+      el['est-compare-dots'].querySelectorAll('[data-indicator-index]').forEach(function (button, buttonIndex) {
+        var active = buttonIndex === current;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+    }
+  }
+
+  function startTeamIndicatorRotation() {
+    if (S.teamIndicatorRotationId || reduced.matches || S.teamIndicators.length < 2) return;
+    S.teamIndicatorRotationId = window.setInterval(function () {
+      setTeamIndicatorIndex(S.teamIndicatorIndex + 1);
+    }, TEAM_INDICATOR_ROTATION_MS);
+  }
+
+  function stopTeamIndicatorRotation() {
+    if (S.teamIndicatorRotationId) window.clearInterval(S.teamIndicatorRotationId);
+    S.teamIndicatorRotationId = null;
+  }
+
+  function restartTeamIndicatorRotation() {
+    if (!S.teamIndicatorRotationId) return;
+    stopTeamIndicatorRotation();
+    startTeamIndicatorRotation();
   }
   function formatPreshowCountdown(ms) {
     var seconds = Math.max(0, Math.ceil(ms / 1000));
@@ -581,6 +649,7 @@
       S.promoWindowOpen = false;
       updatePromotionComposer();
       stopPromotionRotation();
+      stopTeamIndicatorRotation();
       return;
     }
     var remaining = Number(match.scheduledKickoffAt) - (Number.isFinite(nowMs) ? nowMs : currentServerTime());
@@ -591,14 +660,19 @@
       S.promoWindowOpen = false;
       updatePromotionComposer();
       stopPromotionRotation();
+      stopTeamIndicatorRotation();
       return;
     }
     panel.hidden = false;
     panel.dataset.delay = String(delayed);
     S.promoWindowOpen = !delayed;
     updatePromotionComposer();
-    if (delayed) stopPromotionRotation();
-    else startPromotionRotation(match.id);
+    if (delayed) {
+      stopPromotionRotation();
+      stopTeamIndicatorRotation();
+    } else {
+      startPromotionRotation(match.id);
+    }
     var statusText = delayed
       ? 'Kickoff pendiente · esperando señal del partido'
       : 'Kickoff programado · ' + kickoffTime(match.scheduledKickoffAt);
@@ -610,6 +684,7 @@
       S.preshowDataMatchId = match.id;
       S.preshowDataStandings = S.standings;
     }
+    if (!delayed) startTeamIndicatorRotation();
   }
 
   function updateLobbyMatchKickoff(matchId, kickoffAt, day, block) {
@@ -1691,9 +1766,6 @@
 
     var hasText = copy.trim().length > 0 && textPos !== 'hidden';
     textEl.textContent = hasText ? copy : (textPos === 'hidden' ? '' : 'Escribe el mensaje publicitario...');
-    if (el['est-studio-preview-content']) {
-      el['est-studio-preview-content'].style.display = textPos === 'hidden' ? 'none' : '';
-    }
 
     labelEl.style.borderColor = themeColor;
     labelEl.style.color = themeColor;
@@ -1701,6 +1773,19 @@
     btn.style.borderColor = themeColor;
 
     img.src = studioState.customDataUrl || studioState.presetUrl || '/assets/casino-hero.jpg';
+    updateStudioPreviewSize();
+  }
+
+  function updateStudioPreviewSize() {
+    var card = el['est-studio-card-preview'];
+    var meta = el['est-studio-preview-size'];
+    if (!card || !meta) return;
+    var rect = card.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      meta.textContent = 'Vista del editor: ' + Math.round(rect.width) + ' × ' + Math.round(rect.height) + ' px · publicación a ancho completo';
+    } else {
+      meta.textContent = 'Publicación: ancho completo · alto dinámico (mín. 140 px; móvil 150 px)';
+    }
   }
 
   function setupStudioControls() {
@@ -1799,6 +1884,9 @@
     }
 
     updateStudioPreview();
+    if (typeof window.ResizeObserver === 'function' && el['est-studio-card-preview']) {
+      new window.ResizeObserver(updateStudioPreviewSize).observe(el['est-studio-card-preview']);
+    }
   }
 
   function updatePromotionRoomField() {
@@ -1814,6 +1902,12 @@
       reader.onerror = function () { reject(reader.error); };
       reader.readAsDataURL(file);
     });
+  }
+  function readImageAssetAsDataUrl(url) {
+    return fetch(url, { cache: 'force-cache', credentials: 'same-origin' }).then(function (response) {
+      if (!response.ok) throw new Error('No se pudo cargar el fondo seleccionado.');
+      return response.blob();
+    }).then(readFileAsDataUrl);
   }
   function submitPromotion(event) {
     event.preventDefault();
@@ -1841,7 +1935,8 @@
       return;
     }
     var copyVal = (el['est-promo-copy-input'].value || '').trim();
-    if (!imageFile && copyVal.length < 3) {
+    var hasImage = Boolean(imageFile || studioState.customDataUrl || studioState.presetUrl);
+    if (!hasImage && copyVal.length < 3) {
       setPromoMessage('Escribe un texto de al menos 3 caracteres o adjunta una imagen.', 'error');
       return;
     }
@@ -1863,7 +1958,9 @@
 
     var imageReady = studioState.customDataUrl
       ? Promise.resolve(studioState.customDataUrl)
-      : (imageFile ? readFileAsDataUrl(imageFile) : Promise.resolve(null));
+      : (imageFile
+        ? readFileAsDataUrl(imageFile)
+        : (studioState.presetUrl ? readImageAssetAsDataUrl(studioState.presetUrl) : Promise.resolve(null)));
 
     imageReady.then(function (dataUrl) {
       if (dataUrl) payload.image = dataUrl;
@@ -1893,9 +1990,10 @@
       updateStudioPreview();
       setPromoMessage('Enviada y pendiente de revisión. No se han cobrado fichas.', 'success');
       loadOwnPromotion(S.currentMatchId);
-    }).catch(function () {
+    }).catch(function (error) {
       button.disabled = false;
-      setPromoMessage('No se pudo contactar al servidor. Inténtalo de nuevo.', 'error');
+      var imageError = error && error.message === 'No se pudo cargar el fondo seleccionado.';
+      setPromoMessage(imageError ? error.message : 'No se pudo contactar al servidor. Inténtalo de nuevo.', 'error');
     });
   }
 
@@ -1909,6 +2007,14 @@
     el['est-promo-target'].addEventListener('change', updatePromotionRoomField);
     updatePromotionRoomField();
     setupStudioControls();
+    el['est-compare-prev'].addEventListener('click', function () {
+      setTeamIndicatorIndex(S.teamIndicatorIndex - 1);
+      restartTeamIndicatorRotation();
+    });
+    el['est-compare-next'].addEventListener('click', function () {
+      setTeamIndicatorIndex(S.teamIndicatorIndex + 1);
+      restartTeamIndicatorRotation();
+    });
     el['est-slip-clear'].addEventListener('click', closeSlip);
     el['est-place-bet'].addEventListener('click', placeBet);
     el['est-stake'].addEventListener('keydown', function (e) { if (e.key === 'Enter') placeBet(); });

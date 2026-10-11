@@ -9,6 +9,8 @@ const { JSDOM } = require('jsdom');
 
 const HTML = fs.readFileSync(path.join(__dirname, '..', 'public', 'estadio.html'), 'utf8');
 const STYLES = fs.readFileSync(path.join(__dirname, '..', 'public', 'estadio.css'), 'utf8');
+const ADMIN_HTML = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.html'), 'utf8');
+const ADMIN_CLIENT = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.js'), 'utf8');
 const CLIENT = fs.readFileSync(path.join(__dirname, '..', 'public', 'estadio.js'), 'utf8');
 
 function team(id, name, short, primary, secondary) {
@@ -132,6 +134,9 @@ function createHarness(options = {}) {
   window.fetch = async (url, requestOptions = {}) => {
     const target = String(url);
     requests.push({ url: target, options: requestOptions });
+    if (target.startsWith('/assets/')) {
+      return { ok: true, blob: async () => new window.Blob([Uint8Array.from([1, 2, 3, 4])], { type: 'image/jpeg' }) };
+    }
     if (target.includes('/healthz')) {
       return { ok: true, json: async () => ({ football: { enabled: true }, promotionsEnabled: Boolean(options.promotionsEnabled) }) };
     }
@@ -191,13 +196,79 @@ function createHarness(options = {}) {
   };
 }
 
+test('las galerías de anuncios del Estadio y de administración solo apuntan a imágenes existentes', () => {
+  const publicDir = path.join(__dirname, '..', 'public');
+  const stadiumDom = new JSDOM(HTML);
+  const adminDom = new JSDOM(ADMIN_HTML);
+  [
+    [stadiumDom.window.document, '.est-preset-btn'],
+    [adminDom.window.document, '.admin-preset-btn']
+  ].forEach(([document, selector]) => {
+    document.querySelectorAll(selector).forEach(button => {
+      const preset = button.getAttribute('data-preset');
+      const thumbnail = button.querySelector('img')?.getAttribute('src');
+      assert.ok(preset && thumbnail, 'cada preset tiene una ruta y una miniatura');
+      assert.equal(thumbnail, preset, 'la miniatura coincide con la imagen que se previsualiza');
+      assert.ok(fs.existsSync(path.join(publicDir, preset.replace(/^\//, ''))), `${preset} existe en public/`);
+    });
+  });
+  stadiumDom.window.close();
+  adminDom.window.close();
+});
+
+test('el editor administrativo enseña el fondo elegido y lo guarda en la campaña publicada', async t => {
+  const dom = new JSDOM(ADMIN_HTML, {
+    url: 'http://localhost:3000/admin',
+    runScripts: 'outside-only',
+    pretendToBeVisual: true
+  });
+  t.after(() => dom.window.close());
+  const { window } = dom;
+  const posts = [];
+  window.crypto.randomUUID = () => 'idempotency-test';
+  window.fetch = async (url, options = {}) => {
+    const target = String(url);
+    if (target.startsWith('/assets/')) {
+      return { ok: true, blob: async () => new window.Blob([Uint8Array.from([5, 6, 7, 8])], { type: 'image/jpeg' }) };
+    }
+    if (options.method === 'POST' && target === '/admin/estadio/promotions/create') {
+      posts.push(JSON.parse(options.body));
+      return { ok: true, status: 201, json: async () => ({ ok: true, promotion: {} }) };
+    }
+    const response = target === '/api/auth/session'
+      ? { ok: true, csrfToken: 'csrf-test', auth: { staff: { id: 'admin', role: 'admin' }, mfaEnrollmentRequired: false, mfaVerified: true } }
+      : target === '/api/admin/v1/me'
+        ? { ok: true, staff: { name: 'Admin', username: 'admin', role: 'admin' } }
+        : target === '/admin/estadio/matches'
+          ? { ok: true, teams: {}, matches: [] }
+          : target === '/admin/estadio/promotions'
+            ? { ok: true, promotions: [], activePromotions: [] }
+            : { ok: true, reports: [] };
+    return { ok: true, status: 200, json: async () => response };
+  };
+  window.eval(ADMIN_CLIENT);
+  await new Promise(resolve => setTimeout(resolve, 25));
+
+  const selectedPreset = window.document.querySelector('.admin-preset-btn[data-preset="/assets/estadio-tunnel.jpg"]');
+  selectedPreset.click();
+  assert.equal(window.document.getElementById('admin-studio-preview-img').getAttribute('src'), '/assets/estadio-tunnel.jpg');
+  window.document.getElementById('promo-create-profile').value = 'montecristo_oficial';
+  window.document.getElementById('promo-create-text').value = 'Una campaña de prueba';
+  window.document.getElementById('promo-create-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  await new Promise(resolve => setTimeout(resolve, 35));
+
+  assert.equal(posts.length, 1, 'se publicó la campaña');
+  assert.equal(posts[0].text, 'Una campaña de prueba');
+  assert.equal(posts[0].image, 'data:image/jpeg;base64,BQYHCA==', 'la creatividad elegida se adjunta para verla al publicar');
+});
+
 test('La Previa abre exactamente en T−30, muestra datos de liga y se oculta al kickoff', async t => {
   const baseNow = 1800000000000;
   const standings = [
     { teamId: 'home', played: 5, won: 3, drawn: 1, lost: 1, goalsFor: 9, goalsAgainst: 4, goalDiff: 5, points: 10, form: ['W', 'D', 'W', 'L', 'W'] },
     { teamId: 'away', played: 5, won: 2, drawn: 2, lost: 1, goalsFor: 7, goalsAgainst: 10, points: 8, form: ['D', 'W', 'D', 'L', 'W'] }
   ];
-  const h = createHarness({ now: baseNow, kickoffOffsetMs: 30 * 60 * 1000 + 1, standings });
+  const h = createHarness({ now: baseNow, kickoffOffsetMs: 30 * 60 * 1000 + 1, standings, reducedMotion: false });
   t.after(h.close);
   await h.connectToMatch();
   const { window, handlers, match } = h;
@@ -211,8 +282,8 @@ test('La Previa abre exactamente en T−30, muestra datos de liga y se oculta al
   assert.equal(window.document.getElementById('est-preshow-timer').textContent, '30:00');
   assert.equal(promo.hidden, false, 'la promoción propia solo se muestra en la ventana activa');
   const comparison = window.document.getElementById('est-team-comparison').textContent;
-  assert.match(comparison, /Home FC/);
-  assert.match(comparison, /Away FC/);
+  assert.match(window.document.getElementById('est-compare-home').textContent, /Home FC/);
+  assert.match(window.document.getElementById('est-compare-away').textContent, /Away FC/);
   assert.match(comparison, /Posesión/);
   assert.match(comparison, /Presión alta/);
   assert.match(comparison, /Puntos/);
@@ -221,6 +292,15 @@ test('La Previa abre exactamente en T−30, muestra datos de liga y se oculta al
   assert.ok(comparison.includes('+5'));
   assert.match(comparison, /-3/);
   assert.match(comparison, /Forma \(5\)/);
+  assert.equal(window.document.getElementById('est-compare-count').textContent, '1 / 8');
+  const indicatorTrack = window.document.getElementById('est-team-comparison-track');
+  const initialIndicatorPosition = indicatorTrack.style.transform;
+  h.advanceTime(15000);
+  assert.equal(window.document.getElementById('est-team-comparison').dataset.index, '1', 'los indicadores avanzan automáticamente al mismo ritmo de los anuncios');
+  assert.equal(window.document.getElementById('est-compare-count').textContent, '2 / 8');
+  assert.notEqual(indicatorTrack.style.transform, initialIndicatorPosition, 'el carrusel se desplaza visualmente');
+  window.document.querySelector('#est-compare-dots [data-indicator-index="0"]').click();
+  assert.equal(window.document.getElementById('est-team-comparison').dataset.index, '0', 'se puede elegir un indicador anterior desde los puntos');
 
   h.advanceTime(30 * 60 * 1000);
   assert.equal(panel.hidden, false, 'si el estado sigue programado, conserva una espera neutral');
@@ -254,7 +334,7 @@ test('cuando no hay campañas aprobadas, el único espacio rota anuncios propios
   assert.ok(['/','/estadio'].includes(link.getAttribute('href')));
 });
 
-test('el formulario promocional requiere cuenta vinculada y envía solo texto y enlace durante T−30', async t => {
+test('el formulario promocional requiere cuenta vinculada y publica el texto, enlace e imagen del preset durante T−30', async t => {
   const h = createHarness({
     promotionsEnabled: true,
     kickoffOffsetMs: 15 * 60 * 1000,
@@ -277,11 +357,13 @@ test('el formulario promocional requiere cuenta vinculada y envía solo texto y 
   window.document.getElementById('est-promo-room-code').value = 'a1b2c';
   form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
   await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setTimeout(resolve, 20));
 
   assert.deepEqual(h.submittedPromotion, {
-    matchId: 'ui-match', text: 'Ven a jugar a MonteCristo', targetPath: '/room/A1B2C'
+    matchId: 'ui-match', text: 'Ven a jugar a MonteCristo', targetPath: '/room/A1B2C',
+    image: 'data:image/jpeg;base64,AQIDBA=='
   });
-  assert.deepEqual(Object.keys(h.submittedPromotion).sort(), ['matchId', 'targetPath', 'text']);
+  assert.deepEqual(Object.keys(h.submittedPromotion).sort(), ['image', 'matchId', 'targetPath', 'text']);
   const request = h.requests.find(item => item.url === '/api/estadio/promotions' && item.options.method === 'POST');
   assert.equal(request.options.credentials, 'same-origin');
   assert.equal(request.options.headers['X-CSRF-Token'], 'csrf-test');
@@ -421,6 +503,9 @@ test('la UI sigue el estado del motor: kickoff, pausas, gol, sustitución y fina
   const fireEvent = event => handlers['football:event']({ matchId: id, event });
 
   assert.equal(window.document.querySelectorAll('.est-market-group').length, 2, 'antes del kickoff hay mercados pre-partido');
+  const selections = window.document.querySelector('.est-market-group .est-selections');
+  assert.equal(window.getComputedStyle(selections).display, 'grid', 'las cuotas se distribuyen en una rejilla que ocupa todo el ancho del panel');
+  assert.equal(window.getComputedStyle(selections.querySelector('.est-sel')).width, '100%', 'cada cuota llena su celda');
   assert.equal(window.getComputedStyle(window.document.getElementById('est-bet-slip')).display, 'none', 'la boleta oculta no ocupa ni aparece visualmente al entrar');
   window.document.querySelectorAll('.est-market-group')[1].querySelector('.est-sel').click();
   assert.equal(window.document.getElementById('est-bet-slip').hidden, false);

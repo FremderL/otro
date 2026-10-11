@@ -91,13 +91,32 @@
           <a id="est-promo-link" class="btn btn-ghost btn-small" href="/">Explorar casino</a>
         </aside>
 
-        <!-- Comparativa de datos y estilos de los equipos -->
-        <div class="est-compare-wrap" id="est-compare-wrap">
-          <table id="est-team-comparison" class="est-team-comparison" aria-label="Comparativa de los equipos">
-            <thead><tr><th scope="col">Indicador</th><th id="est-compare-home" scope="col">Local</th><th id="est-compare-away" scope="col">Visita</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <!-- Comparativa animada de indicadores de los equipos -->
+        <section class="est-compare-wrap" id="est-compare-wrap" aria-label="Indicadores de los equipos">
+          <div class="est-compare-topbar">
+            <div>
+              <p class="est-compare-kicker">Cara a cara</p>
+              <h3>Indicadores del partido</h3>
+            </div>
+            <div class="est-compare-controls" aria-label="Controles de indicadores">
+              <span id="est-compare-count" class="est-compare-count" aria-live="polite">1 / 8</span>
+              <button id="est-compare-prev" class="est-compare-control" type="button" aria-label="Indicador anterior" title="Indicador anterior">‹</button>
+              <button id="est-compare-next" class="est-compare-control" type="button" aria-label="Siguiente indicador" title="Siguiente indicador">›</button>
+            </div>
+          </div>
+          <div class="est-compare-teams" aria-label="Equipos comparados">
+            <div id="est-compare-home" class="est-compare-club est-compare-club-home">Local</div>
+            <span class="est-compare-versus" aria-hidden="true">VS</span>
+            <div id="est-compare-away" class="est-compare-club est-compare-club-away">Visita</div>
+          </div>
+          <div id="est-team-comparison" class="est-team-comparison" role="region" aria-roledescription="carrusel" aria-label="Comparativa de indicadores">
+            <div id="est-team-comparison-track" class="est-comparison-track"></div>
+          </div>
+          <div class="est-compare-footer">
+            <div id="est-compare-dots" class="est-compare-dots" role="group" aria-label="Elegir indicador"></div>
+            <span class="est-compare-auto">Desplazamiento automático</span>
+          </div>
+        </section>
       </section>
 
       <div class="est-canvas-wrap" id="est-canvas-wrap">
@@ -174,11 +193,11 @@
           <div class="est-studio-preview-box">
             <div class="est-studio-preview-header">
               <span class="est-studio-badge-live">● VISTA PREVIA EN VIVO</span>
-              <span class="est-studio-preview-meta">Así se verá en la transmisión</span>
+              <span id="est-studio-preview-size" class="est-studio-preview-meta">Publicación: ancho completo · alto dinámico (mín. 140 px; móvil 150 px)</span>
             </div>
             <div id="est-studio-card-preview" class="est-preshow-promo est-studio-preview-card" data-text-position="bottom" data-text-size="medium" data-text-align="left">
               <img id="est-studio-preview-img" class="est-promo-image" src="/assets/casino-hero.jpg" alt="Vista previa del anuncio">
-              <div class="est-promo-content" id="est-studio-preview-content">
+              <div class="est-promo-content">
                 <span id="est-studio-preview-label" class="est-promo-label">Patrocinador</span>
                 <p id="est-studio-preview-text">Escribe el mensaje publicitario para ver tu anuncio aquí...</p>
               </div>

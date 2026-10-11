@@ -413,8 +413,6 @@
 
     const hasText = copy.trim().length > 0 && textPos !== 'hidden';
     textEl.textContent = hasText ? copy : (textPos === 'hidden' ? '' : 'Escribe el mensaje publicitario...');
-    const content = $('#admin-studio-preview-content');
-    if (content) content.style.display = textPos === 'hidden' ? 'none' : '';
 
     labelEl.style.borderColor = themeColor;
     labelEl.style.color = themeColor;
@@ -422,6 +420,17 @@
     btn.style.borderColor = themeColor;
 
     img.src = adminStudioState.customDataUrl || adminStudioState.presetUrl || '/assets/casino-hero.jpg';
+    updateAdminStudioPreviewSize();
+  }
+
+  function updateAdminStudioPreviewSize() {
+    const card = $('#admin-studio-card-preview');
+    const sizeEl = $('#admin-studio-preview-size');
+    if (!card || !sizeEl) return;
+    const rect = card.getBoundingClientRect();
+    sizeEl.textContent = rect.width > 0 && rect.height > 0
+      ? `Vista del editor: ${Math.round(rect.width)} × ${Math.round(rect.height)} px · publicación a ancho completo`
+      : 'Publicación: ancho completo · alto dinámico (mín. 140 px; móvil 150 px)';
   }
 
   function setupAdminStudio() {
@@ -457,6 +466,10 @@
     });
 
     updateAdminStudioPreview();
+    const preview = $('#admin-studio-card-preview');
+    if (preview && typeof window.ResizeObserver === 'function') {
+      new window.ResizeObserver(updateAdminStudioPreviewSize).observe(preview);
+    }
   }
 
   function readFileAsDataUrl(file) {
@@ -466,6 +479,12 @@
       reader.onerror = () => reject(reader.error);
       reader.readAsDataURL(file);
     });
+  }
+
+  async function readImageAssetAsDataUrl(url) {
+    const response = await fetch(url, { cache: 'force-cache', credentials: 'same-origin' });
+    if (!response.ok) throw new Error('No se pudo cargar el fondo seleccionado.');
+    return readFileAsDataUrl(await response.blob());
   }
 
   $('#promo-create-scope')?.addEventListener('change', event => {
@@ -512,12 +531,18 @@
       text: $('#promo-create-text').value,
       targetPath: $('#promo-create-target').value
     };
+    setMessage('Publicando…');
     if (adminStudioState.customDataUrl) {
       payload.image = adminStudioState.customDataUrl;
     } else if (file) {
       payload.image = await readFileAsDataUrl(file);
+    } else if (adminStudioState.presetUrl) {
+      try {
+        payload.image = await readImageAssetAsDataUrl(adminStudioState.presetUrl);
+      } catch (_) {
+        return setMessage('No se pudo cargar el fondo seleccionado. Elige otra imagen o vuelve a intentarlo.', 'error');
+      }
     }
-    setMessage('Publicando…');
     const response = await request('/admin/estadio/promotions/create', {
       method: 'POST',
       headers: { 'X-CSRF-Token': csrfToken },
