@@ -13,7 +13,7 @@
   var TICK_MS = 2000;              // cadencia del tick del servidor (§8.1)
   var PRESHOW_WINDOW_MS = 30 * 60 * 1000;
   var PROMOTION_ROTATION_MS = 15 * 1000;
-  var TEAM_INDICATOR_ROTATION_MS = PROMOTION_ROTATION_MS;
+  var SHOWCASE_ROTATION_MS = PROMOTION_ROTATION_MS;
   var HOUSE_PROMOTIONS = [
     { text: 'Póker, blackjack y más juegos: encuentra tu próxima mesa en MonteCristo.', href: '/', action: 'Explorar juegos', image: '/assets/poker-lounge.jpg' },
     { text: '¿Faltan rivales? Completa tu mesa de póker o blackjack con bots del servidor.', href: '/', action: 'Ver mesas', image: '/assets/blackjack-lounge.jpg' },
@@ -80,7 +80,8 @@
     socket: null, token: null, name: null, avatar: null, tosVersion: TOS_FALLBACK,
     teams: {}, profile: null, chips: 0,
     lobby: null, standings: [], countdownTo: null, lobbyServerNow: null, lobbyReceivedAt: null,
-    preshowDataMatchId: null, preshowDataStandings: null, teamIndicators: [], teamIndicatorIndex: 0, teamIndicatorRotationId: null,
+    preshowDataMatchId: null, preshowDataStandings: null, teamIndicators: [],
+    showcaseItems: [], showcaseIndex: 0, showcaseRotationId: null, sponsoredPromotions: [],
     promotionsEnabled: false, promoSessionChecked: false, promoProfile: null, promoCsrfToken: null,
     promoWindowOpen: false, promoMatchId: null, promoPollId: null, promoRequestSeq: 0,
     currentMatchId: null, match: null, markets: {}, movement: {}, myBets: [],
@@ -96,8 +97,8 @@
   var el = {};
   function cacheEls() {
     ['est-connection', 'est-chips', 'est-sound', 'est-music', 'est-ads', 'est-ads-open', 'est-countdown', 'est-match-list', 'est-standings',
-      'est-preshow', 'est-preshow-status', 'est-preshow-timer', 'est-team-comparison', 'est-team-comparison-track',
-      'est-compare-home', 'est-compare-away', 'est-compare-count', 'est-compare-prev', 'est-compare-next', 'est-compare-dots', 'est-preshow-promo', 'est-promo-image', 'est-promo-label', 'est-promo-text', 'est-promo-link',
+      'est-preshow', 'est-preshow-status', 'est-preshow-timer', 'est-showcase', 'est-showcase-track',
+      'est-compare-home', 'est-compare-away', 'est-showcase-count', 'est-showcase-prev', 'est-showcase-next', 'est-showcase-dots', 'est-preshow-promo', 'est-promo-image', 'est-promo-label', 'est-promo-text', 'est-promo-link',
       'est-promo-compose', 'est-promo-auth', 'est-promo-login', 'est-promo-refresh', 'est-promo-form',
       'est-studio-card-preview', 'est-studio-preview-img', 'est-studio-preview-size', 'est-studio-preview-label', 'est-studio-preview-text', 'est-studio-preview-btn',
       'est-promo-char-count', 'est-promo-text-pos', 'est-promo-text-size', 'est-promo-text-align', 'est-promo-theme-color', 'est-promo-cta-input',
@@ -390,11 +391,9 @@
     }).join('') + '</span>';
   }
   function renderTeamComparison() {
-    if (!S.match || !el['est-team-comparison'] || !el['est-team-comparison-track']) return;
+    if (!S.match || !el['est-showcase'] || !el['est-showcase-track']) return;
     var homeId = S.match.homeId, awayId = S.match.awayId;
     var homeColor = preshowTeamColor(homeId), awayColor = preshowTeamColor(awayId);
-    el['est-compare-home'].innerHTML = '<i class="est-compare-dot" aria-hidden="true" style="background-color:' + homeColor + ';color:' + homeColor + '"></i><span>' + esc(teamFull(homeId)) + '</span>';
-    el['est-compare-away'].innerHTML = '<i class="est-compare-dot" aria-hidden="true" style="background-color:' + awayColor + ';color:' + awayColor + '"></i><span>' + esc(teamFull(awayId)) + '</span>';
     var home = standingFor(homeId), away = standingFor(awayId);
     var homePos = (S.standings || []).findIndex(function (row) { return (row.teamId || row.id) === homeId; });
     var awayPos = (S.standings || []).findIndex(function (row) { return (row.teamId || row.id) === awayId; });
@@ -423,53 +422,174 @@
       ['DG', goalDifference(home), goalDifference(away)],
       ['Forma (5)', formMarkup(home), formMarkup(away)]
     ];
-    var previousIndex = S.preshowDataMatchId === S.match.id ? S.teamIndicatorIndex : 0;
-    S.teamIndicators = rows;
-    var total = rows.length;
-    el['est-team-comparison-track'].style.width = (total * 100) + '%';
-    el['est-team-comparison-track'].innerHTML = rows.map(function (row, index) {
-      var homeValue = row[0] === 'Forma (5)' ? row[1] : esc(row[1]);
-      var awayValue = row[0] === 'Forma (5)' ? row[2] : esc(row[2]);
-      return '<article class="est-comparison-slide" data-indicator-index="' + index + '" aria-hidden="' + String(index !== 0) + '" aria-label="' + (index + 1) + ' de ' + total + ': ' + esc(row[0]) + '">' +
-        '<h4 class="est-comparison-label">' + esc(row[0]) + '</h4>' +
-        '<div class="est-comparison-values"><div class="est-comparison-value home">' + homeValue + '</div><span class="est-comparison-vs" aria-hidden="true">VS</span><div class="est-comparison-value away">' + awayValue + '</div></div>' +
-        '</article>';
-    }).join('');
-    var slides = el['est-team-comparison-track'].children;
-    Array.prototype.forEach.call(slides, function (slide) {
-      slide.style.flex = '0 0 ' + (100 / total) + '%';
+    S.teamIndicators = rows.map(function (row, index) {
+      return { key: 'indicator-' + index, label: row[0], home: row[1], away: row[2], index: index };
     });
-    if (el['est-compare-dots']) {
-      el['est-compare-dots'].innerHTML = rows.map(function (row, index) {
-        return '<button class="est-compare-dot-button' + (index === 0 ? ' active' : '') + '" type="button" data-indicator-index="' + index + '" aria-label="Ver indicador: ' + esc(row[0]) + '" aria-pressed="' + String(index === 0) + '" title="' + esc(row[0]) + '"><span></span></button>';
+    var preferredKey = S.preshowDataMatchId === S.match.id
+      ? null
+      : (S.sponsoredPromotions.length ? S.sponsoredPromotions[0].key : 'indicators');
+    renderShowcase(homeColor, awayColor, preferredKey);
+  }
+
+  function housePromotionCreative(index) {
+    var promotion = HOUSE_PROMOTIONS[index];
+    var matchCard = (index === 3 && S.match) ? matchExclusivePromotion() : null;
+    return {
+      key: 'house-' + index,
+      label: 'Promoción de MonteCristo',
+      text: matchCard ? matchCard.text : promotion.text,
+      textPosition: 'bottom',
+      textSize: 'medium',
+      textAlign: 'left',
+      ctaText: matchCard ? matchCard.action : promotion.action,
+      href: matchCard ? matchCard.href : promotion.href,
+      image: matchCard ? matchCard.image : promotion.image
+    };
+  }
+
+  function showcasePromotionSlides() {
+    var promotions = (S.sponsoredPromotions || []).slice();
+    HOUSE_PROMOTIONS.forEach(function (_promotion, index) {
+      promotions.push(housePromotionCreative(index));
+    });
+    return promotions;
+  }
+
+  function promotionSlideMarkup(promotion, index) {
+    var key = promotion.key || ('promotion-' + index);
+    var textPosition = ['top', 'middle', 'hidden', 'badge', 'overlay'].indexOf(promotion.textPosition) >= 0
+      ? promotion.textPosition : 'bottom';
+    var textSize = ['small', 'medium', 'large'].indexOf(promotion.textSize) >= 0 ? promotion.textSize : 'medium';
+    var textAlign = ['left', 'center', 'right'].indexOf(promotion.textAlign) >= 0 ? promotion.textAlign : 'left';
+    var themeColor = /^#[0-9a-f]{3,8}$/i.test(String(promotion.themeColor || '')) ? promotion.themeColor : '';
+    var hasText = Boolean(promotion.text && String(promotion.text).trim() && textPosition !== 'hidden');
+    var isFirstPromotion = index === 0;
+    var stageId = isFirstPromotion ? ' id="est-preshow-promo"' : '';
+    var imageId = isFirstPromotion ? ' id="est-promo-image"' : '';
+    var labelId = isFirstPromotion ? ' id="est-promo-label"' : '';
+    var textId = isFirstPromotion ? ' id="est-promo-text"' : '';
+    var linkId = isFirstPromotion ? ' id="est-promo-link"' : '';
+    var sponsorClass = promotion.isSponsored ? ' is-sponsored' : '';
+    var labelStyle = themeColor ? ' style="--promo-theme:' + themeColor + '"' : '';
+    var image = promotion.image || PROMO_FALLBACK_IMAGE;
+    var href = promotion.href || '/';
+    var ctaText = promotion.ctaText || promotion.action || 'Ver más';
+    var label = promotion.label || 'Promoción';
+    return '<article' + stageId + ' class="est-preshow-promo est-showcase-slide est-showcase-promo' + sponsorClass + '" data-showcase-key="' + esc(key) + '" data-text-position="' + textPosition + '" data-text-size="' + textSize + '" data-text-align="' + textAlign + '" aria-label="Anuncio: ' + esc(label) + '">' +
+      '<img' + imageId + ' class="est-promo-image" src="' + esc(image) + '" alt="" decoding="async">' +
+      '<div class="est-promo-content">' +
+        '<span' + labelId + ' class="est-promo-label"' + labelStyle + '>' + esc(label) + '</span>' +
+        '<p' + textId + (hasText ? '' : ' class="is-empty"') + '>' + esc(promotion.text || '') + '</p>' +
+      '</div>' +
+      '<a' + linkId + ' class="btn btn-ghost btn-small est-showcase-cta" href="' + esc(href) + '"' + labelStyle + '>' + esc(ctaText) + '</a>' +
+    '</article>';
+  }
+
+  function indicatorSlideMarkup(indicators, homeColor, awayColor) {
+    var homeId = ' id="est-compare-home"';
+    var awayId = ' id="est-compare-away"';
+    var rows = indicators.map(function (indicator, index) {
+      var homeValue = indicator.label === 'Forma (5)' ? indicator.home : esc(indicator.home);
+      var awayValue = indicator.label === 'Forma (5)' ? indicator.away : esc(indicator.away);
+      return '<tr class="est-indicator-row" data-indicator-index="' + index + '">' +
+        '<th scope="row" class="est-indicator-name">' + esc(indicator.label) + '</th>' +
+        '<td class="est-indicator-value home">' + homeValue + '</td>' +
+        '<td class="est-indicator-value away">' + awayValue + '</td>' +
+      '</tr>';
+    }).join('');
+    return '<article class="est-showcase-slide est-showcase-stat" data-showcase-key="indicators" data-indicator-count="' + indicators.length + '" aria-label="Todos los indicadores del partido: ' + esc(teamFull(S.match.homeId)) + ' contra ' + esc(teamFull(S.match.awayId)) + '">' +
+      '<div class="est-showcase-stat-head"><div><p class="est-compare-kicker">Cara a cara</p><h3>Indicadores del partido</h3></div><span class="est-showcase-kind">Comparativa completa · ' + indicators.length + ' datos</span></div>' +
+      '<div class="est-compare-teams" aria-label="Equipos comparados">' +
+        '<div' + homeId + ' class="est-compare-club est-compare-club-home"><i class="est-compare-dot" aria-hidden="true" style="background-color:' + homeColor + ';color:' + homeColor + '"></i><span>' + esc(teamFull(S.match.homeId)) + '</span></div>' +
+        '<span class="est-compare-versus" aria-hidden="true">VS</span>' +
+        '<div' + awayId + ' class="est-compare-club est-compare-club-away"><i class="est-compare-dot" aria-hidden="true" style="background-color:' + awayColor + ';color:' + awayColor + '"></i><span>' + esc(teamFull(S.match.awayId)) + '</span></div>' +
+      '</div>' +
+      '<div class="est-showcase-stat-body"><table class="est-indicator-table" aria-label="Comparativa completa de indicadores"><thead><tr><th scope="col">Indicador</th><th scope="col">Local</th><th scope="col">Visitante</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '</article>';
+  }
+
+  function renderShowcase(homeColor, awayColor, preferredKey) {
+    var track = el['est-showcase-track'];
+    if (!track) return;
+    var activeItem = S.showcaseItems[S.showcaseIndex];
+    var activeKey = preferredKey || (activeItem && activeItem.key);
+    var promotions = showcasePromotionSlides();
+    var indicators = S.teamIndicators || [];
+    var items = [];
+    if (indicators.length) {
+      items.push({ type: 'indicator', key: 'indicators', label: 'Indicadores del partido', indicators: indicators });
+    }
+    promotions.forEach(function (promotion) {
+      items.push({ type: 'promotion', key: promotion.key, label: promotion.label || 'Promoción', creative: promotion });
+    });
+    if (!items.length) return;
+
+    var promotionIndex = 0;
+    track.innerHTML = items.map(function (item) {
+      if (item.type === 'promotion') return promotionSlideMarkup(item.creative, promotionIndex++);
+      return indicatorSlideMarkup(item.indicators, homeColor || preshowTeamColor(S.match.homeId), awayColor || preshowTeamColor(S.match.awayId));
+    }).join('');
+    if (el['est-showcase-dots']) {
+      el['est-showcase-dots'].innerHTML = items.map(function (item, index) {
+        var itemType = item.type === 'indicator' ? 'todos los indicadores' : 'anuncio';
+        return '<button class="est-compare-dot-button" type="button" data-showcase-index="' + index + '" aria-label="Ver ' + itemType + ': ' + esc(item.label) + '" aria-pressed="false" title="' + itemType + ': ' + esc(item.label) + '"><span></span></button>';
       }).join('');
-      el['est-compare-dots'].querySelectorAll('[data-indicator-index]').forEach(function (button) {
+      el['est-showcase-dots'].querySelectorAll('[data-showcase-index]').forEach(function (button) {
         button.addEventListener('click', function () {
-          setTeamIndicatorIndex(Number(button.getAttribute('data-indicator-index')));
-          restartTeamIndicatorRotation();
+          setShowcaseIndex(Number(button.getAttribute('data-showcase-index')));
+          restartShowcaseRotation();
         });
       });
     }
-    setTeamIndicatorIndex(previousIndex);
+    track.style.width = (items.length * 100) + '%';
+    Array.prototype.forEach.call(track.children, function (slide) {
+      slide.style.flex = '0 0 ' + (100 / items.length) + '%';
+      slide.setAttribute('aria-hidden', 'true');
+      slide.setAttribute('inert', '');
+    });
+
+    S.showcaseItems = items;
+    var nextIndex = activeKey ? items.findIndex(function (item) { return item.key === activeKey; }) : -1;
+    if (nextIndex < 0) nextIndex = Math.min(S.showcaseIndex, items.length - 1);
+    setShowcaseIndex(nextIndex);
+
+    // Mantiene los selectores históricos accesibles para el primer anuncio y el bloque completo de indicadores.
+    el['est-preshow-promo'] = $('est-preshow-promo');
+    el['est-promo-image'] = $('est-promo-image');
+    el['est-promo-label'] = $('est-promo-label');
+    el['est-promo-text'] = $('est-promo-text');
+    el['est-promo-link'] = $('est-promo-link');
+    el['est-compare-home'] = $('est-compare-home');
+    el['est-compare-away'] = $('est-compare-away');
   }
 
-  function setTeamIndicatorIndex(index) {
-    var total = S.teamIndicators.length;
+  function setShowcaseIndex(index) {
+    var total = S.showcaseItems.length;
     if (!total) return;
-    S.teamIndicatorIndex = ((index % total) + total) % total;
-    var current = S.teamIndicatorIndex;
-    var viewport = el['est-team-comparison'];
-    var track = el['est-team-comparison-track'];
+    S.showcaseIndex = ((index % total) + total) % total;
+    var current = S.showcaseIndex;
+    var item = S.showcaseItems[current];
+    var viewport = el['est-showcase'];
+    var track = el['est-showcase-track'];
     if (track) track.style.transform = 'translate3d(-' + (current * 100 / total) + '%, 0, 0)';
-    if (viewport) viewport.setAttribute('data-index', String(current));
-    if (el['est-compare-count']) el['est-compare-count'].textContent = (current + 1) + ' / ' + total;
+    if (viewport) {
+      viewport.setAttribute('data-index', String(current));
+      viewport.setAttribute('data-slide-type', item ? item.type : '');
+      viewport.setAttribute('aria-label', item && item.type === 'indicator'
+        ? 'Cara a cara: ' + item.label + ' entre ' + teamFull(S.match.homeId) + ' y ' + teamFull(S.match.awayId)
+        : 'Anuncio de La Previa');
+    }
+    if (el['est-showcase-count']) el['est-showcase-count'].textContent = (current + 1) + ' / ' + total;
     if (track) {
       Array.prototype.forEach.call(track.children, function (slide, slideIndex) {
-        slide.setAttribute('aria-hidden', String(slideIndex !== current));
+        var active = slideIndex === current;
+        slide.setAttribute('aria-hidden', String(!active));
+        if (active) slide.removeAttribute('inert');
+        else slide.setAttribute('inert', '');
       });
     }
-    if (el['est-compare-dots']) {
-      el['est-compare-dots'].querySelectorAll('[data-indicator-index]').forEach(function (button, buttonIndex) {
+    if (el['est-showcase-dots']) {
+      el['est-showcase-dots'].querySelectorAll('[data-showcase-index]').forEach(function (button, buttonIndex) {
         var active = buttonIndex === current;
         button.classList.toggle('active', active);
         button.setAttribute('aria-pressed', String(active));
@@ -477,23 +597,35 @@
     }
   }
 
-  function startTeamIndicatorRotation() {
-    if (S.teamIndicatorRotationId || reduced.matches || S.teamIndicators.length < 2) return;
-    S.teamIndicatorRotationId = window.setInterval(function () {
-      setTeamIndicatorIndex(S.teamIndicatorIndex + 1);
-    }, TEAM_INDICATOR_ROTATION_MS);
+  function startShowcaseRotation() {
+    if (S.showcaseRotationId || reduced.matches || S.showcaseItems.length < 2) return;
+    S.showcaseRotationId = window.setInterval(function () {
+      setShowcaseIndex(S.showcaseIndex + 1);
+    }, SHOWCASE_ROTATION_MS);
   }
 
-  function stopTeamIndicatorRotation() {
-    if (S.teamIndicatorRotationId) window.clearInterval(S.teamIndicatorRotationId);
-    S.teamIndicatorRotationId = null;
+  function stopShowcaseRotation() {
+    if (S.showcaseRotationId) window.clearInterval(S.showcaseRotationId);
+    S.showcaseRotationId = null;
   }
 
-  function restartTeamIndicatorRotation() {
-    if (!S.teamIndicatorRotationId) return;
-    stopTeamIndicatorRotation();
-    startTeamIndicatorRotation();
+  function restartShowcaseRotation() {
+    if (!S.showcaseRotationId) return;
+    stopShowcaseRotation();
+    startShowcaseRotation();
   }
+
+  function setShowcaseVisible(visible) {
+    var viewport = el['est-showcase'];
+    if (viewport) viewport.hidden = !visible;
+    if (!visible) {
+      var promoSlides = viewport ? viewport.querySelectorAll('.est-preshow-promo') : [];
+      Array.prototype.forEach.call(promoSlides, function (slide) { slide.hidden = true; });
+    } else if (viewport) {
+      viewport.querySelectorAll('.est-preshow-promo').forEach(function (slide) { slide.hidden = false; });
+    }
+  }
+
   function formatPreshowCountdown(ms) {
     var seconds = Math.max(0, Math.ceil(ms / 1000));
     return String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
@@ -521,86 +653,30 @@
     };
   }
 
-  // Pinta el anuncio de La Previa. Si el texto o la imagen cambian,
-  // el contenido se actualiza con animación fluida.
+  // Las creatividades comparten una sola cartelera con las fichas cara a cara.
+  // El anuncio patrocinado se agrega al carrusel sin reemplazar las promociones propias.
   var PROMO_FALLBACK_IMAGE = '/assets/casino-hero.jpg';
-  function setPromoCreative(c) {
-    var stage = el['est-preshow-promo'];
-    var image = el['est-promo-image'];
-    if (!stage || !image || !c) return;
-
-    var textPos = c.textPosition || (c.text ? 'bottom' : 'hidden');
-    var textSize = c.textSize || 'medium';
-    var textAlign = c.textAlign || 'left';
-    var themeColor = c.themeColor || null;
-    var ctaText = c.ctaText || c.action || 'Ver más';
-    var hasText = Boolean(c.text && c.text.trim() && textPos !== 'hidden');
-
-    stage.setAttribute('data-text-position', textPos);
-    stage.setAttribute('data-text-size', textSize);
-    stage.setAttribute('data-text-align', textAlign);
-
-    var changed = el['est-promo-text'].textContent !== (c.text || '') || image.getAttribute('src') !== (c.image || PROMO_FALLBACK_IMAGE);
-    el['est-promo-label'].textContent = c.label || 'Promoción';
-    if (themeColor) {
-      el['est-promo-label'].style.color = themeColor;
-      el['est-promo-label'].style.borderColor = themeColor;
-    } else {
-      el['est-promo-label'].style.color = '';
-      el['est-promo-label'].style.borderColor = '';
-    }
-
-    el['est-promo-text'].textContent = c.text || '';
-    if (el['est-promo-text']) el['est-promo-text'].style.display = hasText ? '' : 'none';
-
-    if (c.href) {
-      el['est-promo-link'].href = c.href;
-      el['est-promo-link'].textContent = ctaText;
-      if (themeColor) el['est-promo-link'].style.borderColor = themeColor;
-      else el['est-promo-link'].style.borderColor = '';
-      el['est-promo-link'].style.display = '';
-    } else {
-      el['est-promo-link'].style.display = 'none';
-    }
-
-    image.src = c.image || PROMO_FALLBACK_IMAGE;
-    image.alt = '';
-    if (changed && stage && el['est-preshow'] && !el['est-preshow'].hidden) {
-      stage.classList.remove('is-sliding');
-      void stage.offsetWidth; // reinicia la animación
-      stage.classList.add('is-sliding');
-    }
+  function rerenderShowcase(preferredKey) {
+    if (!S.match) return;
+    renderShowcase(preshowTeamColor(S.match.homeId), preshowTeamColor(S.match.awayId), preferredKey);
   }
 
   function defaultPromotion() {
-    var slot = Math.floor(Date.now() / PROMOTION_ROTATION_MS);
-    var index = ((slot % HOUSE_PROMOTIONS.length) + HOUSE_PROMOTIONS.length) % HOUSE_PROMOTIONS.length;
-    var promotion = HOUSE_PROMOTIONS[index];
-    var matchCard = (index === 3 && S.match) ? matchExclusivePromotion() : null;
-    setPromoCreative({
-      label: 'Promoción de MonteCristo',
-      text: matchCard ? matchCard.text : promotion.text,
-      textPosition: 'bottom',
-      textSize: 'medium',
-      textAlign: 'left',
-      ctaText: matchCard ? matchCard.action : promotion.action,
-      href: matchCard ? matchCard.href : promotion.href,
-      image: matchCard ? matchCard.image : promotion.image
-    });
+    if (!S.sponsoredPromotions.length) return;
+    S.sponsoredPromotions = [];
+    rerenderShowcase();
   }
 
-  function renderPromotion(promotion) {
+  function promotionCreative(promotion) {
     var href = promotion && promotion.href;
     var allowed = href === '/' || href === '/estadio' || href === '/terminos' || /^\/room\/[A-Z0-9]{5}$/.test(String(href || ''));
-    if (!promotion || !allowed) {
-      defaultPromotion();
-      return;
-    }
+    if (!promotion || !allowed) return null;
     // La imagen solo puede venir de la ruta interna de creatividades del servidor.
     var image = typeof promotion.image === 'string' && promotion.image.indexOf('/api/estadio/promotion-media/') === 0 ? promotion.image : null;
-    var label = promotion.label || (promotion.isPermanent ? 'Patrocinador Oficial' : 'Promoción pagada');
-    setPromoCreative({
-      label: label,
+    return {
+      key: 'sponsor-' + String(promotion.id || 'active'),
+      isSponsored: true,
+      label: promotion.label || (promotion.isPermanent ? 'Patrocinador Oficial' : 'Promoción pagada'),
       text: typeof promotion.text === 'string' ? promotion.text : '',
       textPosition: promotion.textPosition || (promotion.text ? 'bottom' : 'hidden'),
       textSize: promotion.textSize || 'medium',
@@ -608,8 +684,27 @@
       ctaText: promotion.ctaText || 'Ver promoción',
       themeColor: promotion.themeColor || null,
       href: href,
-      image: image
+      image: image || PROMO_FALLBACK_IMAGE
+    };
+  }
+
+  function renderPromotions(promotions) {
+    var byKey = new Map();
+    (Array.isArray(promotions) ? promotions : []).forEach(function (promotion) {
+      var creative = promotionCreative(promotion);
+      if (creative) byKey.set(creative.key, creative);
     });
+    var next = Array.from(byKey.values());
+    var previous = S.sponsoredPromotions;
+    var unchanged = previous.length === next.length && previous.every(function (creative, index) {
+      var candidate = next[index];
+      return candidate && Object.keys(creative).every(function (key) { return creative[key] === candidate[key]; });
+    });
+    if (unchanged) return;
+    var previousKeys = new Set(previous.map(function (creative) { return creative.key; }));
+    var newlyAdded = next.find(function (creative) { return !previousKeys.has(creative.key); });
+    S.sponsoredPromotions = next;
+    rerenderShowcase(newlyAdded ? newlyAdded.key : null);
   }
   function stopPromotionRotation() {
     if (S.promoPollId) clearInterval(S.promoPollId);
@@ -625,7 +720,7 @@
       .then(function (response) { return response.json().catch(function () { return {}; }); })
       .then(function (data) {
         if (requestSeq !== S.promoRequestSeq || S.promoMatchId !== matchId) return;
-        renderPromotion(data && data.ok ? data.promotion : null);
+        renderPromotions(data && data.ok ? (Array.isArray(data.promotions) ? data.promotions : (data.promotion ? [data.promotion] : [])) : []);
       })
       .catch(function () {
         if (requestSeq === S.promoRequestSeq && S.promoMatchId === matchId) defaultPromotion();
@@ -649,7 +744,8 @@
       S.promoWindowOpen = false;
       updatePromotionComposer();
       stopPromotionRotation();
-      stopTeamIndicatorRotation();
+      stopShowcaseRotation();
+      setShowcaseVisible(false);
       return;
     }
     var remaining = Number(match.scheduledKickoffAt) - (Number.isFinite(nowMs) ? nowMs : currentServerTime());
@@ -660,7 +756,8 @@
       S.promoWindowOpen = false;
       updatePromotionComposer();
       stopPromotionRotation();
-      stopTeamIndicatorRotation();
+      stopShowcaseRotation();
+      setShowcaseVisible(false);
       return;
     }
     panel.hidden = false;
@@ -669,7 +766,8 @@
     updatePromotionComposer();
     if (delayed) {
       stopPromotionRotation();
-      stopTeamIndicatorRotation();
+      stopShowcaseRotation();
+      setShowcaseVisible(false);
     } else {
       startPromotionRotation(match.id);
     }
@@ -678,13 +776,13 @@
       : 'Kickoff programado · ' + kickoffTime(match.scheduledKickoffAt);
     if (el['est-preshow-status'].textContent !== statusText) el['est-preshow-status'].textContent = statusText;
     el['est-preshow-timer'].textContent = delayed ? '' : formatPreshowCountdown(remaining);
-    el['est-preshow-promo'].hidden = delayed;
     if (S.preshowDataMatchId !== match.id || S.preshowDataStandings !== S.standings) {
       renderTeamComparison();
       S.preshowDataMatchId = match.id;
       S.preshowDataStandings = S.standings;
     }
-    if (!delayed) startTeamIndicatorRotation();
+    setShowcaseVisible(!delayed);
+    if (!delayed) startShowcaseRotation();
   }
 
   function updateLobbyMatchKickoff(matchId, kickoffAt, day, block) {
@@ -2007,13 +2105,13 @@
     el['est-promo-target'].addEventListener('change', updatePromotionRoomField);
     updatePromotionRoomField();
     setupStudioControls();
-    el['est-compare-prev'].addEventListener('click', function () {
-      setTeamIndicatorIndex(S.teamIndicatorIndex - 1);
-      restartTeamIndicatorRotation();
+    el['est-showcase-prev'].addEventListener('click', function () {
+      setShowcaseIndex(S.showcaseIndex - 1);
+      restartShowcaseRotation();
     });
-    el['est-compare-next'].addEventListener('click', function () {
-      setTeamIndicatorIndex(S.teamIndicatorIndex + 1);
-      restartTeamIndicatorRotation();
+    el['est-showcase-next'].addEventListener('click', function () {
+      setShowcaseIndex(S.showcaseIndex + 1);
+      restartShowcaseRotation();
     });
     el['est-slip-clear'].addEventListener('click', closeSlip);
     el['est-place-bet'].addEventListener('click', placeBet);

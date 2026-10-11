@@ -81,40 +81,28 @@
           </div>
         </div>
 
-        <!-- Espacio promocional y Ficha exclusiva del partido -->
-        <aside id="est-preshow-promo" class="est-preshow-promo" aria-label="Espacio promocional de La Previa">
-          <img id="est-promo-image" class="est-promo-image" src="/assets/casino-hero.jpg" alt="" width="1821" height="864" decoding="async">
-          <div class="est-promo-content">
-            <span id="est-promo-label" class="est-promo-label">Promoción propia</span>
-            <p id="est-promo-text">Mientras llega el partido, descubre más juegos de MonteCristo.</p>
+        <!-- Cartelera única: anuncios individuales y la comparativa completa ocupan el mismo marco. -->
+        <section id="est-showcase" class="est-showcase" role="region" aria-roledescription="carrusel" aria-label="Anuncios e indicadores del partido">
+          <div id="est-showcase-track" class="est-showcase-track">
+            <!-- Contenido inicial de respaldo; el cliente arma aquí los anuncios y las ocho fichas cara a cara. -->
+            <aside id="est-preshow-promo" class="est-preshow-promo est-showcase-slide est-showcase-promo" aria-label="Espacio promocional de La Previa" data-text-position="bottom" data-text-size="medium" data-text-align="left">
+              <img id="est-promo-image" class="est-promo-image" src="/assets/casino-hero.jpg" alt="" width="1821" height="864" decoding="async">
+              <div class="est-promo-content">
+                <span id="est-promo-label" class="est-promo-label">Promoción propia</span>
+                <p id="est-promo-text">Mientras llega el partido, descubre más juegos de MonteCristo.</p>
+              </div>
+              <a id="est-promo-link" class="btn btn-ghost btn-small" href="/">Explorar casino</a>
+            </aside>
           </div>
-          <a id="est-promo-link" class="btn btn-ghost btn-small" href="/">Explorar casino</a>
-        </aside>
 
-        <!-- Comparativa animada de indicadores de los equipos -->
-        <section class="est-compare-wrap" id="est-compare-wrap" aria-label="Indicadores de los equipos">
-          <div class="est-compare-topbar">
-            <div>
-              <p class="est-compare-kicker">Cara a cara</p>
-              <h3>Indicadores del partido</h3>
-            </div>
-            <div class="est-compare-controls" aria-label="Controles de indicadores">
-              <span id="est-compare-count" class="est-compare-count" aria-live="polite">1 / 8</span>
-              <button id="est-compare-prev" class="est-compare-control" type="button" aria-label="Indicador anterior" title="Indicador anterior">‹</button>
-              <button id="est-compare-next" class="est-compare-control" type="button" aria-label="Siguiente indicador" title="Siguiente indicador">›</button>
-            </div>
-          </div>
-          <div class="est-compare-teams" aria-label="Equipos comparados">
-            <div id="est-compare-home" class="est-compare-club est-compare-club-home">Local</div>
-            <span class="est-compare-versus" aria-hidden="true">VS</span>
-            <div id="est-compare-away" class="est-compare-club est-compare-club-away">Visita</div>
-          </div>
-          <div id="est-team-comparison" class="est-team-comparison" role="region" aria-roledescription="carrusel" aria-label="Comparativa de indicadores">
-            <div id="est-team-comparison-track" class="est-comparison-track"></div>
+          <div class="est-showcase-controls" aria-label="Controles de la cartelera">
+            <span id="est-showcase-count" class="est-showcase-count" aria-live="polite">1 / 1</span>
+            <button id="est-showcase-prev" class="est-compare-control" type="button" aria-label="Contenido anterior" title="Contenido anterior">‹</button>
+            <button id="est-showcase-next" class="est-compare-control" type="button" aria-label="Siguiente contenido" title="Siguiente contenido">›</button>
           </div>
           <div class="est-compare-footer">
-            <div id="est-compare-dots" class="est-compare-dots" role="group" aria-label="Elegir indicador"></div>
-            <span class="est-compare-auto">Desplazamiento automático</span>
+            <div id="est-showcase-dots" class="est-showcase-dots" role="group" aria-label="Elegir anuncio o comparativa completa"></div>
+            <span class="est-compare-auto">Rotación automática · 15 s</span>
           </div>
         </section>
       </section>

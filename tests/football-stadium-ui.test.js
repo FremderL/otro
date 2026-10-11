@@ -68,7 +68,7 @@ function createHarness(options = {}) {
       '1x2': [market('home', 2.1), market('draw', 3.2), market('away', 3.5)],
       double_chance: [market('home_draw', 1.3)]
     },
-    myBets: [], commentary: []
+    myBets: options.myBets || [], commentary: []
   };
   const lobby = {
     matches: [match], standings: options.standings || [], nextKickoffAt: null, serverNow: nowMs
@@ -76,6 +76,9 @@ function createHarness(options = {}) {
   const handlers = {};
   const requests = [];
   let submittedPromotion = null;
+  const activePromotions = Array.isArray(options.activePromotions)
+    ? options.activePromotions
+    : (options.activePromotion ? [options.activePromotion] : []);
   const socket = {
     on(event, handler) { handlers[event] = handler; },
     emit(event, payload, ack) {
@@ -154,7 +157,10 @@ function createHarness(options = {}) {
       return { ok: true, json: async () => ({ promotion: null }) };
     }
     if (target.startsWith('/api/estadio/promotions/')) {
-      return { ok: true, json: async () => ({ promotion: null }) };
+      return {
+        ok: true,
+        json: async () => ({ ok: true, promotion: activePromotions[0] || null, promotions: activePromotions })
+      };
     }
     return {
       ok: true,
@@ -273,15 +279,14 @@ test('La Previa abre exactamente en T−30, muestra datos de liga y se oculta al
   await h.connectToMatch();
   const { window, handlers, match } = h;
   const panel = window.document.getElementById('est-preshow');
-  const promo = window.document.getElementById('est-preshow-promo');
 
   assert.equal(window.getComputedStyle(window.document.body).overflowY, 'auto', 'Estadio conserva el scroll vertical aunque la hoja global bloquee otras páginas pequeñas');
   assert.equal(panel.hidden, true, 'a T−30:01 todavía no aparece');
   h.advanceTime(1000);
   assert.equal(panel.hidden, false, 'aparece justo al entrar en los 30 minutos');
   assert.equal(window.document.getElementById('est-preshow-timer').textContent, '30:00');
-  assert.equal(promo.hidden, false, 'la promoción propia solo se muestra en la ventana activa');
-  const comparison = window.document.getElementById('est-team-comparison').textContent;
+  assert.equal(window.document.getElementById('est-preshow-promo').hidden, false, 'la promoción propia solo se muestra en la ventana activa');
+  const comparison = window.document.getElementById('est-showcase').textContent;
   assert.match(window.document.getElementById('est-compare-home').textContent, /Home FC/);
   assert.match(window.document.getElementById('est-compare-away').textContent, /Away FC/);
   assert.match(comparison, /Posesión/);
@@ -292,46 +297,60 @@ test('La Previa abre exactamente en T−30, muestra datos de liga y se oculta al
   assert.ok(comparison.includes('+5'));
   assert.match(comparison, /-3/);
   assert.match(comparison, /Forma \(5\)/);
-  assert.equal(window.document.getElementById('est-compare-count').textContent, '1 / 8');
-  const indicatorTrack = window.document.getElementById('est-team-comparison-track');
-  const initialIndicatorPosition = indicatorTrack.style.transform;
+  const showcase = window.document.getElementById('est-showcase');
+  const showcaseTrack = window.document.getElementById('est-showcase-track');
+  assert.equal(showcaseTrack.querySelectorAll('.est-showcase-promo').length, 4, 'cada anuncio propio tiene su propia ficha');
+  assert.equal(showcaseTrack.querySelectorAll('.est-showcase-stat').length, 1, 'todos los indicadores caben juntos en una sola ficha');
+  const indicatorCard = showcaseTrack.querySelector('.est-showcase-stat');
+  assert.equal(indicatorCard.dataset.indicatorCount, '8', 'la ficha conjunta contiene los ocho datos');
+  assert.equal(indicatorCard.querySelectorAll('.est-indicator-row').length, 8, 'ningún indicador se pierde del cuadro');
+  assert.equal(showcaseTrack.children.length, 5, 'la cartelera tiene una ficha de datos más todos sus anuncios');
+  assert.equal(window.document.getElementById('est-showcase-count').textContent, '1 / 5');
+  assert.equal(showcase.dataset.slideType, 'indicator', 'la ficha inicial muestra la comparativa completa');
+  const initialShowcasePosition = showcaseTrack.style.transform;
   h.advanceTime(15000);
-  assert.equal(window.document.getElementById('est-team-comparison').dataset.index, '1', 'los indicadores avanzan automáticamente al mismo ritmo de los anuncios');
-  assert.equal(window.document.getElementById('est-compare-count').textContent, '2 / 8');
-  assert.notEqual(indicatorTrack.style.transform, initialIndicatorPosition, 'el carrusel se desplaza visualmente');
-  window.document.querySelector('#est-compare-dots [data-indicator-index="0"]').click();
-  assert.equal(window.document.getElementById('est-team-comparison').dataset.index, '0', 'se puede elegir un indicador anterior desde los puntos');
+  assert.equal(showcase.dataset.index, '1', 'el carrusel avanza una ficha a la vez');
+  assert.equal(showcase.dataset.slideType, 'promotion', 'después de los datos aparece un anuncio individual');
+  assert.equal(window.document.getElementById('est-showcase-count').textContent, '2 / 5');
+  assert.notEqual(showcaseTrack.style.transform, initialShowcasePosition, 'cada ficha ocupa la misma ventana y el carrusel se desplaza');
+  window.document.querySelector('#est-showcase-dots [data-showcase-index="0"]').click();
+  assert.equal(showcase.dataset.index, '0', 'se puede volver a elegir la comparativa completa desde los puntos');
 
   h.advanceTime(30 * 60 * 1000);
   assert.equal(panel.hidden, false, 'si el estado sigue programado, conserva una espera neutral');
   assert.match(window.document.getElementById('est-preshow-status').textContent, /Kickoff pendiente/);
-  assert.equal(promo.hidden, true, 'la promoción se corta al llegar la hora programada');
+  assert.equal(window.document.getElementById('est-preshow-promo').hidden, true, 'la promoción se corta al llegar la hora programada');
   handlers['football:status']({ matchId: match.id, code: 'kickoff', minute: 0 });
   assert.equal(panel.hidden, true, 'al confirmarse el kickoff desaparece la previa');
 });
 
-test('cuando no hay campañas aprobadas, el único espacio rota anuncios propios internos cada 15 segundos', async t => {
-  const h = createHarness({ now: 1800000000000, kickoffOffsetMs: 20 * 60 * 1000 });
+test('los indicadores permanecen juntos y cada anuncio ocupa su propia ficha a pantalla completa', async t => {
+  const h = createHarness({ now: 1800000000000, kickoffOffsetMs: 20 * 60 * 1000, reducedMotion: false });
   t.after(h.close);
   await h.connectToMatch();
   await new Promise(resolve => setImmediate(resolve));
   await new Promise(resolve => setImmediate(resolve));
 
   const { window } = h;
-  const slot = window.document.querySelectorAll('#est-preshow-promo');
-  const label = window.document.getElementById('est-promo-label');
-  const copy = window.document.getElementById('est-promo-text');
-  const link = window.document.getElementById('est-promo-link');
-  assert.equal(slot.length, 1, 'los anuncios propios comparten el espacio único de La Previa');
-  assert.equal(label.textContent, 'Promoción de MonteCristo');
-  const firstCopy = copy.textContent;
-  assert.ok(firstCopy.length > 0);
-  assert.ok(['/','/estadio'].includes(link.getAttribute('href')), 'el destino es una ruta interna permitida');
+  const showcase = window.document.getElementById('est-showcase');
+  const track = window.document.getElementById('est-showcase-track');
+  assert.equal(track.querySelectorAll('.est-showcase-promo').length, 4);
+  assert.equal(track.querySelectorAll('.est-showcase-stat').length, 1);
+  assert.equal(track.querySelectorAll('.est-indicator-row').length, 8);
+  assert.equal(track.children[0].dataset.showcaseKey, 'indicators');
+  assert.equal(track.children[1].dataset.showcaseKey, 'house-0');
+  assert.equal(track.children[2].dataset.showcaseKey, 'house-1');
 
   h.advanceTime(15000);
-  await new Promise(resolve => setImmediate(resolve));
-  assert.notEqual(copy.textContent, firstCopy, 'el anuncio propio cambia al siguiente turno de 15 segundos');
-  assert.ok(['/','/estadio'].includes(link.getAttribute('href')));
+  assert.equal(showcase.dataset.index, '1');
+  assert.equal(showcase.dataset.slideType, 'promotion');
+  assert.equal(track.children[1].getAttribute('aria-hidden'), 'false', 'el anuncio activo es accesible y visible');
+  assert.equal(track.children[0].getAttribute('aria-hidden'), 'true', 'las otras fichas quedan fuera de lectura');
+
+  h.advanceTime(15000);
+  assert.equal(showcase.dataset.index, '2');
+  assert.equal(showcase.dataset.slideType, 'promotion');
+  assert.match(track.children[2].textContent, /bots del servidor/);
 });
 
 test('el formulario promocional requiere cuenta vinculada y publica el texto, enlace e imagen del preset durante T−30', async t => {
@@ -368,6 +387,89 @@ test('el formulario promocional requiere cuenta vinculada y publica el texto, en
   assert.equal(request.options.credentials, 'same-origin');
   assert.equal(request.options.headers['X-CSRF-Token'], 'csrf-test');
   assert.match(window.document.getElementById('est-promo-message').textContent, /pendiente de revisión.*No se han cobrado fichas/);
+});
+
+test('un anuncio aprobado también ocupa una ficha completa y conserva su enlace y formato', async t => {
+  const h = createHarness({
+    promotionsEnabled: true,
+    kickoffOffsetMs: 20 * 60 * 1000,
+    activePromotion: {
+      id: 'sponsor-123', label: 'Patrocinador oficial', text: 'Una promoción destacada',
+      textPosition: 'middle', textSize: 'large', textAlign: 'center', ctaText: 'Conocer más',
+      href: '/estadio', image: '/api/estadio/promotion-media/sponsor-123', isPermanent: true
+    }
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+
+  const { window } = h;
+  const track = window.document.getElementById('est-showcase-track');
+  const sponsorSlide = track.querySelector('[data-showcase-key="sponsor-sponsor-123"]');
+  assert.ok(sponsorSlide, 'el anuncio aprobado se agrega como una ficha aparte');
+  assert.equal(sponsorSlide.classList.contains('est-showcase-promo'), true);
+  assert.equal(sponsorSlide.getAttribute('aria-hidden'), 'false', 'el nuevo anuncio entra al carrusel como contenido visible');
+  assert.equal(sponsorSlide.dataset.textPosition, 'middle');
+  assert.equal(sponsorSlide.dataset.textSize, 'large');
+  assert.equal(sponsorSlide.dataset.textAlign, 'center');
+  assert.equal(sponsorSlide.querySelector('a').getAttribute('href'), '/estadio');
+  assert.equal(track.querySelectorAll('.est-showcase-promo').length, 5, 'no reemplaza ni oculta las promociones propias');
+});
+
+test('la cartelera crea una ficha para cada anuncio aprobado sin un cupo visual fijo', async t => {
+  const activePromotions = Array.from({ length: 7 }, (_, index) => ({
+    id: 'user-ad-' + (index + 1),
+    label: 'Anuncio de aficionado ' + (index + 1),
+    text: 'Promoción enviada por una persona ' + (index + 1),
+    textPosition: 'bottom', textSize: 'medium', textAlign: 'left',
+    ctaText: 'Ver más', href: '/estadio', image: '/api/estadio/promotion-media/user-ad-' + (index + 1)
+  }));
+  const h = createHarness({
+    promotionsEnabled: true,
+    kickoffOffsetMs: 20 * 60 * 1000,
+    activePromotions
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+
+  const { window } = h;
+  const track = window.document.getElementById('est-showcase-track');
+  const showcase = window.document.getElementById('est-showcase');
+  assert.equal(track.querySelectorAll('.est-showcase-stat').length, 1, 'los ocho indicadores se agrupan en una ficha');
+  assert.equal(track.querySelectorAll('.est-showcase-promo.is-sponsored').length, 7, 'se muestran todos los anuncios recibidos');
+  assert.equal(track.querySelectorAll('.est-showcase-promo').length, 11, 'los anuncios de personas se suman a los cuatro propios');
+  assert.equal(track.children.length, 12, 'el carrusel crece con cada anuncio, sin slots prefijados');
+  activePromotions.forEach(promotion => {
+    assert.ok(track.querySelector('[data-showcase-key="sponsor-' + promotion.id + '"]'), 'se creó la ficha ' + promotion.id);
+  });
+  assert.equal(window.document.querySelectorAll('#est-showcase-dots [data-showcase-index]').length, 12, 'hay navegación para cada ficha aunque exceda el diseño inicial');
+  window.document.querySelector('#est-showcase-dots [data-showcase-index="7"]').click();
+  assert.equal(showcase.dataset.slideType, 'promotion');
+  assert.equal(track.children[7].getAttribute('aria-hidden'), 'false', 'también se puede abrir un anuncio añadido más tarde en la lista');
+  assert.match(track.children[7].textContent, /Anuncio de aficionado/);
+});
+
+test('Mis apuestas mantiene tarjetas y jerarquía visual propias', async t => {
+  const h = createHarness({ myBets: [{
+    id: 'bet-1', market: '1x2', selection: 'home', odds: 2.1, stake: 100,
+    potentialPayout: 210, status: 'open', inPlay: false
+  }] });
+  t.after(h.close);
+  await h.connectToMatch();
+
+  const { window } = h;
+  const panel = window.document.getElementById('est-mybets-panel');
+  const list = window.document.getElementById('est-mybets');
+  const card = list.querySelector('.est-mybet');
+  assert.ok(card, 'la apuesta abierta se presenta como tarjeta');
+  assert.equal(window.getComputedStyle(list).display, 'flex');
+  assert.equal(window.getComputedStyle(card).display, 'grid');
+  assert.equal(window.getComputedStyle(card).borderRadius, '10px');
+  assert.equal(window.getComputedStyle(card.querySelector('.est-mybet-pick')).fontWeight, '800');
+  assert.notEqual(window.getComputedStyle(panel).borderTopColor, '');
 });
 
 test('La Previa también se oculta si el partido se pospone', async t => {
@@ -420,7 +522,6 @@ test('La Previa se abre de inmediato si un partido distante se reprograma dentro
   await h.connectToMatch();
   const { window, handlers, match } = h;
   const panel = window.document.getElementById('est-preshow');
-  const promo = window.document.getElementById('est-preshow-promo');
 
   assert.equal(panel.hidden, true, 'fuera de T-30 permanece oculta');
 
@@ -430,7 +531,7 @@ test('La Previa se abre de inmediato si un partido distante se reprograma dentro
 
   assert.equal(panel.hidden, false, 'se muestra inmediatamente al entrar a T-30 por reprogramación');
   assert.equal(window.document.getElementById('est-preshow-timer').textContent, '20:00');
-  assert.equal(promo.hidden, false);
+  assert.equal(window.document.getElementById('est-preshow-promo').hidden, false);
 });
 
 test('un partido en retraso con espera pendiente se recupera a cuenta regresiva al reprogramarse', async t => {
