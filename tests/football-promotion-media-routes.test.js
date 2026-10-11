@@ -278,3 +278,62 @@ test('la campaña directa respeta ventana T−30, texto, cuenta existente y una 
   assert.equal(closed.statusCode, 409);
   assert.equal(closed.body.code, 'preshow_window_closed');
 });
+
+test('campaña permanente o multimatch: solo imagen, posición/tamaño de texto y persistencia entre partidos', async t => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  const { dataUrl } = pngDataUrl(800, 800); // cuadrado 1:1 válido con nuevo ratio
+
+  // 1. Crear campaña permanente sólo con imagen (sin texto)
+  const permCreated = await ctx.app.run('POST', '/admin/estadio/promotions/create', {
+    body: {
+      profileId: ctx.profile.id,
+      scope: 'all',
+      targetPath: '/estadio',
+      textPosition: 'overlay',
+      textSize: 'large',
+      image: dataUrl
+    },
+    adminAuth: adminAuth()
+  });
+  assert.equal(permCreated.statusCode, 201, JSON.stringify(permCreated.body));
+  assert.equal(permCreated.body.promotion.isPermanent, true);
+  assert.equal(permCreated.body.promotion.textPosition, 'overlay');
+  assert.equal(permCreated.body.promotion.textSize, 'large');
+  assert.equal(permCreated.body.promotion.hasImage, true);
+
+  const permPromoId = permCreated.body.promotion.id;
+
+  // 2. Se muestra para el match actual y cualquier otro match
+  const stateMatch1 = await ctx.app.run('GET', '/api/estadio/promotions/:matchId', { params: { matchId: ctx.match.id } });
+  assert.equal(stateMatch1.statusCode, 200);
+  assert.equal(stateMatch1.body.promotion.id, permPromoId);
+  assert.equal(stateMatch1.body.promotion.textPosition, 'overlay');
+
+  const otherMatch = { id: 'match-99', status: 'scheduled', scheduledKickoffAt: NOW + 20 * 60 * 1000, homeId: 'a', awayId: 'b' };
+  ctx.deps.store.getMatch = (id) => (id === ctx.match.id ? ctx.match : (id === otherMatch.id ? otherMatch : null));
+
+  const stateMatch2 = await ctx.app.run('GET', '/api/estadio/promotions/:matchId', { params: { matchId: otherMatch.id } });
+  assert.equal(stateMatch2.statusCode, 200);
+  assert.equal(stateMatch2.body.promotion.id, permPromoId);
+
+  // 3. Kickoff sweep no borra imágenes permanentes
+  ctx.clock.now = KICKOFF;
+  const removed = await runPromotionMediaSweep({
+    getProfiles: () => ctx.profiles, store: ctx.deps.store, now: () => KICKOFF, promotionMediaDir: ctx.mediaDir
+  });
+  assert.equal(removed, 0, 'la imagen de campaña permanente no se elimina');
+  assert.ok(fs.existsSync(path.join(ctx.mediaDir, ctx.profile.promotions[0].imageFile)));
+
+  // 4. Se lista en las campañas activas del admin
+  const adminList = await ctx.app.run('GET', '/admin/estadio/promotions');
+  assert.equal(adminList.statusCode, 200);
+  assert.ok(adminList.body.activePromotions.some(p => p.id === permPromoId));
+
+  // 5. El admin puede borrar/revocar la campaña activa y su imagen se limpia
+  const delRes = await ctx.app.run('POST', '/admin/estadio/promotions/:profileId/:promotionId/delete', {
+    params: { profileId: ctx.profile.id, promotionId: permPromoId },
+    adminAuth: adminAuth()
+  });
+  assert.equal(delRes.statusCode, 200);
+  assert.equal(fs.readdirSync(ctx.mediaDir).length, 0, 'la imagen se borra al revocar');
+});

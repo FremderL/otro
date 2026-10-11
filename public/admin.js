@@ -1,6 +1,7 @@
 (() => {
   'use strict';
   const $ = selector => document.querySelector(selector);
+  const $$ = selector => document.querySelectorAll(selector);
   const sections = ['#admin-loading', '#admin-error', '#mfa-enroll', '#mfa-verify', '#recovery-codes', '#admin-dashboard'];
   let csrfToken = null;
   let currentStaff = null;
@@ -151,6 +152,7 @@
     if (response.staff.role === 'admin') {
       await loadFootballPromotions();
       await loadFootballMatches();
+      setupAdminStudio();
     }
   }
 
@@ -246,6 +248,7 @@
   // --- Promociones de Estadio ---
   async function loadFootballPromotions() {
     const list = $('#football-promotions-list');
+    const activeList = $('#football-active-promotions-list');
     if (!cachedMatches.length) await loadFootballMatches();
     fillPromoCreateMatches();
     if (!list) return;
@@ -255,41 +258,95 @@
       return;
     }
     const promotions = response.promotions || [];
+    const activePromotions = response.activePromotions || [];
+
     if (!promotions.length) {
       list.innerHTML = '<p class="empty-state">No hay promociones pendientes de revisión.</p>';
-      return;
-    }
-    list.innerHTML = promotions.map(promotion => {
-      const match = promotion.match;
-      const kickoff = match?.scheduledKickoffAt ? new Date(match.scheduledKickoffAt).toLocaleString() : 'sin kickoff disponible';
-      const disabled = promotion.canApprove ? '' : 'disabled';
-      const homeName = cachedTeams[match?.homeId]?.name || match?.homeId || 'Local';
-      const awayName = cachedTeams[match?.awayId]?.name || match?.awayId || 'Visitante';
-      const matchLabel = match ? `${homeName} vs ${awayName}` : promotion.matchId;
+    } else {
+      list.innerHTML = promotions.map(promotion => {
+        const match = promotion.match;
+        const kickoff = match?.scheduledKickoffAt ? new Date(match.scheduledKickoffAt).toLocaleString() : 'sin kickoff disponible';
+        const disabled = promotion.canApprove ? '' : 'disabled';
+        const homeName = cachedTeams[match?.homeId]?.name || match?.homeId || 'Local';
+        const awayName = cachedTeams[match?.awayId]?.name || match?.awayId || 'Visitante';
+        const matchLabel = match ? `${homeName} vs ${awayName}` : promotion.matchId;
 
-      return `<article class="user-row promotion-row">
-        <div class="promotion-copy">
-          <div class="promotion-header">
-            <b>@${escapeHtml(promotion.username || 'cuenta')} <span class="profile-name">(${escapeHtml(promotion.profileName || '')})</span></b>
-            <span class="badge ${promotion.canApprove ? 'badge-mint' : 'badge-danger'}">${promotion.canApprove ? 'Listo para aprobación' : 'No disponible'}</span>
+        return `<article class="user-row promotion-row">
+          <div class="promotion-copy">
+            <div class="promotion-header">
+              <b>@${escapeHtml(promotion.username || 'cuenta')} <span class="profile-name">(${escapeHtml(promotion.profileName || '')})</span></b>
+              <span class="badge ${promotion.canApprove ? 'badge-mint' : 'badge-danger'}">${promotion.canApprove ? 'Listo para aprobación' : 'No disponible'}</span>
+            </div>
+            <small class="promotion-meta">Partido: <strong>${escapeHtml(matchLabel)}</strong> (<code>${escapeHtml(promotion.matchId)}</code>) · Kickoff: ${escapeHtml(kickoff)} · Solicitado: ${new Date(promotion.createdAt).toLocaleString()}</small>
+            <div class="promotion-bubble">
+              <p>${escapeHtml(promotion.text || '(Solo imagen · sin texto adicional)')}</p>
+            </div>
+            ${promotion.imageUrl ? `<figure class="promotion-media"><img src="${escapeHtml(promotion.imageUrl)}" alt="Creatividad enviada por @${escapeHtml(promotion.username || 'cuenta')} (vista previa de revisión)" loading="lazy" /><figcaption>Vista previa de revisión · Posición: ${escapeHtml(promotion.textPosition || 'abajo')} · Tamaño: ${escapeHtml(promotion.textSize || 'normal')}</figcaption></figure>` : ''}
+            <small class="promotion-target">Ruta interna vinculada: <code>${escapeHtml(promotion.targetPath)}</code></small>
+            ${promotion.unavailableReason ? `<small class="promotion-unavailable">⚠ ${escapeHtml(promotion.unavailableReason)}</small>` : ''}
           </div>
-          <small class="promotion-meta">Partido: <strong>${escapeHtml(matchLabel)}</strong> (<code>${escapeHtml(promotion.matchId)}</code>) · Kickoff: ${escapeHtml(kickoff)} · Solicitado: ${new Date(promotion.createdAt).toLocaleString()}</small>
-          <div class="promotion-bubble">
-            <p>${escapeHtml(promotion.text)}</p>
+          <div class="promotion-actions">
+            <button class="button" type="button" data-promotion-review="approve" data-profile-id="${escapeHtml(promotion.profileId)}" data-promotion-id="${escapeHtml(promotion.id)}" ${disabled}>Aprobar · cobrar 250</button>
+            <button class="button danger" type="button" data-promotion-review="reject" data-profile-id="${escapeHtml(promotion.profileId)}" data-promotion-id="${escapeHtml(promotion.id)}">Rechazar</button>
           </div>
-          ${promotion.imageUrl ? `<figure class="promotion-media"><img src="${escapeHtml(promotion.imageUrl)}" alt="Creatividad enviada por @${escapeHtml(promotion.username || 'cuenta')} (vista previa de revisión)" loading="lazy" /><figcaption>Vista previa de revisión · se borra al rechazar o al iniciar el partido</figcaption></figure>` : ''}
-          <small class="promotion-target">Ruta interna vinculada: <code>${escapeHtml(promotion.targetPath)}</code></small>
-          ${promotion.unavailableReason ? `<small class="promotion-unavailable">⚠ ${escapeHtml(promotion.unavailableReason)}</small>` : ''}
-        </div>
-        <div class="promotion-actions">
-          <button class="button" type="button" data-promotion-review="approve" data-profile-id="${escapeHtml(promotion.profileId)}" data-promotion-id="${escapeHtml(promotion.id)}" ${disabled}>Aprobar · cobrar 250</button>
-          <button class="button danger" type="button" data-promotion-review="reject" data-profile-id="${escapeHtml(promotion.profileId)}" data-promotion-id="${escapeHtml(promotion.id)}">Rechazar</button>
-        </div>
-      </article>`;
-    }).join('');
-    list.querySelectorAll('[data-promotion-review]').forEach(button =>
-      button.addEventListener('click', () => reviewFootballPromotion(button))
-    );
+        </article>`;
+      }).join('');
+      list.querySelectorAll('[data-promotion-review]').forEach(button =>
+        button.addEventListener('click', () => reviewFootballPromotion(button))
+      );
+    }
+
+    if (activeList) {
+      if (!activePromotions.length) {
+        activeList.innerHTML = '<p class="empty-state">No hay campañas permanentes ni activas.</p>';
+      } else {
+        activeList.innerHTML = activePromotions.map(promotion => {
+          const isPerm = promotion.isPermanent || promotion.scope === 'all';
+          const match = promotion.match;
+          const matchLabel = isPerm
+            ? 'Todos los partidos (Permanente)'
+            : (promotion.scope === 'count' ? `Próximos ${promotion.matchesRemaining || 1} partidos restantes` : (match ? `${cachedTeams[match.homeId]?.name || match.homeId} vs ${cachedTeams[match.awayId]?.name || match.awayId}` : promotion.matchId));
+
+          return `<article class="user-row promotion-row">
+            <div class="promotion-copy">
+              <div class="promotion-header">
+                <b>@${escapeHtml(promotion.username || 'cuenta')}</b>
+                <span class="badge ${isPerm ? 'badge-gold' : 'badge-mint'}">${isPerm ? 'Permanente' : (promotion.scope === 'count' ? 'Multi-partido' : 'Activa')}</span>
+              </div>
+              <small class="promotion-meta">Alcance: <strong>${escapeHtml(matchLabel)}</strong> · Aprobado: ${new Date(promotion.reviewedAt || promotion.createdAt).toLocaleString()}</small>
+              <div class="promotion-bubble">
+                <p>${escapeHtml(promotion.text || '(Solo imagen / sin texto)')}</p>
+              </div>
+              ${promotion.imageUrl ? `<figure class="promotion-media"><img src="${escapeHtml(promotion.imageUrl)}" alt="Creatividad activa" loading="lazy" /><figcaption>Posición: ${escapeHtml(promotion.textPosition || 'abajo')} · Tamaño: ${escapeHtml(promotion.textSize || 'normal')}</figcaption></figure>` : ''}
+              <small class="promotion-target">Ruta interna: <code>${escapeHtml(promotion.targetPath)}</code></small>
+            </div>
+            <div class="promotion-actions">
+              <button class="button danger" type="button" data-promotion-delete="delete" data-profile-id="${escapeHtml(promotion.profileId)}" data-promotion-id="${escapeHtml(promotion.id)}">Eliminar / Revocar</button>
+            </div>
+          </article>`;
+        }).join('');
+        activeList.querySelectorAll('[data-promotion-delete]').forEach(button =>
+          button.addEventListener('click', () => deleteFootballPromotion(button))
+        );
+      }
+    }
+  }
+
+  async function deleteFootballPromotion(button) {
+    const profileId = button.dataset.profileId;
+    const promotionId = button.dataset.promotionId;
+    if (!window.confirm('¿Eliminar esta campaña publicitaria permanentemente?')) return;
+    button.disabled = true;
+    const response = await request(`/admin/estadio/promotions/${encodeURIComponent(profileId)}/${encodeURIComponent(promotionId)}/delete`, {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken }
+    });
+    if (!response.ok) {
+      button.disabled = false;
+      return status(response.error || 'No se pudo eliminar la campaña.', 'error');
+    }
+    status('Campaña eliminada correctamente.', 'success');
+    await loadFootballPromotions();
   }
 
   async function reviewFootballPromotion(button) {
@@ -320,9 +377,88 @@
     await loadFootballPromotions();
   }
 
-  $('#football-promotions-refresh').addEventListener('click', loadFootballPromotions);
+  $('#football-promotions-refresh')?.addEventListener('click', loadFootballPromotions);
 
   // --- Campaña directa (administración) ---
+  const adminStudioState = {
+    presetUrl: '/assets/casino-hero.jpg',
+    customDataUrl: null
+  };
+
+  function updateAdminStudioPreview() {
+    const card = $('#admin-studio-card-preview');
+    const img = $('#admin-studio-preview-img');
+    const textEl = $('#admin-studio-preview-text');
+    const labelEl = $('#admin-studio-preview-label');
+    const btn = $('#admin-studio-preview-btn');
+    const countEl = $('#promo-create-char-count');
+    if (!card || !img || !textEl || !labelEl || !btn) return;
+
+    const copy = $('#promo-create-text')?.value || '';
+    const textPos = $('#promo-create-text-pos')?.value || 'bottom';
+    const textSize = $('#promo-create-text-size')?.value || 'medium';
+    const textAlign = $('#promo-create-text-align')?.value || 'left';
+    const themeColor = $('#promo-create-theme-color')?.value || '#e5bd72';
+    const ctaText = $('#promo-create-cta')?.value.trim() || 'Ver más';
+
+    card.setAttribute('data-text-position', textPos);
+    card.setAttribute('data-text-size', textSize);
+    card.setAttribute('data-text-align', textAlign);
+
+    if (countEl) {
+      countEl.textContent = `${copy.length} / 140`;
+      if (copy.length >= 120) countEl.classList.add('warn');
+      else countEl.classList.remove('warn');
+    }
+
+    const hasText = copy.trim().length > 0 && textPos !== 'hidden';
+    textEl.textContent = hasText ? copy : (textPos === 'hidden' ? '' : 'Escribe el mensaje publicitario...');
+    const content = $('#admin-studio-preview-content');
+    if (content) content.style.display = textPos === 'hidden' ? 'none' : '';
+
+    labelEl.style.borderColor = themeColor;
+    labelEl.style.color = themeColor;
+    btn.textContent = ctaText;
+    btn.style.borderColor = themeColor;
+
+    img.src = adminStudioState.customDataUrl || adminStudioState.presetUrl || '/assets/casino-hero.jpg';
+  }
+
+  function setupAdminStudio() {
+    $('#promo-create-text')?.addEventListener('input', updateAdminStudioPreview);
+    $('#promo-create-text-pos')?.addEventListener('change', updateAdminStudioPreview);
+    $('#promo-create-text-size')?.addEventListener('change', updateAdminStudioPreview);
+    $('#promo-create-text-align')?.addEventListener('change', updateAdminStudioPreview);
+    $('#promo-create-theme-color')?.addEventListener('change', updateAdminStudioPreview);
+    $('#promo-create-cta')?.addEventListener('input', updateAdminStudioPreview);
+
+    $$('.admin-preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        $$('.admin-preset-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        adminStudioState.presetUrl = btn.dataset.preset;
+        adminStudioState.customDataUrl = null;
+        const fileInput = $('#promo-create-image');
+        if (fileInput) fileInput.value = '';
+        updateAdminStudioPreview();
+      });
+    });
+
+    $('#promo-create-image')?.addEventListener('change', async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      if (file.size > 1024 * 1024 || !/^image\/(png|jpeg)$/.test(file.type)) {
+        status('La imagen debe ser PNG o JPEG de máximo 1 MB.', 'error');
+        return;
+      }
+      adminStudioState.customDataUrl = await readFileAsDataUrl(file);
+      $$('.admin-preset-btn').forEach(b => b.classList.remove('active'));
+      updateAdminStudioPreview();
+    });
+
+    updateAdminStudioPreview();
+  }
+
   function readFileAsDataUrl(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -331,6 +467,15 @@
       reader.readAsDataURL(file);
     });
   }
+
+  $('#promo-create-scope')?.addEventListener('change', event => {
+    const scope = event.target.value;
+    const matchLabel = $('#promo-create-match-label');
+    const countLabel = $('#promo-create-matches-count-label');
+    if (matchLabel) matchLabel.hidden = scope === 'all';
+    if (countLabel) countLabel.hidden = scope !== 'count';
+  });
+
   function fillPromoCreateMatches() {
     const select = $('#promo-create-match');
     if (!select) return;
@@ -342,23 +487,36 @@
     }).join('');
     select.value = current;
   }
+
   $('#promo-create-form')?.addEventListener('submit', async event => {
     event.preventDefault();
     const message = $('#promo-create-message');
     const setMessage = (text, type = '') => { message.textContent = text; message.dataset.type = type; };
     if (!cachedMatches.length) await loadFootballMatches();
     fillPromoCreateMatches();
-    const file = $('#promo-create-image').files[0];
-    if (file && (file.size > 350 * 1024 || !/^image\/(png|jpeg)$/.test(file.type))) {
-      return setMessage('La imagen debe ser PNG o JPEG de máximo 350 KB.', 'error');
+    const file = $('#promo-create-image')?.files[0];
+    if (file && (file.size > 1024 * 1024 || !/^image\/(png|jpeg)$/.test(file.type))) {
+      return setMessage('La imagen debe ser PNG o JPEG de máximo 1 MB.', 'error');
     }
+    const scope = $('#promo-create-scope')?.value || 'single';
     const payload = {
       profileId: $('#promo-create-profile').value.trim(),
-      matchId: $('#promo-create-match').value,
+      scope,
+      matchesCount: scope === 'count' ? Number($('#promo-create-matches-count')?.value || 5) : undefined,
+      matchId: scope === 'all' ? 'all' : $('#promo-create-match').value,
+      textPosition: $('#promo-create-text-pos')?.value || 'bottom',
+      textSize: $('#promo-create-text-size')?.value || 'medium',
+      textAlign: $('#promo-create-text-align')?.value || 'left',
+      themeColor: $('#promo-create-theme-color')?.value || '#e5bd72',
+      ctaText: $('#promo-create-cta')?.value.trim() || 'Ver más',
       text: $('#promo-create-text').value,
       targetPath: $('#promo-create-target').value
     };
-    if (file) payload.image = await readFileAsDataUrl(file);
+    if (adminStudioState.customDataUrl) {
+      payload.image = adminStudioState.customDataUrl;
+    } else if (file) {
+      payload.image = await readFileAsDataUrl(file);
+    }
     setMessage('Publicando…');
     const response = await request('/admin/estadio/promotions/create', {
       method: 'POST',
@@ -370,7 +528,11 @@
       return setMessage(response.error || 'No se pudo publicar la campaña.', 'error');
     }
     event.target.reset();
-    setMessage('Campaña publicada: aparece en La Previa dentro de la ventana T−30 del partido.', 'success');
+    adminStudioState.customDataUrl = null;
+    const firstPreset = document.querySelector('.admin-preset-btn');
+    if (firstPreset) firstPreset.click();
+    else updateAdminStudioPreview();
+    setMessage('Campaña publicada exitosamente.', 'success');
     await loadFootballPromotions();
   });
 

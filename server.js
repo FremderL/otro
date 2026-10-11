@@ -186,10 +186,10 @@ app.get('/api/perfil/:token/historial', (req, res) => {
 // los servicios se crean en bootstrap(), pero las rutas existen desde el arranque
 // y devuelven 404 mientras footballConfig.enabled sea false. El parser queda
 // limitado a esta API; no amplía el límite JSON del resto del casino.
-// El envío de promociones puede incluir una creatividad PNG/JPEG en base64 (≤350 KB).
-// Su parser va antes del límite general de 8 KB de /api/estadio, que sigue vigente.
-app.post('/api/estadio/promotions', express.json({ limit: '600kb', strict: true }));
-app.use('/api/estadio', express.json({ limit: '8kb', strict: true }));
+// El envío de promociones puede incluir una creatividad PNG/JPEG en base64 (≤1 MB).
+// Su parser va antes del límite general de /api/estadio, que sigue vigente.
+app.post('/api/estadio/promotions', express.json({ limit: '2mb', strict: true }));
+app.use('/api/estadio', express.json({ limit: '32kb', strict: true }));
 const promotionMediaDeps = {
   get store() { return footballStore; },
   get profiles() { return profiles; },
@@ -220,7 +220,8 @@ startPromotionMediaSweep(promotionMediaDeps, 60 * 1000);
 // escritura de confianza (origen + CSRF), exactamente igual que /api/admin. Se monta
 // un parser JSON propio bajo /admin/estadio porque los del casino solo cubren
 // /api/auth y /api/admin; sin él, req.body llegaría undefined a estas rutas.
-app.use('/admin/estadio', express.json({ limit: '16kb', strict: true }));
+app.post('/admin/estadio/promotions/create', express.json({ limit: '2mb', strict: true }));
+app.use('/admin/estadio', express.json({ limit: '64kb', strict: true }));
 const footballAdminGuard = makeAdminGuard({
   config: adminConfig,
   getProfiles: () => profiles,

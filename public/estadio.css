@@ -1,6 +1,6 @@
 /* Fase E3 — Estilos de la sección Estadio MonteCristo.
    Reusa los tokens de /styles.css (misma identidad: grafito, menta, dorado).
-   Diseño de tres columnas en escritorio, adaptable a portátil y móvil. */
+   Diseño de tres columnas en escritorio, adaptable a portátil y móvil sin solapamientos. */
 
 .estadio-body { margin: 0; min-width: 0; min-height: 100vh; overflow-x: hidden; overflow-y: auto; color: var(--text); background: var(--bg); font-family: var(--sans); }
 .estadio-body .skip-link { position: absolute; left: -9999px; top: 0; z-index: 100; padding: 10px 16px; background: var(--mint); color: #06120f; font-weight: 800; }
@@ -21,9 +21,35 @@
 .icon-btn[aria-pressed="true"] { opacity: .45; }
 
 /* --- Layout de 3 columnas --- */
-.estadio-shell { display: grid; grid-template-columns: 268px minmax(0, 1fr) 320px; gap: 14px; padding: 14px 18px 28px; align-items: start; min-height: calc(100vh - 60px); }
-.est-col-left, .est-col-right { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 74px; }
-.est-col-center { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.estadio-shell {
+  display: grid;
+  grid-template-columns: 270px minmax(0, 1fr) 320px;
+  gap: 16px;
+  padding: 16px 20px 32px;
+  align-items: start;
+  min-height: calc(100vh - 60px);
+  max-width: 1720px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+.est-col-left, .est-col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: sticky;
+  top: 74px;
+  max-height: calc(100vh - 88px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(194,223,216,.2) transparent;
+}
+.est-col-center {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
 
 .est-panel { border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(160deg, rgba(16,28,31,.92), rgba(8,15,17,.92)); box-shadow: var(--shadow); padding: 14px; }
 .est-panel-title { margin: 0 0 10px; font-family: var(--display); font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: var(--text); display: flex; align-items: center; gap: 8px; }
@@ -57,40 +83,238 @@
 .est-standings .pos-1 { color: var(--mint); font-weight: 800; }
 .est-crest-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
 
-/* --- La Previa: sala premium de partido (solo dentro de T−30) --- */
+/* --- Marcador --- */
+.est-scoreboard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(16,28,31,.95), rgba(7,14,16,.95));
+}
+.est-team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  flex: 1;
+}
+.est-team-home { justify-content: flex-start; }
+.est-team-away { justify-content: flex-end; text-align: right; }
+.est-crest {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 10px currentColor;
+}
+.est-score {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+.est-score b {
+  font-family: var(--display);
+  font-size: 30px;
+  color: var(--gold-2);
+  min-width: 24px;
+  text-align: center;
+}
+.est-clock {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(82,224,174,.1);
+  border: 1px solid rgba(82,224,174,.3);
+  color: var(--mint);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+
+/* --- La Previa: Contenedor y Comparativa --- */
 .est-preshow {
   position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  padding: clamp(15px, 1.7vw, 22px);
-  border: 1px solid rgba(229,189,114,.27);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: clamp(14px, 1.5vw, 18px);
+  border: 1px solid rgba(229,189,114,.28);
   border-radius: calc(var(--radius) + 2px);
   background:
-    radial-gradient(ellipse at 92% -18%, rgba(229,189,114,.14), transparent 43%),
+    radial-gradient(ellipse at 92% -18%, rgba(229,189,114,.12), transparent 45%),
     linear-gradient(148deg, rgba(19,29,29,.98), rgba(8,15,17,.98) 70%);
-  box-shadow: 0 18px 48px rgba(0,0,0,.28), inset 0 1px rgba(255,255,255,.045);
+  box-shadow: 0 14px 40px rgba(0,0,0,.3), inset 0 1px rgba(255,255,255,.05);
 }
-.est-preshow::before {
-  position: absolute;
-  z-index: -1;
-  inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(229,189,114,.9) 20%, rgba(82,224,174,.55) 76%, transparent);
-  content: "";
-  pointer-events: none;
+.est-preshow[hidden] { display: none !important; }
+.est-preshow-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(194,223,216,.1);
 }
-.est-preshow[hidden] { display: none; }
-.est-preshow-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 15px; padding-bottom: 14px; border-bottom: 1px solid rgba(194,223,216,.09); }
-.est-preshow-kicker { display: flex; align-items: center; gap: 8px; margin: 0 0 5px; color: var(--gold-2); font-size: 9px; font-weight: 850; letter-spacing: .16em; text-transform: uppercase; }
-.est-preshow-kicker::before { width: 19px; height: 1px; background: var(--gold); content: ""; }
-.est-preshow-head h2 { margin: 0; font-family: var(--display); font-size: clamp(18px, 1.5vw, 22px); letter-spacing: .025em; text-transform: uppercase; }
-.est-preshow-countdown { display: flex; align-items: center; gap: 10px; flex: none; padding: 8px 12px; border: 1px solid rgba(229,189,114,.2); border-radius: 12px; background: linear-gradient(135deg, rgba(229,189,114,.09), rgba(255,255,255,.018)); }
-.est-preshow-countdown span { max-width: 125px; color: var(--muted); font-size: 9px; line-height: 1.4; }
-.est-preshow-countdown time { color: var(--gold-2); font-family: var(--display); font-size: 25px; font-weight: 850; font-variant-numeric: tabular-nums; letter-spacing: .035em; }
+.est-preshow-kicker { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; color: var(--gold-2); font-size: 9px; font-weight: 850; letter-spacing: .16em; text-transform: uppercase; }
+.est-preshow-kicker::before { width: 18px; height: 1px; background: var(--gold); content: ""; }
+.est-preshow-head h2 { margin: 0; font-family: var(--display); font-size: clamp(16px, 1.4vw, 20px); letter-spacing: .025em; text-transform: uppercase; }
+.est-preshow-countdown { display: flex; align-items: center; gap: 10px; flex: none; padding: 6px 12px; border: 1px solid rgba(229,189,114,.25); border-radius: 12px; background: linear-gradient(135deg, rgba(229,189,114,.09), rgba(255,255,255,.018)); }
+.est-preshow-countdown span { max-width: 140px; color: var(--muted); font-size: 9.5px; line-height: 1.35; }
+.est-preshow-countdown time { color: var(--gold-2); font-family: var(--display); font-size: 22px; font-weight: 850; font-variant-numeric: tabular-nums; letter-spacing: .035em; }
 .est-preshow[data-delay="true"] .est-preshow-countdown { border-color: rgba(255,102,124,.28); }
 .est-preshow[data-delay="true"] .est-preshow-countdown time { display: none; }
 .est-preshow[data-delay="true"] .est-preshow-countdown span { color: #ff9cac; }
-.est-compare-wrap { overflow-x: auto; border: 1px solid rgba(194,223,216,.09); border-radius: 12px; background: rgba(3,9,10,.26); }
+
+/* Cartelera / Billboard publicitario en La Previa */
+.est-preshow-promo {
+  position: relative;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: 16px 20px;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 12px;
+  border: 1px solid rgba(229,189,114,.32);
+  background: #090e10;
+  box-shadow: 0 6px 22px rgba(0,0,0,.35);
+}
+.est-preshow-promo[hidden] { display: none !important; }
+.est-promo-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+  z-index: 1;
+}
+.est-preshow-promo::after {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  content: "";
+  background: linear-gradient(90deg, rgba(7,11,12,.94) 0%, rgba(7,11,12,.68) 52%, rgba(7,11,12,.3) 100%);
+  pointer-events: none;
+}
+.est-promo-content {
+  position: relative;
+  z-index: 3;
+  max-width: 65%;
+  min-width: 0;
+}
+.est-promo-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--gold-2);
+  font-size: 8.5px;
+  font-weight: 900;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 6px rgba(0,0,0,.7);
+}
+.est-promo-label::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 9px rgba(229,189,114,.6);
+  content: "";
+}
+.est-preshow-promo p {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.45;
+  font-weight: 600;
+  text-shadow: 0 1px 8px rgba(0,0,0,.65);
+}
+.est-preshow-promo .btn {
+  position: relative;
+  z-index: 3;
+  margin-top: 8px;
+  flex: none;
+  min-height: 34px;
+  border-color: rgba(229,189,114,.35);
+  color: var(--gold-2);
+  background: rgba(229,189,114,.08);
+  white-space: nowrap;
+}
+.est-preshow-promo .btn:hover {
+  border-color: rgba(229,189,114,.65);
+  background: rgba(229,189,114,.18);
+}
+
+/* Configurabilidad de posición de texto */
+.est-preshow-promo[data-text-position="top"] {
+  justify-content: flex-start;
+}
+.est-preshow-promo[data-text-position="top"]::after {
+  background: linear-gradient(180deg, rgba(7,11,12,.94) 0%, rgba(7,11,12,.62) 55%, rgba(7,11,12,.2) 100%);
+}
+.est-preshow-promo[data-text-position="middle"] {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+.est-preshow-promo[data-text-position="middle"] .est-promo-content {
+  max-width: 85%;
+}
+.est-preshow-promo[data-text-position="middle"] .btn {
+  align-self: center;
+}
+.est-preshow-promo[data-text-position="middle"]::after {
+  background: radial-gradient(circle at center, rgba(7,11,12,.88) 0%, rgba(7,11,12,.65) 60%, rgba(7,11,12,.35) 100%);
+}
+.est-preshow-promo[data-text-position="hidden"] p {
+  display: none !important;
+}
+.est-preshow-promo[data-text-position="hidden"]::after {
+  background: linear-gradient(90deg, rgba(7,11,12,.65) 0%, rgba(7,11,12,.2) 40%, transparent 100%);
+}
+
+/* Configurabilidad de tamaño de texto */
+.est-preshow-promo[data-text-size="small"] p {
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.est-preshow-promo[data-text-size="medium"] p {
+  font-size: 13.5px;
+  line-height: 1.45;
+  font-weight: 600;
+}
+.est-preshow-promo[data-text-size="large"] p {
+  font-size: 17px;
+  line-height: 1.35;
+  font-weight: 800;
+  letter-spacing: .01em;
+}
+
+.est-preshow-promo.is-sliding .est-promo-content,
+.est-preshow-promo.is-sliding .btn { animation: est-promo-slide .5s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes est-promo-slide {
+  from { opacity: 0; transform: translateX(36px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Comparativa de datos de equipos */
+.est-compare-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(194,223,216,.1);
+  border-radius: 12px;
+  background: rgba(3,9,10,.36);
+}
 .est-team-comparison { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 11px; }
 .est-team-comparison th, .est-team-comparison td { padding: 8px 10px; border-bottom: 1px solid rgba(194,223,216,.07); }
 .est-team-comparison thead th { color: var(--muted-2); font-size: 9px; letter-spacing: .09em; text-transform: uppercase; }
@@ -110,234 +334,327 @@
 .est-form-result.win { color: #07120f; background: var(--mint); }
 .est-form-result.draw { color: #171207; background: var(--gold); }
 .est-form-result.loss { color: #fff; background: var(--coral); }
-.est-comparison-empty { color: var(--muted-2); font-size: 10px; font-weight: 500; }
-.est-preshow-promo {
+
+/* --- Cancha 2D --- */
+.est-canvas-wrap {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 13px;
-  padding: 13px 14px 13px 17px;
-  border: 1px solid rgba(229,189,114,.25);
-  border-radius: 12px;
-  background:
-    radial-gradient(ellipse at 0 50%, rgba(229,189,114,.10), transparent 55%),
-    linear-gradient(115deg, rgba(23,27,23,.9), rgba(12,19,20,.96));
+  width: 100%;
+  aspect-ratio: 1050 / 680;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #0d1e18;
 }
-.est-preshow-promo::before { position: absolute; inset: 14px auto 14px 0; width: 2px; border-radius: 2px; background: linear-gradient(var(--gold-2), rgba(229,189,114,.18)); content: ""; }
-.est-preshow-promo[hidden] { display: none; }
-.est-promo-label { display: inline-flex; align-items: center; gap: 7px; color: var(--gold-2); font-size: 8px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
-.est-promo-label::before { width: 5px; height: 5px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 9px rgba(229,189,114,.55); content: ""; }
-.est-preshow-promo p { margin: 4px 0 0; color: var(--text); font-size: 12px; line-height: 1.45; }
-.est-preshow-promo .btn { flex: none; min-height: 38px; }
-.est-promo-content { min-width: 0; }
-.est-preshow-promo a { border-color: rgba(229,189,114,.35); color: var(--gold-2); background: rgba(229,189,114,.055); white-space: nowrap; }
-.est-preshow-promo a:hover { border-color: rgba(229,189,114,.6); background: rgba(229,189,114,.12); }
-.est-promo-compose { margin-top: 11px; padding: 0; border: 1px solid rgba(194,223,216,.12); border-radius: 11px; background: linear-gradient(145deg, rgba(255,255,255,.025), rgba(255,255,255,.012)); transition: border-color .15s ease, background .15s ease; }
-.est-promo-compose[open] { border-color: rgba(229,189,114,.27); background: linear-gradient(145deg, rgba(229,189,114,.035), rgba(255,255,255,.012)); }
-.est-promo-compose[hidden], .est-promo-compose [hidden] { display: none !important; }
-.est-promo-compose summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 10px 13px; color: var(--text); font-size: 10px; font-weight: 800; cursor: pointer; list-style: none; }
-.est-promo-compose summary::-webkit-details-marker { display: none; }
-.est-promo-compose summary::after { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border: 1px solid rgba(229,189,114,.22); border-radius: 50%; color: var(--gold-2); content: "+"; font-size: 15px; font-weight: 500; }
-.est-promo-compose[open] summary { color: var(--gold-2); }
-.est-promo-compose[open] summary::after { content: "−"; }
-.est-promo-note { margin: 0 13px 10px; padding: 9px 11px; border-left: 2px solid rgba(229,189,114,.65); border-radius: 0 7px 7px 0; color: var(--muted); background: rgba(229,189,114,.055); font-size: 10px; line-height: 1.55; }
-.est-promo-auth { margin: 9px 13px; color: var(--muted); font-size: 10px; line-height: 1.5; }
-.est-promo-auth[data-state="ready"] { color: var(--mint); }
-.est-promo-auth[data-state="error"] { color: var(--coral); }
-.est-promo-compose > .btn, .est-promo-compose > .text-button { margin: 0 13px 10px; }
-.est-promo-form { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(150px,.8fr); gap: 11px; margin: 12px 13px 13px; padding-top: 12px; border-top: 1px solid rgba(194,223,216,.1); }
-.est-promo-form label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .015em; }
-.est-promo-form input, .est-promo-form select { width: 100%; min-width: 0; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--text); background: rgba(5,11,13,.82); font: 12px var(--sans); }
-.est-promo-form input:focus, .est-promo-form select:focus { border-color: var(--mint); outline: 2px solid rgba(82,224,174,.2); outline-offset: 1px; }
-.est-promo-form button, .est-promo-message { grid-column: 1 / -1; }
-.est-promo-form button { justify-self: start; min-height: 40px; }
-.est-promo-message { min-height: 1em; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+#est-pitch {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.est-goal-banner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.6);
+  opacity: 0;
+  pointer-events: none;
+  font-family: var(--display);
+  font-size: clamp(38px, 6vw, 76px);
+  font-weight: 900;
+  letter-spacing: .1em;
+  color: var(--gold-2);
+  text-shadow: 0 0 32px rgba(229,189,114,.75);
+  transition: transform .3s cubic-bezier(.2,.7,.2,1), opacity .3s ease;
+}
+.est-goal-banner.show {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+/* --- Relato --- */
+.est-commentary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(6,12,14,.75);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.est-commentary-empty { color: var(--muted); margin: 0; font-style: italic; }
+.est-cmt { margin: 0; }
+.est-cmt.narrator { color: var(--text); }
+.est-cmt.analyst { color: var(--mint); font-style: italic; }
+.est-cmt.muted-all { opacity: .4; }
+
+/* Fallback texto accesibilidad */
+.est-text-fallback {
+  font-size: 11px;
+  color: var(--muted-2);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,.02);
+}
+
+/* --- Apuestas & Boleta --- */
+.est-cap-notice { font-size: 10.5px; color: var(--muted); margin: 0 0 10px; line-height: 1.4; }
+.est-markets {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 38vh;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+.est-market-card {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255,255,255,.02);
+}
+.est-market-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.est-odds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+  gap: 6px;
+}
+.est-sel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 6px;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.03);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  transition: all .15s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.est-sel:hover {
+  border-color: var(--mint);
+  background: rgba(82,224,174,.1);
+  transform: translateY(-1px);
+}
+.est-sel:active {
+  transform: translateY(0);
+}
+.est-sel.selected {
+  border-color: var(--gold-2);
+  background: rgba(229,189,114,.16);
+  box-shadow: 0 0 10px rgba(229,189,114,.2);
+  font-weight: 700;
+}
+.est-sel.selected b {
+  color: var(--gold-2);
+}
+.est-sel b {
+  color: var(--mint);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* --- Boleta de Apuesta --- */
+.est-bet-slip {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(229,189,114,.4);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(229,189,114,.08) 0%, rgba(6,18,15,.75) 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.4);
+  animation: est-slip-in .2s ease forwards;
+}
+@keyframes est-slip-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.est-bet-slip[hidden] { display: none !important; }
+.est-slip-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 12px; color: var(--gold-2); border-bottom: 1px solid rgba(255,255,255,.07); padding-bottom: 6px; }
+.est-slip-odds { font-size: 11.5px; color: var(--muted); display: flex; justify-content: space-between; align-items: baseline; }
+.est-slip-odds b { color: var(--mint); font-size: 13px; }
+.est-stake-label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
+.est-stake-label input { font: inherit; font-size: 13px; font-weight: 700; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: rgba(0,0,0,.5); color: var(--text); }
+.est-stake-label input:focus { border-color: var(--gold-2); outline: none; box-shadow: 0 0 8px rgba(229,189,114,.3); }
+
+/* Fichas rápidas de denominación */
+.est-denoms { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 2px; }
+.est-denom, .est-denom-btn {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 9px;
+  min-height: 32px;
+  border-radius: 6px;
+  border: 1px solid rgba(194,223,216,.2);
+  background: rgba(255,255,255,.05);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s ease;
+  user-select: none;
+}
+.est-denom:hover, .est-denom-btn:hover {
+  border-color: var(--gold-2);
+  color: var(--gold-2);
+  background: rgba(229,189,114,.1);
+}
+.est-denom:active, .est-denom-btn:active {
+  transform: scale(.96);
+}
+
+.est-slip-range { font-size: 10.5px; color: var(--muted-2); }
+.est-place { width: 100%; min-height: 42px; font-size: 12.5px; font-weight: 700; letter-spacing: .02em; }
+.est-bet-msg { font-size: 11.5px; line-height: 1.35; }
+.est-bet-msg[data-state="error"] { color: var(--coral); }
+.est-bet-msg[data-state="success"] { color: var(--mint); }
+
+.est-mybets { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 24vh; overflow-y: auto; }
+.est-mybet-item { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 11px; background: rgba(255,255,255,.02); }
+
+/* --- Publicidad & Patrocinio: Estudio de Creatividades --- */
+.est-ads { font-size: 12px; }
+.est-ads-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+.est-ads-icon-badge { font-size: 20px; line-height: 1; padding: 6px; border-radius: 8px; background: rgba(229,189,114,.12); border: 1px solid rgba(229,189,114,.25); }
+.est-ads-subtitle { font-size: 11px; color: var(--muted); margin: 2px 0 0; line-height: 1.35; }
+.est-ads-steps { margin: 0 0 10px; padding-left: 18px; color: var(--muted); line-height: 1.45; font-size: 11.5px; }
+.est-ads-steps li { margin: 0 0 4px; }
+.est-promo-auth { font-size: 11.5px; color: var(--muted); margin-bottom: 8px; }
+.est-promo-auth[data-state="ready"] { color: var(--mint); font-weight: 700; }
+.est-promo-compose { margin-top: 10px; border: 1px solid rgba(194,223,216,.14); border-radius: 12px; background: rgba(255,255,255,.02); overflow: hidden; }
+.est-promo-compose summary { padding: 10px 14px; font-size: 11.5px; font-weight: 700; cursor: pointer; color: var(--gold-2); background: rgba(0,0,0,.2); border-bottom: 1px solid rgba(255,255,255,.05); }
+
+/* --- Caja de Previsualización en Vivo --- */
+.est-studio-preview-box { padding: 12px 14px; background: rgba(0,0,0,.35); border-bottom: 1px solid rgba(255,255,255,.06); }
+.est-studio-preview-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.est-studio-badge-live { font-size: 9.5px; font-weight: 800; letter-spacing: .08em; color: var(--mint); display: inline-flex; align-items: center; gap: 4px; }
+.est-studio-preview-meta { font-size: 10px; color: var(--muted-2); }
+.est-studio-preview-card { position: relative; min-height: 120px; border-radius: 10px; overflow: hidden; border: 1px solid rgba(229,189,114,.3); box-shadow: 0 4px 18px rgba(0,0,0,.6); transition: all .25s ease; }
+.est-studio-preview-card .est-promo-image { width: 100%; height: 100%; object-fit: cover; }
+.est-studio-preview-card[data-text-align="center"] .est-promo-content { text-align: center; }
+.est-studio-preview-card[data-text-align="right"] .est-promo-content { text-align: right; }
+.est-studio-preview-card[data-text-position="badge"] .est-promo-content { position: absolute; top: 10px; left: 10px; bottom: auto; max-width: 80%; background: rgba(6,18,15,.88); border: 1px solid var(--mint); border-radius: 8px; padding: 6px 10px; backdrop-filter: blur(4px); }
+
+/* --- Formulario del Estudio Creativo --- */
+.est-promo-form { display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+.est-studio-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--gold-2); margin-top: 4px; padding-bottom: 4px; border-bottom: 1px solid rgba(229,189,114,.15); }
+.est-studio-mode-pills { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.est-mode-pill { padding: 6px 4px; font-size: 10.5px; font-weight: 600; text-align: center; border-radius: 6px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--muted); cursor: pointer; transition: all .15s ease; }
+.est-mode-pill:hover { background: rgba(255,255,255,.08); color: var(--text); }
+.est-mode-pill.active { background: rgba(229,189,114,.15); border-color: var(--gold-2); color: var(--gold-2); font-weight: 700; }
+
+.est-studio-presets-row { display: flex; flex-direction: column; gap: 6px; }
+.est-field-mini-title { font-size: 10.5px; color: var(--muted-2); }
+.est-preset-thumbnails { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.est-preset-btn { border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,.5); padding: 3px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px; transition: all .15s ease; }
+.est-preset-btn img { width: 100%; height: 32px; object-fit: cover; border-radius: 4px; }
+.est-preset-btn span { font-size: 9px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.est-preset-btn:hover { border-color: rgba(255,255,255,.4); }
+.est-preset-btn.active { border-color: var(--gold-2); box-shadow: 0 0 8px rgba(229,189,114,.35); background: rgba(229,189,114,.08); }
+.est-preset-btn.active span { color: var(--gold-2); font-weight: 700; }
+
+.est-upload-dropzone { position: relative; border: 1.5px dashed rgba(194,223,216,.25); border-radius: 8px; padding: 10px; background: rgba(0,0,0,.25); text-align: center; transition: all .2s ease; }
+.est-upload-dropzone:hover { border-color: var(--mint); background: rgba(82,224,174,.04); }
+.est-file-input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; z-index: 2; }
+.est-dropzone-label { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; pointer-events: none; }
+.est-dropzone-icon { font-size: 18px; }
+.est-dropzone-text { font-size: 11px; font-weight: 600; color: var(--text); }
+.est-dropzone-hint { font-size: 9.5px; color: var(--muted-2); }
+.est-file-clear { position: relative; z-index: 3; margin-top: 6px; font-size: 10.5px; color: var(--coral); cursor: pointer; }
+
+.est-field-group { display: flex; flex-direction: column; gap: 4px; }
+.est-field-header { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--muted); }
+.est-char-count { font-size: 10px; color: var(--muted-2); font-family: monospace; }
+.est-char-count.warn { color: var(--coral); font-weight: 700; }
+
+.est-studio-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.est-studio-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.est-promo-form label { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: var(--muted); }
+.est-promo-form input, .est-promo-form select, .est-promo-form textarea { font: inherit; font-size: 11.5px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: rgba(0,0,0,.5); color: var(--text); }
+.est-promo-form textarea { resize: vertical; min-height: 48px; }
+.est-promo-form input:focus, .est-promo-form select:focus, .est-promo-form textarea:focus { border-color: var(--gold-2); outline: none; box-shadow: 0 0 6px rgba(229,189,114,.3); }
+
+.est-studio-footer { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.06); }
+.est-studio-price-tag { display: flex; align-items: baseline; gap: 6px; font-size: 11px; color: var(--muted); }
+.est-studio-price-tag b { color: var(--mint); font-size: 12px; }
+.est-studio-price-tag small { color: var(--muted-2); font-size: 10px; }
+.est-studio-submit-btn { width: 100%; padding: 9px 12px; font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+.est-promo-message { font-size: 11px; margin: 4px 0 0; }
 .est-promo-message[data-state="error"] { color: var(--coral); }
 .est-promo-message[data-state="success"] { color: var(--mint); }
 
-/* --- Marcador --- */
-.est-scoreboard { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(160deg, rgba(16,28,31,.95), rgba(8,15,17,.95)); }
-.est-team { display: flex; align-items: center; gap: 9px; font-family: var(--display); font-size: 15px; letter-spacing: .02em; text-transform: uppercase; flex: 1; }
-.est-team-away { justify-content: flex-end; text-align: right; }
-.est-crest { width: 22px; height: 22px; border-radius: 5px; flex: none; box-shadow: inset 0 0 0 2px rgba(0,0,0,.25); }
-.est-score { display: flex; align-items: center; gap: 12px; font-family: var(--display); }
-.est-score b { font-size: 30px; color: var(--text); min-width: 26px; text-align: center; }
-.est-clock { font-size: 12px; color: var(--mint); letter-spacing: .1em; padding: 3px 10px; border: 1px solid rgba(82,224,174,.3); border-radius: 999px; background: rgba(82,224,174,.07); min-width: 62px; text-align: center; }
+/* --- Modales & Toasts --- */
+.est-modal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.7); backdrop-filter: blur(6px); padding: 16px; }
+.est-modal[hidden] { display: none !important; }
+.est-modal-card { max-width: 460px; width: 100%; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 20px; box-shadow: var(--shadow); }
+.est-modal-card h2 { margin: 0 0 10px; font-family: var(--display); font-size: 18px; color: var(--gold-2); }
+.est-modal-card p { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.est-help-list { list-style: none; margin: 12px 0 16px; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.est-help-list kbd { padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); background: rgba(255,255,255,.08); color: var(--mint); font-family: monospace; font-weight: 700; margin-right: 6px; }
+.est-toast { position: fixed; bottom: 20px; right: 20px; z-index: 70; padding: 9px 15px; border-radius: 8px; border: 1px solid var(--mint); background: rgba(6,18,15,.94); color: var(--mint); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.5); }
+.est-toast[hidden] { display: none !important; }
 
-/* --- Cancha --- */
-.est-canvas-wrap { position: relative; width: 100%; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: #06110e; box-shadow: var(--shadow); }
-#est-pitch { display: block; width: 100%; height: auto; aspect-ratio: 105 / 68; }
-.est-goal-banner { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-size: clamp(48px, 9vw, 110px); font-weight: 900; letter-spacing: .04em; text-transform: uppercase; color: #fff; text-shadow: 0 0 40px rgba(229,189,114,.9), 0 6px 20px rgba(0,0,0,.6); background: radial-gradient(circle, rgba(229,189,114,.22), rgba(0,0,0,.55)); opacity: 0; pointer-events: none; transition: opacity .2s; }
-.est-goal-banner.show { opacity: 1; animation: estGoalPop .5s ease; }
-
-/* --- Relato --- */
-.est-commentary { display: flex; flex-direction: column; gap: 6px; max-height: 190px; overflow-y: auto; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(8,15,17,.6); }
-.est-commentary-empty { color: var(--muted); font-size: 11px; text-align: center; margin: 8px 0; }
-.est-cmt { display: flex; gap: 8px; font-size: 12px; line-height: 1.45; animation: estCmtIn .3s ease; }
-.est-cmt .est-cmt-voice { flex: none; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; height: fit-content; }
-.est-cmt.narrador { align-self: flex-start; }
-.est-cmt.narrador .est-cmt-voice { color: #06120f; background: var(--mint); }
-.est-cmt.analista { align-self: flex-end; flex-direction: row-reverse; text-align: right; }
-.est-cmt.analista .est-cmt-voice { color: #1a1408; background: var(--gold); }
-.est-cmt .est-cmt-text { color: var(--text); max-width: 82%; }
-.est-cmt.muted-all { display: none; }
-
-/* --- Fallback solo texto --- */
-.est-text-fallback { font-size: 11px; color: var(--muted); padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; background: rgba(255,255,255,.015); }
-.est-text-fallback strong { color: var(--text); }
-
-/* --- Boleta de apuesta --- */
-.est-cap-notice { font-size: 10px; color: var(--muted); line-height: 1.5; margin: -4px 0 10px; padding: 7px 9px; border-left: 2px solid var(--gold); background: rgba(229,189,114,.05); border-radius: 0 6px 6px 0; }
-.est-cap-notice strong { color: var(--gold-2); }
-.est-markets { display: flex; flex-direction: column; gap: 10px; max-height: 40vh; overflow-y: auto; }
-.est-market-group { border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: rgba(255,255,255,.015); }
-.est-market-name { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 6px; }
-.est-selections { display: flex; flex-wrap: wrap; gap: 6px; }
-.est-sel { flex: 1 1 auto; min-width: 62px; display: flex; flex-direction: column; gap: 2px; padding: 7px 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: rgba(255,255,255,.03); cursor: pointer; transition: border-color .15s, background .15s, transform .12s; }
-.est-sel:hover:not(:disabled) { border-color: var(--mint); background: rgba(82,224,174,.08); transform: translateY(-1px); }
-.est-sel:disabled { opacity: .4; cursor: not-allowed; }
-.est-sel.selected { border-color: var(--mint); background: rgba(82,224,174,.16); box-shadow: 0 0 0 1px var(--mint); }
-.est-sel-key { font-size: 10px; font-weight: 700; color: var(--text); }
-.est-sel-odds { font-family: var(--display); font-size: 16px; color: var(--gold-2); }
-.est-sel-implied { font-size: 8.5px; color: var(--muted-2); }
-.est-sel-move { font-size: 9px; margin-left: 4px; }
-.est-sel-move.up { color: var(--mint); }
-.est-sel-move.down { color: var(--coral); }
-.est-market-suspended { font-size: 10px; color: var(--coral); letter-spacing: .06em; text-transform: uppercase; }
-
-.est-bet-slip { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
-.est-bet-slip[hidden] { display: none; }
-.est-slip-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.est-slip-head #est-slip-pick { font-size: 12px; font-weight: 700; }
-.est-slip-odds { font-size: 11px; color: var(--muted); }
-.est-slip-odds b { color: var(--gold-2); font-family: var(--display); font-size: 14px; }
-.text-button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 13px; }
-.est-stake-label { display: grid; gap: 5px; font-size: 10px; color: var(--muted); letter-spacing: .04em; }
-.est-stake-label input { min-height: 40px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: #091315; color: var(--text); font-size: 15px; font-family: var(--display); outline: 0; }
-.est-stake-label input:focus { border-color: var(--mint); }
-.est-denoms { display: flex; flex-wrap: wrap; gap: 6px; }
-.est-denom { padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: rgba(255,255,255,.03); color: var(--gold-2); font-size: 11px; font-weight: 700; cursor: pointer; transition: background .15s, border-color .15s; }
-.est-denom:hover { border-color: var(--gold); background: rgba(229,189,114,.1); }
-.est-slip-range { font-size: 10px; color: var(--muted-2); }
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; padding: 0 18px; border-radius: 9px; border: 1px solid transparent; font-weight: 800; font-size: 12px; cursor: pointer; text-decoration: none; transition: transform .15s, box-shadow .15s, background .15s; }
-.btn-primary { color: #06120f; background: linear-gradient(135deg, var(--mint-2), var(--mint)); box-shadow: 0 7px 18px rgba(82,224,174,.16); }
-.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(82,224,174,.28); }
-.btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
-.btn-ghost { color: var(--text); border-color: var(--line-strong); background: rgba(255,255,255,.03); }
-.btn-small { min-height: 34px; font-size: 11px; padding: 0 12px; }
-.est-place { width: 100%; }
-.est-bet-msg { font-size: 11px; min-height: 16px; }
-.est-bet-msg.ok { color: var(--mint); }
-.est-bet-msg.err { color: var(--coral); }
-
-/* --- Mis apuestas --- */
-.est-mybets { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 30vh; overflow-y: auto; }
-.est-mybet { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.02); font-size: 11px; }
-.est-mybet-pick { font-weight: 700; }
-.est-mybet-odds { color: var(--gold-2); font-family: var(--display); }
-.est-mybet-meta { color: var(--muted-2); font-size: 9.5px; }
-.est-cashout { grid-column: 1 / -1; justify-self: start; margin-top: 4px; padding: 4px 10px; border: 1px solid rgba(82,224,174,.35); border-radius: 7px; background: rgba(82,224,174,.08); color: var(--mint-2); font-size: 10px; font-weight: 700; cursor: pointer; }
-.est-cashout:hover { background: rgba(82,224,174,.16); }
-
-/* --- Modales --- */
-.est-modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(3,7,8,.78); backdrop-filter: blur(6px); }
-.est-modal[hidden] { display: none; }
-.est-modal-card { width: min(460px, calc(100% - 40px)); padding: 26px; border: 1px solid var(--line-strong); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow); }
-.est-modal-card h2 { margin: 0 0 12px; font-family: var(--display); font-size: 22px; text-transform: uppercase; letter-spacing: -.02em; }
-.est-modal-card p { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 0 0 12px; }
-.est-modal-card a { color: var(--mint); }
-.est-help-list { list-style: none; margin: 0 0 18px; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: var(--muted); }
-.est-help-list kbd { display: inline-block; min-width: 26px; padding: 2px 7px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 6px; background: #091315; color: var(--gold-2); font-family: var(--sans); font-size: 11px; font-weight: 700; text-align: center; margin-right: 8px; }
-
-/* --- Toast --- */
-.est-toast { position: fixed; right: 20px; bottom: 20px; z-index: 70; max-width: 340px; padding: 12px 16px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow); font-size: 12px; animation: estToastIn .3s ease; }
-.est-toast[hidden] { display: none; }
-.est-toast.win { border-color: rgba(82,224,174,.5); }
-.est-toast.lose { border-color: rgba(255,102,124,.4); }
-
-/* --- Animaciones --- */
-@keyframes estPulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
-@keyframes estGoalPop { 0% { transform: scale(.6); } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
-@keyframes estCmtIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@keyframes estToastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-
-/* --- Layout adaptable: escritorio ancho, portátil y móvil --- */
-@media (max-width: 1280px) {
-  .estadio-shell { grid-template-columns: 232px minmax(0, 1fr) 290px; gap: 10px; padding: 10px 12px 22px; }
+/* --- Responsive & Viewports --- */
+@media (max-width: 1200px) {
+  .estadio-shell { grid-template-columns: 240px minmax(0, 1fr) 280px; gap: 12px; padding: 12px 14px 24px; }
   .est-commentary { max-height: 150px; }
 }
-@media (max-width: 1100px) {
-  .estadio-shell { grid-template-columns: minmax(240px, .9fr) minmax(0, 1.6fr); align-items: start; }
-  .est-col-left { grid-column: 1; grid-row: 1; position: static; }
-  .est-col-center { grid-column: 2; grid-row: 1; }
-  .est-col-right { grid-column: 1 / -1; grid-row: 2; position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 760px) {
-  .estadio-nav { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 8px 10px; height: auto; min-height: 60px; padding: 9px 12px; }
-  .estadio-nav .brand { grid-column: 1; grid-row: 1; }
-  .estadio-tag { grid-column: 2; grid-row: 1; justify-self: end; padding-left: 10px; font-size: 11px; }
-  .estadio-nav-right { grid-column: 1 / -1; grid-row: 2; justify-content: space-between; gap: 7px; margin-left: 0; }
-  .estadio-nav .btn { min-height: 34px; padding: 0 10px; }
-  .est-chips { padding: 4px 9px; font-size: 12px; }
-  .estadio-shell { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 10px 12px 22px; }
-  .est-col-left, .est-col-center, .est-col-right { grid-column: auto; grid-row: auto; position: static; min-width: 0; }
-  .est-col-left { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 10px; }
-  .est-col-right { display: flex; flex-direction: column; gap: 10px; }
-  .est-panel { padding: 12px; }
-  .est-commentary { max-height: 180px; }
-  .est-match-list { max-height: 42vh; }
-}
-@media (max-width: 520px) {
-  .est-preshow-head { align-items: stretch; flex-direction: column; gap: 11px; }
-  .est-preshow-countdown { width: 100%; justify-content: space-between; }
-  .est-preshow-countdown span { max-width: none; text-align: left; }
-  .est-preshow-promo { align-items: stretch; flex-direction: column; gap: 10px; }
-  .est-preshow-promo .btn { width: 100%; }
-  .est-promo-form { grid-template-columns: minmax(0, 1fr); }
-  .est-promo-form button { width: 100%; }
-  .est-team-comparison th, .est-team-comparison td { padding: 7px 6px; }
-  .est-team-comparison tbody th { font-size: 9px; }
-  .est-compare-club { flex-wrap: wrap; }
-  .est-scoreboard { gap: 7px; padding: 9px; }
-  .est-team { gap: 5px; font-size: 11px; }
-  .est-score { gap: 7px; }
-  .est-score b { min-width: 18px; font-size: 24px; }
-  .est-clock { min-width: 52px; padding: 3px 6px; font-size: 10px; }
-}
-@media (max-height: 760px) {
-  .est-match-list { max-height: 30vh; }
-  .est-commentary { max-height: 130px; }
-  .est-markets { max-height: 34vh; }
+
+@media (max-width: 960px) {
+  .estadio-shell { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .est-col-left, .est-col-center, .est-col-right { position: static; max-height: none; overflow-y: visible; width: 100%; }
+  .est-col-left { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .est-col-right { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .est-col-right .est-ads { grid-column: 1 / -1; }
 }
 
-/* --- prefers-reduced-motion: sin animaciones ni tween procedural --- */
+@media (max-width: 680px) {
+  .estadio-nav { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 8px 10px; height: auto; min-height: 56px; padding: 8px 12px; }
+  .estadio-nav .brand { grid-column: 1; grid-row: 1; }
+  .estadio-tag { grid-column: 2; grid-row: 1; justify-self: end; padding-left: 8px; font-size: 11px; }
+  .estadio-nav-right { grid-column: 1 / -1; grid-row: 2; justify-content: space-between; gap: 6px; margin-left: 0; }
+  .est-col-left, .est-col-right { display: flex; flex-direction: column; gap: 12px; }
+  .est-preshow-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .est-preshow-countdown { width: 100%; justify-content: space-between; }
+  .est-preshow-promo { min-height: 150px; padding: 14px; }
+  .est-preshow-promo .est-promo-content { max-width: 100%; }
+  .est-scoreboard { gap: 6px; padding: 10px; }
+  .est-team { font-size: 12px; }
+  .est-score b { font-size: 24px; min-width: 20px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .estadio-body *, .estadio-body *::before, .estadio-body *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
   .est-goal-banner.show { animation: none; }
+  .est-preshow-promo.is-sliding .est-promo-content, .est-preshow-promo.is-sliding .btn { animation: none; }
+  .est-enter, .est-enter * { display: none !important; animation: none !important; }
 }
 
-/* ============================================================
-   ANIMACIÓN DE ENTRADA (casino → Estadio MonteCristo).
-   Se reproduce UNA sola vez por acceso desde el casino y el overlay
-   se AUTOELIMINA del DOM al terminar, así que no puede repetirse en
-   ticks, refresco ni re-render (ver public/estadio.js: maybePlayEntry).
-   z-index 200 por encima de nav (30), modales (60), toasts (70) y
-   skip-link (100). Toda la coreografía dura 2.6 s y termina en
-   opacidad 0 (est-enter-lifecycle), momento en que JS retira el nodo.
-   ============================================================ */
+/* --- Animación de entrada --- */
 .est-enter {
   position: fixed; inset: 0; z-index: 200;
   display: flex; align-items: center; justify-content: center;
   background: #04070a; overflow: hidden; cursor: pointer;
   animation: est-enter-lifecycle 2.6s ease forwards;
 }
-/* El atributo hidden debe ganar sobre display:flex (el CSS de autor
-   vencería a la regla [hidden] del UA si no lo declaramos aquí). */
-.est-enter[hidden] { display: none; }
-
-/* Túnel: dolly hacia la cancha (escala + brillo + desenfoque). */
+.est-enter[hidden] { display: none !important; }
 .est-enter-tunnel {
   position: absolute; inset: -6%;
   background: url('/assets/estadio-tunnel.jpg') center 62% / cover no-repeat;
@@ -353,8 +670,6 @@
   92%  { transform: scale(1.00);                filter: brightness(1.28) saturate(1.05); }
   100% { transform: scale(1.00);                filter: brightness(1.50) saturate(1.05); }
 }
-
-/* Bloom de reflectores: destello radial que «enciende» el estadio. */
 .est-enter-bloom {
   position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen;
   background: radial-gradient(58% 46% at 50% 56%, rgba(255,244,214,.95), rgba(255,214,140,.35) 42%, transparent 72%);
@@ -367,8 +682,6 @@
   78%     { opacity: .85; transform: scale(1.06); }
   100%    { opacity: 0;   transform: scale(1.15); }
 }
-
-/* Flash dorado de transición justo antes de revelar la interfaz. */
 .est-enter-flash {
   position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(180deg, rgba(255,236,190,0), rgba(255,224,160,.9) 55%, rgba(255,246,220,1));
@@ -380,8 +693,6 @@
   92%     { opacity: .9; }
   100%    { opacity: 0; }
 }
-
-/* Título: kicker menta + nombre dorado con brillo metálico + subtítulo. */
 .est-enter-title { position: relative; text-align: center; pointer-events: none; padding: 0 24px; }
 .est-enter-kicker {
   display: block; font-family: var(--sans); font-size: 13px; letter-spacing: .42em;
@@ -420,8 +731,6 @@
   84%     { opacity: .85; }
   100%    { opacity: 0; }
 }
-
-/* Botón «saltar»: discreto, aparece tarde, siempre clicable. */
 .est-enter-skip {
   position: absolute; right: 22px; bottom: 20px; z-index: 2;
   font-size: 12px; letter-spacing: .08em; color: var(--muted);
@@ -436,81 +745,10 @@
   100%    { opacity: 0; }
 }
 .est-enter-skip:hover { color: var(--text); border-color: var(--line-strong); }
-
-/* Ciclo de vida del overlay: visible y, al final, se desvanece por completo. */
 @keyframes est-enter-lifecycle {
   0%   { opacity: 1; }
   88%  { opacity: 1; }
   100% { opacity: 0; visibility: hidden; }
 }
-/* Salida rápida al saltar con click o tecla. */
 .est-enter.est-enter-out, .est-enter.est-enter-out * { animation: none !important; }
 .est-enter.est-enter-out { opacity: 0; visibility: hidden; transition: opacity .3s ease; }
-
-/* Sin animación de entrada bajo prefers-reduced-motion: el overlay ni se muestra
-   (también lo evita el gate de JS en maybePlayEntry; doble seguridad). */
-@media (prefers-reduced-motion: reduce) {
-  .est-enter, .est-enter * { display: none !important; animation: none !important; }
-}
-
-/* ===== La Previa: anuncio a pantalla completa con desplazamiento ===== */
-.est-preshow-promo {
-  align-items: flex-end;
-  min-height: 176px;
-  padding: 18px 18px 16px 22px;
-  overflow: hidden;
-  isolation: isolate;
-  border-color: rgba(229,189,114,.32);
-  background: #0c1314;
-}
-.est-promo-image {
-  position: absolute; inset: 0; z-index: -2;
-  width: 100%; height: 100%;
-  object-fit: cover; object-position: center;
-  pointer-events: none;
-}
-.est-preshow-promo::after {
-  position: absolute; inset: 0; z-index: -1; content: "";
-  background: linear-gradient(90deg, rgba(7,11,12,.94) 0%, rgba(7,11,12,.66) 52%, rgba(7,11,12,.32) 100%);
-  pointer-events: none;
-}
-.est-preshow-promo .est-promo-content,
-.est-preshow-promo .btn { position: relative; max-width: 62%; }
-.est-preshow-promo .est-promo-label { text-shadow: 0 1px 6px rgba(0,0,0,.6); }
-.est-preshow-promo p { font-size: 14px; font-weight: 600; text-shadow: 0 1px 8px rgba(0,0,0,.55); }
-.est-preshow-promo.is-sliding .est-promo-content,
-.est-preshow-promo.is-sliding .btn { animation: est-promo-slide .5s cubic-bezier(.2,.7,.2,1) both; }
-@keyframes est-promo-slide {
-  from { opacity: 0; transform: translateX(42px); }
-  to   { opacity: 1; transform: none; }
-}
-@media (max-width: 680px) {
-  .est-preshow-promo { min-height: 210px; align-items: stretch; }
-  .est-preshow-promo .est-promo-content,
-  .est-preshow-promo .btn { max-width: none; }
-  .est-preshow-promo::after { background: linear-gradient(180deg, rgba(7,11,12,.22) 0%, rgba(7,11,12,.9) 70%); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .est-preshow-promo.is-sliding .est-promo-content,
-  .est-preshow-promo.is-sliding .btn { animation: none; }
-}
-
-/* La Previa a todo el espacio: el anuncio cubre el panel completo y la cuenta regresiva
-   queda encima, con un velo para que siga legible sobre la imagen. */
-.est-preshow > .est-preshow-promo {
-  position: absolute; inset: 0; z-index: 2;
-  min-height: 0; margin: 0; border: 0; border-radius: inherit;
-}
-.est-preshow > .est-preshow-head {
-  position: relative; z-index: 3;
-  padding: 12px 14px; border-radius: 14px;
-  background: linear-gradient(180deg, rgba(7,11,12,.9), rgba(7,11,12,.45));
-  border-bottom-color: transparent;
-}
-
-/* Publicidad: guía visible en la columna derecha, separada del formulario de envío. */
-.est-ads .est-ads-steps { margin: 0 0 12px; padding-left: 20px; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.est-ads .est-ads-steps li { margin: 0 0 6px; }
-.est-ads .est-ads-steps b { color: var(--text); }
-.est-ads #est-ads-title { margin: 0 0 10px; font-size: 14px; letter-spacing: .04em; }
-.est-ads .est-promo-auth { margin: 0 0 10px; }

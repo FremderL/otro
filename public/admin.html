@@ -152,30 +152,146 @@
         </div>
         <p>Revisa el texto y el enlace interno. Las solicitudes de patrocinadores solo se publican tras aprobación; aprobar descuenta 250 fichas de la cuenta vinculada. También puedes crear campañas directas abajo.</p>
         <div id="football-promotions-list" class="user-results" aria-live="polite"></div>
+
+        <div class="detail-head" style="margin-top: 24px;">
+          <div>
+            <small>ESTADIO · CAMPAÑAS ACTIVAS</small>
+            <h3>Campañas permanentes y aprobadas</h3>
+          </div>
+        </div>
+        <div id="football-active-promotions-list" class="user-results" aria-live="polite"></div>
+
         <details id="promo-create" class="promo-create">
-          <summary>Crear campaña directa</summary>
-          <p class="field-hint">Campaña de la casa: se publica al instante, sin cargo de fichas, y solo se muestra dentro de los 30 minutos previos al kickoff. Para cuentas patrocinadoras, el cliente sigue solicitándola desde La Previa.</p>
+          <summary>Estudio Creativo: Crear campaña directa (Casa o Patrocinador permanente)</summary>
+          <p class="field-hint">Campaña administrativa directa: se aprueba al instante sin cobro. Diseña creatividades avanzadas con previsualización en vivo, personalización de colores, tipografía y presets temáticos.</p>
+
+          <!-- Previsualización en vivo en el Panel Admin -->
+          <div class="admin-studio-preview-box">
+            <div class="admin-studio-preview-header">
+              <span class="est-studio-badge-live">● VISTA PREVIA EN VIVO</span>
+              <span class="admin-studio-preview-meta">Escala real de La Previa</span>
+            </div>
+            <div id="admin-studio-card-preview" class="est-preshow-promo est-studio-preview-card" data-text-position="bottom" data-text-size="medium" data-text-align="left">
+              <img id="admin-studio-preview-img" class="est-promo-image" src="/assets/casino-hero.jpg" alt="" />
+              <div id="admin-studio-preview-content" class="est-promo-content">
+                <span id="admin-studio-preview-label" class="est-promo-label">Campaña Oficial</span>
+                <p id="admin-studio-preview-text" class="est-promo-text">Escribe el mensaje publicitario...</p>
+                <span id="admin-studio-preview-btn" class="est-promo-link">Ver más</span>
+              </div>
+            </div>
+          </div>
+
           <form id="promo-create-form" class="promo-create-form">
-            <label>Cuenta (ID o nombre de usuario vinculado)
-              <input id="promo-create-profile" required maxlength="80" autocomplete="off" />
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <label>Cuenta (ID o nombre de usuario vinculado)
+                <input id="promo-create-profile" required maxlength="80" autocomplete="off" placeholder="ej. montecristo_oficial" />
+              </label>
+              <label>Alcance de la campaña
+                <select id="promo-create-scope">
+                  <option value="single">Partido específico</option>
+                  <option value="all" selected>Permanente (Todos los partidos)</option>
+                  <option value="count">Cantidad fija de partidos</option>
+                </select>
+              </label>
+            </div>
+
+            <label id="promo-create-matches-count-label" hidden>Número de partidos
+              <input id="promo-create-matches-count" type="number" min="1" max="100" value="5" />
             </label>
-            <label>Partido
-              <select id="promo-create-match" required></select>
+            <label id="promo-create-match-label" hidden>Partido
+              <select id="promo-create-match"></select>
             </label>
-            <label>Texto (3–140 caracteres)
-              <textarea id="promo-create-text" required minlength="3" maxlength="140" rows="2"></textarea>
-            </label>
-            <label>Enlace interno
-              <select id="promo-create-target" required>
-                <option value="/">Inicio</option>
-                <option value="/estadio">Estadio</option>
-                <option value="/terminos">Términos</option>
-              </select>
-            </label>
-            <label>Imagen opcional (PNG o JPEG, máx. 350 KB, apaisada)
+
+            <!-- Selector de Fondos y Presets Temáticos -->
+            <div class="est-field-group">
+              <span class="est-field-mini-title">Galería de Fondos Temáticos MonteCristo</span>
+              <div class="admin-preset-thumbnails">
+                <button type="button" class="admin-preset-btn active" data-preset="/assets/casino-hero.jpg">
+                  <img src="/assets/casino-hero.jpg" alt="Casino" />
+                  <span>Casino Clásico</span>
+                </button>
+                <button type="button" class="admin-preset-btn" data-preset="/assets/montecristo-stadium-classic.jpg">
+                  <img src="/assets/montecristo-stadium-classic.jpg" alt="Estadio" />
+                  <span>Estadio VIP</span>
+                </button>
+                <button type="button" class="admin-preset-btn" data-preset="/assets/montecristo-arena-night.jpg">
+                  <img src="/assets/montecristo-arena-night.jpg" alt="Noche" />
+                  <span>Arena Nocturna</span>
+                </button>
+                <button type="button" class="admin-preset-btn" data-preset="/assets/montecristo-gold-vip.jpg">
+                  <img src="/assets/montecristo-gold-vip.jpg" alt="VIP" />
+                  <span>Gold MonteCristo</span>
+                </button>
+                <button type="button" class="admin-preset-btn" data-preset="/assets/montecristo-roulette-lounge.jpg">
+                  <img src="/assets/montecristo-roulette-lounge.jpg" alt="Ruleta" />
+                  <span>Ruleta Lounge</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Carga de Imagen Personalizada -->
+            <label>O sube una imagen personalizada (PNG o JPEG, máx. 1 MB)
               <input id="promo-create-image" type="file" accept="image/png,image/jpeg" />
             </label>
-            <button class="button" type="submit">Publicar campaña</button>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+              <label>Posición del texto
+                <select id="promo-create-text-pos">
+                  <option value="bottom" selected>Abajo (predeterminado)</option>
+                  <option value="top">Arriba</option>
+                  <option value="middle">Centro superpuesto</option>
+                  <option value="badge">Etiqueta flotante / Badge</option>
+                  <option value="hidden">Sin texto (Solo imagen)</option>
+                </select>
+              </label>
+              <label>Tamaño del texto
+                <select id="promo-create-text-size">
+                  <option value="small">Pequeño</option>
+                  <option value="medium" selected>Normal</option>
+                  <option value="large">Grande / Destacado</option>
+                </select>
+              </label>
+              <label>Alineación
+                <select id="promo-create-text-align">
+                  <option value="left" selected>Izquierda</option>
+                  <option value="center">Centrado</option>
+                  <option value="right">Derecha</option>
+                </select>
+              </label>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <label>Tema de color
+                <select id="promo-create-theme-color">
+                  <option value="#e5bd72" selected>Gold MonteCristo (#e5bd72)</option>
+                  <option value="#52e0ae">Mint Green (#52e0ae)</option>
+                  <option value="#e05260">Crimson Red (#e05260)</option>
+                  <option value="#38bdf8">Neon Sapphire (#38bdf8)</option>
+                  <option value="#c084fc">Imperial Purple (#c084fc)</option>
+                </select>
+              </label>
+              <label>Texto del Botón CTA
+                <input id="promo-create-cta" maxlength="30" value="Ver más" placeholder="ej. Jugar ahora, Apostar..." />
+              </label>
+            </div>
+
+            <div class="est-field-group">
+              <div class="est-field-header">
+                <span>Texto del anuncio (opcional si subes imagen propia)</span>
+                <span id="promo-create-char-count" class="est-char-count">0 / 140</span>
+              </div>
+              <textarea id="promo-create-text" maxlength="140" rows="2" placeholder="Escribe el mensaje publicitario..."></textarea>
+            </div>
+
+            <label>Enlace interno de destino
+              <select id="promo-create-target" required>
+                <option value="/">Inicio del casino (/)</option>
+                <option value="/estadio">Estadio (/estadio)</option>
+                <option value="/terminos">Términos (/terminos)</option>
+              </select>
+            </label>
+
+            <button class="button" type="submit" style="margin-top: 10px;">Publicar campaña oficial</button>
             <small id="promo-create-message" aria-live="polite"></small>
           </form>
         </details>
