@@ -11,13 +11,6 @@
   var TOS_KEY = 'montecristo-tos';
   var TOS_FALLBACK = '2026-09-28';
   var TICK_MS = 2000;              // cadencia del tick del servidor (§8.1)
-  var EVENT_STEP_MS = 700;         // duración fija de cada paso de evento: ritmo visual constante
-  var MAX_MOTION_BACKLOG = 8;      // pasos de movimiento en cola antes de descartar los menos relevantes
-  var IMPORTANT_EVENTS = {         // eventos que nunca se descartan de la cola de movimiento
-    goal: true, penalty_scored: true, penalty_awarded: true, red_card: true, second_yellow: true,
-    kickoff: true, goal_restart: true, halftime: true, second_half: true, substitution: true,
-    extra_time_start: true, extra_time_end: true, shootout_start: true, shootout_end: true, full_time: true
-  };
   var PRESHOW_WINDOW_MS = 30 * 60 * 1000;
   var PROMOTION_ROTATION_MS = 15 * 1000;
   var HOUSE_PROMOTIONS = [
@@ -40,6 +33,7 @@
   function $(id) { return document.getElementById(id); }
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   function lerp(a, b, t) { return a + (b - a) * t; }
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
   function nx(x) { return PAD + x * FIELD_W; }
   function ny(y) { return PAD + y * FIELD_H; }
   function fmt(n) { return Number(n || 0).toLocaleString('es-MX'); }
@@ -91,9 +85,11 @@
     currentMatchId: null, match: null, markets: {}, movement: {}, myBets: [],
     slip: null, muted: false, soundOn: localStorage.getItem('montecristo-notifications') !== 'off', musicOn: localStorage.getItem('montecristo-music') === 'on',
     players: [], authoritativePlayers: [], possessionTeam: 'home', ballCarrierId: null, playStopped: true,
-    ball: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 }, motion: null, queue: [], stepTimer: null, busyUntil: 0, plan: null,
+    ball: { x: .5, y: .5 }, ballStart: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 },
+    ballT0: 0, ballDur: 800, playerT0: 0, playerDur: 1900,
+    serverMinute: 0, minuteReceivedAt: 0,
     minute: 0, phase: 'pre', score: { home: 0, away: 0 }, possession: { home: .5, away: .5 },
-    goalFlashUntil: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false
+    goalFlashUntil: 0, goalAnimUntil: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false
   };
 
   var el = {};
@@ -102,6 +98,9 @@
       'est-preshow', 'est-preshow-status', 'est-preshow-timer', 'est-team-comparison',
       'est-compare-home', 'est-compare-away', 'est-preshow-promo', 'est-promo-image', 'est-promo-label', 'est-promo-text', 'est-promo-link',
       'est-promo-compose', 'est-promo-auth', 'est-promo-login', 'est-promo-refresh', 'est-promo-form',
+      'est-studio-card-preview', 'est-studio-preview-img', 'est-studio-preview-content', 'est-studio-preview-label', 'est-studio-preview-text', 'est-studio-preview-btn',
+      'est-promo-char-count', 'est-promo-text-pos', 'est-promo-text-size', 'est-promo-text-align', 'est-promo-theme-color', 'est-promo-cta-input',
+      'est-upload-dropzone', 'est-dropzone-file-name', 'est-dropzone-clear-btn', 'est-studio-text-fields', 'est-studio-presets-row',
       'est-promo-copy-input', 'est-promo-image-input', 'est-promo-target', 'est-promo-room-field', 'est-promo-room-code',
       'est-promo-submit', 'est-promo-message',
       'est-scoreboard', 'crest-home', 'crest-away', 'name-home', 'name-away', 'score-home', 'score-away',
@@ -431,17 +430,71 @@
     var seconds = Math.max(0, Math.ceil(ms / 1000));
     return String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
   }
-  // Pinta el anuncio a pantalla completa de La Previa. Si el texto o la imagen
-  // cambian, el contenido entra desde la derecha y se desplaza hacia la izquierda.
+
+  function matchExclusivePromotion() {
+    if (!S.match) return null;
+    var homeId = S.match.homeId, awayId = S.match.awayId;
+    var homeName = teamFull(homeId);
+    var awayName = teamFull(awayId);
+    var homeTactic = tacticSummary(homeId);
+    var awayTactic = tacticSummary(awayId);
+    var homePos = (S.standings || []).findIndex(function (row) { return (row.teamId || row.id) === homeId; });
+    var awayPos = (S.standings || []).findIndex(function (row) { return (row.teamId || row.id) === awayId; });
+    var posText = (homePos >= 0 ? '#' + (homePos + 1) : '') + (homePos >= 0 && awayPos >= 0 ? ' vs ' : '') + (awayPos >= 0 ? '#' + (awayPos + 1) : '');
+    var copy = '⚔️ ' + homeName + ' (' + homeTactic + ') vs ' + awayName + ' (' + awayTactic + ')' + (posText ? ' · Posiciones: ' + posText : '') + ' · ¡Duelo estelar en vivo!';
+    return {
+      label: 'Promoción de MonteCristo',
+      text: copy,
+      textPosition: 'bottom',
+      textSize: 'medium',
+      href: '/estadio',
+      action: 'Ver ficha y comparativa',
+      image: '/assets/estadio-tunnel.jpg'
+    };
+  }
+
+  // Pinta el anuncio de La Previa. Si el texto o la imagen cambian,
+  // el contenido se actualiza con animación fluida.
   var PROMO_FALLBACK_IMAGE = '/assets/casino-hero.jpg';
   function setPromoCreative(c) {
     var stage = el['est-preshow-promo'];
     var image = el['est-promo-image'];
-    var changed = el['est-promo-text'].textContent !== c.text || image.getAttribute('src') !== (c.image || PROMO_FALLBACK_IMAGE);
-    el['est-promo-label'].textContent = c.label;
-    el['est-promo-text'].textContent = c.text;
-    el['est-promo-link'].href = c.href;
-    el['est-promo-link'].textContent = c.action;
+    if (!stage || !image || !c) return;
+
+    var textPos = c.textPosition || (c.text ? 'bottom' : 'hidden');
+    var textSize = c.textSize || 'medium';
+    var textAlign = c.textAlign || 'left';
+    var themeColor = c.themeColor || null;
+    var ctaText = c.ctaText || c.action || 'Ver más';
+    var hasText = Boolean(c.text && c.text.trim() && textPos !== 'hidden');
+
+    stage.setAttribute('data-text-position', textPos);
+    stage.setAttribute('data-text-size', textSize);
+    stage.setAttribute('data-text-align', textAlign);
+
+    var changed = el['est-promo-text'].textContent !== (c.text || '') || image.getAttribute('src') !== (c.image || PROMO_FALLBACK_IMAGE);
+    el['est-promo-label'].textContent = c.label || 'Promoción';
+    if (themeColor) {
+      el['est-promo-label'].style.color = themeColor;
+      el['est-promo-label'].style.borderColor = themeColor;
+    } else {
+      el['est-promo-label'].style.color = '';
+      el['est-promo-label'].style.borderColor = '';
+    }
+
+    el['est-promo-text'].textContent = c.text || '';
+    if (el['est-promo-text']) el['est-promo-text'].style.display = hasText ? '' : 'none';
+
+    if (c.href) {
+      el['est-promo-link'].href = c.href;
+      el['est-promo-link'].textContent = ctaText;
+      if (themeColor) el['est-promo-link'].style.borderColor = themeColor;
+      else el['est-promo-link'].style.borderColor = '';
+      el['est-promo-link'].style.display = '';
+    } else {
+      el['est-promo-link'].style.display = 'none';
+    }
+
     image.src = c.image || PROMO_FALLBACK_IMAGE;
     image.alt = '';
     if (changed && stage && el['est-preshow'] && !el['est-preshow'].hidden) {
@@ -450,22 +503,45 @@
       stage.classList.add('is-sliding');
     }
   }
+
   function defaultPromotion() {
     var slot = Math.floor(Date.now() / PROMOTION_ROTATION_MS);
     var index = ((slot % HOUSE_PROMOTIONS.length) + HOUSE_PROMOTIONS.length) % HOUSE_PROMOTIONS.length;
     var promotion = HOUSE_PROMOTIONS[index];
-    setPromoCreative({ label: 'Promoción de MonteCristo', text: promotion.text, href: promotion.href, action: promotion.action, image: promotion.image });
+    var matchCard = (index === 3 && S.match) ? matchExclusivePromotion() : null;
+    setPromoCreative({
+      label: 'Promoción de MonteCristo',
+      text: matchCard ? matchCard.text : promotion.text,
+      textPosition: 'bottom',
+      textSize: 'medium',
+      textAlign: 'left',
+      ctaText: matchCard ? matchCard.action : promotion.action,
+      href: matchCard ? matchCard.href : promotion.href,
+      image: matchCard ? matchCard.image : promotion.image
+    });
   }
+
   function renderPromotion(promotion) {
     var href = promotion && promotion.href;
     var allowed = href === '/' || href === '/estadio' || href === '/terminos' || /^\/room\/[A-Z0-9]{5}$/.test(String(href || ''));
-    if (!promotion || !allowed || typeof promotion.text !== 'string') {
+    if (!promotion || !allowed) {
       defaultPromotion();
       return;
     }
     // La imagen solo puede venir de la ruta interna de creatividades del servidor.
     var image = typeof promotion.image === 'string' && promotion.image.indexOf('/api/estadio/promotion-media/') === 0 ? promotion.image : null;
-    setPromoCreative({ label: 'Promoción pagada', text: promotion.text, href: href, action: 'Ver promoción', image: image });
+    var label = promotion.label || (promotion.isPermanent ? 'Patrocinador Oficial' : 'Promoción pagada');
+    setPromoCreative({
+      label: label,
+      text: typeof promotion.text === 'string' ? promotion.text : '',
+      textPosition: promotion.textPosition || (promotion.text ? 'bottom' : 'hidden'),
+      textSize: promotion.textSize || 'medium',
+      textAlign: promotion.textAlign || 'left',
+      ctaText: promotion.ctaText || 'Ver promoción',
+      themeColor: promotion.themeColor || null,
+      href: href,
+      image: image
+    });
   }
   function stopPromotionRotation() {
     if (S.promoPollId) clearInterval(S.promoPollId);
@@ -625,19 +701,26 @@
     if (!ms) return;
     S.match = ms.match; S.markets = ms.markets || {}; S.movement = {};
     S.myBets = (ms.myBets || []).slice();
-    S.minute = ms.state ? Math.round(ms.state.displayMinute != null ? ms.state.displayMinute : ms.state.minute) : 0;
+    var rawMin = ms.state ? (ms.state.displayMinute != null ? ms.state.displayMinute : ms.state.minute) : 0;
+    S.serverMinute = Number(rawMin || 0);
+    S.minuteReceivedAt = performance.now();
+    S.minute = Math.round(S.serverMinute);
     S.phase = ms.state ? ms.state.phase : 'pre';
     S.score = ms.state ? ms.state.score : { home: 0, away: 0 };
     S.possession = ms.state && ms.state.possession ? ms.state.possession : { home: .5, away: .5 };
     S.possessionTeam = ms.state && ms.state.possessionTeam ? ms.state.possessionTeam : 'home';
     S.ballCarrierId = ms.state ? ms.state.ballCarrierId : null;
     S.playStopped = ms.state ? Boolean(ms.state.playStopped) : true;
-    clearMotion();
+    S.goalAnimUntil = 0;
     S.authoritativePlayers = ms.state && Array.isArray(ms.state.players) ? ms.state.players : [];
     var ball = ms.state && ms.state.ball ? ms.state.ball : { x: .5, y: .5 };
-    S.ball = { x: ball.x, y: ball.y }; S.ballDest = { x: ball.x, y: ball.y };
+    S.ball = { x: ball.x, y: ball.y }; S.ballStart = { x: ball.x, y: ball.y }; S.ballDest = { x: ball.x, y: ball.y };
+    S.ballT0 = performance.now();
+    S.ballDur = 800;
     resolveKits();
     initPlayers();
+    S.playerT0 = performance.now();
+    S.playerDur = 1900;
     renderScoreboard();
     renderMarkets();
     renderMyBets();
@@ -728,261 +811,53 @@
       p.startX = p.baseX; p.startY = p.baseY; p.destX = t.x; p.destY = t.y;
     });
   }
-  // ===== Reproducción de movimiento: cola de pasos (60 fps) =====
-  // Los mensajes del servidor llegan a ráfagas (eventos revelados en lote tras un
-  // corte de red o de pestaña) y los ticks cada 2 s. Aplicarlos al instante
-  // reiniciaba el tween: el balón y los jugadores se congelaban y luego saltaban.
-  // Ahora cada mensaje de movimiento se planifica como un «paso» de duración fija;
-  // los pasos se reproducen en orden con interpolación lineal desde la pose que se
-  // ve en pantalla hasta el destino del paso. Marcador, mercados y plantilla siguen
-  // actualizándose al instante; solo el movimiento y el relato esperan su turno.
-  function motionP(now) {
-    var m = S.motion;
-    if (!m || !(m.ms > 0)) return 1;
-    return clamp((now - m.t0) / m.ms, 0, 1);
-  }
-  function poseOf(pl, p) {
-    var m = S.motion;
-    var f = m && m.from[pl.id], t = m && m.to[pl.id];
-    if (!f || !t) return { x: pl.baseX, y: pl.baseY };
-    return { x: lerp(f.x, t.x, p), y: lerp(f.y, t.y, p) };
-  }
-  function ballAt(p) {
-    var m = S.motion;
-    if (!m) return { x: S.ball.x, y: S.ball.y };
-    return { x: lerp(m.ballFrom.x, m.ballTo.x, p), y: lerp(m.ballFrom.y, m.ballTo.y, p) };
-  }
-  function isMotion(step) { return !step.commentary; }
-  function snapshotRender() {
-    var players = {};
-    S.players.forEach(function (pl) { players[pl.id] = { x: pl.renderX, y: pl.renderY }; });
-    return { players: players, ball: { x: S.ball.x, y: S.ball.y } };
-  }
-  // El plan es el destino acumulado de los pasos pendientes. Sin pasos pendientes
-  // parte de lo que se ve en pantalla, para no arrastrar desfases antiguos.
-  function planBase() {
-    if (!S.plan || (!S.stepTimer && S.queue.length === 0)) S.plan = snapshotRender();
-    return S.plan;
-  }
-  function plannedAt(plan, pl) { return plan.players[pl.id] || { x: pl.renderX, y: pl.renderY }; }
-  function placeInPlan(plan, id, point) {
-    if (id == null || !point) return;
-    var x = Number(point.x), y = Number(point.y);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    plan.players[id] = { x: clamp(x, .01, .99), y: clamp(y, .02, .98) };
-  }
-  // Límites de movimiento en metros reales por segundo. Cada paso dura siempre lo mismo
-  // (ritmo constante, sin cola creciente): si un jugador o el balón no pueden recorrer
-  // en ese tiempo la distancia hasta su destino, avanzan a su velocidad máxima y el
-  // resto se arrastra a los pasos siguientes. Así no hay teletransportes ni retrasos.
-  var PLAYER_VMAX = 8.5, BALL_VMAX = 28;
-  function limitToward(from, to, maxM) {
-    var d = Math.hypot((to.x - from.x) * 105, (to.y - from.y) * 68);
-    if (d <= maxM || d === 0) return { x: to.x, y: to.y };
-    var f = maxM / d;
-    return { x: from.x + (to.x - from.x) * f, y: from.y + (to.y - from.y) * f };
-  }
-  // El balón recorre sus destinos en orden: no cambia de dirección hasta llegar al anterior,
-  // aunque ya haya llegado un pase posterior (ráfaga de eventos).
-  function queueBall(plan, point) {
-    if (!point) return;
-    if (!plan.ballQueue) plan.ballQueue = [];
-    plan.ballQueue.push({ x: point.x, y: point.y });
-    if (plan.ballQueue.length > 64) plan.ballQueue.splice(0, plan.ballQueue.length - 64);
-  }
-  function advanceBall(from, queue, maxM) {
-    var pos = { x: from.x, y: from.y }, budget = maxM;
-    while (queue.length && budget > 0) {
-      var t = queue[0];
-      var d = Math.hypot((t.x - pos.x) * 105, (t.y - pos.y) * 68);
-      // Un paso termina al llegar a un destino: así la interpolación lineal del paso no
-      // da la vuelta hacia el siguiente pase.
-      if (d <= budget) { pos = { x: t.x, y: t.y }; queue.shift(); break; }
-      var f = budget / d;
-      pos = { x: pos.x + (t.x - pos.x) * f, y: pos.y + (t.y - pos.y) * f };
-      budget = 0;
-    }
-    return pos;
-  }
-  // Posición mostrada al final de cada paso (no el destino del plan): el plan conserva
-  // el destino y cada paso avanza desde donde quedó el anterior.
-  function limitStep(plan, step) {
-    if (!step.ms) return step; // movimiento reducido: sin interpolación
-    var shown = plan.shown || (plan.shown = { players: {}, ball: null });
-    var maxP = PLAYER_VMAX * step.ms / 1000, maxB = BALL_VMAX * step.ms / 1000;
-    var players = {};
-    S.players.forEach(function (pl) {
-      var target = plan.players[pl.id];
-      if (!target) return;
-      var from = shown.players[pl.id] || { x: pl.renderX, y: pl.renderY };
-      var to = limitToward(from, target, maxP);
-      shown.players[pl.id] = to;
-      players[pl.id] = to;
-    });
-    step.players = players;
-    if (plan.ball) {
-      var fb = shown.ball || (S.ball ? { x: S.ball.x, y: S.ball.y } : plan.ball);
-      var tb = advanceBall(fb, plan.ballQueue || [], maxB);
-      shown.ball = tb;
-      step.ball = { x: tb.x, y: tb.y };
-    }
-    return step;
-  }
-  function planEventStep(ev, plan) {
-    var step = { kind: 'event', ms: reduced.matches ? 0 : EVENT_STEP_MS, ball: null, players: {}, important: Boolean(IMPORTANT_EVENTS[ev.type]) };
-    var changed = {};
-    function move(id, point) { placeInPlan(plan, id, point); if (id != null) changed[id] = true; }
-    if (ev.ball) { plan.ball = { x: clamp(ev.ball.x, -0.01, 1.01), y: clamp(ev.ball.y, 0, 1) }; queueBall(plan, plan.ball); }
-    if (ev.playerId != null && ev.actorPosition) move(ev.playerId, ev.actorPosition);
-    if (ev.receiverId != null) move(ev.receiverId, ev.ball || plan.ball);
-    if (ev.keeperId != null && ev.keeperPosition) move(ev.keeperId, ev.keeperPosition);
-    if (ev.type === 'kickoff' || ev.type === 'goal_restart') {
-      S.players.forEach(function (pl) {
-        var c = plannedAt(plan, pl);
-        if (pl.team === 'home' && c.x > 0.485) move(pl.id, { x: 0.485, y: c.y });
-        else if (pl.team === 'away' && c.x < 0.515) move(pl.id, { x: 0.515, y: c.y });
-      });
-      if (ev.playerId != null) move(ev.playerId, { x: 0.5, y: 0.5 });
-    }
-    // El defensor más cercano al balón se acerca (presión) si hay posesión rival.
-    if (ev.ball && !S.playStopped && S.possessionTeam && ['goal_celebration', 'halftime', 'ended'].indexOf(ev.phase) < 0) {
-      var defSide = S.possessionTeam === 'home' ? 'away' : 'home';
-      var nearest = null, minDist = Infinity;
-      S.players.forEach(function (pl) {
-        if (pl.team !== defSide || pl.role === 'GK' || pl.id === ev.playerId) return;
-        var c = plannedAt(plan, pl);
-        var d = Math.hypot(c.x - plan.ball.x, c.y - plan.ball.y);
-        if (d < minDist) { minDist = d; nearest = pl; }
-      });
-      if (nearest) {
-        var from = plannedAt(plan, nearest);
-        move(nearest.id, { x: from.x + (plan.ball.x - from.x) * 0.35, y: from.y + (plan.ball.y - from.y) * 0.35 });
-      }
-    }
-    Object.keys(changed).forEach(function (id) { step.players[id] = plan.players[id]; });
-    step.ball = { x: plan.ball.x, y: plan.ball.y };
-    return limitStep(plan, step);
-  }
-  function planTickStep(data, plan) {
-    var step = { kind: 'tick', ms: reduced.matches ? 0 : TICK_MS, ball: null, players: {}, important: false };
-    if (data.ball) { plan.ball = { x: clamp(data.ball.x, -0.01, 1.01), y: clamp(data.ball.y, 0, 1) }; queueBall(plan, plan.ball); }
-    if (Array.isArray(data.players)) {
-      data.players.forEach(function (p) {
-        if (!p || !p.active || (p.team !== 'home' && p.team !== 'away')) return;
-        placeInPlan(plan, p.id, { x: p.x, y: p.y });
-        if (plan.players[p.id]) step.players[p.id] = plan.players[p.id];
-      });
-    } else if (Array.isArray(S.authoritativePlayers) && S.authoritativePlayers.length) {
-      // Sin posiciones en este tick: se mantienen las últimas autoritativas conocidas.
-      S.authoritativePlayers.forEach(function (p) {
-        if (!p || !p.active) return;
-        placeInPlan(plan, p.id, { x: p.x, y: p.y });
-        if (plan.players[p.id]) step.players[p.id] = plan.players[p.id];
-      });
-    } else {
-      // Sin posiciones del servidor: formación alrededor del balón.
-      S.players.forEach(function (pl) {
-        if (!pl.slot) return;
-        var t = targetFor(pl.slot, pl.mirror, plan.ball.x, plan.ball.y);
-        placeInPlan(plan, pl.id, { x: t.x, y: t.y });
-        step.players[pl.id] = plan.players[pl.id];
-      });
-    }
-    step.ball = { x: plan.ball.x, y: plan.ball.y };
-    return limitStep(plan, step);
-  }
-  // Un solo paso de movimiento en vuelo a la vez. Si se acumulan demasiados pasos
-  // (pestaña oculta, red lenta), se descartan los de poca relevancia: el siguiente
-  // tick reubica a todos. Nunca se acelera la reproducción.
-  function enqueueStep(step) {
-    if (step.kind === 'tick') S.queue = S.queue.filter(function (s) { return s.kind !== 'tick'; });
-    step.queued = Boolean(S.stepTimer) || S.queue.length > 0;
-    S.queue.push(step);
-    trimMotionBacklog();
-    pump();
-  }
-  function trimMotionBacklog() {
-    var motion = S.queue.filter(isMotion).length;
-    for (var i = 0; motion > MAX_MOTION_BACKLOG && i < S.queue.length; i++) {
-      var s = S.queue[i];
-      if (isMotion(s) && !s.important && s.kind !== 'tick') { S.queue.splice(i, 1); i--; motion--; }
-    }
-  }
-  // Recorrido pendiente: destinos del balón por alcanzar o jugadores que aún no llegan
-  // (sus pasos no alcanzaron el destino porque la velocidad máxima lo impide). Se
-  // continúa a ritmo constante hasta converger; nunca se acelera.
-  function continuationStep() {
-    var plan = S.plan;
-    if (reduced.matches || !plan || !plan.shown) return null;
-    var pending = Boolean(plan.ballQueue && plan.ballQueue.length);
-    if (!pending) {
-      pending = Object.keys(plan.players).some(function (id) {
-        var sh = plan.shown.players[id], tg = plan.players[id];
-        return !sh || Math.hypot((tg.x - sh.x) * 105, (tg.y - sh.y) * 68) > 0.01;
-      });
-    }
-    if (!pending) return null;
-    var step = { kind: 'event', ms: EVENT_STEP_MS, ball: null, players: {}, important: false, continuation: true };
-    return limitStep(plan, step);
-  }
-  function pump() {
-    if (S.stepTimer) return; // un paso está en vuelo; su temporizador vuelve a llamar a pump
-    var now = performance.now();
-    for (;;) {
-      if (!S.queue.length) {
-        var cont = continuationStep();
-        if (!cont) break;
-        S.queue.push(cont);
-      }
-      var step = S.queue.shift();
-      if (!isMotion(step)) { appendCommentary(step.commentary); continue; }
-      var start = step.queued ? S.busyUntil : now;
-      var end = start + step.ms;
-      applyMotion(step, start);
-      S.busyUntil = end;
-      if (end > now) {
-        S.stepTimer = setTimeout(function () { S.stepTimer = null; pump(); }, end - now);
-        return;
-      }
-      // Paso ya vencido (pestaña en segundo plano): se aplica su destino y se sigue.
-    }
-  }
-  function applyMotion(step, t0) {
-    var now = performance.now();
-    var p = motionP(now);
-    var from = {}, to = {};
-    S.players.forEach(function (pl) {
-      var pose = poseOf(pl, p);
-      from[pl.id] = pose;
-      to[pl.id] = step.players[pl.id] || pose;
-    });
-    var ballFrom = ballAt(p);
-    S.motion = {
-      t0: t0, ms: step.ms, from: from, to: to,
-      ballFrom: ballFrom, ballTo: step.ball ? { x: step.ball.x, y: step.ball.y } : ballFrom
-    };
-  }
-  function clearMotion() {
-    if (S.stepTimer) clearTimeout(S.stepTimer);
-    S.stepTimer = null; S.queue = []; S.motion = null; S.plan = null; S.busyUntil = 0;
+
+  function movePlayerTo(id, point, dur) {
+    if (!point || !Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y))) return;
+    var player = S.players.find(function (p) { return p.id === id; });
+    if (!player) return;
+    player.startX = player.renderX;
+    player.startY = player.renderY;
+    var targetX = clamp(Number(point.x), .01, .99);
+    var targetY = clamp(Number(point.y), .02, .98);
+    var moveDist = Math.hypot(targetX - player.renderX, targetY - player.renderY);
+    player.destX = targetX;
+    player.destY = targetY;
+    player.t0 = performance.now();
+    player.dur = dur ? Math.max(dur, moveDist * 1600) : Math.max(600, moveDist * 1400);
   }
 
-  // ===== Ciclo de render (60 fps, lineal) =====
+  // ===== Ciclo de render (tweening 60 fps) =====
   function frame(now) {
     S.rafId = requestAnimationFrame(frame);
-    var m = S.motion;
-    var p = motionP(now);
-    S.ball = ballAt(p);
 
+    // Balón
+    var bDur = S.ballDur || 800;
+    var bp = clamp((now - (S.ballT0 || now)) / bDur, 0, 1);
+    var be = reduced.matches ? 1 : easeOutCubic(bp);
+    S.ball.x = lerp(S.ballStart.x, S.ballDest.x, be);
+    S.ball.y = lerp(S.ballStart.y, S.ballDest.y, be);
+
+    // Portador del balón
     var carrier = null;
     if (S.ballCarrierId != null) {
-      carrier = S.players.find(function (q) { return q.id === S.ballCarrierId; });
+      carrier = S.players.find(function (p) { return p.id === S.ballCarrierId; });
     }
+
+    // Jugadores
+    var pDur = S.playerDur || TICK_MS;
+    var pGlobal = clamp((now - (S.playerT0 || now)) / pDur, 0, 1);
+    var eGlobal = reduced.matches ? 1 : easeOutCubic(pGlobal);
 
     for (var i = 0; i < S.players.length; i++) {
       var pl = S.players[i];
-      var pose = poseOf(pl, p);
-      pl.baseX = pose.x; pl.baseY = pose.y;
+      var pe = eGlobal;
+      if (pl.dur) {
+        var pIndiv = clamp((now - (pl.t0 || now)) / pl.dur, 0, 1);
+        pe = reduced.matches ? 1 : easeOutCubic(pIndiv);
+      }
+      pl.baseX = lerp(pl.startX, pl.destX, pe);
+      pl.baseY = lerp(pl.startY, pl.destY, pe);
       if (reduced.matches || S.playStopped) {
         pl.renderX = pl.baseX; pl.renderY = pl.baseY;
       } else if (carrier && pl.id === carrier.id) {
@@ -994,11 +869,24 @@
     }
 
     if (carrier && !S.playStopped) {
-      var travel = m ? Math.hypot(m.ballTo.x - m.ballFrom.x, m.ballTo.y - m.ballFrom.y) : 0;
-      if (p >= 0.8 || travel < 0.06) {
+      if (bp >= 0.8 || (Math.hypot(S.ballDest.x - S.ballStart.x, S.ballDest.y - S.ballStart.y) < 0.06)) {
         var dir = carrier.team === 'home' ? 1 : -1;
         S.ball.x = clamp(carrier.renderX + dir * 0.012, -0.01, 1.01);
         S.ball.y = carrier.renderY;
+        S.ballStart.x = S.ball.x; S.ballStart.y = S.ball.y;
+        S.ballDest.x = S.ball.x; S.ballDest.y = S.ball.y;
+      }
+    }
+
+    // Avance suave del reloj en vivo
+    if (S.match && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0) {
+      if (!S.playStopped && Number.isFinite(S.serverMinute) && Number.isFinite(S.minuteReceivedAt)) {
+        var elapsedSec = (now - S.minuteReceivedAt) / 1000;
+        var currentSimMin = Math.min(90, Math.max(1, Math.floor(S.serverMinute + elapsedSec / 10)));
+        if (currentSimMin !== S.minute) {
+          S.minute = currentSimMin;
+          renderScoreboard();
+        }
       }
     }
 
@@ -1093,16 +981,48 @@
   }
   function drawPlayer(pl, inPoss) {
     var cx = nx(pl.renderX), cy = ny(pl.renderY), r = PLAYER_R;
-    ctx.beginPath(); ctx.ellipse(cx, cy + r * .55, r * .95, r * .42, 0, 0, TAU); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill();
+    // Sombra proyectada del jugador
+    ctx.beginPath(); ctx.ellipse(cx, cy + r * .55, r * .95, r * .42, 0, 0, TAU); ctx.fillStyle = 'rgba(0,0,0,.32)'; ctx.fill();
+
+    // Cuerpo / camiseta
     ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.clip();
     ctx.fillStyle = pl.kitBase; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
     drawKit(pl, cx, cy, r);
     ctx.restore();
+
+    // Contorno (resaltado dorado para el poseedor del balón)
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.lineWidth = inPoss ? 2.6 : 1.4;
-    ctx.strokeStyle = inPoss ? 'rgba(255,255,255,.95)' : 'rgba(0,0,0,.55)'; ctx.stroke();
-    var dir = pl.team === 'home' ? 1 : -1;
-    ctx.beginPath(); ctx.arc(cx + dir * (r * 0.72), cy, 2, 0, TAU);
-    ctx.fillStyle = inPoss ? '#ffe3a5' : 'rgba(255,255,255,.55)'; ctx.fill();
+    ctx.strokeStyle = inPoss ? '#ffe3a5' : 'rgba(0,0,0,.55)'; ctx.stroke();
+
+    // Mirada y orientación táctica dinámica
+    var defaultDir = pl.team === 'home' ? 1 : -1;
+    var ballDx = nx(S.ball.x) - cx, ballDy = ny(S.ball.y) - cy;
+    var ballDist = Math.hypot(ballDx, ballDy);
+
+    var lookAngle;
+    if (inPoss) {
+      // El portador orienta la mirada hacia el arco rival
+      var goalX = pl.team === 'home' ? nx(1) : nx(0);
+      var goalY = ny(0.5);
+      lookAngle = Math.atan2(goalY - cy, goalX - cx);
+    } else if (ballDist > 6 && ballDist < 380) {
+      // Los jugadores sin balón orientan la mirada hacia el juego activo
+      lookAngle = Math.atan2(ballDy, ballDx);
+    } else {
+      // Orientación por defecto del equipo
+      lookAngle = defaultDir > 0 ? 0 : Math.PI;
+    }
+
+    var dotX = cx + Math.cos(lookAngle) * (r * 0.78);
+    var dotY = cy + Math.sin(lookAngle) * (r * 0.78);
+
+    ctx.beginPath(); ctx.arc(dotX, dotY, inPoss ? 2.8 : 2.2, 0, TAU);
+    ctx.fillStyle = inPoss ? '#ffe3a5' : 'rgba(255,255,255,.85)'; ctx.fill();
+    if (inPoss) {
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.stroke();
+    }
+
+    // Número dorsal
     ctx.fillStyle = pl.dorsalColor; ctx.font = '700 ' + Math.round(r * .95) + 'px ' + font();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(pl.number), cx, cy + .5);
   }
@@ -1115,21 +1035,53 @@
   }
   function drawBall(now) {
     var bx = nx(S.ball.x), by = ny(S.ball.y);
-    var m = S.motion;
-    var p = motionP(now);
-    var dist = m ? Math.hypot(m.ballTo.x - m.ballFrom.x, m.ballTo.y - m.ballFrom.y) : 0;
-    if (!reduced.matches && !S.playStopped && m && p < 1 && dist > 0.05) {
+    var bDur = S.ballDur || 800;
+    var p = clamp((now - (S.ballT0 || now)) / bDur, 0, 1);
+    var dist = Math.hypot(S.ballDest.x - S.ballStart.x, S.ballDest.y - S.ballStart.y);
+
+    // Elevación parabólica 2.5D para pases y tiros largos (puro renderizado en canvas):
+    var arcHeight = (!reduced.matches && !S.playStopped && dist > 0.08)
+      ? Math.sin(p * Math.PI) * Math.min(22, dist * 55)
+      : 0;
+
+    // Estela de tiro o pase largo:
+    if (!reduced.matches && !S.playStopped && p < 1 && dist > 0.05) {
       ctx.beginPath();
-      ctx.moveTo(nx(m.ballFrom.x), ny(m.ballFrom.y));
-      ctx.lineTo(bx, by);
-      ctx.strokeStyle = 'rgba(229,189,114,' + (0.18 * (1 - p)) + ')';
-      ctx.lineWidth = 3;
+      ctx.moveTo(nx(S.ballStart.x), ny(S.ballStart.y));
+      ctx.quadraticCurveTo(
+        (nx(S.ballStart.x) + bx) / 2,
+        (ny(S.ballStart.y) + by) / 2 - arcHeight * 0.8,
+        bx,
+        by - arcHeight
+      );
+      ctx.strokeStyle = 'rgba(229,189,114,' + (0.22 * (1 - p)) + ')';
+      ctx.lineWidth = 2.5;
       ctx.stroke();
     }
-    ctx.beginPath(); ctx.arc(bx, by, BALL_R + 2, 0, TAU); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill();
-    ctx.beginPath(); ctx.arc(bx, by, BALL_R, 0, TAU); ctx.fillStyle = '#ffe3a5'; ctx.fill();
+
+    // Sombra sobre el césped (permanece en el suelo y se atenúa con la altura):
+    var shadowR = Math.max(2, BALL_R * (1 - arcHeight * 0.025));
+    var shadowAlpha = Math.max(0.12, 0.35 * (1 - arcHeight * 0.03));
+    ctx.beginPath();
+    ctx.ellipse(bx, by + 1, shadowR + 2, shadowR * 0.65, 0, 0, TAU);
+    ctx.fillStyle = 'rgba(0,0,0,' + shadowAlpha + ')';
+    ctx.fill();
+
+    // Balón elevado:
+    var visualY = by - arcHeight;
+    var visualR = BALL_R + (arcHeight * 0.08);
+
+    ctx.beginPath(); ctx.arc(bx, visualY, visualR, 0, TAU); ctx.fillStyle = '#ffe3a5'; ctx.fill();
     ctx.lineWidth = 1; ctx.strokeStyle = '#0a5a45'; ctx.stroke();
-    if (!reduced.matches) { ctx.save(); ctx.translate(bx, by); ctx.rotate(now / 300); ctx.beginPath(); ctx.moveTo(-BALL_R, 0); ctx.lineTo(BALL_R, 0); ctx.strokeStyle = 'rgba(10,90,69,.6)'; ctx.stroke(); ctx.restore(); }
+
+    if (!reduced.matches) {
+      ctx.save();
+      ctx.translate(bx, visualY);
+      ctx.rotate(now / 300);
+      ctx.beginPath(); ctx.moveTo(-visualR, 0); ctx.lineTo(visualR, 0);
+      ctx.strokeStyle = 'rgba(10,90,69,.6)'; ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // ===== Marcador / reloj =====
@@ -1171,26 +1123,58 @@
   }
   function onCommentary(data) {
     if (!data || data.matchId !== S.currentMatchId) return;
-    var item = { voice: data.voice, text: data.text };
-    // El relato de un gol espera a que termine su animación (en la cola, tras el
-    // paso del gol); el resto del relato aparece de inmediato, como antes.
-    if (S.lastEventGoal && (S.stepTimer || S.queue.length)) enqueueStep({ commentary: item });
-    else appendCommentary(item);
+    var delay = (!reduced.matches && S.goalAnimUntil && S.goalAnimUntil > performance.now())
+      ? Math.max(0, S.goalAnimUntil - performance.now())
+      : 0;
+    if (delay > 0) {
+      setTimeout(function () {
+        if (data.matchId !== S.currentMatchId) return;
+        appendCommentary({ voice: data.voice, text: data.text });
+      }, delay);
+    } else {
+      appendCommentary({ voice: data.voice, text: data.text });
+    }
   }
 
   // ===== Eventos del motor =====
   function onTick(data) {
     if (!data || data.matchId !== S.currentMatchId) return;
     var wasStopped = S.playStopped;
-    S.minute = Math.round(data.displayMinute != null ? data.displayMinute : (data.minute != null ? data.minute : S.minute));
-    S.phase = data.phase || S.phase;
-    if (data.score) S.score = data.score;
-    if (data.possession) S.possession = data.possession;
-    if (Object.prototype.hasOwnProperty.call(data, 'possessionTeam')) S.possessionTeam = data.possessionTeam;
-    if (Object.prototype.hasOwnProperty.call(data, 'ballCarrierId')) S.ballCarrierId = data.ballCarrierId;
-    if (Object.prototype.hasOwnProperty.call(data, 'playStopped')) S.playStopped = Boolean(data.playStopped);
-    if (Array.isArray(data.players)) syncAuthoritativePlayers(data.players, true);
-    enqueueStep(planTickStep(data, planBase()));
+    var rawMin = data.minute != null ? data.minute : (data.displayMinute != null ? data.displayMinute : (data.state && data.state.minute));
+    if (rawMin != null && Number.isFinite(Number(rawMin))) {
+      S.serverMinute = Number(rawMin);
+      S.minuteReceivedAt = performance.now();
+      S.minute = Math.round(S.serverMinute);
+    }
+    var st = data.state || data;
+    if (st.phase) S.phase = st.phase;
+    if (st.score) S.score = st.score;
+    if (st.possession) S.possession = st.possession;
+    if (Object.prototype.hasOwnProperty.call(st, 'possessionTeam')) S.possessionTeam = st.possessionTeam;
+    if (Object.prototype.hasOwnProperty.call(st, 'ballCarrierId')) S.ballCarrierId = st.ballCarrierId;
+    if (Object.prototype.hasOwnProperty.call(st, 'playStopped')) S.playStopped = Boolean(st.playStopped);
+
+    var ball = st.ball;
+    if (ball && (!S.ballCarrierId || S.playStopped)) {
+      var bx = clamp(ball.x, -0.01, 1.01);
+      var by = clamp(ball.y, 0, 1);
+      if (Math.hypot(bx - S.ball.x, by - S.ball.y) > 0.015) {
+        S.ballStart = { x: S.ball.x, y: S.ball.y };
+        S.ballDest = { x: bx, y: by };
+        S.ballT0 = performance.now();
+        S.ballDur = 1800;
+      }
+    }
+
+    var serverPlayers = data.players || (data.state && data.state.players);
+    if (Array.isArray(serverPlayers) && serverPlayers.length) {
+      syncAuthoritativePlayers(serverPlayers, true);
+    } else {
+      recomputeTargets(S.ballDest.x, S.ballDest.y);
+    }
+    S.playerT0 = performance.now();
+    S.playerDur = 1900;
+
     renderScoreboard();
     updateTextFallback();
     if (wasStopped !== S.playStopped) {
@@ -1232,20 +1216,80 @@
     if (Object.prototype.hasOwnProperty.call(ev, 'ballCarrierId')) S.ballCarrierId = ev.ballCarrierId;
     if (Object.prototype.hasOwnProperty.call(ev, 'playStopped')) S.playStopped = Boolean(ev.playStopped);
     if (ev.phase) S.phase = ev.phase;
-    if (ev.minute != null) S.minute = ev.minute;
-    applyRosterEvent(ev);
-    S.lastEventGoal = ev.type === 'goal' || ev.type === 'penalty_scored';
-    enqueueStep(planEventStep(ev, planBase()));
-    if (S.lastEventGoal) {
-      S.goalFlashUntil = performance.now() + 1400;
-      showGoalBanner();
-      if (ev.marcador) { var parts = String(ev.marcador).split('-'); if (parts.length === 2) { S.score = { home: Number(parts[0]) || 0, away: Number(parts[1]) || 0 }; } }
-      playSfx('goal');
-    } else if (WHISTLE_EVENTS[ev.type]) {
-      playSfx(WHISTLE_EVENTS[ev.type]);
-    } else if (ev.type === 'red_card' || ev.type === 'second_yellow') {
-      bell('card');
+    if (ev.minute != null && Number.isFinite(Number(ev.minute))) {
+      S.serverMinute = Number(ev.minute);
+      S.minuteReceivedAt = performance.now();
+      S.minute = Math.round(ev.minute);
     }
+    applyRosterEvent(ev);
+
+    // Balón: cinemática balística fluida
+    if (ev.ball && Number.isFinite(ev.ball.x) && Number.isFinite(ev.ball.y)) {
+      S.ballStart = { x: S.ball.x, y: S.ball.y };
+      S.ballDest = { x: clamp(ev.ball.x, -0.01, 1.01), y: clamp(ev.ball.y, 0, 1) };
+      var dist = Math.hypot(S.ballDest.x - S.ballStart.x, S.ballDest.y - S.ballStart.y);
+      var isShot = ev.type === 'shot' || ev.type === 'shot_on_target' || ev.type === 'goal' || ev.type === 'penalty_scored';
+      S.ballDur = isShot ? Math.max(320, Math.min(720, dist * 1000)) : Math.max(360, Math.min(850, dist * 1200));
+      S.ballT0 = performance.now();
+    }
+
+    // Jugadores
+    S.playerT0 = performance.now();
+    S.playerDur = 800;
+    S.players.forEach(function (player) {
+      player.startX = player.renderX;
+      player.startY = player.renderY;
+      player.dur = null;
+    });
+
+    if (ev.playerId != null && ev.actorPosition) movePlayerTo(ev.playerId, ev.actorPosition, 500);
+    if (ev.receiverId != null) movePlayerTo(ev.receiverId, ev.ball || S.ballDest, 700);
+    if (ev.keeperId != null && ev.keeperPosition) movePlayerTo(ev.keeperId, ev.keeperPosition, 400);
+
+    if (ev.type === 'kickoff' || ev.type === 'goal_restart') {
+      S.players.forEach(function (pl) {
+        if (pl.team === 'home') pl.destX = Math.min(pl.destX, 0.485);
+        else if (pl.team === 'away') pl.destX = Math.max(pl.destX, 0.515);
+      });
+      if (ev.playerId != null) movePlayerTo(ev.playerId, { x: 0.5, y: 0.5 }, 500);
+    }
+
+    if (ev.ball && !S.playStopped && S.possessionTeam && ['goal_celebration', 'halftime', 'ended'].indexOf(ev.phase) < 0) {
+      var defSide = S.possessionTeam === 'home' ? 'away' : 'home';
+      var nearestDef = null, minDist = Infinity;
+      S.players.forEach(function (pl) {
+        if (pl.team === defSide && pl.role !== 'GK' && pl.id !== ev.playerId) {
+          var d = Math.hypot(pl.renderX - S.ballDest.x, pl.renderY - S.ballDest.y);
+          if (d < minDist) { minDist = d; nearestDef = pl; }
+        }
+      });
+      if (nearestDef) {
+        nearestDef.destX = clamp(nearestDef.destX + (S.ballDest.x - nearestDef.destX) * 0.35, 0.02, 0.98);
+        nearestDef.destY = clamp(nearestDef.destY + (S.ballDest.y - nearestDef.destY) * 0.35, 0.02, 0.98);
+        nearestDef.dur = 700;
+      }
+    }
+
+    if (ev.type === 'goal' || ev.type === 'penalty_scored') {
+      S.goalFlashUntil = performance.now() + 1400;
+      S.goalAnimUntil = performance.now() + (reduced.matches ? 0 : 700);
+      showGoalBanner();
+      if (ev.marcador) {
+        var parts = String(ev.marcador).split('-');
+        if (parts.length === 2) {
+          S.score = { home: Number(parts[0]) || 0, away: Number(parts[1]) || 0 };
+        }
+      }
+      playSfx('goal');
+    } else {
+      S.goalAnimUntil = 0;
+      if (WHISTLE_EVENTS[ev.type]) {
+        playSfx(WHISTLE_EVENTS[ev.type]);
+      } else if (ev.type === 'red_card' || ev.type === 'second_yellow') {
+        bell('card');
+      }
+    }
+
     renderScoreboard();
     updateTextFallback();
     if (wasStopped !== S.playStopped) {
@@ -1407,8 +1451,13 @@
   }
   function renderDenoms(b) {
     var box = el['est-denoms']; box.innerHTML = '';
+    if (b.min > 0) {
+      var minBtn = document.createElement('button'); minBtn.type = 'button'; minBtn.className = 'est-denom'; minBtn.textContent = 'Mín';
+      minBtn.addEventListener('click', function () { el['est-stake'].value = b.min; });
+      box.appendChild(minBtn);
+    }
     DENOMS.filter(function (d) { return d >= b.min && d <= b.max; }).forEach(function (d) {
-      var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'est-denom'; btn.textContent = fmt(d);
+      var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'est-denom'; btn.textContent = '+' + fmt(d);
       btn.addEventListener('click', function () {
         var cur = Number(el['est-stake'].value || 0);
         el['est-stake'].value = Math.min(b.max, cur + d);
@@ -1607,12 +1656,157 @@
     } catch (e) { /* audio no disponible */ }
   }
 
+  var studioState = {
+    mode: 'full',
+    presetUrl: '/assets/casino-hero.jpg',
+    customDataUrl: null,
+    fileName: null
+  };
+
+  function updateStudioPreview() {
+    var card = el['est-studio-card-preview'];
+    var img = el['est-studio-preview-img'];
+    var textEl = el['est-studio-preview-text'];
+    var labelEl = el['est-studio-preview-label'];
+    var btn = el['est-studio-preview-btn'];
+    var countEl = el['est-promo-char-count'];
+    if (!card || !img || !textEl || !labelEl || !btn) return;
+
+    var copy = (el['est-promo-copy-input'] ? el['est-promo-copy-input'].value : '') || '';
+    var textPos = (el['est-promo-text-pos'] ? el['est-promo-text-pos'].value : 'bottom') || 'bottom';
+    var textSize = (el['est-promo-text-size'] ? el['est-promo-text-size'].value : 'medium') || 'medium';
+    var textAlign = (el['est-promo-text-align'] ? el['est-promo-text-align'].value : 'left') || 'left';
+    var themeColor = (el['est-promo-theme-color'] ? el['est-promo-theme-color'].value : '#e5bd72') || '#e5bd72';
+    var ctaText = (el['est-promo-cta-input'] ? el['est-promo-cta-input'].value.trim() : '') || 'Ver más';
+
+    card.setAttribute('data-text-position', textPos);
+    card.setAttribute('data-text-size', textSize);
+    card.setAttribute('data-text-align', textAlign);
+
+    if (countEl) {
+      countEl.textContent = copy.length + ' / 140';
+      if (copy.length >= 120) countEl.classList.add('warn');
+      else countEl.classList.remove('warn');
+    }
+
+    var hasText = copy.trim().length > 0 && textPos !== 'hidden';
+    textEl.textContent = hasText ? copy : (textPos === 'hidden' ? '' : 'Escribe el mensaje publicitario...');
+    if (el['est-studio-preview-content']) {
+      el['est-studio-preview-content'].style.display = textPos === 'hidden' ? 'none' : '';
+    }
+
+    labelEl.style.borderColor = themeColor;
+    labelEl.style.color = themeColor;
+    btn.textContent = ctaText;
+    btn.style.borderColor = themeColor;
+
+    img.src = studioState.customDataUrl || studioState.presetUrl || '/assets/casino-hero.jpg';
+  }
+
+  function setupStudioControls() {
+    var copyInput = el['est-promo-copy-input'];
+    var posSelect = el['est-promo-text-pos'];
+    var sizeSelect = el['est-promo-text-size'];
+    var alignSelect = el['est-promo-text-align'];
+    var colorSelect = el['est-promo-theme-color'];
+    var ctaInput = el['est-promo-cta-input'];
+    var fileInput = el['est-promo-image-input'];
+    var clearFileBtn = el['est-dropzone-clear-btn'];
+
+    if (copyInput) copyInput.addEventListener('input', updateStudioPreview);
+    if (posSelect) posSelect.addEventListener('change', updateStudioPreview);
+    if (sizeSelect) sizeSelect.addEventListener('change', updateStudioPreview);
+    if (alignSelect) alignSelect.addEventListener('change', updateStudioPreview);
+    if (colorSelect) colorSelect.addEventListener('change', updateStudioPreview);
+    if (ctaInput) ctaInput.addEventListener('input', updateStudioPreview);
+
+    // Mode pills
+    document.querySelectorAll('.est-mode-pill').forEach(function (pill) {
+      pill.addEventListener('click', function () {
+        document.querySelectorAll('.est-mode-pill').forEach(function (p) { p.classList.remove('active'); });
+        pill.classList.add('active');
+        var mode = pill.getAttribute('data-mode');
+        studioState.mode = mode;
+        var textFields = el['est-studio-text-fields'];
+        var presetsRow = el['est-studio-presets-row'];
+
+        if (mode === 'image_only') {
+          if (posSelect) posSelect.value = 'hidden';
+          if (textFields) textFields.hidden = true;
+          if (presetsRow) presetsRow.hidden = true;
+          if (fileInput) fileInput.focus();
+        } else if (mode === 'text_focus') {
+          if (posSelect && posSelect.value === 'hidden') posSelect.value = 'bottom';
+          if (textFields) textFields.hidden = false;
+          if (presetsRow) presetsRow.hidden = false;
+          if (copyInput) copyInput.focus();
+        } else {
+          // full
+          if (posSelect && posSelect.value === 'hidden') posSelect.value = 'bottom';
+          if (textFields) textFields.hidden = false;
+          if (presetsRow) presetsRow.hidden = false;
+        }
+        updateStudioPreview();
+      });
+    });
+
+    // Preset thumbnails
+    document.querySelectorAll('.est-preset-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        document.querySelectorAll('.est-preset-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        studioState.presetUrl = btn.getAttribute('data-preset');
+        studioState.customDataUrl = null;
+        studioState.fileName = null;
+        if (fileInput) fileInput.value = '';
+        if (el['est-dropzone-file-name']) el['est-dropzone-file-name'].textContent = 'O arrastra el archivo aquí';
+        if (clearFileBtn) clearFileBtn.hidden = true;
+        updateStudioPreview();
+      });
+    });
+
+    // Custom File upload & Drag/Drop
+    if (fileInput) {
+      fileInput.addEventListener('change', function () {
+        var file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        if (file.size > PROMO_IMAGE_MAX_BYTES || !/^image\/(png|jpeg)$/.test(file.type)) {
+          setPromoMessage('La imagen debe ser PNG o JPEG de máximo 1 MB.', 'error');
+          return;
+        }
+        readFileAsDataUrl(file).then(function (dataUrl) {
+          studioState.customDataUrl = dataUrl;
+          studioState.fileName = file.name;
+          document.querySelectorAll('.est-preset-btn').forEach(function (b) { b.classList.remove('active'); });
+          if (el['est-dropzone-file-name']) el['est-dropzone-file-name'].textContent = '✓ ' + file.name + ' (' + Math.round(file.size / 1024) + ' KB)';
+          if (clearFileBtn) clearFileBtn.hidden = false;
+          updateStudioPreview();
+        });
+      });
+    }
+
+    if (clearFileBtn) {
+      clearFileBtn.addEventListener('click', function () {
+        studioState.customDataUrl = null;
+        studioState.fileName = null;
+        if (fileInput) fileInput.value = '';
+        if (el['est-dropzone-file-name']) el['est-dropzone-file-name'].textContent = 'O arrastra el archivo aquí';
+        clearFileBtn.hidden = true;
+        var firstPreset = document.querySelector('.est-preset-btn');
+        if (firstPreset) firstPreset.click();
+        else updateStudioPreview();
+      });
+    }
+
+    updateStudioPreview();
+  }
+
   function updatePromotionRoomField() {
     var useRoom = el['est-promo-target'].value === '/room';
     el['est-promo-room-field'].hidden = !useRoom;
     el['est-promo-room-code'].required = useRoom;
   }
-  var PROMO_IMAGE_MAX_BYTES = 350 * 1024;
+  var PROMO_IMAGE_MAX_BYTES = 1024 * 1024;
   function readFileAsDataUrl(file) {
     return new Promise(function (resolve, reject) {
       var reader = new FileReader();
@@ -1643,14 +1837,34 @@
     }
     var imageFile = el['est-promo-image-input'] && el['est-promo-image-input'].files && el['est-promo-image-input'].files[0];
     if (imageFile && (imageFile.size > PROMO_IMAGE_MAX_BYTES || !/^image\/(png|jpeg)$/.test(imageFile.type))) {
-      setPromoMessage('La imagen debe ser PNG o JPEG de máximo 350 KB.', 'error');
+      setPromoMessage('La imagen debe ser PNG o JPEG de máximo 1 MB.', 'error');
+      return;
+    }
+    var copyVal = (el['est-promo-copy-input'].value || '').trim();
+    if (!imageFile && copyVal.length < 3) {
+      setPromoMessage('Escribe un texto de al menos 3 caracteres o adjunta una imagen.', 'error');
       return;
     }
     var button = el['est-promo-submit'];
     button.disabled = true;
     setPromoMessage('Enviando a revisión; no se cobran fichas al enviar…', '');
-    var payload = { matchId: S.currentMatchId, text: el['est-promo-copy-input'].value, targetPath: targetPath };
-    var imageReady = imageFile ? readFileAsDataUrl(imageFile) : Promise.resolve(null);
+    var payload = { matchId: S.currentMatchId, text: copyVal, targetPath: targetPath };
+    var textPos = el['est-promo-text-pos'] ? el['est-promo-text-pos'].value : '';
+    var textSize = el['est-promo-text-size'] ? el['est-promo-text-size'].value : '';
+    var textAlign = el['est-promo-text-align'] ? el['est-promo-text-align'].value : '';
+    var themeColor = el['est-promo-theme-color'] ? el['est-promo-theme-color'].value : '';
+    var ctaText = el['est-promo-cta-input'] ? el['est-promo-cta-input'].value.trim() : '';
+
+    if (textPos && textPos !== 'bottom') payload.textPosition = textPos;
+    if (textSize && textSize !== 'medium') payload.textSize = textSize;
+    if (textAlign && textAlign !== 'left') payload.textAlign = textAlign;
+    if (themeColor && themeColor !== '#e5bd72') payload.themeColor = themeColor;
+    if (ctaText && ctaText !== 'Ver más') payload.ctaText = ctaText;
+
+    var imageReady = studioState.customDataUrl
+      ? Promise.resolve(studioState.customDataUrl)
+      : (imageFile ? readFileAsDataUrl(imageFile) : Promise.resolve(null));
+
     imageReady.then(function (dataUrl) {
       if (dataUrl) payload.image = dataUrl;
       return fetch('/api/estadio/promotions', {
@@ -1671,6 +1885,12 @@
         return;
       }
       el['est-promo-copy-input'].value = '';
+      if (el['est-promo-image-input']) el['est-promo-image-input'].value = '';
+      studioState.customDataUrl = null;
+      studioState.fileName = null;
+      if (el['est-dropzone-clear-btn']) el['est-dropzone-clear-btn'].hidden = true;
+      if (el['est-dropzone-file-name']) el['est-dropzone-file-name'].textContent = 'O arrastra el archivo aquí';
+      updateStudioPreview();
       setPromoMessage('Enviada y pendiente de revisión. No se han cobrado fichas.', 'success');
       loadOwnPromotion(S.currentMatchId);
     }).catch(function () {
@@ -1688,6 +1908,7 @@
     el['est-promo-form'].addEventListener('submit', submitPromotion);
     el['est-promo-target'].addEventListener('change', updatePromotionRoomField);
     updatePromotionRoomField();
+    setupStudioControls();
     el['est-slip-clear'].addEventListener('click', closeSlip);
     el['est-place-bet'].addEventListener('click', placeBet);
     el['est-stake'].addEventListener('keydown', function (e) { if (e.key === 'Enter') placeBet(); });

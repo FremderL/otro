@@ -97,16 +97,19 @@ test('rechaza tipos MIME fuera de PNG/JPEG', () => {
   assert.equal(out.code, 'invalid_image');
 });
 
-test('rechaza imágenes demasiado pequeñas, demasiado altas o con proporción de cartel', () => {
-  assert.equal(media.prepareImage(toDataUrl(makePng(400, 300), 'image/png')).code, 'image_dimensions');
-  assert.equal(media.prepareImage(toDataUrl(makePng(3000, 1200), 'image/png')).code, 'image_dimensions');
-  // 2400×1000 = 2.4:1, más ancho que el límite de 2.1:1 de la previa.
-  assert.equal(media.prepareImage(toDataUrl(makePng(2400, 1000), 'image/png')).code, 'image_dimensions');
-  // 1000×1000 es cuadrada: el banner de La Previa es apaisado.
-  assert.equal(media.prepareImage(toDataUrl(makePng(1000, 1000), 'image/png')).code, 'image_dimensions');
+test('acepta imágenes de diversas proporciones y dimensiones estándar (cuadradas, 4:3, panorámicas)', () => {
+  assert.equal(media.prepareImage(toDataUrl(makePng(400, 300), 'image/png')).ok, true);
+  assert.equal(media.prepareImage(toDataUrl(makePng(1000, 1000), 'image/png')).ok, true);
+  assert.equal(media.prepareImage(toDataUrl(makePng(2400, 1000), 'image/png')).ok, true);
 });
 
-test('rechaza archivos por encima de 350 KB antes de decodificar', () => {
+test('rechaza imágenes fuera de límites dimensionales o con proporciones extremas', () => {
+  assert.equal(media.prepareImage(toDataUrl(makePng(50, 50), 'image/png')).code, 'image_dimensions');
+  assert.equal(media.prepareImage(toDataUrl(makePng(5000, 2000), 'image/png')).code, 'image_dimensions');
+  assert.equal(media.prepareImage(toDataUrl(makePng(1000, 50), 'image/png')).code, 'image_dimensions');
+});
+
+test('rechaza archivos por encima del límite máximo antes de decodificar', () => {
   const big = Buffer.alloc(media.MAX_IMAGE_BYTES + 1, 0x41);
   const out = media.prepareImage(toDataUrl(big, 'image/png'));
   assert.equal(out.ok, false);

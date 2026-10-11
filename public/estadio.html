@@ -80,12 +80,8 @@
             <time id="est-preshow-timer" aria-live="off">30:00</time>
           </div>
         </div>
-        <div class="est-compare-wrap">
-          <table id="est-team-comparison" class="est-team-comparison" aria-label="Comparativa de los equipos">
-            <thead><tr><th scope="col">Indicador</th><th id="est-compare-home" scope="col">Local</th><th id="est-compare-away" scope="col">Visita</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
+
+        <!-- Espacio promocional y Ficha exclusiva del partido -->
         <aside id="est-preshow-promo" class="est-preshow-promo" aria-label="Espacio promocional de La Previa">
           <img id="est-promo-image" class="est-promo-image" src="/assets/casino-hero.jpg" alt="" width="1821" height="864" decoding="async">
           <div class="est-promo-content">
@@ -94,6 +90,14 @@
           </div>
           <a id="est-promo-link" class="btn btn-ghost btn-small" href="/">Explorar casino</a>
         </aside>
+
+        <!-- Comparativa de datos y estilos de los equipos -->
+        <div class="est-compare-wrap" id="est-compare-wrap">
+          <table id="est-team-comparison" class="est-team-comparison" aria-label="Comparativa de los equipos">
+            <thead><tr><th scope="col">Indicador</th><th id="est-compare-home" scope="col">Local</th><th id="est-compare-away" scope="col">Visita</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </section>
 
       <div class="est-canvas-wrap" id="est-canvas-wrap">
@@ -113,47 +117,8 @@
       </div>
     </section>
 
-    <!-- Columna derecha: boleta de apuesta + mis apuestas -->
-      <section class="est-panel est-ads" id="est-ads" aria-labelledby="est-ads-title" hidden>
-        <h2 id="est-ads-title">📢 Publicidad en La Previa</h2>
-        <ol class="est-ads-steps">
-          <li><b>Inicia sesión</b> con tu cuenta vinculada del casino.</li>
-          <li><b>Pide el rol Patrocinador</b> al equipo de administración. Solo ellos lo otorgan.</li>
-          <li><b>Elige un partido</b> de la lista que empiece en menos de 30 minutos. Su publicidad se abre en ese momento.</li>
-          <li><b>Escribe tu texto</b> (3–140 caracteres), elige un enlace interno y, si quieres, sube una imagen (PNG o JPEG apaisada, máx. 350 KB).</li>
-          <li><b>Espera la revisión.</b> Si se aprueba, se cobran 250 fichas y tu anuncio se muestra en La Previa. Si se rechaza, no se cobra y la imagen se borra.</li>
-        </ol>
-        <div id="est-promo-auth" class="est-promo-auth" role="status">Comprobando sesión de cuenta…</div>
-        <a id="est-promo-login" class="btn btn-ghost btn-small" href="/" hidden>Inicia sesión en el casino y vuelve a La Previa</a>
-        <button id="est-promo-refresh" class="text-button" type="button" hidden>Ya inicié sesión · verificar</button>
-        <details id="est-promo-compose" class="est-promo-compose" hidden open>
-          <summary>Enviar una promoción para este partido</summary>
-          <p class="est-promo-note">Solo cuentas con rol Patrocinador. La promoción debe aprobarse antes de publicarse; se cobran 250 fichas únicamente al aprobarla.</p>
-          <form id="est-promo-form" class="est-promo-form" hidden>
-            <label for="est-promo-copy-input">Texto breve (3–140 caracteres)
-              <input id="est-promo-copy-input" name="text" type="text" minlength="3" maxlength="140" required autocomplete="off" />
-            </label>
-            <label for="est-promo-target">Enlace interno de MonteCristo
-              <select id="est-promo-target" name="targetPath">
-                <option value="/">Inicio del casino</option>
-                <option value="/estadio">Estadio</option>
-                <option value="/terminos">Términos</option>
-                <option value="/room">Sala con código</option>
-              </select>
-            </label>
-            <label id="est-promo-room-field" for="est-promo-room-code" hidden>Código de sala (5 caracteres)
-              <input id="est-promo-room-code" type="text" minlength="5" maxlength="5" pattern="[A-Za-z0-9]{5}" autocomplete="off" />
-            </label>
-            <label for="est-promo-image-input">Creatividad con imagen (opcional · PNG o JPEG apaisada · máx. 350 KB)
-              <input id="est-promo-image-input" type="file" accept="image/png,image/jpeg" />
-            </label>
-            <p class="est-promo-note">Si la imagen se aprueba, se muestra solo durante los 30 minutos previos al kickoff y se borra al iniciar el partido. Las rechazadas se borran al instante.</p>
-            <button id="est-promo-submit" class="btn btn-primary" type="submit">Enviar a revisión · sin cobro al enviar</button>
-            <p id="est-promo-message" class="est-promo-message" role="status" aria-live="polite"></p>
-          </form>
-        </details>
-      </section>
-    <aside class="est-col-right" aria-label="Apuestas">
+    <!-- Columna derecha: boleta de apuesta + mis apuestas + patrocinio -->
+    <aside class="est-col-right" aria-label="Apuestas y Publicidad">
       <section class="est-panel" id="est-bet-panel">
         <h2 class="est-panel-title">Apuestas <span id="est-market-phase" class="est-badge">Pre-partido</span></h2>
         <p class="est-cap-notice">Por apuesta: <strong>mínimo 10 % y máximo 50 % de tu saldo</strong> (tope absoluto 25 000). Fichas 100 % virtuales.</p>
@@ -181,6 +146,179 @@
         <ul id="est-mybets" class="est-mybets" aria-label="Tus apuestas abiertas">
           <li class="est-muted">Sin apuestas abiertas.</li>
         </ul>
+      </section>
+
+      <section class="est-panel est-ads" id="est-ads" aria-labelledby="est-ads-title" hidden>
+        <div class="est-ads-header">
+          <span class="est-ads-icon-badge" aria-hidden="true">📢</span>
+          <div>
+            <h2 id="est-ads-title">Estudio de Publicidad</h2>
+            <p class="est-ads-subtitle">Crea y personaliza anuncios para La Previa con previsualización en vivo.</p>
+          </div>
+        </div>
+
+        <ol class="est-ads-steps">
+          <li><b>Cuenta Patrocinador:</b> Inicia sesión y solicita el rol al administrador.</li>
+          <li><b>Libertad creativa:</b> Elige formato, fondo de galería o sube tu propia imagen (máx. 1 MB).</li>
+          <li><b>Revisión justa:</b> 250 fichas cobradas únicamente si el anuncio es aprobado.</li>
+        </ol>
+
+        <div id="est-promo-auth" class="est-promo-auth" role="status">Comprobando sesión de cuenta…</div>
+        <a id="est-promo-login" class="btn btn-ghost btn-small" href="/" hidden>Inicia sesión en el casino para crear publicidad</a>
+        <button id="est-promo-refresh" class="text-button" type="button" hidden>Ya inicié sesión · verificar</button>
+
+        <details id="est-promo-compose" class="est-promo-compose" hidden open>
+          <summary>Estudio de creación · La Previa</summary>
+          
+          <!-- Live Preview Box -->
+          <div class="est-studio-preview-box">
+            <div class="est-studio-preview-header">
+              <span class="est-studio-badge-live">● VISTA PREVIA EN VIVO</span>
+              <span class="est-studio-preview-meta">Así se verá en la transmisión</span>
+            </div>
+            <div id="est-studio-card-preview" class="est-preshow-promo est-studio-preview-card" data-text-position="bottom" data-text-size="medium" data-text-align="left">
+              <img id="est-studio-preview-img" class="est-promo-image" src="/assets/casino-hero.jpg" alt="Vista previa del anuncio">
+              <div class="est-promo-content" id="est-studio-preview-content">
+                <span id="est-studio-preview-label" class="est-promo-label">Patrocinador</span>
+                <p id="est-studio-preview-text">Escribe el mensaje publicitario para ver tu anuncio aquí...</p>
+              </div>
+              <span id="est-studio-preview-btn" class="btn btn-ghost btn-small">Ver más</span>
+            </div>
+          </div>
+
+          <!-- Studio Form Controls -->
+          <form id="est-promo-form" class="est-promo-form" hidden>
+            <!-- Mode Selector -->
+            <div class="est-studio-section-title">1. Formato de publicidad</div>
+            <div class="est-studio-mode-pills" role="radiogroup" aria-label="Modo creativo">
+              <button type="button" class="est-mode-pill active" data-mode="full">Diseño Completo</button>
+              <button type="button" class="est-mode-pill" data-mode="image_only">Solo Imagen</button>
+              <button type="button" class="est-mode-pill" data-mode="text_focus">Texto Rápido</button>
+            </div>
+
+            <!-- Background Preset Gallery -->
+            <div class="est-studio-presets-row" id="est-studio-presets-row">
+              <span class="est-field-mini-title">Fondos temáticos de MonteCristo:</span>
+              <div class="est-preset-thumbnails" id="est-preset-thumbnails">
+                <button type="button" class="est-preset-btn active" data-preset="/assets/casino-hero.jpg" title="Casino MonteCristo">
+                  <img src="/assets/casino-hero.jpg" alt="Casino">
+                  <span>Casino</span>
+                </button>
+                <button type="button" class="est-preset-btn" data-preset="/assets/estadio-tunnel.jpg" title="Túnel Estadio">
+                  <img src="/assets/estadio-tunnel.jpg" alt="Estadio">
+                  <span>Estadio</span>
+                </button>
+                <button type="button" class="est-preset-btn" data-preset="/assets/poker-lounge.jpg" title="Salón de Póker">
+                  <img src="/assets/poker-lounge.jpg" alt="Póker">
+                  <span>Póker</span>
+                </button>
+                <button type="button" class="est-preset-btn" data-preset="/assets/blackjack-lounge.jpg" title="Blackjack Lounge">
+                  <img src="/assets/blackjack-lounge.jpg" alt="Blackjack">
+                  <span>Blackjack</span>
+                </button>
+                <button type="button" class="est-preset-btn" data-preset="/assets/roulette-lounge.jpg" title="Ruleta Royale">
+                  <img src="/assets/roulette-lounge.jpg" alt="Ruleta">
+                  <span>Ruleta</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Custom Image Upload Dropzone -->
+            <div class="est-upload-dropzone" id="est-upload-dropzone">
+              <input id="est-promo-image-input" type="file" accept="image/png,image/jpeg" class="est-file-input" />
+              <label for="est-promo-image-input" class="est-dropzone-label">
+                <span class="est-dropzone-icon">🖼️</span>
+                <span class="est-dropzone-text">Sube tu propia imagen (PNG o JPEG, máx. 1 MB)</span>
+                <span class="est-dropzone-hint" id="est-dropzone-file-name">O arrastra el archivo aquí</span>
+              </label>
+              <button type="button" id="est-dropzone-clear-btn" class="text-button est-file-clear" hidden>✕ Quitar imagen</button>
+            </div>
+
+            <!-- Text & Typography Settings -->
+            <div id="est-studio-text-fields" class="est-studio-text-fields">
+              <div class="est-studio-section-title">2. Mensaje y diseño visual</div>
+              
+              <div class="est-field-group">
+                <div class="est-field-header">
+                  <label for="est-promo-copy-input">Texto publicitario (3 a 140 caracteres)</label>
+                  <span id="est-promo-char-count" class="est-char-count">0 / 140</span>
+                </div>
+                <textarea id="est-promo-copy-input" name="text" maxlength="140" rows="2" placeholder="Escribe tu mensaje publicitario aquí..."></textarea>
+              </div>
+
+              <div class="est-studio-grid-3">
+                <label for="est-promo-text-pos">Posición del texto
+                  <select id="est-promo-text-pos" name="textPosition">
+                    <option value="bottom" selected>Abajo (con degradado)</option>
+                    <option value="top">Arriba</option>
+                    <option value="middle">Centro destacado</option>
+                    <option value="badge">Badge lateral</option>
+                    <option value="hidden">Sin texto (solo imagen)</option>
+                  </select>
+                </label>
+
+                <label for="est-promo-text-size">Tamaño tipográfico
+                  <select id="est-promo-text-size" name="textSize">
+                    <option value="small">Pequeño</option>
+                    <option value="medium" selected>Normal</option>
+                    <option value="large">Grande / Titular</option>
+                  </select>
+                </label>
+
+                <label for="est-promo-text-align">Alineación
+                  <select id="est-promo-text-align" name="textAlign">
+                    <option value="left" selected>Izquierda</option>
+                    <option value="center">Centrado</option>
+                    <option value="right">Derecha</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="est-studio-grid-2">
+                <label for="est-promo-theme-color">Color de acento
+                  <select id="est-promo-theme-color" name="themeColor">
+                    <option value="#e5bd72" selected>✨ Dorado MonteCristo</option>
+                    <option value="#52e0ae">🌿 Verde Menta</option>
+                    <option value="#ff4d6d">🔥 Carmesí Rubí</option>
+                    <option value="#00e5ff">💎 Azul Neón</option>
+                    <option value="#b388ff">👑 Púrpura VIP</option>
+                  </select>
+                </label>
+
+                <label for="est-promo-cta-input">Texto del botón (CTA)
+                  <input id="est-promo-cta-input" type="text" maxlength="25" placeholder="Ver más" value="Ver más" />
+                </label>
+              </div>
+            </div>
+
+            <!-- Destination target -->
+            <div class="est-studio-section-title">3. Destino y publicación</div>
+            <div class="est-studio-grid-2">
+              <label for="est-promo-target">Enlace interno
+                <select id="est-promo-target" name="targetPath">
+                  <option value="/">Inicio del casino</option>
+                  <option value="/estadio">Estadio</option>
+                  <option value="/terminos">Términos y condiciones</option>
+                  <option value="/room">Sala con código privado</option>
+                </select>
+              </label>
+              <label id="est-promo-room-field" for="est-promo-room-code" hidden>Código de sala (5 caracteres)
+                <input id="est-promo-room-code" type="text" minlength="5" maxlength="5" pattern="[A-Za-z0-9]{5}" autocomplete="off" placeholder="ABCDE" />
+              </label>
+            </div>
+
+            <div class="est-studio-footer">
+              <div class="est-studio-price-tag">
+                <span>Costo de publicación:</span>
+                <b>250 fichas</b> <small>(solo tras aprobación)</small>
+              </div>
+              <button id="est-promo-submit" class="btn btn-primary est-studio-submit-btn" type="submit">
+                🚀 Enviar anuncio a revisión
+              </button>
+            </div>
+            <p id="est-promo-message" class="est-promo-message" role="status" aria-live="polite"></p>
+          </form>
+        </details>
       </section>
     </aside>
   </main>
