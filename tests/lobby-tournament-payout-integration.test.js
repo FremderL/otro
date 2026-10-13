@@ -118,6 +118,7 @@ async function startTournamentHarness(t, capacity, { pokerDeck, reconnectGraceMs
     });
   `);
   const profilePath = path.join(tempDir, 'profiles.json');
+  const tournamentStorePath = path.join(tempDir, 'lobby-tournaments.json');
   const port = await reservePort();
   const output = { text: '' };
   const child = fork(path.resolve(__dirname, '..', 'server.js'), [], {
@@ -125,6 +126,7 @@ async function startTournamentHarness(t, capacity, { pokerDeck, reconnectGraceMs
     env: {
       ...process.env,
       PORT: String(port), DATABASE_URL: '', PROFILE_STORE_PATH: profilePath,
+      LOBBY_TOURNAMENT_STORE_PATH: tournamentStorePath,
       ADMIN_FEATURE_ENABLED: 'off', FOOTBALL_ENABLED: 'off', PASSPORT_ENABLED: 'off',
       AUTO_BOTS: 'off', LOG_JSON: 'off', TEST_CLOCK_INITIAL: String(INITIAL_TIME),
       RECONNECT_GRACE_MS: String(reconnectGraceMs),
@@ -134,7 +136,7 @@ async function startTournamentHarness(t, capacity, { pokerDeck, reconnectGraceMs
     stdio: ['ignore', 'pipe', 'pipe', 'ipc']
   });
   const harness = {
-    capacity, child, output, port, profilePath, tempDir, reconnectGraceMs,
+    capacity, child, output, port, profilePath, tournamentStorePath, clockPreload, tempDir, reconnectGraceMs, pokerDeck,
     tokens: Array.from({ length: capacity }, (_, index) => `flash-${capacity}-${index + 1}`),
     names: new Map(), currentSockets: new Map(), allSockets: [],
     roomStates: new Map(), tournamentSnapshots: new Map(), prizeEvents: new Map(),
@@ -143,7 +145,7 @@ async function startTournamentHarness(t, capacity, { pokerDeck, reconnectGraceMs
 
   t.after(async () => {
     harness.allSockets.forEach(socket => socket.disconnect());
-    if (!harness.stopped) await stopServer(child);
+    if (!harness.stopped) await stopServer(harness.child);
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
@@ -174,6 +176,37 @@ async function startTournamentHarness(t, capacity, { pokerDeck, reconnectGraceMs
   child.send({ type: 'set-test-clock', now: tournament.startAt });
   await waitFor(() => roundMatches(harness, 0), `No se iniciaron las mesas del torneo de ${capacity}.`);
   return harness;
+}
+
+async function restartTournamentHarness(harness, { alreadyStopped = false } = {}) {
+  if (!alreadyStopped) await stopServer(harness.child);
+  harness.allSockets.forEach(socket => socket.disconnect());
+  harness.currentSockets.clear();
+  harness.roomStates.clear();
+  harness.tournamentSnapshots.clear();
+
+  const output = { text: '' };
+  const child = fork(path.resolve(__dirname, '..', 'server.js'), [], {
+    cwd: path.resolve(__dirname, '..'),
+    env: {
+      ...process.env,
+      PORT: String(harness.port), DATABASE_URL: '', PROFILE_STORE_PATH: harness.profilePath,
+      LOBBY_TOURNAMENT_STORE_PATH: harness.tournamentStorePath,
+      ADMIN_FEATURE_ENABLED: 'off', FOOTBALL_ENABLED: 'off', PASSPORT_ENABLED: 'off',
+      AUTO_BOTS: 'off', LOG_JSON: 'off', TEST_CLOCK_INITIAL: String(INITIAL_TIME),
+      RECONNECT_GRACE_MS: String(harness.reconnectGraceMs),
+      ...(harness.pokerDeck ? { TEST_POKER_DECK: JSON.stringify(harness.pokerDeck) } : { TEST_POKER_DECK: '' })
+    },
+    execArgv: ['--require', harness.clockPreload],
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc']
+  });
+  harness.child = child;
+  harness.output = output;
+  await waitForServer(child, output);
+  for (const token of harness.tokens) {
+    const socket = await connectSocket(harness.port, token);
+    attachSocket(harness, token, socket);
+  }
 }
 
 function attachSocket(harness, token, socket) {
@@ -350,6 +383,27 @@ test('bracket de 8 completa las 7 partidas, reconecta un asiento y entrega premi
   }
 });
 
+test('un reinicio conserva inscripciones y crea de nuevo las mesas pendientes del bracket', { timeout: 60000 }, async t => {
+  const harness = await startTournamentHarness(t, 8);
+  const before = await waitFor(() => roundMatches(harness, 0), 'No inició la primera ronda.');
+  const beforeIds = before.map(room => room.lobbyTournamentMatch.matchId).sort();
+  await restartTournamentHarness(harness);
+
+  const after = await waitFor(() => roundMatches(harness, 0), 'El bracket no reanudó sus mesas después del reinicio.');
+  const afterIds = after.map(room => room.lobbyTournamentMatch.matchId).sort();
+  assert.deepEqual(afterIds, beforeIds, 'se conservan las partidas y el sembrado de la ronda');
+  for (const room of after) {
+    assert.equal(room.players.length, 2);
+    assert.ok(room.players.every(player => player.connected));
+    assert.ok(room.players.every(player => player.chips + player.totalBet === INITIAL_CHIPS),
+      'un encuentro interrumpido reinicia solo su stack virtual, sin tocar el saldo personal');
+  }
+  const response = await emitWithAck(harness.currentSockets.get(harness.tokens[0]), 'lobby_tournaments_get', {});
+  const event = response.snapshot.tournaments.find(item => item.id === harness.tournament.id);
+  assert.equal(event.status, 'in_progress');
+  assert.equal(event.registeredCount, 8);
+});
+
 test('bracket de 16 completa las 15 partidas y asigna los ocho premios según el puesto', { timeout: 90000 }, async t => {
   const harness = await startTournamentHarness(t, 16);
   const placements = await completeFullBracket(harness);
@@ -366,6 +420,40 @@ test('bracket de 16 completa las 15 partidas y asigna los ocho premios según el
     assert.equal(receipts.length, expectedPrize > 0 ? 1 : 0, `${token}: el premio se persiste una sola vez`);
     if (expectedPrize > 0) assert.equal(receipts[0].amount, expectedPrize);
   }
+});
+
+test('el reinicio reintenta un payout pendiente sin duplicarlo si el perfil ya guardó su clave', { timeout: 90000 }, async t => {
+  const harness = await startTournamentHarness(t, 8);
+  const placements = await completeFullBracket(harness);
+  const prizes = await verifyCompletedBracket(harness, placements);
+  const championId = [...placements].find(([, place]) => place === 1)[0];
+  const reason = `Premio virtual · ${harness.tournament.name} · puesto 1`;
+
+  await stopServer(harness.child);
+  const before = new ProfileStore(harness.profilePath, { deferSeasonCheck: true }).getProfile(championId);
+  assert.ok(before.lobbyTournamentPayouts.includes(harness.tournament.id));
+  assert.equal(before.transactions.filter(transaction => transaction.reason === reason).length, 1);
+
+  const savedState = JSON.parse(fs.readFileSync(harness.tournamentStorePath, 'utf8'));
+  const savedEvent = savedState.events.find(event => event.id === harness.tournament.id);
+  assert.equal(savedEvent.status, 'completed');
+  savedEvent.payoutsAwarded = false; // simula el corte entre guardar perfiles y confirmar el recibo global
+  fs.writeFileSync(harness.tournamentStorePath, JSON.stringify(savedState, null, 2));
+  await restartTournamentHarness(harness, { alreadyStopped: true });
+
+  const restartedSnapshot = await emitWithAck(harness.currentSockets.get(championId), 'lobby_tournaments_get', {});
+  const restartedEvent = restartedSnapshot.snapshot.tournaments.find(event => event.id === harness.tournament.id);
+  assert.equal(restartedEvent.status, 'completed');
+  assert.equal(restartedEvent.myPrize, prizes.get(championId));
+  const after = new ProfileStore(harness.profilePath, { deferSeasonCheck: true }).getProfile(championId);
+  assert.equal(after.chips, before.chips, 'la reanudación no vuelve a acreditar las fichas');
+  assert.equal(after.transactions.filter(transaction => transaction.reason === reason).length, 1);
+  assert.ok(after.lobbyTournamentPayouts.includes(harness.tournament.id));
+  const durable = JSON.parse(fs.readFileSync(harness.tournamentStorePath, 'utf8'));
+  assert.equal(durable.events.find(event => event.id === harness.tournament.id).payoutsAwarded, true);
+  assert.equal(harness.prizeEvents.get(championId).flatMap(event => event.events || [])
+    .filter(event => event.type === 'lobby_tournament_prize' && event.id === harness.tournament.id).length, 1,
+  'la recuperación tampoco repite el aviso de premio');
 });
 
 test('si vence la gracia sin reconectar, el temporizador resuelve el encuentro por incomparecencia', { timeout: 60000 }, async t => {

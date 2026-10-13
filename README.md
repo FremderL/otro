@@ -20,6 +20,8 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Eventos especiales aleatorios: jackpot virtual, ganancia x2 y ronda bonus.
 - Migración de anfitrión, reconexión por dispositivo y reembolso de apuestas rápidas abiertas al salir.
 - Torneos sit & go en la mesa de póker: entrada de 200 fichas, stack de torneo de 1000, ciegas que se duplican cada 3 manos, eliminación por lugares y bote completo para el campeón; el saldo real del perfil queda protegido durante el torneo y no hay recompras.
+- Torneos relámpago gratuitos del lobby para 8 o 16 personas, con calendario, bracket real de póker, stacks independientes y premios virtuales fijos; las inscripciones y rondas se conservan entre reinicios.
+- Colección cosmética permanente de 11 piezas, con metas visibles para ganar avatares, marcos, fichas, tapetes y dorsos; separada del Pasaporte y sin cajas, compras, fichas ni ventajas de juego.
 - Blackjack con seguro y split: seguro por la mitad de la apuesta cuando la casa muestra un as (paga 2:1 contra blackjack natural) y división de pares del mismo valor en dos manos independientes, con doblaje por mano.
 - Ranking mensual en el lobby: top 10 de puntos de la temporada en curso con el podio del mes anterior. Los puntos se reinician el día 1 de cada mes (todos vuelven a 1000 fichas) y el bono diario de 100 se mantiene.
 - Modo espectador: las salas llenas muestran «👁 Ver mesa» en el lobby; hasta 12 espectadores por mesa ven la partida en vivo (con cartas ajenas siempre ocultas), participan en el chat con el prefijo 👁 y pueden tomar asiento cuando se libera un lugar o un bot lo cede.
@@ -149,6 +151,8 @@ El botón **Comunidad** permite buscar cuentas, enviar/aceptar/retirar solicitud
 
 Las funciones sociales requieren habilitar `ACCOUNT_SESSIONS_ENABLED` con la configuración segura de cuentas ya definida en el panel de administración (`DATABASE_URL`, `APP_ORIGIN` HTTPS, `SESSION_PEPPER` y proxy de confianza cuando aplique). No se habilitan de forma insegura si faltan sus requisitos. El estado social se guarda en `data/community.json` o en Postgres cuando existe `DATABASE_URL`; `COMMUNITY_STORE_PATH` permite cambiar la ruta local.
 
+El calendario, las inscripciones y el bracket de los torneos relámpago se guardan en `data/lobby-tournaments.json` (ruta configurable con `LOBBY_TOURNAMENT_STORE_PATH`) o en Postgres cuando existe `DATABASE_URL`. Si un deploy corta una partida 1v1 activa, el encuentro pendiente se recrea con los stacks virtuales completos; si el servidor perdió el horario de inscripción, ese evento se cancela en vez de arrancar con sockets obsoletos. Los premios usan claves idempotentes por perfil para que una recuperación no vuelva a acreditar fichas.
+
 El apartado **Temporadas** del panel administrativo muestra un calendario de doce meses, con rotación el día 1 según `CASINO_TIME_ZONE` (por defecto, Ciudad de México). Cada mes tiene diseño, animación, intensidad y activación propios; se puede personalizar y previsualizar antes de publicar. El calendario empieza desactivado. Fechas globales opcionales de inicio/fin pausan toda la rotación y se introducen en la zona del navegador administrador. Solo aparece para administradores autenticados con MFA; los moderadores no pueden cambiarlo. La experiencia pública respeta `prefers-reduced-motion`; los adornos no bloquean controles ni afectan a las partidas.
 
 ## Ejecutar
@@ -179,6 +183,7 @@ Variables útiles para pruebas y despliegue:
 - `BOT_ONLY_ROOM_TTL_MS`: tiempo antes de eliminar una sala sin personas; por defecto, 5 minutos cuando contiene bots.
 - `BOT_FORCE_DECISION_ERROR=1`: fuerza errores de estrategia para validar el fallback; no debe activarse normalmente.
 - `PROFILE_STORE_PATH`: ruta del archivo de perfiles (en Render, apúntalo al disco persistente, p. ej. `/var/data/profiles.json`). Se ignora si `DATABASE_URL` está definida.
+- `LOBBY_TOURNAMENT_STORE_PATH`: ruta del archivo persistente de calendario/inscripciones/brackets; por defecto `data/lobby-tournaments.json`. Se ignora si `DATABASE_URL` está definida.
 - `DATABASE_URL`: cadena de conexión Postgres (Fase 10). Si está definida, los perfiles se guardan en Postgres en vez de en el archivo JSON — pensado para el free tier de Neon, que no requiere tarjeta. Ver «Persistencia de perfiles» abajo.
 - `CASINO_TIME_ZONE`: zona IANA del calendario mensual del ranking y de la rotación visual estacional. Por defecto `America/Mexico_City`; los cambios de temporada ocurren a medianoche local y no a las 00:00 UTC del servidor.
 - `SHUTDOWN_GRACE_MS`: milisegundos que espera el apagado ordenado a que termine el guardado final antes de forzar la salida (Fase 11.3). Por defecto 10000 con Postgres y 2500 con el archivo local; súbelo si tu plan de hosting da poco tiempo de gracia y Neon suele tardar más en responder.

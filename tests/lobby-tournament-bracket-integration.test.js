@@ -107,6 +107,7 @@ test('el bracket crea mesas reales 1v1 con stack separado, bloquea Sit & Go/bots
     });
   `);
   const profilePath = path.join(tempDir, 'profiles.json');
+  const tournamentStorePath = path.join(tempDir, 'lobby-tournaments.json');
   const port = await reservePort();
   const initialTime = Date.parse('2026-10-12T17:00:00Z');
   const output = { text: '' };
@@ -115,6 +116,7 @@ test('el bracket crea mesas reales 1v1 con stack separado, bloquea Sit & Go/bots
     env: {
       ...process.env,
       PORT: String(port), DATABASE_URL: '', PROFILE_STORE_PATH: profilePath,
+      LOBBY_TOURNAMENT_STORE_PATH: tournamentStorePath,
       ADMIN_FEATURE_ENABLED: 'off', FOOTBALL_ENABLED: 'off', PASSPORT_ENABLED: 'off',
       AUTO_BOTS: 'off', LOG_JSON: 'off', TEST_CLOCK_INITIAL: String(initialTime)
     },

@@ -20,6 +20,8 @@ coverage/
 data/football.json
 # Estado social local (amistades, clubes y tema estacional)
 data/community.json
+# Calendario, inscripciones y brackets de torneos relámpago del lobby
+data/lobby-tournaments.json
 # Creatividades de La Previa (imágenes subidas): nunca se versionan.
 data/promotion-media/
 

@@ -63,7 +63,7 @@ body { margin: 0; min-width: 1024px; min-height: 100vh; overflow-x: hidden; colo
 .desktop-gate { display: none; }
 @media (max-width: 1023.98px) {
   body { min-width: 0; overflow: hidden; }
-  .desktop-gate { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 32px; text-align: center; background: radial-gradient(circle at 50% 35%, rgba(21,121,91,.14), transparent 55%), var(--bg, #060b0d); }
+  .desktop-gate { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; box-sizing: border-box; max-width: 100vw; max-height: 100vh; max-width: 100svw; max-height: 100svh; padding: 32px; text-align: center; background: radial-gradient(circle at 50% 35%, rgba(21,121,91,.14), transparent 55%), var(--bg, #060b0d); }
   .desktop-gate .brand-mark { transform: scale(1.35); margin-bottom: 8px; }
   .desktop-gate h1 { margin: 0; font-family: var(--display); font-size: 26px; letter-spacing: .04em; text-transform: uppercase; color: #fff; }
   .desktop-gate p { margin: 0; max-width: 420px; color: var(--muted, #8fa3a6); font-size: 13px; line-height: 1.7; }

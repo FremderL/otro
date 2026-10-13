@@ -30,9 +30,10 @@ test('el lobby muestra la final semanal y el bracket, y pide un nombre antes de 
   const emitted = [];
   const eight = event('flash-eight');
   const featured = event('weekly-final', { featured: true, capacity: 16 });
+  const restartedEvent = { ...event('restart-cancelled'), status: 'cancelled', cancellationReason: 'server_restarted_before_start' };
   const initialSnapshot = {
     serverNow: Date.now(), timeZone: 'America/Mexico_City', registeredTournamentId: null,
-    tournaments: [eight, featured]
+    tournaments: [eight, featured, restartedEvent]
   };
   const registeredSnapshot = {
     ...initialSnapshot,
@@ -73,6 +74,8 @@ test('el lobby muestra la final semanal y el bracket, y pide un nombre antes de 
   assert.equal(document.querySelector('#lobby-weekly-final .tournament-card')?.dataset.tournamentCard, 'weekly-final');
   assert.match(document.getElementById('lobby-weekly-final').textContent, /Final semanal destacada/u);
   assert.ok(document.querySelector('#lobby-tournament-list [data-tournament-card="flash-eight"]'));
+  assert.match(document.querySelector('[data-tournament-card="restart-cancelled"]').textContent,
+    /El servidor se reinició antes del inicio; se canceló sin cobrar entrada/u);
   document.querySelector('[data-tournament-bracket-toggle="flash-eight"]').click();
   assert.match(document.querySelector('[data-tournament-card="flash-eight"] .tournament-bracket').textContent, /El bracket se publicará/u);
 

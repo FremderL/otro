@@ -13,6 +13,7 @@ const { credit, recordWager, recordOutcome, claimDailyBonus, publicProgress } = 
 const { equipPassportCosmetic, publicPassportIdentity } = require('./lib/passport');
 const { equipCosmetic, publicCollectionIdentity } = require('./lib/cosmetics');
 const { LobbyTournamentManager } = require('./lib/lobby-tournaments');
+const { createLobbyTournamentStore } = require('./lib/lobby-tournament-store');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
 const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
 const { HAND_NAMES, compareScores, bestPokerScore } = require('./lib/poker-evaluator');
@@ -322,6 +323,8 @@ const LOBBY_CHAT_LIMIT = 60;
 // espera es instantánea, así que el comportamiento no cambia.
 let profiles;
 let lobbyTournaments = null;
+let lobbyTournamentStore = null;
+const lobbyTournamentPayoutsPending = new Map();
 let lobbyTournamentTimer = null;
 // Estadio MonteCristo (Fase E4): servicios creados en bootstrap() SOLO si
 // footballConfig.enabled. Nacen en null; las rutas /api/estadio/* y /healthz los
@@ -1377,24 +1380,47 @@ function tournamentAfterHand(room) {
   }
 }
 
-function awardLobbyTournamentPrizes(event, payouts) {
-  if (!event || !Array.isArray(payouts) || !lobbyTournaments?.markPayoutsAwarded(event.id)) return false;
-  for (const payout of payouts) {
-    const profile = profiles.profiles.get(payout.profileId);
-    if (!profile || payout.prize <= 0) continue;
-    credit(profile, payout.prize, `Premio virtual · ${event.name} · puesto ${payout.place}`);
-    profiles.touch(profile);
-    const entrant = event.registered.find(item => item.profileId === payout.profileId);
-    const socket = entrant?.socketId ? io.of('/').sockets.get(entrant.socketId) : null;
-    if (socket) socket.emit('profile_event', {
-      events: [{
-        type: 'lobby_tournament_prize', id: event.id, icon: '🏆',
-        name: `Premio de ${event.name}`, place: payout.place, reward: payout.prize
-      }],
-      profile: publicProgress(profile, true)
-    });
+async function awardLobbyTournamentPrizes(event, payouts) {
+  if (!event || event.status !== 'completed' || !Array.isArray(payouts) || event.payoutsAwarded) return false;
+  if (lobbyTournamentPayoutsPending.has(event.id)) return lobbyTournamentPayoutsPending.get(event.id);
+  const task = (async () => {
+    for (const payout of payouts) {
+      const profile = profiles.profiles.get(payout.profileId);
+      if (!profile || payout.prize <= 0) continue;
+      profile.lobbyTournamentPayouts = Array.isArray(profile.lobbyTournamentPayouts)
+        ? profile.lobbyTournamentPayouts : [];
+      if (profile.lobbyTournamentPayouts.includes(event.id)) continue;
+      credit(profile, payout.prize, `Premio virtual · ${event.name} · puesto ${payout.place}`);
+      profile.lobbyTournamentPayouts = [...profile.lobbyTournamentPayouts, event.id].slice(-256);
+      profiles.touch(profile);
+      const entrant = event.registered.find(item => item.profileId === payout.profileId);
+      const socket = entrant?.socketId ? io.of('/').sockets.get(entrant.socketId) : null;
+      if (socket) socket.emit('profile_event', {
+        events: [{
+          type: 'lobby_tournament_prize', id: event.id, icon: '🏆',
+          name: `Premio de ${event.name}`, place: payout.place, reward: payout.prize
+        }],
+        profile: publicProgress(profile, true)
+      });
+    }
+    // Primero se confirma el saldo y su clave idempotente en el ProfileStore;
+    // solo después se marca el bracket como pagado. Si hay un reinicio entre
+    // ambas escrituras, el arranque puede reintentar sin duplicar fichas.
+    await profiles.saveNow();
+    if (!lobbyTournaments?.markPayoutsAwarded(event.id)) return false;
+    await lobbyTournamentStore?.saveNow?.(lobbyTournaments.serialize());
+    return true;
+  })();
+  lobbyTournamentPayoutsPending.set(event.id, task);
+  try {
+    return await task;
+  } catch (error) {
+    console.warn(`[TOURNAMENT_PAYOUT_ERROR] torneo=${event.id}:`, error.message);
+    logEvent('lobby_tournament_payout_error', { tournament: event.id, message: String(error?.message || error) });
+    return false;
+  } finally {
+    lobbyTournamentPayoutsPending.delete(event.id);
   }
-  return true;
 }
 
 function finishLobbyTournamentMatch(room, winnerId, { forfeit = false } = {}) {
@@ -2965,7 +2991,15 @@ async function gracefulShutdown(signal) {
   try { footballSockets?.stop(); } catch (_) { /* desregistrar listeners del motor */ }
   try { await footballStore?.saveNow?.(); } catch (error) { console.warn('No se pudo guardar el store de fútbol:', error.message); }
   try { await footballStore?.close?.(); } catch (error) { console.warn('No se pudo cerrar el store de fútbol:', error.message); }
-  io.close(() => {
+  io.close(async () => {
+    // io.close dispara los disconnect handlers. Guardamos el último estado
+    // sanitizado después de retirarse los sockets y antes de cerrar el store.
+    try { await lobbyTournamentStore?.saveNow?.(lobbyTournaments?.serialize()); } catch (error) {
+      console.warn('No se pudo guardar el estado de torneos del lobby:', error.message);
+    }
+    try { await lobbyTournamentStore?.close?.(); } catch (error) {
+      console.warn('No se pudo cerrar el store de torneos del lobby:', error.message);
+    }
     server.close(() => {
       logEvent('shutdown_complete', {});
       process.exit(0);
@@ -3106,9 +3140,35 @@ async function bootstrap() {
     console.warn(`Reset del casino aplazado: la temporada ${seasonResult.month} aún tiene apuestas de fútbol abiertas (aplazamiento ${seasonResult.deferrals}/${seasonResult.maxDeferrals}).`);
     logEvent('season_reset_deferred', { month: seasonResult.month, toMonth: seasonResult.toMonth, reason: seasonResult.reason, deferrals: seasonResult.deferrals, maxDeferrals: seasonResult.maxDeferrals });
   }
-  lobbyTournaments = new LobbyTournamentManager({ timeZone: CASINO_TIME_ZONE });
+  lobbyTournamentStore = await createLobbyTournamentStore(
+    process.env.LOBBY_TOURNAMENT_STORE_PATH, process.env.DATABASE_URL
+  );
+  lobbyTournaments = new LobbyTournamentManager({
+    timeZone: CASINO_TIME_ZONE,
+    snapshot: lobbyTournamentStore.getState()
+  });
+  lobbyTournaments.setChangeListener(snapshot => lobbyTournamentStore.save(snapshot));
+  // Normaliza el calendario rehidratado y guarda de inmediato las reparaciones:
+  // las mesas que se perdieron con el proceso vuelven a pendiente, y ninguna
+  // inscripción vencida se inicia con sockets de la instancia anterior.
+  await lobbyTournamentStore.saveNow(lobbyTournaments.serialize());
+  let recoveredPayouts = 0;
+  for (const event of lobbyTournaments.events.values()) {
+    if (event.status !== 'completed' || event.payoutsAwarded) continue;
+    const payouts = event.registered.map(entrant => ({
+      profileId: entrant.profileId,
+      name: entrant.name,
+      ...(event.placements[entrant.profileId] || { place: event.capacity, prize: 0 })
+    }));
+    if (await awardLobbyTournamentPrizes(event, payouts)) recoveredPayouts++;
+  }
   startLobbyTournamentScheduler();
-  logEvent('lobby_tournaments_initialized', { timeZone: CASINO_TIME_ZONE, events: lobbyTournaments.events.size });
+  logEvent('lobby_tournaments_initialized', {
+    timeZone: CASINO_TIME_ZONE, events: lobbyTournaments.events.size,
+    interruptedMatches: lobbyTournaments.recovery.interruptedMatches,
+    cancelledEvents: lobbyTournaments.recovery.cancelledEvents,
+    recoveredPayouts
+  });
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`MonteCristo lista en http://0.0.0.0:${PORT}`);
     logEvent('server_listening', {
