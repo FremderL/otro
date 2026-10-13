@@ -1129,7 +1129,7 @@ Otras reglas:
 
 - Cuotas en formato **decimal**, mostradas siempre junto a la probabilidad implícita («2.35 · ~43 %»).
   Con un margen del 7 % esto deja de ser un detalle de cortesía y pasa a ser obligatorio (§10.3).
-- Saldo insuficiente → `insufficient_chips`; se muestra el bono diario disponible si aplica.
+- Saldo insuficiente → `insufficient_chips`; si el bono diario está disponible, se indica que puede reclamarse desde el perfil.
 - Rate limit: **10 intentos / 10 s por perfil** con `FixedWindowRateLimiter` (`lib/rate-limit.js`).
 - Verificación de T&C vigente (`verifyTosAcceptance`) antes de apostar, igual que para crear salas.
 - **Decisión C6, corregida**: el fútbol **no** se agrega a `AVAILABLE_GAMES` en

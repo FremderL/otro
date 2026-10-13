@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
+  <defs>
+    <linearGradient id="frame" x1="14" y1="11" x2="79" y2="87" gradientUnits="userSpaceOnUse"><stop stop-color="#C6FFE2"/><stop offset=".28" stop-color="#58D9A5"/><stop offset=".66" stop-color="#167654"/><stop offset="1" stop-color="#79E8B7"/></linearGradient>
+    <linearGradient id="portrait" x1="30" y1="28" x2="65" y2="76" gradientUnits="userSpaceOnUse"><stop stop-color="#225344"/><stop offset="1" stop-color="#0A201C"/></linearGradient>
+    <filter id="shadow" x="5" y="5" width="86" height="92" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation="3.5"/></filter>
+  </defs>
+  <rect x="16" y="14" width="64" height="70" rx="18" fill="#04110F" opacity=".65" filter="url(#shadow)"/>
+  <rect x="14" y="10" width="68" height="74" rx="17" fill="#0B1B18" stroke="url(#frame)" stroke-width="4"/>
+  <rect x="21" y="17" width="54" height="60" rx="12" fill="url(#portrait)" stroke="#7BE4B5" stroke-opacity=".5" stroke-width="1.2"/>
+  <path d="M20 30c6-1 9-4 10-10M76 30c-6-1-9-4-10-10M20 64c6 1 9 4 10 10M76 64c-6 1-9 4-10 10" stroke="#B5F6D7" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="48" cy="39" r="10" fill="#D4B883"/>
+  <path d="M30 68c1.3-11.7 8.2-17.5 18-17.5S64.7 56.3 66 68v2H30v-2Z" fill="#56C999" stroke="#B5F6D7" stroke-width="1.4" stroke-linejoin="round"/>
+  <path d="m48 19 2.1 4.1 4.5.6-3.3 3.2.8 4.5-4.1-2.1-4.1 2.1.8-4.5-3.3-3.2 4.5-.6L48 19Z" fill="#F7E4A6" stroke="#FFF0C5" stroke-width=".8" stroke-linejoin="round"/>
+  <circle cx="14" cy="48" r="2" fill="#FFF0C5"/><circle cx="82" cy="48" r="2" fill="#FFF0C5"/>
+</svg>

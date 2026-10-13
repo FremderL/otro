@@ -1,6 +1,7 @@
 const express = require('express');
 const compression = require('compression');
 const http = require('http');
+const { randomUUID } = require('node:crypto');
 const path = require('path');
 const { Server } = require('socket.io');
 const { AVATARS, avatarInfo } = require('./lib/profile-store');
@@ -9,6 +10,9 @@ const { AVATARS, avatarInfo } = require('./lib/profile-store');
 const { createProfileStore } = require('./lib/profile-store-factory');
 const { HISTORY_LIMITS, INACTIVITY_LIMIT_MS, CASINO_TIME_ZONE, normalizeDisplayName } = require('./lib/profile-store-shared');
 const { credit, recordWager, recordOutcome, claimDailyBonus, publicProgress } = require('./lib/progression');
+const { equipPassportCosmetic, publicPassportIdentity } = require('./lib/passport');
+const { equipCosmetic, publicCollectionIdentity } = require('./lib/cosmetics');
+const { LobbyTournamentManager } = require('./lib/lobby-tournaments');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
 const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
 const { HAND_NAMES, compareScores, bestPokerScore } = require('./lib/poker-evaluator');
@@ -22,6 +26,7 @@ const {
 } = require('./lib/lobby-chat-assistant');
 const { TOS_VERSION } = require('./lib/terms');
 const { loadAdminConfig } = require('./lib/admin-config');
+const { loadPassportConfig } = require('./lib/passport-config');
 const { createAccountSessionStore } = require('./lib/account-session-factory');
 const { installAccountAuthRoutes, COOKIE_NAME, parseCookies } = require('./lib/account-auth-http');
 const { sessionState } = require('./lib/account-sessions');
@@ -35,11 +40,15 @@ const { createPasswordResetStore } = require('./lib/password-reset-store-factory
 const { installPasswordResetRoutes } = require('./lib/password-reset-http');
 const { sanitizeLogValue, securityHeaders } = require('./lib/security-hardening');
 const { createIdempotencyStore } = require('./lib/idempotency-store-factory');
+const { createCommunityStore } = require('./lib/community-store');
+const { installCommunityRoutes } = require('./lib/community-http');
+const { installSeasonalThemeRoutes } = require('./lib/seasonal-theme-http');
 
 // Fase administrativa 0: el feature flag permanece apagado por defecto y, si
 // se activa, el proceso falla cerrado antes de escuchar tráfico cuando falta
 // cualquier secreto o requisito de producción.
 const adminConfig = loadAdminConfig();
+const passportConfig = loadPassportConfig();
 
 // Estadio MonteCristo (Fase E4): feature flag fail-closed, apagado por defecto.
 // loadFootballConfig() se invoca aquí, junto a loadAdminConfig y ANTES de la red
@@ -91,6 +100,7 @@ process.on('unhandledRejection', reason => {
 // Fase administrativa 1: API de sesión segura. Las rutas existen detrás de
 // ACCOUNT_SESSIONS_ENABLED y resuelven stores cargados por bootstrap().
 let accountAuth = null;
+let communityStore = null;
 accountAuth = installAccountAuthRoutes(app, {
   config: adminConfig,
   getProfiles: () => profiles,
@@ -133,12 +143,38 @@ installReportRoutes(app, {
   }
 });
 installPasswordResetRoutes(app,{config:adminConfig,getProfiles:()=>profiles,getSessionStore:()=>accountSessionStore,getPasswordResetStore:()=>passwordResetStore,getAuditStore:()=>auditStore});
+installCommunityRoutes(app, {
+  config: adminConfig,
+  resolveSession: (...args) => accountAuth.resolveSession(...args),
+  getProfiles: () => profiles,
+  getCommunityStore: () => communityStore,
+  canMoveChips: profileId => !roomOfProfile(profiles.getProfile(profileId))
+});
+installSeasonalThemeRoutes(app, {
+  config: adminConfig,
+  getProfiles: () => profiles,
+  getSessionStore: () => accountSessionStore,
+  getCommunityStore: () => communityStore,
+  getAuditStore: () => auditStore,
+  getIdempotencyStore: () => idempotencyStore,
+  onChanged: theme => io.emit('seasonal_theme_updated', theme)
+});
 
 // Fase 9: presupuesto de rendimiento — gzip para HTML/CSS/JS y caché larga para las
 // imágenes del lobby (tienen nombre estable; si se reemplazan, cambiar el nombre del archivo).
 app.use(compression());
 app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: '7d', immutable: false }));
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '5m' }));
+const revalidateAppShell = new Set(['index.html', 'app.js', 'styles.css', 'chat-format.js', 'estadio-banner.js']);
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '5m',
+  setHeaders(res, filePath) {
+    // La shell de la app cambia junto con despliegues; revalidarla evita que el
+    // navegador mantenga por cinco minutos una UI desactualizada en perfiles.
+    if (revalidateAppShell.has(path.basename(filePath))) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+}));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size, botTasks: botController?.tasks.size || 0 }));
 // Fase 7: health check para deploys sin caída en Render (configurado como healthCheckPath en render.yaml).
 app.get('/healthz', (_req, res) => {
@@ -152,6 +188,7 @@ app.get('/healthz', (_req, res) => {
     casinoTimeZone: CASINO_TIME_ZONE,
     tosVersion: TOS_VERSION,
     accountSessionsEnabled: adminConfig.accountSessionsEnabled,
+    passportEnabled: passportConfig.enabled,
     promotionsEnabled: footballConfig.enabled && adminConfig.enabled && adminConfig.accountSessionsEnabled,
     // Estadio MonteCristo (§15.8): bloque de salud del motor. Con el flag apagado
     // (o antes de bootstrap) queda reducido a { enabled: false }; footballHealth
@@ -284,6 +321,8 @@ const LOBBY_CHAT_LIMIT = 60;
 // el ProfileStore de archivo (caso local y de todos los tests actuales) la
 // espera es instantánea, así que el comportamiento no cambia.
 let profiles;
+let lobbyTournaments = null;
+let lobbyTournamentTimer = null;
 // Estadio MonteCristo (Fase E4): servicios creados en bootstrap() SOLO si
 // footballConfig.enabled. Nacen en null; las rutas /api/estadio/* y /healthz los
 // leen en diferido (getters), igual que el casino lee `profiles`.
@@ -485,12 +524,14 @@ function createRoom(game, host, socket, requestedName) {
     turnDuration: game === 'poker' ? 30000 : game === 'blackjack' ? 25000 : null,
     turnNonce: 0,
     dealerIndex: -1,
+    roundSessionId: randomUUID(),
     handNumber: 0,
     messages: [],
     results: [],
     quickResult: null,
     recentWinners: [],
     spectators: [], // Fase 8: espectadores (modo observador con chat)
+    lobbyTournamentMatch: null, // Torneo relámpago del lobby; no comparte entrada/premio del Sit & Go
     tournament: null, // Fase 8.1: torneo sit & go (solo póker)
     specialEvent: quick ? rollSpecialEvent() : null,
     createdAt: Date.now(),
@@ -541,12 +582,17 @@ function publicRoom(room, viewerId) {
     name: room.name,
     game: room.game,
     hostId: room.hostId,
+    viewerId,
     phase: room.phase,
     players: room.players.map((p, index) => ({
       id: p.id,
       seat: index,
       name: p.name,
       avatar: p.avatar || p._profile?.avatar || 'fox',
+      passport: passportConfig.enabled && p._profile
+        ? publicPassportIdentity(p._profile)
+        : { equipped: { frame: null, title: null, badge: null } },
+      collection: p._profile ? publicCollectionIdentity(p._profile) : { equipped: { avatar: null, frame: null, chips: null, felt: null, cards: null } },
       chips: p.chips,
       stats: p._profile ? publicProgress(p._profile).stats : null,
       connected: p.connected,
@@ -598,6 +644,21 @@ function publicRoom(room, viewerId) {
       const viewer = room.players.find(player => player.id === viewerId);
       return viewer?._profile ? publicProgress(viewer._profile, true) : null;
     })(),
+    // Torneo relámpago originado en el lobby; separado del Sit & Go de mesa.
+    lobbyTournamentMatch: room.lobbyTournamentMatch ? {
+      tournamentId: room.lobbyTournamentMatch.tournamentId,
+      tournamentName: room.lobbyTournamentMatch.tournamentName,
+      matchId: room.lobbyTournamentMatch.matchId,
+      roundLabel: room.lobbyTournamentMatch.roundLabel,
+      roundIndex: room.lobbyTournamentMatch.roundIndex,
+      matchNumber: room.lobbyTournamentMatch.matchNumber,
+      status: room.lobbyTournamentMatch.status,
+      level: room.lobbyTournamentMatch.level,
+      handsAtLevel: room.lobbyTournamentMatch.handsAtLevel,
+      handsPerLevel: room.lobbyTournamentMatch.handsPerLevel,
+      winnerName: room.lobbyTournamentMatch.winnerName || null,
+      forfeit: Boolean(room.lobbyTournamentMatch.forfeit)
+    } : null,
     // Fase 8.1: estado del torneo sit & go (si existe).
     tournament: room.tournament ? {
       active: room.tournament.active,
@@ -612,10 +673,16 @@ function publicRoom(room, viewerId) {
       winnerName: room.tournament.winnerName || null
     } : null,
     // Fase 8: tribuna de espectadores. El viewer sabe si está observando; nadie ve cartas ajenas.
-    spectators: (room.spectators || []).filter(s => s.connected).map(s => ({ id: s.id, name: s.name, avatar: s.avatar })),
+    spectators: (room.spectators || []).filter(s => s.connected).map(s => ({
+      id: s.id, name: s.name, avatar: s.avatar,
+      collection: s._profile ? publicCollectionIdentity(s._profile) : { equipped: { avatar: null, frame: null, chips: null, felt: null, cards: null } }
+    })),
     viewerSpectator: (() => {
       const spectator = (room.spectators || []).find(s => s.id === viewerId);
-      return spectator ? { id: spectator.id, name: spectator.name, avatar: spectator.avatar } : null;
+      return spectator ? {
+        id: spectator.id, name: spectator.name, avatar: spectator.avatar,
+        collection: spectator._profile ? publicCollectionIdentity(spectator._profile) : { equipped: { avatar: null, frame: null, chips: null, felt: null, cards: null } }
+      } : null;
     })(),
     avatars: AVATARS,
     botOptions: {
@@ -686,6 +753,26 @@ function lobbyStateSnapshot() {
 function broadcastLobby() {
   io.emit('lobby_state', lobbyStateSnapshot());
 }
+function lobbyTournamentProfileIdForSocket(socket, legacyAccountId = null) {
+  const authenticatedId = socket?.data?.accountProfileId;
+  if (authenticatedId && profiles?.profiles?.has(authenticatedId)) return authenticatedId;
+  const selectedId = socket?.data?.lobbyTournamentProfileId;
+  if (selectedId && profiles?.profiles?.has(selectedId)) return selectedId;
+  const seatedId = socket?.data?.playerId;
+  if (seatedId && profiles?.profiles?.has(seatedId)) return seatedId;
+  if (!adminConfig.accountSessionsEnabled && legacyAccountId) {
+    const candidateId = String(legacyAccountId).slice(0, 80);
+    if (profiles?.profiles?.get(candidateId)?.username) return candidateId;
+  }
+  return String(socket?.handshake?.auth?.deviceToken || '').trim().slice(0, 80);
+}
+function broadcastLobbyTournaments() {
+  if (!lobbyTournaments) return;
+  for (const socket of io.of('/').sockets.values()) {
+    const profileId = lobbyTournamentProfileIdForSocket(socket);
+    socket.emit('lobby_tournaments_state', lobbyTournaments.snapshotFor(profileId));
+  }
+}
 function gameEvent(room, type, text, playerId = null, meta = {}) {
   const event = { type, text, playerId, time: Date.now(), ...meta };
   if (playerId) {
@@ -701,11 +788,6 @@ function emitProgress(room, player, events = []) {
       io.to(room.code).emit('social_event', { type: 'achievement', playerId: player.id, name: player.name, icon: event.icon, text: `${player.name} desbloqueó “${event.name}”.` });
     }
   }
-}
-function claimPlayerDaily(room, player) {
-  const events = claimDailyBonus(player._profile);
-  profiles.touch(player._profile);
-  emitProgress(room, player, events);
 }
 function trackWager(room, player, amount) {
   const events = recordWager(player._profile, amount);
@@ -725,7 +807,14 @@ function completePlayerRound(room, player, net) {
   // siguen contando también las partidas contra bots.
   const wagered = room.game === 'poker' ? player.totalBet : player.bet;
   const eligibleForPlatinum = !player.isBot && Number(wagered) > 0;
-  const events = recordOutcome(player._profile, { game: room.game, net: finalNet, eligible: eligibleForPlatinum });
+  const roundId = `${room.roundSessionId || room.code}:${room.handNumber}`;
+  const events = recordOutcome(player._profile, {
+    game: room.game,
+    net: finalNet,
+    eligible: eligibleForPlatinum,
+    roundId,
+    passportEligible: passportConfig.enabled && eligibleForPlatinum
+  });
   if (!player.isBot) profiles.touch(player._profile);
   if (player.isBot && player.botStats) {
     player.botStats.roundsPlayed++;
@@ -746,6 +835,9 @@ function addRecentWinner(room, player, amount) {
   room.recentWinners = room.recentWinners.slice(0, 8);
 }
 function beginSpecialEvent(room) {
+  // Un bracket del lobby usa stacks y premios fijos; no mezcla jackpots ni
+  // bonificaciones aleatorias de las mesas sociales.
+  if (room.lobbyTournamentMatch) { room.specialEvent = null; return; }
   room.specialEvent = rollSpecialEvent();
   if (room.specialEvent) gameEvent(room, 'special', `${room.specialEvent.icon} ${room.specialEvent.label}: ${room.specialEvent.description}.`);
 }
@@ -812,8 +904,20 @@ function destroyRoom(code) {
   rooms.delete(code);
   // Fase 8: avisar a espectadores (y a cualquier socket rezagado) que la mesa cerró.
   io.to(code).emit('room_closed', { code });
+  if (room.lobbyTournamentMatch) {
+    for (const player of room.players) {
+      const socket = player.socketId ? io.of('/').sockets.get(player.socketId) : null;
+      if (socket?.data?.roomCode === code) {
+        delete socket.data.roomCode;
+        delete socket.data.playerId;
+        delete socket.data.spectatorId;
+        socket.leave(code);
+      }
+    }
+  }
   logEvent('room_destroyed', { room: code, game: room.game, hands: room.handNumber || 0 });
   broadcastLobby();
+  if (room.lobbyTournamentMatch) broadcastLobbyTournaments();
   return true;
 }
 function clearTurn(room) {
@@ -1110,6 +1214,7 @@ function awardSinglePokerWinner(room, player) {
   room.phase = 'showdown';
   player.status = 'winner';
   tournamentAfterHand(room);
+  lobbyTournamentAfterHand(room);
   releaseBotSeats(room);
 }
 function advancePokerStreet(room) {
@@ -1118,7 +1223,12 @@ function advancePokerStreet(room) {
     p.acted = false;
   }
   room.currentBet = 0;
-  room.minRaise = room.tournament?.active ? tournamentBlinds(room.tournament.level).big : 20;
+  const activeBlinds = room.tournament?.active
+    ? tournamentBlinds(room.tournament.level)
+    : room.lobbyTournamentMatch?.status === 'playing'
+      ? tournamentBlinds(room.lobbyTournamentMatch.level)
+      : { big: 20 };
+  room.minRaise = activeBlinds.big;
   if (room.phase === 'preflop') {
     room.community.push(draw(room), draw(room), draw(room));
     room.phase = 'flop';
@@ -1151,6 +1261,8 @@ function resolvePokerAfterAction(room, actorId) {
 const TOURNAMENT_ENTRY = 200;
 const TOURNAMENT_STACK = 1000;
 const TOURNAMENT_HANDS_PER_LEVEL = 3;
+const LOBBY_MATCH_STACK = 1000;
+const LOBBY_MATCH_HANDS_PER_LEVEL = 3;
 function tournamentBlinds(level) {
   const small = 10 * Math.pow(2, Math.min(6, Math.max(1, level) - 1));
   return { small, big: small * 2 };
@@ -1177,6 +1289,7 @@ function tournamentAlive(room) {
 }
 function executeTournamentStart(room, actor) {
   if (!room || room.game !== 'poker') return actionError('Los torneos solo están disponibles en la mesa de póker.');
+  if (room.lobbyTournamentMatch) return actionError('Este encuentro pertenece al bracket del lobby y no puede convertirse en un Sit & Go.');
   if (!actor || actor.id !== room.hostId) return actionError('Solo el anfitrión puede iniciar el torneo.');
   if (room.tournament?.active) return actionError('Ya hay un torneo en curso.');
   if (!['waiting', 'showdown'].includes(room.phase)) return actionError('Espera a que termine la mano actual.');
@@ -1264,15 +1377,202 @@ function tournamentAfterHand(room) {
   }
 }
 
+function awardLobbyTournamentPrizes(event, payouts) {
+  if (!event || !Array.isArray(payouts) || !lobbyTournaments?.markPayoutsAwarded(event.id)) return false;
+  for (const payout of payouts) {
+    const profile = profiles.profiles.get(payout.profileId);
+    if (!profile || payout.prize <= 0) continue;
+    credit(profile, payout.prize, `Premio virtual · ${event.name} · puesto ${payout.place}`);
+    profiles.touch(profile);
+    const entrant = event.registered.find(item => item.profileId === payout.profileId);
+    const socket = entrant?.socketId ? io.of('/').sockets.get(entrant.socketId) : null;
+    if (socket) socket.emit('profile_event', {
+      events: [{
+        type: 'lobby_tournament_prize', id: event.id, icon: '🏆',
+        name: `Premio de ${event.name}`, place: payout.place, reward: payout.prize
+      }],
+      profile: publicProgress(profile, true)
+    });
+  }
+  return true;
+}
+
+function finishLobbyTournamentMatch(room, winnerId, { forfeit = false } = {}) {
+  const match = room?.lobbyTournamentMatch;
+  if (!match || match.status !== 'playing' || !match.participantIds.includes(String(winnerId))) return null;
+  match.status = 'completed';
+  match.winnerId = String(winnerId);
+  match.winnerName = room.players.find(player => player.id === match.winnerId)?.name || 'Ganador';
+  match.forfeit = Boolean(forfeit);
+  match.completedAt = Date.now();
+  clearTurn(room);
+  room.phase = 'showdown';
+  for (const timer of Object.values(match.disconnectTimers || {})) {
+    clearTimeout(timer);
+    room._timers?.delete(timer);
+  }
+  match.disconnectTimers = Object.create(null);
+  for (const player of room.players) {
+    if (!player.isBot) restoreProfileChips(player);
+  }
+  addSystem(room, forfeit
+    ? `🏆 ${match.winnerName} gana el encuentro por incomparecencia.`
+    : `🏆 ${match.winnerName} gana el encuentro del bracket.`);
+
+  const result = lobbyTournaments?.resolveMatch(match.tournamentId, match.matchId, match.winnerId, { forfeit, now: match.completedAt });
+  if (result?.ok && result.code === 'tournament_completed') {
+    awardLobbyTournamentPrizes(result.event, result.payouts);
+    addSystem(room, `🏆 Terminó ${match.tournamentName}. Los premios virtuales ya fueron abonados a los perfiles.`);
+    logEvent('lobby_tournament_completed', { tournament: match.tournamentId, entrants: result.event.capacity, winner: match.winnerId });
+  } else if (result?.ok) {
+    logEvent('lobby_tournament_match_completed', { tournament: match.tournamentId, match: match.matchId, winner: match.winnerId, forfeit });
+  } else {
+    console.warn(`[TOURNAMENT] No se pudo resolver ${match.tournamentId}/${match.matchId}: ${result?.error || 'sin gestor'}`);
+  }
+
+  for (const player of room.players) {
+    if (player.socketId) io.to(player.socketId).emit('lobby_tournament_match_result', {
+      tournamentName: match.tournamentName, roundLabel: match.roundLabel,
+      winnerName: match.winnerName, isWinner: player.id === match.winnerId, forfeit: match.forfeit
+    });
+  }
+  broadcast(room);
+  broadcastLobbyTournaments();
+  scheduleRoomTask(room, () => destroyRoom(room.code), 14_000);
+  return result;
+}
+
+function lobbyTournamentAfterHand(room) {
+  const match = room?.lobbyTournamentMatch;
+  if (!match || match.status !== 'playing') return;
+  if (match.forfeitId) {
+    const winnerId = match.participantIds.find(id => id !== match.forfeitId);
+    return finishLobbyTournamentMatch(room, winnerId, { forfeit: true });
+  }
+  const players = room.players.filter(player => match.participantIds.includes(player.id));
+  const remaining = players.filter(player => player.chips > 0);
+  if (remaining.length === 1) return finishLobbyTournamentMatch(room, remaining[0].id);
+  if (!remaining.length) return finishLobbyTournamentMatch(room, match.participantIds[0]);
+  match.handsAtLevel++;
+  if (match.handsAtLevel >= match.handsPerLevel) {
+    match.handsAtLevel = 0;
+    match.level++;
+    const blinds = tournamentBlinds(match.level);
+    addSystem(room, `🏆 Nivel ${match.level} del relámpago: ciegas ${blinds.small}/${blinds.big}.`);
+    gameEvent(room, 'round', `Suben las ciegas del encuentro: ${blinds.small}/${blinds.big}.`);
+  }
+  broadcastLobbyTournaments();
+}
+
+function tournamentSocketsAvailable(event) {
+  for (const entrant of event.registered) {
+    const socket = entrant.socketId ? io.of('/').sockets.get(entrant.socketId) : null;
+    if (!socket?.connected) return 'players_offline';
+    if (socket.data.roomCode && rooms.has(socket.data.roomCode)) return 'participants_unavailable';
+    if (lobbyTournamentProfileIdForSocket(socket) !== entrant.profileId) return 'participants_unavailable';
+  }
+  return true;
+}
+
+function createLobbyTournamentMatch(event, match) {
+  if (!lobbyTournaments || match.participantIds.length !== 2) return false;
+  const entrants = match.participantIds.map(id => event.registered.find(item => item.profileId === id));
+  if (entrants.some(item => !item)) return false;
+  const sockets = entrants.map(item => io.of('/').sockets.get(item.socketId));
+  if (sockets.some((socket, index) => !socket?.connected || (socket.data.roomCode && rooms.has(socket.data.roomCode)) || lobbyTournamentProfileIdForSocket(socket) !== entrants[index].profileId)) return false;
+
+  const round = event.rounds[event.currentRound];
+  const first = newPlayer(entrants[0].profileId, sockets[0], entrants[0].name, entrants[0].avatar);
+  const title = `${event.name} · ${round?.label || 'Partida'} ${match.number}`;
+  const room = createRoom('poker', first, sockets[0], title);
+  room.lobbyTournamentMatch = {
+    tournamentId: event.id, tournamentName: event.name, matchId: match.id,
+    roundLabel: round?.label || 'Ronda', roundIndex: match.roundIndex,
+    matchNumber: match.number, participantIds: [...match.participantIds],
+    status: 'playing', level: 1, handsAtLevel: 0,
+    handsPerLevel: LOBBY_MATCH_HANDS_PER_LEVEL,
+    disconnectTimers: Object.create(null), forfeitId: null,
+    winnerId: null, winnerName: null, forfeit: false
+  };
+  const second = newPlayer(entrants[1].profileId, sockets[1], entrants[1].name, entrants[1].avatar);
+  room.players.push(second);
+  sockets[1].join(room.code);
+  for (let index = 0; index < room.players.length; index++) {
+    const player = room.players[index];
+    const socket = sockets[index];
+    socket.data.roomCode = room.code;
+    socket.data.playerId = player.id;
+    socket.data.lobbyTournamentProfileId = player.id;
+    detachTournamentChips(player, LOBBY_MATCH_STACK);
+    const timer = room.lobbyTournamentMatch.disconnectTimers[player.id];
+    if (timer) clearTimeout(timer);
+  }
+  if (!lobbyTournaments.markMatchStarted(event.id, match.id, room.code)) {
+    restoreProfileChips(first); restoreProfileChips(second);
+    for (const socket of sockets) {
+      delete socket.data.roomCode; delete socket.data.playerId;
+      socket.leave(room.code);
+    }
+    destroyRoom(room.code);
+    return false;
+  }
+  addSystem(room, `🏆 ${event.name} · ${round?.label || 'Bracket'}, encuentro ${match.number}. Entrada gratuita, 1.000 fichas virtuales y premios fijos.`);
+  const started = startPoker(room);
+  if (!started.ok) {
+    restoreProfileChips(first); restoreProfileChips(second);
+    return finishLobbyTournamentMatch(room, first.id, { forfeit: true });
+  }
+  broadcast(room);
+  broadcastLobbyTournaments();
+  return true;
+}
+
+function sweepLobbyTournaments() {
+  if (!lobbyTournaments) return;
+  const statusesBefore = [...lobbyTournaments.events.values()].map(event => `${event.id}:${event.status}:${event.registered.length}`).join('|');
+  try {
+    const started = lobbyTournaments.startDue(Date.now(), tournamentSocketsAvailable);
+    let changed = started.length > 0;
+    const statusesAfter = [...lobbyTournaments.events.values()].map(event => `${event.id}:${event.status}:${event.registered.length}`).join('|');
+    if (statusesBefore !== statusesAfter) changed = true;
+    for (const eventId of started) {
+      const event = lobbyTournaments.get(eventId);
+      for (const match of lobbyTournaments.pendingMatches(eventId)) createLobbyTournamentMatch(event, match);
+    }
+    for (const event of lobbyTournaments.events.values()) {
+      if (event.status !== 'in_progress') continue;
+      for (const match of lobbyTournaments.pendingMatches(event.id)) {
+        if (createLobbyTournamentMatch(event, match)) changed = true;
+      }
+    }
+    if (changed) broadcastLobbyTournaments();
+  } catch (error) {
+    console.error('[TOURNAMENT_SWEEP_ERROR]', error);
+    logEvent('lobby_tournament_sweep_error', { message: String(error?.message || error) });
+  }
+}
+
+function startLobbyTournamentScheduler() {
+  if (!lobbyTournaments) return;
+  if (lobbyTournamentTimer) clearInterval(lobbyTournamentTimer);
+  lobbyTournamentTimer = setInterval(sweepLobbyTournaments, 1000);
+  lobbyTournamentTimer.unref?.();
+}
+
 function startPoker(room) {
   if (!['waiting', 'showdown'].includes(room.phase)) return actionError('La mano actual todavía no termina.');
   beginRoundRoster(room);
   // Fase 8.1: en torneo juegan solo los participantes vivos y las ciegas dependen del nivel.
   const tourney = room.tournament?.active ? room.tournament : null;
-  const blinds = tourney ? tournamentBlinds(tourney.level) : { small: 10, big: 20 };
+  const lobbyMatch = room.lobbyTournamentMatch?.status === 'playing' ? room.lobbyTournamentMatch : null;
+  const blinds = tourney ? tournamentBlinds(tourney.level)
+    : lobbyMatch ? tournamentBlinds(lobbyMatch.level)
+      : { small: 10, big: 20 };
   const eligible = tourney
     ? tournamentAlive(room).filter(p => p.connected && p.chips > 0)
-    : room.players.filter(p => p.connected && p.chips >= 20);
+    : lobbyMatch
+      ? room.players.filter(p => lobbyMatch.participantIds.includes(p.id) && p.connected && p.chips > 0)
+        : room.players.filter(p => p.connected && p.chips >= 20);
   if (eligible.length < 2) return actionError(tourney ? 'El torneo necesita al menos 2 participantes con fichas.' : 'Se necesitan al menos 2 jugadores con 20 fichas.');
   beginSpecialEvent(room);
   room.deck = makeDeck(1);
@@ -1390,6 +1690,7 @@ function showdownPoker(room) {
   clearTurn(room);
   room.phase = 'showdown';
   tournamentAfterHand(room);
+  lobbyTournamentAfterHand(room);
   releaseBotSeats(room);
 }
 
@@ -1550,6 +1851,7 @@ function executeBlackjackNew(room, actor) {
 }
 function executePokerStart(room, actor) {
   if (!room || !actor || room.game !== 'poker' || actor.id !== room.hostId) return actionError('Solo el anfitrión puede iniciar la mano.');
+  if (room.lobbyTournamentMatch && room.lobbyTournamentMatch.status !== 'playing') return actionError('Ese encuentro del bracket ya terminó.');
   return startPoker(room);
 }
 function executePokerAction(room, player, { action, amount } = {}) {
@@ -1618,6 +1920,7 @@ function rosterLocked(room) {
   return isPokerActive(room) || room.phase === 'playing' || room.phase === 'rolling';
 }
 function addBotToRoom(room, options = {}) {
+  if (room?.lobbyTournamentMatch) return actionError('Los torneos relámpago del lobby no admiten bots.');
   if (rosterLocked(room)) return actionError('Espera a que termine la ronda para cambiar bots.');
   if (room.players.length >= ROOM_CAPACITY) return actionError(`La mesa está llena (máximo ${ROOM_CAPACITY}).`);
   const bot = createBot(room, options);
@@ -1663,7 +1966,7 @@ function scheduleRoomCleanup(room) {
 // Completa los asientos libres con bots expertos mientras haya personas reales en la mesa.
 function autoFillBots(room) {
   if (!AUTO_BOTS || !room || rosterLocked(room)) return false;
-  if (room.tournament?.active) return false; // Fase 8.1: sin asientos nuevos durante un torneo.
+  if (room.tournament?.active || room.lobbyTournamentMatch) return false; // Los brackets del lobby no admiten bots ni asientos externos.
   if (!room.players.some(p => !p.isBot && p.connected)) return false;
   let added = false;
   while (room.players.length < ROOM_CAPACITY) {
@@ -1727,6 +2030,8 @@ function beginRoundRoster(room) {
 }
 
 function removeOrDisconnectPlayer(room, player, leave = false) { 
+  const lobbyMatch = room.lobbyTournamentMatch;
+  if (leave && lobbyMatch?.status === 'playing') lobbyMatch.forfeitId = player.id;
   player.connected = false;
   if ((room.game === 'blackjack' || isQuickGame(room.game)) && room.phase === 'betting' && player.bet > 0) {
     player.chips += player.bet;
@@ -1745,6 +2050,20 @@ function removeOrDisconnectPlayer(room, player, leave = false) {
   }
   // Fase 8.1: quien abandona la mesa durante un torneo queda eliminado de él.
   if (leave) eliminateEntrant(room, player, true);
+  if (leave && lobbyMatch?.status === 'playing') {
+    const winnerId = lobbyMatch.participantIds.find(id => id !== player.id);
+    finishLobbyTournamentMatch(room, winnerId, { forfeit: true });
+  } else if (!leave && lobbyMatch?.status === 'playing') {
+    const timer = scheduleRoomTask(room, () => {
+      if (!player.connected && lobbyMatch.status === 'playing') {
+        lobbyMatch.forfeitId = player.id;
+        const winnerId = lobbyMatch.participantIds.find(id => id !== player.id);
+        finishLobbyTournamentMatch(room, winnerId, { forfeit: true });
+      }
+    }, RECONNECT_GRACE_MS);
+    if (timer) lobbyMatch.disconnectTimers[player.id] = timer;
+    if (lobbyTournaments?.markOffline(player.id, player.socketId)) broadcastLobbyTournaments();
+  }
   if (leave && !isPokerActive(room) && room.phase !== 'playing' && room.phase !== 'rolling') {
     room.players = room.players.filter(p => p.id !== player.id);
   }
@@ -1827,6 +2146,57 @@ io.on('connection', socket => {
   } catch (error) {
     console.error('[HANDLER_ERROR] evento=connection (snapshot inicial):', error);
   }
+  const initialTournamentProfileId = lobbyTournamentProfileIdForSocket(socket);
+  if (initialTournamentProfileId && lobbyTournaments?.restoreSocket(initialTournamentProfileId, socket.id)) broadcastLobbyTournaments();
+
+  socket.on('lobby_tournaments_get', (payload = {}, ack) => {
+    if (!lobbyTournaments) return ackError(ack, 'El calendario de torneos todavía no está listo.');
+    const profileId = lobbyTournamentProfileIdForSocket(socket, payload.accountId);
+    if (profileId && profiles.profiles.has(profileId)) socket.data.lobbyTournamentProfileId = profileId;
+    const snapshot = lobbyTournaments.snapshotFor(profileId);
+    socket.emit('lobby_tournaments_state', snapshot);
+    ackOk(ack, { snapshot });
+  });
+
+  socket.on('lobby_tournament_register', (payload = {}, ack) => {
+    if (!lobbyTournaments) return ackError(ack, 'El calendario de torneos todavía no está listo.');
+    if (socket.data.roomCode && rooms.has(socket.data.roomCode)) return ackError(ack, 'Vuelve al lobby antes de inscribirte.');
+    let profileId = lobbyTournamentProfileIdForSocket(socket, payload.accountId);
+    let profile = profileId ? profiles.profiles.get(profileId) : null;
+    if (!profile) {
+      const token = String(socket.handshake?.auth?.deviceToken || '').trim().slice(0, 80);
+      const name = cleanName(payload.name);
+      if (!token || !name) return ackError(ack, 'No pudimos confirmar tu identidad. Escribe tu nombre en el lobby y vuelve a intentarlo.');
+      if (String(payload.tos || '') !== TOS_VERSION) return ackError(ack, TOS_REQUIRED_MESSAGE);
+      const issue = nameIssue(name, { exceptId: token });
+      if (issue) return ackError(ack, issue);
+      profile = profiles.getOrCreate(token, name, payload.avatar);
+      profileId = profile.id;
+    }
+    if (!verifyTosAcceptance(profile, payload.tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
+    const result = lobbyTournaments.register(payload.tournamentId, {
+      profileId: profile.id, name: profile.name, avatar: profile.avatar, socketId: socket.id
+    });
+    if (!result.ok) return ackResult(ack, result);
+    socket.data.lobbyTournamentProfileId = profile.id;
+    profiles.touch(profile);
+    const snapshot = lobbyTournaments.snapshotFor(profile.id);
+    ackOk(ack, { code: result.code, snapshot });
+    broadcastLobbyTournaments();
+  });
+
+  socket.on('lobby_tournament_withdraw', (payload = {}, ack) => {
+    if (!lobbyTournaments) return ackError(ack, 'El calendario de torneos todavía no está listo.');
+    const profileId = lobbyTournamentProfileIdForSocket(socket, payload.accountId);
+    const profile = profileId ? profiles.profiles.get(profileId) : null;
+    if (!profile) return ackError(ack, 'No pudimos encontrar tu perfil.');
+    const result = lobbyTournaments.withdraw(payload.tournamentId, profile.id);
+    if (!result.ok) return ackResult(ack, result);
+    socket.data.lobbyTournamentProfileId = profile.id;
+    const snapshot = lobbyTournaments.snapshotFor(profile.id);
+    ackOk(ack, { code: result.code, snapshot });
+    broadcastLobbyTournaments();
+  });
 
   socket.on('create_room', ({ name, roomName, game, token, avatar, tos } = {}, ack) => {
     name = cleanName(name);
@@ -1842,7 +2212,6 @@ io.on('connection', socket => {
     const room = createRoom(game, player, socket, roomName);
     socket.data.roomCode = room.code;
     socket.data.playerId = player.id;
-    claimPlayerDaily(room, player);
     autoFillBots(room);
     ackOk(ack, { code: room.code });
     logEvent('room_created', { room: room.code, game: room.game, host: player.name });
@@ -1850,13 +2219,18 @@ io.on('connection', socket => {
     broadcast(room);
   });
 
-  socket.on('join_room', ({ name, code, token, avatar, tos } = {}, ack) => {
+  socket.on('join_room', ({ name, code, token, avatar, tos, accountId } = {}, ack) => {
     name = cleanName(name);
     if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
     code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
     const room = rooms.get(code);
     if (!room) return ackError(ack, 'Esa sala no existe o ya cerró.');
     let player = room.players.find(p => !p.isBot && p.id === String(token).slice(0, 80));
+    const tournamentAccountId = socket.data.accountProfileId
+      || (!adminConfig.accountSessionsEnabled ? String(accountId || '').slice(0, 80) : null);
+    if (!player && room.lobbyTournamentMatch && tournamentAccountId) {
+      player = room.players.find(p => !p.isBot && p.id === tournamentAccountId);
+    }
     if (player) {
       if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
       // Reingreso: el nombre se valida solo si trae uno nuevo (sin nombre
@@ -1878,8 +2252,15 @@ io.on('connection', socket => {
       profiles.update(player._profile, { name, avatar });
       player.name = player._profile.name;
       player.avatar = player._profile.avatar;
+      if (room.lobbyTournamentMatch) {
+        socket.data.lobbyTournamentProfileId = player.id;
+        const timer = room.lobbyTournamentMatch.disconnectTimers?.[player.id];
+        if (timer) { clearTimeout(timer); room._timers?.delete(timer); delete room.lobbyTournamentMatch.disconnectTimers[player.id]; }
+        lobbyTournaments?.restoreSocket(player.id, socket.id);
+      }
       addSystem(room, `${player.name} volvió a la mesa.`);
     } else {
+      if (room.lobbyTournamentMatch) return ackError(ack, 'Ese encuentro del bracket está reservado para las dos personas inscritas.');
       if (!name) return ackError(ack, 'Escribe tu nombre.');
       // exceptId = su propio token: quien viene de la tribuna a tomar asiento
       // conserva su nombre sin chocar con su propia entrada de espectadora,
@@ -1907,7 +2288,6 @@ io.on('connection', socket => {
     if (!room.hostId || room.players.find(item => item.id === room.hostId)?.isBot) room.hostId = player.id;
     scheduleRoomCleanup(room);
     autoFillBots(room);
-    claimPlayerDaily(room, player);
     ackOk(ack, { code, game: room.game });
     logEvent('player_joined', { room: code, game: room.game, player: player.name });
     gameEvent(room, 'joined', `${player.name} se unió a la sala.`);
@@ -2123,6 +2503,93 @@ io.on('connection', socket => {
     ackOk(ack, { profile: publicProgress(profile, true) });
   });
 
+  // El navegador solo puede equipar o quitar un objeto del catálogo que ya
+  // pertenece a este perfil. No existe una acción cliente para sumar puntos,
+  // sellos ni recompensas del Pasaporte.
+  socket.on('passport_equip', (payload = {}, ack) => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return ackError(ack, 'Solicitud de equipamiento no válida.');
+    }
+    if (!passportConfig.enabled) return ackError(ack, 'El Pasaporte no está activo en este momento.');
+    const { slot, itemId, accountId } = payload;
+    if (!Object.prototype.hasOwnProperty.call(payload, 'itemId')) {
+      return ackError(ack, 'Elige un cosmético o quita uno del espacio seleccionado.');
+    }
+    const { room, player } = playerForSocket(socket);
+    let targetProfile = player?._profile || null;
+    if (!targetProfile) {
+      const id = adminConfig.accountSessionsEnabled
+        ? socket.data.accountProfileId
+        : String(accountId || '').slice(0, 80);
+      const candidate = id ? profiles.profiles.get(id) : null;
+      if (candidate?.username) targetProfile = candidate;
+    }
+    if (!targetProfile) return ackError(ack, 'Perfil no disponible. Inicia sesión o abre tu perfil desde una mesa.');
+
+    const result = equipPassportCosmetic(targetProfile, { slot, itemId });
+    if (!result.ok) return ackError(ack, result.error);
+    if (result.changed) profiles.touch(targetProfile);
+    ackOk(ack, { profile: publicProgress(targetProfile, true) });
+    if (room) broadcast(room);
+  });
+
+  // La colección nueva no forma parte del Pasaporte: solo equipa ids del catálogo
+  // determinista ganados por ese mismo perfil. El cliente no puede fabricar un
+  // unlock ni editar el progreso; todo se valida en este handler y en cosmetics.js.
+  socket.on('cosmetic_equip', (payload = {}, ack) => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return ackError(ack, 'Solicitud de equipamiento no válida.');
+    }
+    const { slot, itemId, accountId } = payload;
+    if (!Object.prototype.hasOwnProperty.call(payload, 'itemId')) return ackError(ack, 'Elige un objeto del catálogo o quítalo del espacio.');
+    const { room, player } = playerForSocket(socket);
+    let targetProfile = player?._profile || null;
+    if (!targetProfile) {
+      const id = adminConfig.accountSessionsEnabled
+        ? socket.data.accountProfileId
+        : String(accountId || '').slice(0, 80);
+      const candidate = id ? profiles.profiles.get(id) : null;
+      if (candidate?.username) targetProfile = candidate;
+    }
+    if (!targetProfile) return ackError(ack, 'Perfil no disponible. Inicia sesión o abre tu perfil desde una mesa.');
+
+    const result = equipCosmetic(targetProfile, { slot, itemId });
+    if (!result.ok) return ackError(ack, result.error);
+    if (result.changed) profiles.touch(targetProfile);
+    ackOk(ack, { profile: publicProgress(targetProfile, true), equipped: result.item || null, changed: result.changed });
+    if (room) broadcast(room);
+  });
+
+  // El bono diario se reclama explícitamente desde el perfil (una vez por día
+  // UTC). En una mesa se usa el perfil del asiento; desde el lobby solo se
+  // admite la cuenta autenticada por la cookie de Socket.IO. El `accountId` del
+  // payload se conserva únicamente para el rollout legado con sesiones seguras
+  // apagadas, igual que en profile_update/account_profile.
+  socket.on('daily_bonus_claim', ({ accountId } = {}, ack) => {
+    const { room, player } = playerForSocket(socket);
+    let targetProfile = player?._profile || null;
+    if (!targetProfile) {
+      const id = adminConfig.accountSessionsEnabled
+        ? socket.data.accountProfileId
+        : String(accountId || '').slice(0, 80);
+      const candidate = id ? profiles.profiles.get(id) : null;
+      if (candidate?.username) targetProfile = candidate;
+    }
+    if (!targetProfile) return ackError(ack, 'Perfil no disponible. Inicia sesión o abre tu perfil desde una mesa.');
+
+    const events = claimDailyBonus(targetProfile);
+    if (events.length) {
+      profiles.touch(targetProfile);
+      logEvent('daily_bonus_claimed', { profileId: targetProfile.id, reward: events[0].reward });
+      if (room && player) broadcast(room);
+    }
+    return ackOk(ack, {
+      claimed: Boolean(events.length),
+      reward: events[0]?.reward || 0,
+      profile: publicProgress(targetProfile, true)
+    });
+  });
+
   // Fase 11.2: login opcional (usuario + contraseña) para recuperar el mismo
   // perfil desde otra computadora. No reemplaza el modo sin cuenta: solo
   // vincula credenciales al perfil que ya tiene este dispositivo (mismas
@@ -2322,6 +2789,8 @@ io.on('connection', socket => {
       removeOrDisconnectPlayer(room, player, false);
       broadcast(room);
     }
+    const tournamentProfileId = lobbyTournamentProfileIdForSocket(socket);
+    if (lobbyTournaments?.markOffline(tournamentProfileId, socket.id)) broadcastLobbyTournaments();
     // `disconnect` ocurre también para visitantes que nunca entraron a una
     // mesa. Se difiere un tick para contar cuando el namespace ya retiró por
     // completo el socket y publicar el descenso a quienes siguen conectados.
@@ -2439,6 +2908,7 @@ let shuttingDown = false;
 async function gracefulShutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
+  if (lobbyTournamentTimer) clearInterval(lobbyTournamentTimer);
   logEvent('shutdown_start', { signal, rooms: rooms.size });
   if (!profiles) {
     // Señal recibida antes de terminar de arrancar (bootstrap() aún esperando
@@ -2481,6 +2951,9 @@ async function gracefulShutdown(signal) {
   }
   try { await idempotencyStore?.close?.(); } catch (error) {
     console.warn('No se pudo cerrar el store de idempotencia:', error.message);
+  }
+  try { await communityStore?.close?.(); } catch (error) {
+    console.warn('No se pudo cerrar el store de comunidad:', error.message);
   }
   // Estadio MonteCristo (Fase E4): detener el motor y persistir su store. El orden
   // importa: primero se paran los sweeps y los listeners del motor (no más writes),
@@ -2582,6 +3055,8 @@ async function bootstrap() {
   reportStore = createReportStore(adminConfig);
   passwordResetStore = createPasswordResetStore(adminConfig);
   idempotencyStore = createIdempotencyStore(adminConfig);
+  communityStore = createCommunityStore(process.env.COMMUNITY_STORE_PATH, process.env.DATABASE_URL);
+  if (communityStore.ready) await communityStore.ready;
   // NOTA (Fase F, A12): el aviso de lastSeasonRepair se emite más abajo, después de
   // profiles.ensureSeason(), que es quien de verdad puede disparar la reparación.
   // Fase 11.1: con Postgres, guardar más historial no infla un archivo local
@@ -2628,6 +3103,9 @@ async function bootstrap() {
     console.warn(`Reset del casino aplazado: la temporada ${seasonResult.month} aún tiene apuestas de fútbol abiertas (aplazamiento ${seasonResult.deferrals}/${seasonResult.maxDeferrals}).`);
     logEvent('season_reset_deferred', { month: seasonResult.month, toMonth: seasonResult.toMonth, reason: seasonResult.reason, deferrals: seasonResult.deferrals, maxDeferrals: seasonResult.maxDeferrals });
   }
+  lobbyTournaments = new LobbyTournamentManager({ timeZone: CASINO_TIME_ZONE });
+  startLobbyTournamentScheduler();
+  logEvent('lobby_tournaments_initialized', { timeZone: CASINO_TIME_ZONE, events: lobbyTournaments.events.size });
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`MonteCristo lista en http://0.0.0.0:${PORT}`);
     logEvent('server_listening', {

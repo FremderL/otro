@@ -17,6 +17,7 @@ const fs = require('node:fs');
 
 const { ProfileStore } = require('../lib/profile-store');
 const { INITIAL_CHIPS } = require('../lib/profile-store-shared');
+const { emptyClubTreasury } = require('../lib/profile-store-base');
 
 function makeStore(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-'));
@@ -100,6 +101,38 @@ test('el contador de aplazamientos se reinicia tras un cierre real', (t) => {
   const closed = store.ensureSeason(new Date());
   assert.equal(closed.type, 'closed', 'cerró');
   assert.equal(store._seasonDeferrals, 0, 'contador reiniciado');
+});
+
+test('el saldo de tesorería espera el cierre efectivo y se reinicia junto al perfil', (t) => {
+  const { store, profile } = makeStore(t);
+  profile.username = 'gamer';
+  profile.chips = 4321;
+  ageSeason(store);
+  store.seasons.clubTreasury = emptyClubTreasury('2020-01');
+  const deposit = store.applyClubTreasuryMovement({
+    clubId: 'club-gate', type: 'deposit', amount: 500, actorId: profile.id,
+    operationId: 'gate-deposit-idem-01', now: Date.parse('2020-01-15T12:00:00Z'),
+    validate: () => ({ ok: true, club: { name: 'Gate Club' } })
+  });
+  assert.equal(deposit.ok, true);
+  assert.equal(profile.chips, 3821);
+  assert.equal(store.getClubTreasuryBalance('club-gate'), 500);
+
+  store.onBeforeSeasonReset = () => ({ type: 'deferred', reason: 'apuestas_de_futbol_abiertas' });
+  const deferred = store.ensureSeason(new Date());
+  assert.equal(deferred.type, 'deferred');
+  assert.equal(profile.chips, 3821, 'la cartera personal se conserva mientras el gate aplaza');
+  assert.equal(store.getClubTreasuryBalance('club-gate'), 500, 'la tesorería tampoco se adelanta');
+  assert.equal(store.seasons.clubTreasury.history.length, 0);
+
+  store.onBeforeSeasonReset = () => null;
+  const closed = store.ensureSeason(new Date());
+  assert.equal(closed.type, 'closed');
+  assert.equal(profile.chips, INITIAL_CHIPS);
+  assert.equal(store.getClubTreasuryBalance('club-gate'), 0);
+  assert.equal(store.seasons.clubTreasury.seasonKey, store.seasons.current);
+  assert.equal(store.seasons.clubTreasury.history.at(-1).seasonKey, '2020-01');
+  assert.deepEqual(store.seasons.clubTreasury.history.at(-1).top, [{ clubId: 'club-gate', balance: 500 }]);
 });
 
 test('el gate recibe fromMonth/toMonth para consultar la temporada correcta', (t) => {

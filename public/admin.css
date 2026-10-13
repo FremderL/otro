@@ -983,3 +983,96 @@ pre {
   .est-preshow-promo.est-studio-preview-card { min-height: 150px; padding: 14px; }
   .est-preshow-promo.est-studio-preview-card .est-promo-content { max-width: 100%; }
 }
+
+/* Decoración y animación estacional del lobby. */
+.seasonal-theme-layout { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(280px,.95fr); gap:20px; align-items:start; }
+.seasonal-theme-form { display:grid; gap:14px; }
+.seasonal-theme-form > label:not(.seasonal-enable-row) { display:grid; gap:6px; color:var(--muted-light); font-size:12px; font-weight:700; }
+.seasonal-theme-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.seasonal-theme-fields label { display:grid; gap:6px; color:var(--muted-light); font-size:11px; font-weight:700; }
+.seasonal-theme-form select,.seasonal-theme-form input:not([type="checkbox"]) { min-width:0; width:100%; min-height:42px; padding:9px 11px; border:1px solid var(--line-strong); border-radius:9px; color:var(--text); background:#0a1517; font:inherit; }
+.seasonal-theme-form input:focus-visible,.seasonal-theme-form select:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+.seasonal-enable-row { display:flex; align-items:center; gap:12px; padding:13px; border:1px solid rgba(82,224,174,.24); border-radius:12px; background:linear-gradient(120deg,rgba(82,224,174,.08),rgba(255,255,255,.015)); cursor:pointer; }
+.seasonal-enable-row input { width:19px; height:19px; accent-color:var(--mint); }
+.seasonal-enable-row span { display:grid; gap:2px; }
+.seasonal-enable-row b { color:var(--text); font-size:13px; }
+.seasonal-enable-row small,.seasonal-theme-help { color:var(--muted); font-size:11px; line-height:1.5; }
+.seasonal-theme-help { margin:0; }
+.seasonal-theme-status { min-height:18px; margin:0; color:var(--mint); font-size:12px; }
+.seasonal-theme-preview { --preview-accent:#e5bd72; position:relative; min-height:350px; display:flex; overflow:hidden; flex-direction:column; align-items:center; justify-content:center; padding:26px; border:1px solid color-mix(in srgb,var(--preview-accent) 45%,transparent); border-radius:18px; isolation:isolate; background:radial-gradient(90% 80% at 50% 0%,color-mix(in srgb,var(--preview-accent) 20%,transparent),transparent 65%),linear-gradient(150deg,#142422,#081012 72%); box-shadow:inset 0 1px rgba(255,255,255,.06),0 20px 48px rgba(0,0,0,.28); text-align:center; transition:filter .25s,opacity .25s; }
+.seasonal-theme-preview[data-theme="newyear"],.seasonal-month-button[data-theme="newyear"] { --preview-accent:#e8c978; }
+.seasonal-theme-preview[data-theme="valentines"],.seasonal-month-button[data-theme="valentines"] { --preview-accent:#ef88a7; }
+.seasonal-theme-preview[data-theme="spring"],.seasonal-month-button[data-theme="spring"] { --preview-accent:#9bd58d; }
+.seasonal-theme-preview[data-theme="rainy-night"],.seasonal-month-button[data-theme="rainy-night"] { --preview-accent:#83c6e5; }
+.seasonal-theme-preview[data-theme="flower-moon"],.seasonal-month-button[data-theme="flower-moon"] { --preview-accent:#e99bba; }
+.seasonal-theme-preview[data-theme="solstice"],.seasonal-month-button[data-theme="solstice"] { --preview-accent:#edb56b; }
+.seasonal-theme-preview[data-theme="firefly-garden"],.seasonal-month-button[data-theme="firefly-garden"] { --preview-accent:#83d7b5; }
+.seasonal-theme-preview[data-theme="starfall"],.seasonal-month-button[data-theme="starfall"] { --preview-accent:#a99af0; }
+.seasonal-theme-preview[data-theme="fiesta-patria"],.seasonal-month-button[data-theme="fiesta-patria"] { --preview-accent:#69c896; }
+.seasonal-theme-preview[data-theme="halloween"],.seasonal-month-button[data-theme="halloween"] { --preview-accent:#f29a57; }
+.seasonal-theme-preview[data-theme="dia-muertos"],.seasonal-month-button[data-theme="dia-muertos"] { --preview-accent:#f1a34c; }
+.seasonal-theme-preview[data-theme="christmas"],.seasonal-month-button[data-theme="christmas"] { --preview-accent:#b9dfd1; }
+.seasonal-theme-preview.is-disabled { filter:saturate(.45); opacity:.62; }
+.seasonal-preview-glow { position:absolute; inset:0; z-index:-1; background:radial-gradient(50% 50% at 50% 70%,color-mix(in srgb,var(--preview-accent) 13%,transparent),transparent 100%); }
+.seasonal-preview-kicker { color:var(--preview-accent); font-size:9px; font-weight:900; letter-spacing:.17em; }
+.seasonal-preview-mark { width:76px; height:76px; display:grid; place-items:center; margin:17px 0 9px; border:1px solid color-mix(in srgb,var(--preview-accent) 55%,transparent); border-radius:24px; color:var(--preview-accent); background:color-mix(in srgb,var(--preview-accent) 10%,#091311); box-shadow:0 0 36px color-mix(in srgb,var(--preview-accent) 16%,transparent),inset 0 1px rgba(255,255,255,.09); font-size:38px; }
+.seasonal-theme-preview h3 { margin:7px 0 2px; color:var(--text); font:800 22px var(--sans); }
+.seasonal-theme-preview p { max-width:260px; margin:0; color:var(--muted-light); font-size:12px; }
+.seasonal-preview-schedule { margin-top:19px; padding:5px 9px; border:1px solid rgba(255,255,255,.1); border-radius:999px; color:var(--muted); background:rgba(0,0,0,.22); font-size:9px; }
+.seasonal-preview-particles { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+.seasonal-preview-particles span { --preview-opacity:.28; --preview-opacity-dim:.2; position:absolute; top:-12%; left:var(--particle-x,50%); color:var(--preview-accent); opacity:var(--preview-opacity); font-size:14px; animation:seasonal-preview-drift 6s linear var(--particle-delay,0s) infinite; }
+.seasonal-theme-preview[data-intensity="festive"] .seasonal-preview-particles span { --preview-opacity:.72; --preview-opacity-dim:.52; }
+.seasonal-preview-particles span:nth-child(1) { left:8%; --particle-delay:-.8s; --particle-drift:-10px; }
+.seasonal-preview-particles span:nth-child(2) { left:20%; --particle-delay:-1.7s; --particle-drift:12px; }
+.seasonal-preview-particles span:nth-child(3) { left:32%; --particle-delay:-2.5s; --particle-drift:-14px; }
+.seasonal-preview-particles span:nth-child(4) { left:44%; --particle-delay:-3.1s; --particle-drift:16px; }
+.seasonal-preview-particles span:nth-child(5) { left:56%; --particle-delay:-3.9s; --particle-drift:-18px; }
+.seasonal-preview-particles span:nth-child(6) { left:68%; --particle-delay:-4.6s; --particle-drift:20px; }
+.seasonal-preview-particles span:nth-child(7) { left:80%; --particle-delay:-5.1s; --particle-drift:-22px; }
+.seasonal-preview-particles span:nth-child(8) { left:92%; --particle-delay:-5.7s; --particle-drift:24px; }
+.seasonal-theme-preview[data-animation="snow"] .seasonal-preview-particles span { animation-duration:9s; }
+.seasonal-theme-preview[data-animation="hearts"] .seasonal-preview-particles span { animation-duration:7s; }
+.seasonal-theme-preview[data-animation="petals"] .seasonal-preview-particles span { animation-duration:8s; }
+.seasonal-theme-preview[data-animation="sparkles"] .seasonal-preview-particles span { animation-name:seasonal-preview-twinkle; animation-duration:2.8s; }
+.seasonal-theme-preview[data-animation="none"] .seasonal-preview-particles span { display:none; }
+@keyframes seasonal-preview-drift { 0% { opacity:0; transform:translate3d(0,-10px,0); } 15% { opacity:var(--preview-opacity); } 82% { opacity:var(--preview-opacity-dim); } 100% { transform:translate3d(var(--particle-drift),390px,0) rotate(230deg); opacity:0; } }
+@keyframes seasonal-preview-twinkle { 0%,100% { opacity:var(--preview-opacity-dim); transform:scale(.75); } 50% { opacity:var(--preview-opacity); transform:scale(1.3); } }
+@media (max-width:780px) { .seasonal-theme-layout { grid-template-columns:1fr; }.seasonal-theme-preview { min-height:280px; } }
+@media (max-width:520px) { .seasonal-theme-fields { grid-template-columns:1fr; }.seasonal-theme-preview { padding:18px; } }
+@media (prefers-reduced-motion:reduce) { .seasonal-theme-preview *, .seasonal-theme-preview *::before { animation:none!important; transition:none!important; } }
+
+/* Selector anual de las doce ambientaciones. */
+.seasonal-calendar-toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:2px 0 -5px; }
+.seasonal-calendar-toolbar>div { display:grid; gap:2px; }
+.seasonal-calendar-toolbar b { color:var(--text); font-size:12px; }
+.seasonal-calendar-toolbar small { color:var(--muted); font-size:10px; }
+.seasonal-calendar-toolbar>span { color:var(--mint); font-size:9px; font-weight:800; }
+.seasonal-month-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; }
+.seasonal-month-button { --preview-accent:var(--gold); min-width:0; min-height:62px; position:relative; display:grid; grid-template-columns:1fr auto; grid-template-rows:auto 1fr; align-items:center; padding:7px 9px; overflow:hidden; border:1px solid rgba(255,255,255,.08); border-radius:10px; color:var(--muted); background:linear-gradient(145deg,rgba(255,255,255,.035),rgba(0,0,0,.12)); text-align:left; transition:transform .16s,border-color .16s,background .16s; }
+.seasonal-month-button:hover { transform:translateY(-1px); border-color:color-mix(in srgb,var(--preview-accent) 48%,transparent); }
+.seasonal-month-button small { grid-column:1; color:var(--muted); font-size:8px; font-weight:900; letter-spacing:.12em; text-transform:uppercase; }
+.seasonal-month-button b { grid-column:2; grid-row:1/3; color:var(--preview-accent); font-size:19px; font-weight:500; }
+.seasonal-month-button i { width:5px; height:5px; position:absolute; bottom:8px; left:10px; border-radius:50%; background:var(--mint); box-shadow:0 0 8px rgba(82,224,174,.5); }
+.seasonal-month-button.selected { border-color:color-mix(in srgb,var(--preview-accent) 75%,transparent); background:linear-gradient(145deg,color-mix(in srgb,var(--preview-accent) 13%,rgba(16,28,31,.95)),rgba(0,0,0,.16)); box-shadow:0 0 0 2px color-mix(in srgb,var(--preview-accent) 12%,transparent),inset 0 1px rgba(255,255,255,.04); }
+.seasonal-month-button.selected small { color:var(--text); }
+.seasonal-month-button.month-disabled { opacity:.48; }
+.seasonal-month-button.month-disabled i { background:var(--muted); box-shadow:none; }
+.seasonal-selected-month { display:flex; align-items:center; gap:10px; padding:9px 11px; border:1px solid rgba(255,255,255,.08); border-radius:9px; background:rgba(255,255,255,.025); }
+.seasonal-selected-dot { width:8px; height:8px; flex:none; border-radius:50%; background:var(--mint); box-shadow:0 0 10px rgba(82,224,174,.5); }
+.seasonal-selected-month>div { display:grid; gap:1px; }
+.seasonal-selected-month>div small { color:var(--muted-2); font-size:7px; font-weight:900; letter-spacing:.12em; }
+.seasonal-selected-month>div b { color:var(--text); font-size:11px; }
+.seasonal-selected-month>span:last-child { margin-left:auto; color:var(--muted); font-size:9px; }
+.seasonal-month-enable { padding:9px 11px; }
+.seasonal-month-enable input { width:16px; height:16px; }
+.seasonal-month-enable b { font-size:11px; }
+.seasonal-month-enable small { font-size:9px; }
+.seasonal-theme-preview[data-animation="rain"] .seasonal-preview-particles span { animation-name:seasonal-preview-rain; animation-duration:2.8s; }
+.seasonal-theme-preview[data-animation="fireflies"] .seasonal-preview-particles span { animation-name:seasonal-preview-twinkle; animation-duration:4s; }
+.seasonal-theme-preview[data-animation="meteor"] .seasonal-preview-particles span { animation-name:seasonal-preview-meteor; animation-duration:5s; }
+.seasonal-theme-preview[data-animation="confetti"] .seasonal-preview-particles span { animation-duration:5s; }
+.seasonal-theme-preview[data-animation="marigold"] .seasonal-preview-particles span { animation-duration:8s; }
+@keyframes seasonal-preview-rain { 0% { opacity:0; transform:translate3d(0,-15px,0) scaleY(1.2); } 18% { opacity:var(--preview-opacity); } 100% { opacity:0; transform:translate3d(12px,390px,0) scaleY(1.5); } }
+@keyframes seasonal-preview-meteor { 0% { opacity:0; transform:translate3d(42px,-35px,0) scale(.55); } 16% { opacity:var(--preview-opacity); } 100% { opacity:0; transform:translate3d(-95px,390px,0) scale(.8); } }
+@media (max-width:780px) { .seasonal-month-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media (max-width:520px) { .seasonal-month-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; }.seasonal-month-button { min-height:53px; padding:6px; }.seasonal-month-button i { left:7px; bottom:7px; }.seasonal-month-button b { font-size:16px; } }

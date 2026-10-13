@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs><linearGradient id="back" x1="11" y1="12" x2="47" y2="53" gradientUnits="userSpaceOnUse"><stop stop-color="#398366"/><stop offset="1" stop-color="#0B3027"/></linearGradient><linearGradient id="gold" x1="16" y1="9" x2="52" y2="56" gradientUnits="userSpaceOnUse"><stop stop-color="#FFF0BE"/><stop offset=".5" stop-color="#D8B66D"/><stop offset="1" stop-color="#98713A"/></linearGradient></defs>
+  <rect x="3" y="3" width="58" height="58" rx="17" fill="#071210" stroke="#486B51" stroke-width="1.5"/>
+  <g transform="rotate(-12 25 32)"><rect x="10" y="11" width="29" height="42" rx="4" fill="url(#back)" stroke="url(#gold)" stroke-width="1.7"/><rect x="14" y="15" width="21" height="34" rx="2" stroke="#B4E2C6" stroke-opacity=".6" stroke-width="1"/><path d="m24.5 21 1.8 4 4.4.5-3.2 3 .8 4.4-3.8-2.1-3.8 2.1.8-4.4-3.2-3 4.4-.5 1.8-4Z" fill="#E8CF8A"/></g>
+  <g transform="rotate(10 41 33)"><rect x="27" y="9" width="27" height="41" rx="4" fill="#E9D8AE" stroke="url(#gold)" stroke-width="1.7"/><path d="M32 17h6v8h-6z" fill="#0E392D"/><path d="M34 17v8M36 17v8" stroke="#C9A55D" stroke-width=".8"/><path d="M43 29c-1.7-2.1-5-.7-5 1.8 0 3.3 5 6.2 5 6.2s5-2.9 5-6.2c0-2.5-3.3-3.9-5-1.8Z" fill="#A7493D"/><path d="M32 43h8" stroke="#94723E" stroke-width="1.2" stroke-linecap="round"/></g>
+  <circle cx="51" cy="50" r="5.2" fill="#173F32" stroke="#E8CF8A" stroke-width="1.2"/><path d="m51 47.5 2.4 2.5-2.4 2.4-2.4-2.4 2.4-2.5Z" fill="#F2DB9B"/>
+</svg>

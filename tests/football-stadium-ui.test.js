@@ -268,6 +268,57 @@ test('el editor administrativo enseña el fondo elegido y lo guarda en la campa�
   assert.equal(posts[0].image, 'data:image/jpeg;base64,BQYHCA==', 'la creatividad elegida se adjunta para verla al publicar');
 });
 
+test('el borrado de campañas envía Idempotency-Key UUID aunque la solicitud POST no tenga cuerpo', async t => {
+  const dom = new JSDOM(ADMIN_HTML, {
+    url: 'http://localhost:3000/admin',
+    runScripts: 'outside-only',
+    pretendToBeVisual: true
+  });
+  t.after(() => dom.window.close());
+  const { window } = dom;
+  const key = '2a5f92d7-1fd4-4df0-a8c6-a7729347ea63';
+  const deletionRequests = [];
+  let activePromotions = [{
+    id: 'promo-active-1', profileId: 'profile-1', username: 'patrocinador',
+    isPermanent: true, scope: 'all', createdAt: Date.now(), reviewedAt: Date.now(),
+    text: 'Campaña de prueba', targetPath: '/estadio'
+  }];
+  window.crypto.randomUUID = () => key;
+  window.confirm = () => true;
+  window.fetch = async (url, options = {}) => {
+    const target = String(url);
+    if (options.method === 'POST' && target.endsWith('/delete')) {
+      deletionRequests.push({ url: target, ...options });
+      activePromotions = [];
+      return { ok: true, status: 200, json: async () => ({ ok: true, deleted: true }) };
+    }
+    const response = target === '/api/auth/session'
+      ? { ok: true, csrfToken: 'csrf-test', auth: { staff: { id: 'admin', role: 'admin' }, mfaEnrollmentRequired: false, mfaVerified: true } }
+      : target === '/api/admin/v1/me'
+        ? { ok: true, staff: { name: 'Admin', username: 'admin', role: 'admin' } }
+        : target === '/admin/estadio/matches'
+          ? { ok: true, teams: {}, matches: [] }
+          : target === '/admin/estadio/promotions'
+            ? { ok: true, promotions: [], activePromotions }
+            : { ok: true, reports: [] };
+    return { ok: true, status: 200, json: async () => response };
+  };
+  window.eval(ADMIN_CLIENT);
+  await new Promise(resolve => setTimeout(resolve, 35));
+
+  const deleteButton = window.document.querySelector('[data-promotion-delete]');
+  assert.ok(deleteButton, 'la campaña activa aparece con su acción para eliminar');
+  deleteButton.click();
+  await new Promise(resolve => setTimeout(resolve, 45));
+
+  assert.equal(deletionRequests.length, 1);
+  assert.equal(deletionRequests[0].url, '/admin/estadio/promotions/profile-1/promo-active-1/delete');
+  assert.equal(deletionRequests[0].method, 'POST');
+  assert.equal(deletionRequests[0].body, undefined, 'el endpoint no requiere cuerpo');
+  assert.equal(deletionRequests[0].headers['Idempotency-Key'], key, 'toda escritura administrativa envía una clave UUID');
+  assert.equal(deletionRequests[0].headers['X-CSRF-Token'], 'csrf-test');
+});
+
 test('La Previa abre exactamente en T−30, muestra datos de liga y se oculta al kickoff', async t => {
   const baseNow = 1800000000000;
   const standings = [
