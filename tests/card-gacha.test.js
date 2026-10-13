@@ -154,7 +154,7 @@ test('cada carta indica su ilustración si el archivo existe, o null para usar e
   const album = publicCardAlbum({});
   const spadesJ = album.cards.find(card => card.id === 'card-j-spades');
   assert.equal(spadesJ.art, '/assets/cards/card-j-spades.jpg');
-  const missing = album.cards.find(card => card.id === 'card-k-hearts');
+  const missing = album.cards.find(card => card.id === 'card-k-diamonds');
   assert.equal(missing.art, null);
 });
 
