@@ -129,6 +129,7 @@
     passportStamps: $('#passport-stamps'), passportRewards: $('#passport-rewards'), passportCollection: $('#passport-collection'),
     featuredAchievements: $('#featured-achievements'),
     collectionCount: $('#collection-count'), collectionItems: $('#collection-items'),
+    cardBookCount: $('#card-book-count'), cardBookGrid: $('#card-book-grid'),
     profileSyncNote: $('#profile-sync-note'),
     albumCount: $('#album-count'), albumCost: $('#album-cost'), albumOpenCapsule: $('#album-open-capsule'),
     albumLastPull: $('#album-last-pull'), albumRates: $('#album-rates'), albumGrid: $('#album-grid'),
@@ -1310,7 +1311,10 @@
     const equippedLooks = room.viewerProfile?.collection?.equipped || ui.me?.collection?.equipped || {};
     els.roomApp.dataset.felt = equippedLooks.felt?.style || '';
     els.roomApp.dataset.chipSkin = equippedLooks.chips?.style || '';
-    els.roomApp.dataset.cardBack = equippedLooks.cards?.style || '';
+    const cardBackArt = equippedLooks.cards?.style === 'album' && typeof equippedLooks.cards?.art === 'string' && equippedLooks.cards.art.startsWith('/assets/cards/') ? equippedLooks.cards.art : '';
+    els.roomApp.dataset.cardBack = cardBackArt ? 'album' : (equippedLooks.cards?.style || '');
+    if (cardBackArt) els.roomApp.style.setProperty('--card-back-art', `url("${cardBackArt}")`);
+    else els.roomApp.style.removeProperty('--card-back-art');
     els.roomApp.classList.toggle('my-turn', room.turnId === ui.me?.id);
     renderBotControls();
     renderProfile();
@@ -2525,6 +2529,7 @@
     ].map(([label,value,kind]) => `<div class="profile-stat"><small>${label}</small><b class="${kind}">${value}</b></div>`).join('');
     renderPassport(profile);
     renderCollection(profile);
+    renderCardBook(profile);
     renderCardAlbum(profile);
     renderBalanceChart(profile);
     // Fase 11.1: descarga del historial completo (no solo lo que cabe en la gráfica).
@@ -2613,6 +2618,29 @@
     if (item.slot === 'chips') return `<div class="${root}"><span class="collection-chip-sample">✦</span></div>`;
     if (item.slot === 'felt') return `<div class="${root}"><span class="collection-felt-sample"></span></div>`;
     return `<div class="${root}"><span class="collection-card-sample"></span></div>`;
+  }
+  // Libro de cartas: las cartas del álbum se pueden usar como dorso en las mesas.
+  function renderCardBook(profile) {
+    if (!els.cardBookGrid) return;
+    const album = profile.cardAlbum;
+    if (!album || !Array.isArray(album.cards)) {
+      els.cardBookGrid.innerHTML = '<div class="collection-no-items">El libro aparecerá cuando el servidor sincronice tu perfil.</div>';
+      return;
+    }
+    if (els.cardBookCount) els.cardBookCount.textContent = `${album.ownedCount} / ${album.total} cartas`;
+    const equippedId = profile.collection?.equipped?.cards?.id || null;
+    els.cardBookGrid.innerHTML = album.cards.map(card => {
+      const backId = `album:${card.id}`;
+      const inUse = equippedId === backId;
+      const base = albumCardMarkup(card);
+      if (card.count <= 0) return base;
+      const action = inUse
+        ? `<button class="collection-equip" type="button" data-cosmetic-unequip="cards">En uso · quitar dorso</button>`
+        : `<button class="collection-equip" type="button" data-cosmetic-equip="${escapeHtml(backId)}" data-cosmetic-slot="cards">Usar como dorso</button>`;
+      return base.replace(/<\/article>$/, `<div class="card-book-action">${action}</div></article>`);
+    }).join('');
+    $$('#card-book-grid [data-cosmetic-equip]').forEach(button => button.addEventListener('click', () => equipProfileCosmetic(button, button.dataset.cosmeticSlot, button.dataset.cosmeticEquip)));
+    $$('#card-book-grid [data-cosmetic-unequip]').forEach(button => button.addEventListener('click', () => equipProfileCosmetic(button, button.dataset.cosmeticUnequip, null)));
   }
   function renderCollection(profile) {
     if (!els.collectionItems) return;

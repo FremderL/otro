@@ -130,3 +130,9 @@
   .album-card.rarity-epico.owned .album-card-face::after, .album-card.rarity-mitico.owned .album-card-face::after,
   .album-card.rarity-legendario.owned .album-card-face::after { animation: none !important; transition: none !important; }
 }
+
+/* Libro de cartas (perfil → Colección) */
+.card-book { margin-top: 18px; }
+.card-book-grid .album-card { min-width: 0; }
+.card-book-action { margin-top: 2px; }
+.card-book-action .collection-equip { width: 100%; font-size: 11px; }

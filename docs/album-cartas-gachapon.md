@@ -66,3 +66,11 @@ Decisiones de diseño tomadas al cerrar las reglas:
 - `public/index.html`, `public/app.js`, `public/card-album.css`: pestaña «Álbum», tasas, cuadrícula y filtros por rareza.
 - `public/assets/cards/`: ilustraciones de las cartas.
 - `tests/card-gacha.test.js`: catálogo, tasas exactas, enumeración del sorteo, cobro, errores y privacidad.
+
+## 6. Libro de cartas y dorsos
+
+- **Dónde está:** Perfil → Colección → «Libro de cartas». Muestra las 54 cartas; las que no se han obtenido aparecen como «?». Solo lo ve el dueño del perfil.
+- **Uso cosmético:** una carta obtenida puede usarse como **dorso** de las cartas en las mesas (espacio `cards` de la Colección). Solo afecta al dorso, no al valor ni a las reglas de juego.
+- **Servidor:** el espacio `cards` acepta `album:<id>` si el jugador tiene al menos una copia (`lib/cosmetics.js`). La identidad pública incluye la ilustración para que la mesa la muestre; si el jugador deja de tener la carta, el dorso se omite.
+- **Mesa:** `data-card-back="album"` con `--card-back-art` (`public/styles.css`).
+- **Pruebas:** `tests/card-book.test.js`.
