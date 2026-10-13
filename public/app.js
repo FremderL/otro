@@ -129,6 +129,7 @@
     passportStamps: $('#passport-stamps'), passportRewards: $('#passport-rewards'), passportCollection: $('#passport-collection'),
     featuredAchievements: $('#featured-achievements'),
     collectionCount: $('#collection-count'), collectionItems: $('#collection-items'),
+    profileSyncNote: $('#profile-sync-note'),
     albumCount: $('#album-count'), albumCost: $('#album-cost'), albumOpenCapsule: $('#album-open-capsule'),
     albumLastPull: $('#album-last-pull'), albumRates: $('#album-rates'), albumGrid: $('#album-grid'),
     balanceChart: $('#balance-chart'), balanceChartNote: $('#balance-chart-note'), gameBreakdown: $('#game-breakdown'),
@@ -235,7 +236,7 @@
     lobbyChat: { joined: false, joining: false, open: false, messages: [], unread: 0 },
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
     lastEventKey: '', clockTimer: null, dailyBonusTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null,
-    profileOpen: false, profileNameDirty: false, profileSection: 'overview', collectionFilter: 'all', albumFilter: 'all', albumLastPullId: null,
+    profileOpen: false, profileNameDirty: false, profileSection: 'overview', collectionFilter: 'all', albumFilter: 'all', albumLastPullId: null, profileStale: false,
     lobbyTournaments: null, expandedTournamentBrackets: new Set(), pendingTournamentSignup: null,
     communityTab: 'friends', communityData: null,
     rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null, resultQueue: [],
@@ -447,6 +448,13 @@
       return { status: 0, ok: false, error: 'No se pudo contactar al servidor.' };
     }
   }
+  // Estado del refresco de la cuenta en el lobby. Si no pudimos confirmar el
+  // perfil con el servidor, el modal lo dice (antes mostraba datos viejos sin
+  // avisar) y se reintenta en cuanto el socket vuelve a conectarse.
+  function setProfileStale(stale) {
+    ui.profileStale = Boolean(stale);
+    if (ui.profileOpen && !inTable()) renderProfileModal();
+  }
   async function refreshAccountProfile() {
     if (!ui.accountSession?.accountId) return;
     await serverFlagsReady;
@@ -458,20 +466,20 @@
       if (secure.ok && secure.profile) {
         ui.csrfToken = secure.csrfToken || null;
         saveAccountSession(secure.profile);
-        if (ui.profileOpen && !inTable()) renderProfileModal();
+        setProfileStale(false);
       } else if (secure.status === 401) {
         // localStorage es solo caché visual: una cookie ausente/revocada manda.
         clearAccountSession();
-      }
+      } else setProfileStale(true);
       return;
     }
     // Compatibilidad temporal mientras ACCOUNT_SESSIONS_ENABLED está apagado.
-    if (!socket.connected) return;
+    if (!socket.connected) { setProfileStale(true); return; }
     const response = await emitAck('account_profile', { accountId: ui.accountSession.accountId });
     if (response.ok && response.profile) {
       saveAccountSession(response.profile);
-      if (ui.profileOpen && !inTable()) renderProfileModal();
-    }
+      setProfileStale(false);
+    } else setProfileStale(true);
   }
   function getRouteCode() {
     const match = location.pathname.match(/^\/room\/([A-Z0-9]{5})/i);
@@ -777,6 +785,8 @@
     setColdStartHint(false);
     tryAutoJoinLobbyChat();
     requestLobbyTournaments();
+    // Si el perfil de cuenta quedó sin confirmar (sin conexión), se pide ahora.
+    if (ui.profileStale && ui.accountSession?.accountId) refreshAccountProfile();
     setTimeout(() => { if (!ui.joining) setOverlay(false); }, 350);
     // Reconectar (o la primera conexión) nunca cambia el botón de cuenta por su
     // cuenta: si hay sesión cacheada se sigue mostrando "Perfil" de inmediato
@@ -2485,6 +2495,9 @@
         : 'Sin cuenta vinculada (modo invitado) · la cuenta es opcional.';
     }
     // "Cerrar sesión" solo tiene sentido si hay una sesión de cuenta activa.
+    if (els.profileSyncNote) {
+      els.profileSyncNote.classList.toggle('hidden', !(ui.profileStale && !inTable() && ui.accountSession));
+    }
     if (els.accountLogout) els.accountLogout.classList.toggle('hidden', !ui.accountSession);
     if (els.accountPasswordToggle) els.accountPasswordToggle.classList.toggle('hidden', !ui.accountSession);
     if (!ui.accountSession) els.passwordChangeForm?.classList.add('hidden');

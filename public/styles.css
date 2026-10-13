@@ -1973,3 +1973,7 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 @media(prefers-reduced-motion:reduce) {
   .collection-avatar-art.animate-orbit,.equipped-avatar-art.animate-orbit { animation:none!important; }
 }
+
+/* Perfil de cuenta sin confirmar (lobby sin conexión). */
+.profile-sync-note { margin: 0 0 12px; padding: 9px 12px; border: 1px solid rgba(229, 189, 114, .4); border-radius: 10px; background: rgba(229, 189, 114, .08); color: var(--gold-2); font-size: 11.5px; line-height: 1.45; }
+.profile-sync-note.hidden { display: none; }

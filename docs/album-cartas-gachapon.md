@@ -21,7 +21,7 @@ Como cada par palo + rango es único, no hay dos cartas con el mismo estilo. Los
 
 Cada carta usa una ilustración en `public/assets/cards/<id>.jpg` (sin texto: el rango y el palo se superponen en HTML para que sean exactos). Si una carta no tiene archivo, el servidor envía `art: null` y la interfaz muestra el estilo CSS de respaldo.
 
-Estado: 28 de 54 generadas. Completas: Picas, Corazones, los 2 Jokers. Pendientes (26): Diamantes (13) y Tréboles (13). Entregas previstas: 10 Diamantes, 10 Tréboles y, al final, 3 Diamantes y 3 Tréboles. Se completan sin cambios de código: basta con añadir cada archivo con el id de la carta.
+Estado: 38 de 54 generadas. Completas: Picas, Corazones, Diamantes del 2 al J, los 2 Jokers. Pendientes (16): Diamantes Q, K, As (3) y Tréboles (13). Entregas previstas: 10 Tréboles, luego 3 Diamantes y 3 Tréboles para completar.
 
 ## 2. Rarezas y tasas
 
