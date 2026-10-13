@@ -90,6 +90,7 @@
         <nav class="admin-tabs" aria-label="Secciones del panel de administración">
           <button type="button" class="tab-button active" data-tab="all">★ Todo</button>
           <button type="button" class="tab-button" data-tab="estadio">⚽ Estadio y Calendario</button>
+          <button type="button" class="tab-button" data-tab="seasons" data-admin-only hidden>✦ Temporadas</button>
           <button type="button" class="tab-button" data-tab="reports">📋 Reportes</button>
           <button type="button" class="tab-button" data-tab="users">👥 Moderación</button>
         </nav>
@@ -322,6 +323,78 @@
         </div>
 
         <div id="football-matches-list" class="user-results" aria-live="polite"></div>
+      </section>
+
+      <section id="seasonal-theme-panel" class="card tab-pane hidden" aria-labelledby="seasonal-theme-heading">
+        <div class="detail-head">
+          <div>
+            <small>LOBBY · CALENDARIO VISUAL ANUAL</small>
+            <h2 id="seasonal-theme-heading">Doce noches, doce atmósferas</h2>
+            <p>Una ambientación distinta rota automáticamente el primer día de cada mes en la zona horaria del casino. Puedes ajustar cada mes y previsualizarlo.</p>
+          </div>
+          <span id="seasonal-calendar-current" class="badge badge-gold">Calendario de 12 meses</span>
+        </div>
+        <div class="seasonal-theme-layout">
+          <form id="seasonal-theme-form" class="seasonal-theme-form">
+            <label class="seasonal-enable-row"><input id="seasonal-theme-enabled" type="checkbox" /><span><b>Activar rotación mensual</b><small>Al guardar, el tema del mes actual se publica en el lobby en tiempo real.</small></span></label>
+            <div class="seasonal-calendar-toolbar">
+              <div><b>Calendario anual</b><small>Selecciona un mes para personalizar su diseño.</small></div>
+              <span id="seasonal-month-count">12 diseños</span>
+            </div>
+            <div id="seasonal-month-grid" class="seasonal-month-grid" role="group" aria-label="Seleccionar tema por mes"></div>
+            <input id="seasonal-theme-month" type="hidden" value="1" />
+            <div class="seasonal-selected-month">
+              <span class="seasonal-selected-dot" id="seasonal-selected-month-dot"></span>
+              <div><small>EDITANDO</small><b id="seasonal-selected-month-name">Enero</b></div>
+              <span id="seasonal-selected-month-status">Activo en su mes</span>
+            </div>
+            <label class="seasonal-enable-row seasonal-month-enable"><input id="seasonal-theme-month-enabled" type="checkbox" checked /><span><b>Usar decoración este mes</b><small>Si se apaga, el lobby queda sin tema durante ese mes.</small></span></label>
+            <label for="seasonal-theme-preset">Diseño base del mes
+              <select id="seasonal-theme-preset" required></select>
+            </label>
+            <div class="seasonal-theme-fields">
+              <label for="seasonal-theme-animation">Animación
+                <select id="seasonal-theme-animation">
+                  <option value="auto">Automática según el diseño</option>
+                  <option value="none">Sin animación</option>
+                  <option value="embers">Brasas flotantes</option>
+                  <option value="snow">Nieve suave</option>
+                  <option value="hearts">Corazones</option>
+                  <option value="petals">Pétalos</option>
+                  <option value="sparkles">Destellos</option>
+                  <option value="rain">Lluvia de cristal</option>
+                  <option value="fireflies">Luciérnagas</option>
+                  <option value="meteor">Estrellas fugaces</option>
+                  <option value="confetti">Papel picado y confeti</option>
+                  <option value="marigold">Cempasúchil</option>
+                </select>
+              </label>
+              <label for="seasonal-theme-intensity">Intensidad visual
+                <select id="seasonal-theme-intensity"><option value="subtle">Sutil</option><option value="festive">Festiva</option></select>
+              </label>
+            </div>
+            <div class="seasonal-theme-fields">
+              <label for="seasonal-theme-start">Activar desde (opcional)
+                <input id="seasonal-theme-start" type="datetime-local" />
+              </label>
+              <label for="seasonal-theme-end">Pausar después de (opcional)
+                <input id="seasonal-theme-end" type="datetime-local" />
+              </label>
+            </div>
+            <p class="seasonal-theme-help">La rotación sigue el calendario mensual del casino; las fechas opcionales usan la zona del navegador administrador y pausan el calendario completo.</p>
+            <button id="seasonal-theme-save" class="button" type="submit">Guardar calendario</button>
+            <p id="seasonal-theme-status" class="seasonal-theme-status" aria-live="polite"></p>
+          </form>
+          <aside id="seasonal-theme-preview" class="seasonal-theme-preview" data-theme="newyear" data-animation="sparkles" aria-label="Vista previa de temporada">
+            <div class="seasonal-preview-glow"></div>
+            <span class="seasonal-preview-kicker">VISTA PREVIA DEL MES</span>
+            <div class="seasonal-preview-mark" id="seasonal-preview-symbol">✧</div>
+            <h3 id="seasonal-preview-title">Brindis dorado</h3>
+            <p id="seasonal-preview-copy">Destellos de oro y estrellas</p>
+            <div class="seasonal-preview-particles" id="seasonal-preview-particles" aria-hidden="true"></div>
+            <span id="seasonal-preview-schedule" class="seasonal-preview-schedule">Enero · Rotación mensual</span>
+          </aside>
+        </div>
       </section>
 
       <!-- Auditoría informativa -->

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs><linearGradient id="die" x1="12" y1="13" x2="49" y2="52" gradientUnits="userSpaceOnUse"><stop stop-color="#F5E4B6"/><stop offset=".5" stop-color="#D8C28F"/><stop offset="1" stop-color="#8A7045"/></linearGradient><linearGradient id="green" x1="27" y1="22" x2="54" y2="53" gradientUnits="userSpaceOnUse"><stop stop-color="#54B68A"/><stop offset="1" stop-color="#12533D"/></linearGradient></defs>
+  <rect x="3" y="3" width="58" height="58" rx="17" fill="#071210" stroke="#486B51" stroke-width="1.5"/>
+  <g transform="rotate(-11 27 33)"><rect x="9" y="14" width="34" height="36" rx="7" fill="url(#die)" stroke="#FFF0C1" stroke-width="1.6"/><circle cx="18" cy="23" r="2.3" fill="#17352A"/><circle cx="34" cy="23" r="2.3" fill="#17352A"/><circle cx="26" cy="32" r="2.3" fill="#17352A"/><circle cx="18" cy="41" r="2.3" fill="#17352A"/><circle cx="34" cy="41" r="2.3" fill="#17352A"/></g>
+  <g transform="rotate(12 42 39)"><rect x="29" y="26" width="26" height="27" rx="6" fill="url(#green)" stroke="#E8D08C" stroke-width="1.7"/><circle cx="36" cy="33" r="2" fill="#F7E9BF"/><circle cx="48" cy="33" r="2" fill="#F7E9BF"/><circle cx="42" cy="39.5" r="2" fill="#F7E9BF"/><circle cx="36" cy="46" r="2" fill="#F7E9BF"/><circle cx="48" cy="46" r="2" fill="#F7E9BF"/></g>
+  <path d="m47 10 1.6 3.2 3.5.5-2.6 2.5.6 3.5-3.1-1.7-3.1 1.7.6-3.5-2.6-2.5 3.5-.5L47 10Z" fill="#F3DEA1"/>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Nébula">
+  <defs><radialGradient id="bg"><stop stop-color="#403a84"/><stop offset=".7" stop-color="#1b2349"/><stop offset="1" stop-color="#0e141b"/></radialGradient><linearGradient id="cloud" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9fe9df"/><stop offset=".45" stop-color="#9d84ed"/><stop offset="1" stop-color="#f18fc0"/></linearGradient></defs>
+  <circle cx="48" cy="48" r="46" fill="url(#bg)"/><circle cx="48" cy="48" r="42" fill="none" stroke="#a698f4" stroke-opacity=".55"/>
+  <path d="M16 54c-6-13 5-21 15-18 1-13 18-20 29-10 12-4 23 6 19 17 12 7 8 23-5 25-4 12-22 15-29 5-12 7-28-1-26-14-4 0-8-2-3-5Z" fill="url(#cloud)" opacity=".9" stroke="#dfd6ff" stroke-width="1.5"/>
+  <path d="M27 54c7-6 12-4 18 0s12 7 24-3" fill="none" stroke="#fff4cf" stroke-width="3" stroke-linecap="round"/><circle cx="39" cy="44" r="2" fill="#252447"/><circle cx="57" cy="44" r="2" fill="#252447"/><path d="M44 52q4 3 8 0" fill="none" stroke="#594e91" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M20 23l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5ZM75 61l1.5 3.5L80 66l-3.5 1.5L75 71l-1.5-3.5L70 66l3.5-1.5L75 61ZM54 15v7m-4-3.5h8M18 76v5m-3-2.5h6" fill="none" stroke="#f7e9c1" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="69" cy="27" r="2" fill="#fff1ba"/><circle cx="30" cy="70" r="1.5" fill="#fff1ba"/>
+</svg>

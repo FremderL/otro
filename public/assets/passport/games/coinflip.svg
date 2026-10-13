@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs><linearGradient id="coin" x1="12" y1="8" x2="52" y2="56" gradientUnits="userSpaceOnUse"><stop stop-color="#FFF0BE"/><stop offset=".34" stop-color="#E3C574"/><stop offset=".7" stop-color="#A87938"/><stop offset="1" stop-color="#F2D78C"/></linearGradient><linearGradient id="field" x1="18" y1="14" x2="48" y2="50" gradientUnits="userSpaceOnUse"><stop stop-color="#24684F"/><stop offset="1" stop-color="#0A261F"/></linearGradient></defs>
+  <rect x="3" y="3" width="58" height="58" rx="17" fill="#071210" stroke="#486B51" stroke-width="1.5"/>
+  <circle cx="32" cy="32" r="23" fill="#0A1714" stroke="url(#coin)" stroke-width="3"/>
+  <circle cx="32" cy="32" r="18.5" fill="url(#field)" stroke="#E9CD84" stroke-width="1.2"/>
+  <path d="M32 14v36" stroke="#EAD18C" stroke-opacity=".75" stroke-width="1.2"/>
+  <path d="M30.5 19.5c-6.3 0-10.2 4.5-10.2 11.1 0 6.2 3.8 12.6 10.2 15.2V19.5Z" fill="#D6B96F"/>
+  <path d="M33.5 19.5c6.3 0 10.2 4.5 10.2 11.1 0 6.2-3.8 12.6-10.2 15.2V19.5Z" fill="#17372D" stroke="#D6B96F" stroke-width="1"/>
+  <path d="M25 26c1.5-2.1 4-3.3 6.8-3.3M39 26c-1.5-2.1-4-3.3-6.8-3.3" stroke="#FFF0C0" stroke-opacity=".8" stroke-width="1" stroke-linecap="round"/>
+  <path d="m32 9 1.7 3.4 3.8.6-2.8 2.7.7 3.8-3.4-1.8-3.4 1.8.7-3.8-2.8-2.7 3.8-.6L32 9Z" fill="#FFF1C3"/>
+  <circle cx="32" cy="32" r="2.3" fill="#FFF0BE"/>
+</svg>

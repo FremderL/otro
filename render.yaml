@@ -14,6 +14,8 @@ services:
     envVars:
       - key: PROFILE_STORE_PATH
         value: /var/data/profiles.json
+      - key: LOBBY_TOURNAMENT_STORE_PATH
+        value: /var/data/lobby-tournaments.json
       - key: NODE_ENV
         value: production
       # Las temporadas cierran a medianoche de Ciudad de México, no a las 00:00 UTC.

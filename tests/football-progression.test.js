@@ -106,3 +106,25 @@ test('C6: CHALLENGE_GAMES es exactamente AVAILABLE_GAMES', () => {
   assert.deepStrictEqual([...P.CHALLENGE_GAMES].sort(), [...P.AVAILABLE_GAMES].sort());
   assert.strictEqual(P.CHALLENGE_GAMES.has('football'), false);
 });
+
+test('el bono diario se reclama una sola vez por fecha y vuelve a estar disponible al día siguiente', () => {
+  const profile = blankProfile(1000);
+  const today = '2026-10-11';
+  const firstClaim = P.claimDailyBonus(profile, today);
+
+  assert.equal(firstClaim.length, 1);
+  assert.equal(firstClaim[0].id, 'daily_bonus');
+  assert.equal(firstClaim[0].reward, 100);
+  assert.equal(profile.chips, 1100);
+  assert.equal(profile.dailyBonusDate, today);
+  assert.equal(profile.transactions.length, 1);
+  assert.equal(profile.transactions[0].reason, 'Bono diario');
+
+  assert.deepEqual(P.claimDailyBonus(profile, today), [], 'un segundo reclamo el mismo día no duplica las fichas');
+  assert.equal(profile.chips, 1100);
+  assert.equal(profile.transactions.length, 1);
+
+  assert.equal(P.claimDailyBonus(profile, '2026-10-12')[0].reward, 100, 'el siguiente día se puede reclamar de nuevo');
+  assert.equal(profile.chips, 1200);
+  assert.equal(profile.transactions.length, 2);
+});

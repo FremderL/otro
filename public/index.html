@@ -21,6 +21,7 @@
   <div class="noise" aria-hidden="true"></div>
   <div class="ambient-grid" aria-hidden="true"></div>
   <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
+  <div id="seasonal-effects" class="seasonal-effects" aria-hidden="true" hidden></div>
 
   <div id="connection-overlay" class="connection-overlay" role="status" aria-live="polite" aria-atomic="true" aria-hidden="false">
     <div class="loader-brand">
@@ -47,6 +48,8 @@
         <a href="/estadio?from=casino" id="nav-estadio" hidden>🏟 Estadio</a>
       </div>
       <div class="nav-actions">
+        <span id="seasonal-theme-pill" class="seasonal-theme-pill" hidden></span>
+        <button class="btn btn-ghost btn-small" id="community-open-btn" type="button"><span class="btn-icon">♧</span> Comunidad</button>
         <span id="nav-connection" class="connection-badge connected"><i></i><span>Conectado</span></span>
         <button class="icon-btn notification-toggle" id="notifications-toggle" type="button" aria-label="Silenciar notificaciones" aria-pressed="false">🔔</button>
         <button class="btn btn-ghost btn-small" id="report-open-btn">⚑ Reportar</button>
@@ -233,6 +236,14 @@
             </div>
           </div>
         </div>
+        <section id="lobby-tournaments" class="lobby-tournaments" aria-labelledby="lobby-tournaments-title">
+          <div class="tournament-calendar-head">
+            <div><span class="kicker">CALENDARIO EN VIVO</span><h3 id="lobby-tournaments-title">Torneos relámpago</h3><p>Inscripción gratuita · partidas reales de Texas Hold’em · premios en fichas virtuales.</p></div>
+            <span class="tournament-no-buyin">SIN ENTRADA · SIN AZAR EN LOS PREMIOS</span>
+          </div>
+          <div id="lobby-weekly-final" class="tournament-featured hidden"></div>
+          <div id="lobby-tournament-list" class="tournament-calendar-grid" aria-live="polite"><div class="tournament-loading">Preparando el próximo calendario…</div></div>
+        </section>
         <div class="room-filters" role="tablist">
           <button class="active" data-room-filter="all">Todas</button>
           <button data-room-filter="poker">Texas Hold’em</button>
@@ -363,12 +374,29 @@
     <div class="modal-backdrop" data-close-profile></div>
     <div class="modal-card profile-modal-card" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
       <button class="modal-close" data-close-profile aria-label="Cerrar">×</button>
-      <div class="profile-dashboard">
-        <aside class="profile-overview">
-          <div class="profile-modal-head">
-            <div id="profile-big-avatar" class="profile-big-avatar">🦊</div>
-            <div><span class="kicker">PERFIL DEL JUGADOR</span><h2 id="profile-modal-title">Tu progreso</h2><p>Las fichas son virtuales y no tienen valor monetario. <a class="tos-link" href="/terminos" target="_blank" rel="noopener">Términos y Condiciones</a></p><p id="profile-account-status" class="profile-account-status"></p><div id="profile-badges" class="profile-badges hidden"></div></div>
-          </div>
+      <header class="profile-identity-header">
+        <div id="profile-big-avatar" class="profile-big-avatar">🦊</div>
+        <div class="profile-identity-copy">
+          <span class="kicker">PERFIL DEL JUGADOR</span>
+          <h2 id="profile-modal-title">Tu perfil</h2>
+          <b id="profile-display-name" class="profile-display-name">Jugador</b>
+          <p class="profile-identity-legal">Fichas virtuales, sin valor monetario. <a class="tos-link" href="/terminos" target="_blank" rel="noopener">Términos</a></p>
+          <p id="profile-account-status" class="profile-account-status"></p>
+          <div id="profile-badges" class="profile-badges hidden"></div>
+        </div>
+      </header>
+      <nav id="profile-section-nav" class="profile-tabs" aria-label="Accesos rápidos del perfil">
+        <span class="profile-tabs-label">IR A</span>
+        <button id="profile-tab-overview" class="profile-tab active" type="button" aria-controls="profile-section-overview" aria-current="location" data-profile-jump="overview">Resumen</button>
+        <button id="profile-tab-passport" class="profile-tab hidden" type="button" aria-controls="profile-section-passport" data-profile-jump="passport">Pasaporte</button>
+        <button id="profile-tab-collection" class="profile-tab" type="button" aria-controls="profile-section-collection" data-profile-jump="collection">Colección</button>
+        <button id="profile-tab-activity" class="profile-tab" type="button" aria-controls="profile-section-activity" data-profile-jump="activity">Actividad</button>
+        <button id="profile-tab-goals" class="profile-tab" type="button" aria-controls="profile-section-goals" data-profile-jump="goals">Retos y logros</button>
+        <span class="profile-scroll-hint" aria-hidden="true">Desliza para ver más <b>↓</b></span>
+      </nav>
+      <div id="profile-content-scroll" class="profile-content-scroll">
+        <div class="profile-dashboard">
+        <aside id="profile-overview" class="profile-overview">
           <form id="profile-form" class="profile-edit-form">
             <div class="form-field"><label for="profile-name-input">Nombre</label><div class="input-wrap"><span>◎</span><input id="profile-name-input" maxlength="18" required /></div></div>
             <div class="form-field"><label>Avatar</label><div id="profile-avatar-choice" class="avatar-choice compact"></div></div>
@@ -387,22 +415,128 @@
             <p id="password-change-error" class="account-error hidden" role="alert"></p>
             <div class="password-change-actions"><button class="btn btn-primary" id="password-change-submit" type="submit">Actualizar contraseña</button><button class="btn btn-secondary" id="password-change-cancel" type="button">Cancelar</button></div>
           </form>
-          <div class="profile-reward-note"><span>🎁</span><div><b>Bono diario · +100 fichas</b><small id="daily-bonus-status">Se entrega una vez al día al entrar.</small></div><time id="daily-bonus-countdown" class="daily-bonus-countdown">DISPONIBLE</time></div>
+          <div class="profile-reward-note"><div class="profile-reward-copy"><span>🎁</span><div><b>Bono diario · +100 fichas</b><small id="daily-bonus-status">Reclama +100 fichas una vez al día.</small></div></div><button id="daily-bonus-claim" class="btn btn-primary btn-small daily-bonus-claim" type="button">Reclamar +100</button><time id="daily-bonus-countdown" class="daily-bonus-countdown">DISPONIBLE</time></div>
         </aside>
         <main class="profile-main">
-          <div class="profile-main-heading"><div><span class="kicker">PROGRESO Y RESULTADOS</span><h3>Tu recorrido</h3></div><span>◆ Saldo solo virtual</span></div>
-          <div id="profile-stats" class="profile-stats"></div>
-          <section class="featured-achievements-box"><div class="progress-title"><span>VITRINA DE LOGROS</span><small>Elige hasta 3 para destacar</small></div><div id="featured-achievements" class="featured-achievements"></div></section>
-          <div class="profile-analytics">
-            <section class="analytics-box"><div class="progress-title"><span>EVOLUCIÓN DEL SALDO</span><small id="balance-chart-note">Tus últimos movimientos</small></div><div id="balance-chart" class="balance-chart" role="img" aria-label="Gráfica de evolución del saldo"></div><a id="history-download" class="history-download-link" download>⬇ Descargar mi historial completo</a></section>
-            <section class="analytics-box"><div class="progress-title"><span>HISTORIAL POR JUEGO</span><small>Rondas · victorias · balance</small></div><div id="game-breakdown" class="game-breakdown"></div></section>
-          </div>
-          <section class="rotating-challenges-box"><div class="progress-title"><span>RETOS ACTIVOS</span><small>Se renuevan automáticamente</small></div><div id="rotating-challenge-list" class="rotating-challenge-list"></div></section>
-          <div class="progress-columns">
-            <section><div class="progress-title"><span>RETOS PERMANENTES</span><small>Recompensas automáticas</small></div><div id="challenge-list" class="challenge-list"></div></section>
-            <section><div class="progress-title"><span>LOGROS</span><small>Colección personal</small></div><div id="achievement-list" class="achievement-list"></div></section>
-          </div>
+          <section id="profile-section-overview" class="profile-content-section" data-profile-section="overview" aria-labelledby="profile-section-overview-title" tabindex="-1">
+            <div class="profile-main-heading"><div><span class="kicker">RESUMEN DEL PERFIL</span><h3 id="profile-section-overview-title" tabindex="-1">Tu progreso</h3></div><span>◆ Saldo solo virtual</span></div>
+            <div id="profile-stats" class="profile-stats"></div>
+            <section class="featured-achievements-box"><div class="progress-title"><span>VITRINA DE LOGROS</span><small>Elige hasta 3 para destacar</small></div><div id="featured-achievements" class="featured-achievements"></div></section>
+          </section>
+          <section id="profile-section-passport" class="profile-content-section hidden" data-profile-section="passport" aria-labelledby="passport-heading" tabindex="-1">
+            <section id="passport-panel" class="passport-panel hidden" aria-labelledby="passport-heading">
+              <div class="passport-panel-heading">
+                <div><span class="kicker">PASAPORTE MONTECRISTO</span><h4 id="passport-heading" tabindex="-1">Una temporada, seis mesas</h4><p id="passport-season-dates">Temporada mensual del casino</p></div>
+                <div class="passport-score"><b id="passport-points">0</b><span>puntos</span><small id="passport-season-label">Temporada actual</small></div>
+              </div>
+              <div class="passport-progress-copy"><span id="passport-next-milestone">Cada ronda válida suma 1 punto.</span><small>Hitos hasta 75</small></div>
+              <div id="passport-progress-track" class="passport-progress-track" role="progressbar" aria-label="Progreso de puntos del Pasaporte" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="passport-progress-bar"></i></div>
+              <p class="passport-rules-note">1 punto por ronda resuelta con apuesta válida. Ganar, perder, empatar y el importe no cambian el progreso; jugar contra bots cuenta para la persona real. Fútbol queda fuera.</p>
+              <div class="passport-subheading"><span>SELLOS DE VARIEDAD</span><small id="passport-stamp-hint">Completa una ronda válida en cada juego.</small></div>
+              <div id="passport-stamps" class="passport-stamps" role="list" aria-label="Sellos de variedad"></div>
+              <div class="passport-subheading passport-rewards-heading"><span>RECOMPENSAS DE LA TEMPORADA</span><small>Fijas · visibles · cosméticas</small></div>
+              <div id="passport-rewards" class="passport-reward-grid"></div>
+              <div class="passport-subheading passport-collection-heading"><span>COLECCIÓN PERMANENTE</span><small>Los cosméticos no caducan</small></div>
+              <div id="passport-collection" class="passport-collection"></div>
+            </section>
+          </section>
+          <section id="profile-section-collection" class="profile-content-section" data-profile-section="collection" aria-labelledby="collection-heading" tabindex="-1">
+            <div class="profile-main-heading"><div><span class="kicker">COLECCIÓN MONTECRISTO</span><h3 id="collection-heading" tabindex="-1">Cosméticos ganados jugando</h3></div><span id="collection-count">0 / 11 objetos</span></div>
+            <p class="collection-rules-note">Cada objeto tiene una meta visible y se desbloquea jugando rondas válidas. No hay cajas aleatorias, compras ni ventajas de juego.</p>
+            <div class="collection-filters" role="tablist" aria-label="Filtrar cosméticos">
+              <button class="collection-filter active" type="button" data-collection-filter="all" role="tab" aria-selected="true">Todo</button>
+              <button class="collection-filter" type="button" data-collection-filter="avatar" role="tab" aria-selected="false">Avatares</button>
+              <button class="collection-filter" type="button" data-collection-filter="frame" role="tab" aria-selected="false">Marcos</button>
+              <button class="collection-filter" type="button" data-collection-filter="chips" role="tab" aria-selected="false">Fichas</button>
+              <button class="collection-filter" type="button" data-collection-filter="felt" role="tab" aria-selected="false">Tapetes</button>
+              <button class="collection-filter" type="button" data-collection-filter="cards" role="tab" aria-selected="false">Cartas</button>
+            </div>
+            <div id="collection-items" class="collection-grid" role="list" aria-label="Objetos cosméticos"></div>
+          </section>
+          <section id="profile-section-activity" class="profile-content-section" data-profile-section="activity" aria-labelledby="profile-section-activity-title" tabindex="-1">
+            <div class="profile-main-heading"><div><span class="kicker">ACTIVIDAD</span><h3 id="profile-section-activity-title" tabindex="-1">Saldo e historial</h3></div><span>◆ Fichas virtuales</span></div>
+            <div class="profile-analytics">
+              <section class="analytics-box"><div class="progress-title"><span>EVOLUCIÓN DEL SALDO</span><small id="balance-chart-note">Tus últimos movimientos</small></div><div id="balance-chart" class="balance-chart" role="img" aria-label="Gráfica de evolución del saldo"></div><a id="history-download" class="history-download-link" download>⬇ Descargar mi historial completo</a></section>
+              <section class="analytics-box"><div class="progress-title"><span>HISTORIAL POR JUEGO</span><small>Rondas · victorias · balance</small></div><div id="game-breakdown" class="game-breakdown"></div></section>
+            </div>
+          </section>
+          <section id="profile-section-goals" class="profile-content-section" data-profile-section="goals" aria-labelledby="profile-section-goals-title" tabindex="-1">
+            <div class="profile-main-heading"><div><span class="kicker">OBJETIVOS</span><h3 id="profile-section-goals-title" tabindex="-1">Retos y logros</h3></div><span>Progreso y recompensas</span></div>
+            <section class="rotating-challenges-box"><div class="progress-title"><span>RETOS ACTIVOS</span><small>Se renuevan automáticamente</small></div><div id="rotating-challenge-list" class="rotating-challenge-list"></div></section>
+            <div class="progress-columns">
+              <section><div class="progress-title"><span>RETOS PERMANENTES</span><small>Recompensas automáticas</small></div><div id="challenge-list" class="challenge-list"></div></section>
+              <section><div class="progress-title"><span>LOGROS</span><small>Colección personal</small></div><div id="achievement-list" class="achievement-list"></div></section>
+            </div>
+          </section>
         </main>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="community-modal" class="modal community-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-community></div>
+    <div class="modal-card community-modal-card" role="dialog" aria-modal="true" aria-labelledby="community-title">
+      <button class="modal-close" data-close-community aria-label="Cerrar">×</button>
+      <header class="community-heading">
+        <div class="community-heading-mark">♧</div>
+        <div class="community-heading-copy"><span class="kicker">MONTECRISTO · CÍRCULO SOCIAL</span><h2 id="community-title">Juega en compañía</h2><p>Amistades, clubes, tesorería compartida y ranking de temporada.</p></div>
+        <button id="community-refresh" class="community-refresh" type="button" aria-label="Actualizar amistades, solicitudes y clubes">↻ <span>Actualizar</span></button>
+      </header>
+      <div id="community-guest-note" class="community-guest-note hidden"><span>◉</span><div><b>Tu comunidad, con una cuenta segura</b><p>Inicia sesión o crea tu cuenta para gestionar amistades, clubes, aportaciones y movimientos de tesorería.</p><button id="community-login" class="btn btn-primary" type="button">Iniciar sesión</button></div></div>
+      <div id="community-content">
+        <div class="community-tabs" role="tablist" aria-label="Secciones de comunidad">
+          <button class="community-tab active" type="button" data-community-tab="friends" role="tab" aria-controls="community-panel-friends" aria-selected="true">Amigos <span id="community-friend-count">0</span></button>
+          <button class="community-tab" type="button" data-community-tab="requests" role="tab" aria-controls="community-panel-requests" aria-selected="false">Solicitudes <span id="community-request-count">0</span></button>
+          <button class="community-tab" type="button" data-community-tab="clubs" role="tab" aria-controls="community-panel-clubs" aria-selected="false">Clubes</button>
+          <button id="community-tab-ranking" class="community-tab" type="button" data-community-tab="ranking" role="tab" aria-controls="community-panel-ranking" aria-selected="false">Ranking</button>
+        </div>
+        <p id="community-status" class="community-status" aria-live="polite"></p>
+        <section id="community-panel-friends" class="community-panel" data-community-panel="friends" role="tabpanel">
+          <form id="community-search-form" class="community-search-form">
+            <label class="sr-only" for="community-search">Buscar por nombre o usuario</label>
+            <span aria-hidden="true">⌕</span><input id="community-search" type="search" minlength="2" maxlength="40" placeholder="Buscar por nombre o @usuario" autocomplete="off" />
+            <button class="btn btn-primary btn-small" type="submit">Buscar</button>
+          </form>
+          <div id="community-search-results" class="community-list community-search-results" aria-live="polite"></div>
+          <div class="community-section-title"><span>Tu círculo</span><small id="community-friends-subtitle">0 personas</small></div>
+          <div id="community-friends-list" class="community-list"></div>
+        </section>
+        <section id="community-panel-requests" class="community-panel hidden" data-community-panel="requests" role="tabpanel">
+          <div class="community-section-title"><span>Recibidas</span><small>Decide quién entra a tu círculo</small></div>
+          <div id="community-incoming-list" class="community-list"></div>
+          <div class="community-section-title community-outgoing-title"><span>Enviadas</span><small>Se pueden retirar mientras estén pendientes</small></div>
+          <div id="community-outgoing-list" class="community-list"></div>
+        </section>
+        <section id="community-panel-clubs" class="community-panel hidden" data-community-panel="clubs" role="tabpanel">
+          <details id="community-create-club-details" class="community-create-club">
+            <summary><span>＋</span> Crear un club</summary>
+            <form id="community-create-club-form">
+              <label for="community-club-name">Nombre del club<input id="community-club-name" minlength="3" maxlength="24" required placeholder="Ej. La Mesa Esmeralda" /></label>
+              <label for="community-club-description">Presentación <small>Opcional · máximo 160 caracteres</small><textarea id="community-club-description" maxlength="160" rows="2" placeholder="¿Qué reúne a tu club?"></textarea></label>
+              <div class="community-club-options">
+                <label for="community-club-emblem">Emblema<select id="community-club-emblem"><option value="spade">♠ Espada</option><option value="diamond">♦ Diamante</option><option value="dice">⚄ Dados</option><option value="moon">☾ Luna</option><option value="crown">♛ Corona</option><option value="compass">✥ Brújula</option></select></label>
+                <label for="community-club-color">Color<select id="community-club-color"><option value="emerald">Esmeralda</option><option value="gold">Oro</option><option value="violet">Violeta</option><option value="ocean">Océano</option></select></label>
+                <label for="community-club-visibility">Acceso<select id="community-club-visibility"><option value="public">Público</option><option value="private">Privado · requiere aprobación</option></select></label>
+              </div>
+              <button class="btn btn-primary" type="submit">Fundar club</button>
+            </form>
+          </details>
+          <form id="community-club-search-form" class="community-search-form">
+            <label class="sr-only" for="community-club-search">Buscar clubes</label><span aria-hidden="true">⌕</span><input id="community-club-search" type="search" maxlength="50" placeholder="Buscar clubes públicos" autocomplete="off" /><button class="btn btn-primary btn-small" type="submit">Buscar</button>
+          </form>
+          <div id="community-clubs-list" class="community-list"></div>
+        </section>
+        <section id="community-panel-ranking" class="community-panel hidden" data-community-panel="ranking" role="tabpanel" aria-labelledby="community-tab-ranking">
+          <div class="club-ranking-hero">
+            <div><span class="kicker">TEMPORADA ACTUAL · SALDO COLECTIVO</span><h3>Los clubes con más fichas</h3><p>Cuenta lo que cada tesorería conserva hoy. La tabla se reinicia junto con las fichas al cambiar de temporada.</p></div>
+            <span id="community-club-ranking-season" class="club-season-chip">Temporada mensual</span>
+          </div>
+          <div class="club-ranking-privacy"><span>◉</span><span>Para cuidar la privacidad, solo aparecen clubes públicos. Los saldos de clubes privados solo los ven sus integrantes.</span></div>
+          <div id="community-club-ranking-podium" class="club-ranking-podium" aria-label="Podio de clubes"></div>
+          <div id="community-club-ranking-list" class="club-ranking-list" aria-label="Posiciones restantes"></div>
+        </section>
       </div>
     </div>
   </div>
@@ -523,6 +657,16 @@
     </ul>
     <small>Pulsa <kbd>?</kbd> para mostrar u ocultar esta guía</small>
   </div>
+
+  <dialog id="lobby-tournament-name-dialog" class="tournament-prizes-dialog tournament-name-dialog" aria-labelledby="lobby-tournament-name-title">
+    <h3 id="lobby-tournament-name-title">Elige tu identidad de torneo</h3>
+    <p>El bracket del lobby usa tu nombre y avatar del perfil. La inscripción es gratuita y se valida en el servidor.</p>
+    <form id="lobby-tournament-name-form">
+      <label for="lobby-tournament-name-input">Nombre de jugador</label>
+      <input id="lobby-tournament-name-input" name="name" maxlength="18" autocomplete="nickname" required>
+      <div class="tournament-card-actions"><button class="tournament-prizes-close" type="button" data-tournament-name-cancel>Cancelar</button><button class="tournament-action" type="submit">Continuar al registro</button></div>
+    </form>
+  </dialog>
 
   <!-- Aceptación obligatoria de Términos y Condiciones (fase 3) -->
   <div id="tos-modal" class="modal tos-modal hidden" aria-hidden="true">

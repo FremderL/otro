@@ -10,6 +10,11 @@
   let activeTab = 'all';
   let cachedMatches = [];
   let cachedTeams = {};
+  let seasonalThemePresets = {};
+  let seasonalMonthMeta = [];
+  let seasonalMonthConfigs = [];
+  let selectedSeasonalMonth = 1;
+  let seasonalThemeEditorReady = false;
 
   function show(selector) {
     sections.forEach(id => $(id)?.classList.toggle('hidden', id !== selector));
@@ -54,11 +59,14 @@
 
   async function request(path, options = {}) {
     try {
+      const method = String(options.method || 'GET').toUpperCase();
+      const isWrite = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
       const response = await fetch(path, {
         credentials: 'same-origin',
         ...options,
         headers: {
-          ...(options.body ? { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() } : {}),
+          ...(options.body != null ? { 'Content-Type': 'application/json' } : {}),
+          ...(isWrite ? { 'Idempotency-Key': crypto.randomUUID() } : {}),
           ...(options.headers || {})
         }
       });
@@ -75,16 +83,19 @@
   }
 
   function applyTab(tab) {
+    const isAdmin = currentStaff?.role === 'admin';
+    if (tab === 'seasons' && !isAdmin) tab = 'all';
     activeTab = tab;
     document.querySelectorAll('.tab-button').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.tab === tab);
+      btn.setAttribute('aria-pressed', String(btn.dataset.tab === tab));
     });
 
-    const isAdmin = currentStaff?.role === 'admin';
     const reportsPanel = $('#reports-panel');
     const reportDetail = $('#report-detail');
     const promoPanel = $('#football-promotion-panel');
     const matchesPanel = $('#football-matches-panel');
+    const seasonalPanel = $('#seasonal-theme-panel');
     const usersCard = $('.users-card');
     const userDetail = $('#user-detail');
     const auditGrid = $('.audit-grid');
@@ -98,12 +109,15 @@
         promoPanel?.classList.add('hidden');
         matchesPanel?.classList.add('hidden');
       }
+      seasonalPanel?.classList.toggle('hidden', !isAdmin);
       auditGrid?.classList.remove('hidden');
       usersCard?.classList.remove('hidden');
     } else if (tab === 'reports') {
       reportsPanel?.classList.remove('hidden');
+      reportDetail?.classList.add('hidden');
       promoPanel?.classList.add('hidden');
       matchesPanel?.classList.add('hidden');
+      seasonalPanel?.classList.add('hidden');
       auditGrid?.classList.add('hidden');
       usersCard?.classList.add('hidden');
       userDetail?.classList.add('hidden');
@@ -114,6 +128,16 @@
         promoPanel?.classList.remove('hidden');
         matchesPanel?.classList.remove('hidden');
       }
+      seasonalPanel?.classList.add('hidden');
+      auditGrid?.classList.add('hidden');
+      usersCard?.classList.add('hidden');
+      userDetail?.classList.add('hidden');
+    } else if (tab === 'seasons') {
+      reportsPanel?.classList.add('hidden');
+      reportDetail?.classList.add('hidden');
+      promoPanel?.classList.add('hidden');
+      matchesPanel?.classList.add('hidden');
+      seasonalPanel?.classList.toggle('hidden', !isAdmin);
       auditGrid?.classList.add('hidden');
       usersCard?.classList.add('hidden');
       userDetail?.classList.add('hidden');
@@ -122,6 +146,7 @@
       reportDetail?.classList.add('hidden');
       promoPanel?.classList.add('hidden');
       matchesPanel?.classList.add('hidden');
+      seasonalPanel?.classList.add('hidden');
       auditGrid?.classList.add('hidden');
       usersCard?.classList.remove('hidden');
     }
@@ -144,6 +169,8 @@
       staffBadge.className = `badge ${response.staff.role === 'admin' ? 'badge-danger' : 'badge-gold'}`;
     }
     $('#moderation-action option[value="ban"]').hidden = response.staff.role !== 'admin';
+    const seasonalTab = document.querySelector('[data-tab="seasons"]');
+    if (seasonalTab) seasonalTab.hidden = response.staff.role !== 'admin';
     show('#admin-dashboard');
 
     applyTab(activeTab);
@@ -153,7 +180,169 @@
       await loadFootballPromotions();
       await loadFootballMatches();
       setupAdminStudio();
+      await loadSeasonalTheme();
+      setupSeasonalThemeEditor();
     }
+  }
+
+  function dateToLocalInput(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return '';
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  }
+
+  function selectedMonthConfig() {
+    return seasonalMonthConfigs.find(item => item.month === selectedSeasonalMonth)
+      || { month: selectedSeasonalMonth, presetId: seasonalMonthMeta[selectedSeasonalMonth - 1]?.defaultPresetId || 'newyear', animation: 'auto', intensity: 'subtle', enabled: true };
+  }
+
+  function renderSeasonalMonthGrid() {
+    const grid = $('#seasonal-month-grid');
+    if (!grid) return;
+    grid.innerHTML = seasonalMonthMeta.map(month => {
+      const config = seasonalMonthConfigs.find(item => item.month === month.month);
+      const preset = seasonalThemePresets[config?.presetId];
+      const selected = month.month === selectedSeasonalMonth;
+      return `<button type="button" class="seasonal-month-button ${selected ? 'selected' : ''} ${config?.enabled === false ? 'month-disabled' : ''}" data-seasonal-month="${month.month}" data-theme="${escapeHtml(config?.presetId || month.defaultPresetId)}" aria-pressed="${selected}" aria-label="${escapeHtml(month.label)}: ${escapeHtml(preset?.label || 'sin diseño')}"><small>${escapeHtml(month.label.slice(0, 3))}</small><b>${escapeHtml(preset?.symbol || '✦')}</b><i></i></button>`;
+    }).join('');
+    $('#seasonal-month-count').textContent = `${seasonalMonthConfigs.filter(item => item.enabled).length} de 12 activos`;
+  }
+
+  function syncSeasonalMonthEditor() {
+    const config = selectedMonthConfig();
+    const month = seasonalMonthMeta[selectedSeasonalMonth - 1] || { label: 'Temporada' };
+    $('#seasonal-theme-month').value = String(selectedSeasonalMonth);
+    $('#seasonal-selected-month-name').textContent = month.label;
+    $('#seasonal-selected-month-status').textContent = config.enabled ? 'Activo en su mes' : 'Sin decoración este mes';
+    $('#seasonal-theme-month-enabled').checked = config.enabled !== false;
+    $('#seasonal-theme-preset').value = config.presetId;
+    $('#seasonal-theme-animation').value = config.animation || 'auto';
+    $('#seasonal-theme-intensity').value = config.intensity || 'subtle';
+    renderSeasonalMonthGrid();
+    renderSeasonalThemePreview();
+  }
+
+  function commitSeasonalMonthEditor() {
+    const config = selectedMonthConfig();
+    config.presetId = $('#seasonal-theme-preset').value;
+    config.animation = $('#seasonal-theme-animation').value;
+    config.intensity = $('#seasonal-theme-intensity').value;
+    config.enabled = $('#seasonal-theme-month-enabled').checked;
+    const index = seasonalMonthConfigs.findIndex(item => item.month === selectedSeasonalMonth);
+    if (index < 0) seasonalMonthConfigs.push(config);
+    else seasonalMonthConfigs[index] = config;
+    $('#seasonal-selected-month-status').textContent = config.enabled ? 'Activo en su mes' : 'Sin decoración este mes';
+    renderSeasonalMonthGrid();
+  }
+
+  function renderSeasonalThemePreview() {
+    const preview = $('#seasonal-theme-preview');
+    const config = selectedMonthConfig();
+    const month = seasonalMonthMeta[selectedSeasonalMonth - 1] || { label: 'Temporada' };
+    const preset = seasonalThemePresets[config.presetId];
+    const activeAnimation = config.animation === 'auto' ? (preset?.animation || 'none') : config.animation;
+    if (!preview) return;
+    preview.dataset.theme = config.presetId;
+    preview.dataset.animation = activeAnimation;
+    preview.dataset.intensity = config.intensity || 'subtle';
+    preview.classList.toggle('is-disabled', !$('#seasonal-theme-enabled')?.checked || !config.enabled);
+    $('#seasonal-preview-symbol').textContent = preset?.symbol || '✦';
+    $('#seasonal-preview-title').textContent = preset?.label || 'Sin decoración';
+    $('#seasonal-preview-copy').textContent = preset?.decoration || 'El lobby conserva su apariencia habitual.';
+    const start = $('#seasonal-theme-start')?.value;
+    const end = $('#seasonal-theme-end')?.value;
+    const schedule = $('#seasonal-preview-schedule');
+    if (schedule) {
+      schedule.textContent = start && end
+        ? `${month.label} · Ventana ${new Date(start).toLocaleDateString()}–${new Date(end).toLocaleDateString()}`
+        : start ? `${month.label} · Desde ${new Date(start).toLocaleDateString()}`
+          : end ? `${month.label} · Hasta ${new Date(end).toLocaleDateString()}`
+            : `${month.label} · Rotación mensual`;
+    }
+    const particles = $('#seasonal-preview-particles');
+    if (!particles) return;
+    particles.replaceChildren();
+    if (activeAnimation === 'none' || !preset?.particle) return;
+    for (let index = 0; index < 8; index += 1) {
+      const particle = document.createElement('span');
+      particle.textContent = preset.particle;
+      particle.dataset.previewParticle = String(index + 1);
+      particles.append(particle);
+    }
+  }
+
+  async function loadSeasonalTheme() {
+    const response = await request('/api/admin/v1/seasonal-theme');
+    if (!response.ok) return status(response.error || 'No se cargó el calendario estacional.', 'error');
+    seasonalThemePresets = Object.fromEntries((response.presets || []).map(preset => [preset.id, preset]));
+    seasonalMonthMeta = response.months || [];
+    const presetSelect = $('#seasonal-theme-preset');
+    presetSelect.innerHTML = (response.presets || []).map(preset => `<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.label)}</option>`).join('');
+    const config = response.configuration || {};
+    seasonalMonthConfigs = Array.isArray(config.months) ? config.months.map(item => ({ ...item })) : [];
+    selectedSeasonalMonth = Number(response.calendarMonth || response.preview?.calendarMonth) || 1;
+    $('#seasonal-theme-enabled').checked = config.enabled === true;
+    $('#seasonal-theme-start').value = dateToLocalInput(config.startAt);
+    $('#seasonal-theme-end').value = dateToLocalInput(config.endAt);
+    const current = seasonalMonthMeta[selectedSeasonalMonth - 1];
+    $('#seasonal-calendar-current').textContent = `Ahora: ${current?.label || 'Enero'} · ${response.preview?.timeZone || 'zona del casino'}`;
+    syncSeasonalMonthEditor();
+  }
+
+  function setupSeasonalThemeEditor() {
+    if (seasonalThemeEditorReady) return;
+    seasonalThemeEditorReady = true;
+    const form = $('#seasonal-theme-form');
+    if (!form) return;
+    const editorInputIds = ['seasonal-theme-preset', 'seasonal-theme-animation', 'seasonal-theme-intensity', 'seasonal-theme-month-enabled'];
+    editorInputIds.forEach(id => {
+      document.getElementById(id)?.addEventListener('input', () => { commitSeasonalMonthEditor(); renderSeasonalThemePreview(); });
+      document.getElementById(id)?.addEventListener('change', () => { commitSeasonalMonthEditor(); renderSeasonalThemePreview(); });
+    });
+    ['seasonal-theme-enabled', 'seasonal-theme-start', 'seasonal-theme-end'].forEach(id => {
+      document.getElementById(id)?.addEventListener('input', renderSeasonalThemePreview);
+      document.getElementById(id)?.addEventListener('change', renderSeasonalThemePreview);
+    });
+    $('#seasonal-month-grid')?.addEventListener('click', event => {
+      const button = event.target.closest('[data-seasonal-month]');
+      if (!button) return;
+      commitSeasonalMonthEditor();
+      selectedSeasonalMonth = Number(button.dataset.seasonalMonth);
+      syncSeasonalMonthEditor();
+    });
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      commitSeasonalMonthEditor();
+      const button = $('#seasonal-theme-save');
+      const dateValue = id => {
+        const value = document.getElementById(id)?.value;
+        return value ? new Date(value).toISOString() : null;
+      };
+      const payload = {
+        enabled: $('#seasonal-theme-enabled').checked,
+        rotation: 'monthly',
+        months: seasonalMonthConfigs,
+        startAt: dateValue('seasonal-theme-start'),
+        endAt: dateValue('seasonal-theme-end')
+      };
+      button.disabled = true;
+      const response = await request('/api/admin/v1/seasonal-theme', {
+        method: 'PUT',
+        headers: { 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify(payload)
+      });
+      button.disabled = false;
+      if (!response.ok) {
+        const message = response.error || 'No se guardó el calendario estacional.';
+        $('#seasonal-theme-status').textContent = message;
+        return status(message, 'error');
+      }
+      seasonalMonthConfigs = response.configuration.months.map(item => ({ ...item }));
+      $('#seasonal-theme-status').textContent = 'Calendario guardado; la rotación mensual está publicada.';
+      status('Calendario estacional actualizado.', 'success');
+      syncSeasonalMonthEditor();
+    });
   }
 
   async function bootstrap() {

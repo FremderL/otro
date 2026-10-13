@@ -16,21 +16,77 @@
     reconnectionDelay: 700,
     reconnectionDelayMax: 4000
   });
-  // Flags públicos del despliegue (GET /healthz), leídos una sola vez. El
-  // backend responde 404 fail-closed cuando una función está apagada (diseño
-  // intencional, cubierto por tests); el navegador loguea todo 404 de red en
-  // consola aunque el JS lo maneje, así que con el flag a la mano el cliente va
-  // directo al fallback sin generar la petición. Si /healthz no responde se
-  // asume "encendido" y se conserva el comportamiento anterior (cada flujo
-  // tolera el 404 como red de seguridad por si el flag cambió en vivo).
-  const serverFlags = { accountSessions: null };
+  // Flags públicos del despliegue (GET /healthz), leídos una sola vez. Las
+  // sesiones de cuenta conservan su fallback si healthz falla; el Pasaporte,
+  // en cambio, queda oculto por seguridad hasta que el servidor confirme que
+  // está activado expresamente.
+  const serverFlags = { accountSessions: null, passport: null };
   const serverFlagsReady = fetch('/healthz', { cache: 'no-store' })
     .then(response => (response.ok ? response.json() : null))
-    .then(data => { serverFlags.accountSessions = !data || data.accountSessionsEnabled !== false; })
-    .catch(() => { serverFlags.accountSessions = true; });
+    .then(data => {
+      serverFlags.accountSessions = !data || data.accountSessionsEnabled !== false;
+      // El Pasaporte usa activación fail-closed: healthz debe confirmarlo de
+      // forma explícita para mostrar la sección del perfil.
+      serverFlags.passport = data?.passportEnabled === true;
+      document.getElementById('passport-panel')?.classList.toggle('hidden', !serverFlags.passport);
+      document.getElementById('profile-section-passport')?.classList.toggle('hidden', !serverFlags.passport);
+      document.getElementById('profile-tab-passport')?.classList.toggle('hidden', !serverFlags.passport);
+      if (!serverFlags.passport && ui.profileSection === 'passport') jumpToProfileSection('overview');
+      if (ui.room) renderRoom();
+      else if (ui.profileOpen) renderProfileModal();
+    })
+    .catch(() => {
+      serverFlags.accountSessions = true;
+      serverFlags.passport = false;
+      document.getElementById('passport-panel')?.classList.add('hidden');
+      document.getElementById('profile-section-passport')?.classList.add('hidden');
+      document.getElementById('profile-tab-passport')?.classList.add('hidden');
+      if (ui.profileSection === 'passport') jumpToProfileSection('overview');
+      if (ui.room) renderRoom();
+      else if (ui.profileOpen) renderProfileModal();
+    });
   function accountSessionsAvailable() { return serverFlags.accountSessions !== false; }
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
+  function setActiveProfileSection(sectionId) {
+    const section = document.querySelector(`[data-profile-section="${sectionId}"]`);
+    if (!section || section.classList.contains('hidden')) sectionId = 'overview';
+    $$('[data-profile-jump]').forEach(button => {
+      const active = button.dataset.profileJump === sectionId;
+      button.classList.toggle('active', active);
+      if (active) button.setAttribute('aria-current', 'location');
+      else button.removeAttribute('aria-current');
+    });
+    document.getElementById('profile-modal')?.setAttribute('data-active-profile-section', sectionId);
+    ui.profileSection = sectionId;
+  }
+  function jumpToProfileSection(sectionId, moveFocus = false) {
+    const scrollRoot = document.getElementById('profile-content-scroll');
+    let target = document.querySelector(`[data-profile-section="${sectionId}"]`);
+    if (!scrollRoot) return;
+    if (!target || target.classList.contains('hidden')) {
+      sectionId = 'overview';
+      target = document.querySelector('[data-profile-section="overview"]');
+    }
+    if (!target) return;
+    const rootTop = scrollRoot.getBoundingClientRect().top;
+    const targetTop = target.getBoundingClientRect().top;
+    scrollRoot.scrollTop = Math.max(0, scrollRoot.scrollTop + targetTop - rootTop - 12);
+    setActiveProfileSection(sectionId);
+    if (moveFocus) (target.querySelector('[tabindex="-1"]') || target).focus({ preventScroll: true });
+  }
+  function syncProfileSectionFromScroll() {
+    const scrollRoot = document.getElementById('profile-content-scroll');
+    if (!scrollRoot) return;
+    const activationLine = scrollRoot.getBoundingClientRect().top + 42;
+    const sections = $$('[data-profile-section]').filter(section => !section.classList.contains('hidden'));
+    let active = sections[0];
+    for (const section of sections) {
+      if (section.getBoundingClientRect().top <= activationLine) active = section;
+      else break;
+    }
+    if (active) setActiveProfileSection(active.dataset.profileSection);
+  }
 
   const els = {
     landing: $('#landing'), roomApp: $('#room-app'), modal: $('#join-modal'), form: $('#join-form'),
@@ -42,6 +98,8 @@
     navConnection: $('#nav-connection'), headerConnection: $('#header-connection'), connectionStatus: $('#connection-status'),
     liveRooms: $('#live-rooms'), liveRoomCount: $('#live-room-count'), onlinePlayerCount: $('#online-player-count'),
     heroOnlineCount: $('#hero-online-count'), lobbyRefresh: $('#lobby-refresh'),
+    lobbyTournamentList: $('#lobby-tournament-list'), weeklyFinal: $('#lobby-weekly-final'),
+    tournamentNameDialog: $('#lobby-tournament-name-dialog'), tournamentNameForm: $('#lobby-tournament-name-form'), tournamentNameInput: $('#lobby-tournament-name-input'),
     notificationsToggle: $('#notifications-toggle'), roomNotificationsToggle: $('#room-notifications-toggle'),
     lobbyChatWidget: $('#lobby-chat-widget'), lobbyChatBubble: $('#lobby-chat-bubble'), lobbyChatPanel: $('#lobby-chat-panel'),
     lobbyChatClose: $('#lobby-chat-close'), lobbyChatUnread: $('#lobby-chat-unread'), lobbyChatProfile: $('#lobby-chat-profile'),
@@ -57,17 +115,23 @@
     sidebar: $('.sidebar'), soundToggle: $('#sound-toggle'),
     specialEventBanner: $('#special-event-banner'), winnerTicker: $('#winner-ticker'), reactionStage: $('#reaction-stage'),
     profileModal: $('#profile-modal'), profileForm: $('#profile-form'), profileNameInput: $('#profile-name-input'),
-    profileAccountStatus: $('#profile-account-status'),
+    profileAccountStatus: $('#profile-account-status'), profileDisplayName: $('#profile-display-name'),
     profileAvatarChoice: $('#profile-avatar-choice'), profileBigAvatar: $('#profile-big-avatar'), profileBadges: $('#profile-badges'),
     profileStats: $('#profile-stats'), rotatingChallengeList: $('#rotating-challenge-list'), challengeList: $('#challenge-list'), achievementList: $('#achievement-list'),
+    passportSeasonLabel: $('#passport-season-label'), passportSeasonDates: $('#passport-season-dates'),
+    passportPoints: $('#passport-points'), passportNextMilestone: $('#passport-next-milestone'), passportStampHint: $('#passport-stamp-hint'),
+    passportProgressBar: $('#passport-progress-bar'), passportProgressTrack: $('#passport-progress-track'),
+    passportStamps: $('#passport-stamps'), passportRewards: $('#passport-rewards'), passportCollection: $('#passport-collection'),
     featuredAchievements: $('#featured-achievements'),
+    collectionCount: $('#collection-count'), collectionItems: $('#collection-items'),
     balanceChart: $('#balance-chart'), balanceChartNote: $('#balance-chart-note'), gameBreakdown: $('#game-breakdown'),
     historyDownload: $('#history-download'),
-    dailyBonusStatus: $('#daily-bonus-status'), dailyBonusCountdown: $('#daily-bonus-countdown'),
+    dailyBonusStatus: $('#daily-bonus-status'), dailyBonusCountdown: $('#daily-bonus-countdown'), dailyBonusClaim: $('#daily-bonus-claim'),
     quickChatToggle: $('#quick-chat-toggle'), quickChatMenu: $('#quick-chat-menu'),
     botMenuToggle: $('#bot-menu-toggle'), botControls: $('#bot-controls'), botMenuClose: $('#bot-menu-close'),
     botDifficulty: $('#bot-difficulty'), botStyle: $('#bot-style'), botAdd: $('#bot-add'), botFill: $('#bot-fill'),
     reportOpenBtn: $('#report-open-btn'), reportModal: $('#report-modal'), reportForm: $('#report-form'), reportTitle: $('#report-title'), reportCopy: $('#report-copy'), reportUserField: $('#report-user-field'), reportedUsername: $('#reported-username'), reportCategory: $('#report-category'), reportDescription: $('#report-description'), reportError: $('#report-error'), myReportsList: $('#my-reports-list'), myReportsRefresh: $('#my-reports-refresh'),
+    communityOpenBtn: $('#community-open-btn'), communityModal: $('#community-modal'),
     accountOpenBtn: $('#account-open-btn'), accountModal: $('#account-modal'), accountForm: $('#account-form'),
     accountModalTitle: $('#account-modal-title'), accountModalCopy: $('#account-modal-copy'),
     accountUsername: $('#account-username'), accountPassword: $('#account-password'), accountError: $('#account-error'),
@@ -97,6 +161,10 @@
     { id: 'alien', emoji: '👽', label: 'Alien' }, { id: 'robot', emoji: '🤖', label: 'Robot' },
     { id: 'crown', emoji: '👑', label: 'Corona' }, { id: 'diamond', emoji: '💎', label: 'Diamante' }
   ];
+  const COSMETIC_AVATAR_ART = new Set([
+    '/assets/cosmetics/avatars/phoenix.svg', '/assets/cosmetics/avatars/axolotl.svg',
+    '/assets/cosmetics/avatars/nebula.svg'
+  ]);
   const SUITS = { S: '♠', H: '♥', D: '♦', C: '♣' };
   // Debe coincidir con TOS_VERSION en lib/terms.js; al cambiar, se pide aceptar de nuevo.
   const TOS_VERSION = '2026-09-28';
@@ -147,7 +215,7 @@
   const ACCOUNT_SESSION_FIELDS = [
     'accountId', 'username', 'name', 'avatar', 'chips', 'stats', 'achievements', 'gamesPlayed',
     'featuredAchievements', 'allAchievements', 'challenges', 'dailyChallenges', 'weeklyChallenges',
-    'gameStats', 'balanceHistory', 'medals', 'championBanner', 'dailyBonusClaimed', 'dailyBonusAvailableAt'
+    'gameStats', 'balanceHistory', 'medals', 'championBanner', 'dailyBonusClaimed', 'dailyBonusAvailableAt', 'passport', 'collection'
   ];
   const ui = {
     accountMode: 'login',
@@ -159,7 +227,10 @@
     connection: 'connecting', sound: localStorage.getItem('montecristo-sound') !== 'off', notifications: localStorage.getItem('montecristo-notifications') !== 'off',
     lobbyChat: { joined: false, joining: false, open: false, messages: [], unread: 0 },
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
-    lastEventKey: '', clockTimer: null, dailyBonusTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null, profileOpen: false, profileNameDirty: false,
+    lastEventKey: '', clockTimer: null, dailyBonusTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null,
+    profileOpen: false, profileNameDirty: false, profileSection: 'overview', collectionFilter: 'all',
+    lobbyTournaments: null, expandedTournamentBrackets: new Set(), pendingTournamentSignup: null,
+    communityTab: 'friends', communityData: null,
     rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null, resultQueue: [],
     spectating: false
   };
@@ -182,6 +253,7 @@
   renderAccountButton();
   renderAvatarChoices();
   initScrollReveal();
+  loadSeasonalTheme();
 
   // ---------- Utilities ----------
   function migrateLegacyStorage() {
@@ -221,6 +293,60 @@
   }
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+  }
+  let seasonalThemeRefreshTimer = null;
+  let seasonalThemePayload = null;
+  function refreshSeasonalThemeVisibility() {
+    const active = seasonalThemePayload?.active === true && !ui.room && !els.landing.classList.contains('hidden');
+    const pill = document.getElementById('seasonal-theme-pill');
+    const effects = document.getElementById('seasonal-effects');
+    if (pill) pill.hidden = !active;
+    if (effects) effects.hidden = !active;
+  }
+  function applySeasonalTheme(payload) {
+    if (seasonalThemeRefreshTimer) clearTimeout(seasonalThemeRefreshTimer);
+    seasonalThemeRefreshTimer = null;
+    seasonalThemePayload = payload;
+    const theme = payload?.active === true ? payload.theme : null;
+    const pill = document.getElementById('seasonal-theme-pill');
+    const effects = document.getElementById('seasonal-effects');
+    document.documentElement.dataset.seasonalTheme = theme?.id || 'none';
+    document.documentElement.dataset.seasonalAnimation = theme?.animation || 'none';
+    if (pill) {
+      pill.textContent = theme ? `${theme.symbol} ${theme.label}` : '';
+      pill.title = theme?.decoration || '';
+      pill.setAttribute('aria-label', theme ? `Decoración activa: ${theme.label}` : '');
+    }
+    if (effects) {
+      effects.dataset.theme = theme?.id || 'none';
+      effects.dataset.animation = theme?.animation || 'none';
+      effects.dataset.intensity = theme?.intensity || 'subtle';
+      effects.replaceChildren();
+      if (theme?.animation && theme.animation !== 'none' && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        for (let index = 0; index < 18; index += 1) {
+          const particle = document.createElement('span');
+          particle.className = 'seasonal-effect-particle';
+          particle.textContent = theme.particle || '✦';
+          particle.style.setProperty('--effect-x', `${(index * 47 + 9) % 100}%`);
+          particle.style.setProperty('--effect-delay', `${-(index * 0.83) % 14}s`);
+          particle.style.setProperty('--effect-duration', `${10 + (index % 8) * 1.45}s`);
+          particle.style.setProperty('--effect-drift', `${(index % 2 ? 1 : -1) * (24 + index * 2)}px`);
+          effects.append(particle);
+        }
+      }
+    }
+    refreshSeasonalThemeVisibility();
+    const refreshAt = Number(payload?.refreshAt);
+    if (Number.isFinite(refreshAt) && refreshAt > Date.now()) {
+      seasonalThemeRefreshTimer = setTimeout(loadSeasonalTheme, Math.min(refreshAt - Date.now() + 1500, 2147483647));
+    }
+  }
+  async function loadSeasonalTheme() {
+    try {
+      const response = await fetch('/api/seasonal-theme', { cache: 'no-store' });
+      if (!response.ok) return;
+      applySeasonalTheme(await response.json());
+    } catch (_) { /* la decoración es opcional; el lobby sigue usable sin este recurso */ }
   }
   function getDeviceToken() {
     let token = localStorage.getItem('montecristo-device');
@@ -357,8 +483,54 @@
     return (chunks[0]?.[0] || '?') + (chunks.length > 1 ? chunks[chunks.length - 1][0] : '');
   }
   function avatarEmoji(id) { return AVATARS.find(item => item.id === id)?.emoji || '🦊'; }
+  function passportFrameClasses(passport) {
+    if (serverFlags.passport !== true) return '';
+    const style = passport?.equipped?.frame?.style;
+    const classes = { 'frame-15': 'passport-frame passport-frame-15', 'frame-50': 'passport-frame passport-frame-50' };
+    return classes[style] || '';
+  }
+  function applyPassportFrame(element, passport) {
+    if (!element) return;
+    element.classList.remove('passport-frame', 'passport-frame-15', 'passport-frame-50');
+    const classes = passportFrameClasses(passport).split(' ').filter(Boolean);
+    if (classes.length) element.classList.add(...classes);
+  }
+  function passportBadgeMarkup(passport) {
+    if (serverFlags.passport !== true) return '';
+    const item = passport?.equipped?.badge;
+    if (!item) return '';
+    const styles = {
+      'badge-season': 'passport-badge-season',
+      'badge-emblem': 'passport-badge-emblem',
+      'badge-explorer': 'passport-badge-explorer'
+    };
+    return `<i class="passport-mini-badge ${styles[item.style] || ''}" title="${escapeHtml(item.name)} · ${escapeHtml(item.seasonLabel)}">${escapeHtml(item.icon)}</i>`;
+  }
+  function passportTitleMarkup(passport) {
+    if (serverFlags.passport !== true) return '';
+    const item = passport?.equipped?.title;
+    if (!item) return '';
+    return `<span class="passport-nameplate" title="Título del Pasaporte · ${escapeHtml(item.seasonLabel)}">${escapeHtml(item.icon)} ${escapeHtml(item.name)}</span>`;
+  }
+  function cosmeticFrameClass(collection) {
+    const style = collection?.equipped?.frame?.style;
+    return ['obsidian', 'starlight'].includes(style) ? `frame-art-equipped frame-${style}` : '';
+  }
+  function cosmeticAvatarContents(player) {
+    const item = player?.collection?.equipped?.avatar;
+    const art = COSMETIC_AVATAR_ART.has(item?.art) ? item.art : null;
+    if (!art) return avatarEmoji(player?.avatar);
+    const animation = ['float', 'glow', 'orbit'].includes(item.animation) ? ` animate-${item.animation}` : '';
+    return `<img class="equipped-avatar-art${animation}" src="${art}" alt="" loading="lazy" decoding="async">`;
+  }
+  function equippedAvatarMarkup(player, className = 'player-avatar', showOnline = false) {
+    const equippedAvatar = COSMETIC_AVATAR_ART.has(player?.collection?.equipped?.avatar?.art);
+    const frameClass = cosmeticFrameClass(player?.collection);
+    const online = showOnline && player?.connected !== false;
+    return `<div class="${className} ${passportFrameClasses(player?.passport)} ${frameClass} ${equippedAvatar ? 'avatar-art-equipped' : ''} ${player?.connected === false ? 'offline' : ''}" style="background:${avatarColor(player?.id)}">${cosmeticAvatarContents(player)}${online ? '<i class="player-online"></i>' : ''}</div>`;
+  }
   function avatarMarkup(player, className = 'player-avatar') {
-    return `<div class="${className} ${player.connected === false ? 'offline' : ''}" style="background:${avatarColor(player.id)}">${avatarEmoji(player.avatar)}${player.connected === false ? '' : '<i class="player-online"></i>'}</div>`;
+    return equippedAvatarMarkup(player, className, true);
   }
   function renderAvatarChoices() {
     $$('[data-select-avatar]').forEach(button => {
@@ -375,6 +547,7 @@
           item.classList.toggle('active', selected);
           item.setAttribute('aria-pressed', String(selected));
         });
+        els.profileBigAvatar.classList.remove('avatar-art-equipped');
         els.profileBigAvatar.textContent = avatarEmoji(ui.profileAvatar);
       }));
     }
@@ -596,6 +769,7 @@
     setConnection('connected');
     setColdStartHint(false);
     tryAutoJoinLobbyChat();
+    requestLobbyTournaments();
     setTimeout(() => { if (!ui.joining) setOverlay(false); }, 350);
     // Reconectar (o la primera conexión) nunca cambia el botón de cuenta por su
     // cuenta: si hay sesión cacheada se sigue mostrando "Perfil" de inmediato
@@ -607,7 +781,7 @@
       ui.shouldResume = false;
       ui.joining = true;
       setOverlay(true, ui.spectating ? 'VOLVIENDO A LA TRIBUNA' : 'RECUPERANDO TU ASIENTO');
-      const response = await emitAck(ui.spectating ? 'spectate_room' : 'join_room', { name: ui.playerName, code: ui.activeCode, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) });
+      const response = await emitAck(ui.spectating ? 'spectate_room' : 'join_room', { name: ui.playerName, code: ui.activeCode, token: deviceToken, avatar: ui.selectedAvatar, accountId: ui.accountSession?.accountId, tos: localStorage.getItem(TOS_KEY) });
       ui.joining = false;
       if (!response.ok) {
         // La mesa ya no existe en el servidor (p. ej. el servicio se reinició
@@ -799,6 +973,25 @@
     renderLobby();
     renderSeasonRanking();
   });
+  function requestLobbyTournaments() {
+    if (!socket.connected) return;
+    emitAck('lobby_tournaments_get', { accountId: ui.accountSession?.accountId }).then(response => {
+      if (!response?.ok || !response.snapshot) return;
+      ui.lobbyTournaments = response.snapshot;
+      renderLobbyTournaments();
+    });
+  }
+  socket.on('lobby_tournaments_state', snapshot => {
+    if (!snapshot || !Array.isArray(snapshot.tournaments)) return;
+    ui.lobbyTournaments = snapshot;
+    renderLobbyTournaments();
+  });
+  socket.on('lobby_tournament_match_result', result => {
+    if (!result) return;
+    showToast(result.isWinner ? 'Avanzas en el bracket' : 'Encuentro terminado',
+      result.forfeit ? `${result.winnerName} gana por incomparecencia.` : `${result.winnerName} ganó ${result.roundLabel} de ${result.tournamentName}.`,
+      result.isWinner ? 'achievement' : 'notice', 5200, result.isWinner ? '🏆' : '♠');
+  });
 
   // Fase 8.6: ranking mensual en el lobby (los puntos se reinician cada mes).
   function renderSeasonRanking() {
@@ -850,6 +1043,7 @@
   }
 
   function renderLobby() {
+    renderLobbyTournaments();
     els.liveRoomCount.textContent = ui.lobby.length;
     els.onlinePlayerCount.textContent = ui.playersOnline;
     els.heroOnlineCount.textContent = ui.playersOnline;
@@ -877,6 +1071,123 @@
     }).join('');
     observeLobbyCards();
     $$('[data-live-code]').forEach(button => button.addEventListener('click', () => openModal(button.dataset.liveFull ? 'spectate' : 'join', { code: button.dataset.liveCode })));
+  }
+  function tournamentStatusLabel(status) {
+    return ({ registration: 'Inscripción abierta', full: 'Cupos completos', in_progress: 'En curso', completed: 'Finalizado', cancelled: 'Cancelado' })[status] || 'Programado';
+  }
+  function tournamentDateLabel(timestamp, timeZone) {
+    try {
+      return new Intl.DateTimeFormat('es-MX', {
+        timeZone: timeZone || 'UTC', weekday: 'short', day: 'numeric', month: 'short',
+        hour: '2-digit', minute: '2-digit'
+      }).format(new Date(timestamp));
+    } catch (_) { return new Date(timestamp).toLocaleString('es-MX'); }
+  }
+  function renderTournamentBracket(event) {
+    if (!ui.expandedTournamentBrackets.has(event.id)) return '';
+    if (!event.rounds?.length) return '<div class="tournament-bracket"><div class="tournament-bracket-empty">El bracket se publicará al iniciar el torneo.</div></div>';
+    return `<div class="tournament-bracket" role="list" aria-label="Bracket de ${escapeHtml(event.name)}">${event.rounds.map(round => `
+      <section class="tournament-bracket-round" role="listitem"><h5>${escapeHtml(round.label)}</h5>
+        ${round.matches.map(match => `<div class="tournament-match" aria-label="Encuentro ${match.number}">
+          ${(match.players || []).length ? match.players.map(player => `<span class="tournament-match-player ${player.winner ? 'winner' : ''} ${player.you ? 'you' : ''}"><span>${escapeHtml(player.name)}</span>${player.winner ? '<small>✓</small>' : ''}</span>`).join('') : '<span class="tournament-match-player">Por definir</span>'}
+          <small class="tournament-card-note">${match.status === 'playing' ? 'En partida' : match.status === 'completed' ? (match.forfeit ? 'Resuelto por incomparecencia' : 'Finalizado') : 'Pendiente'}</small>
+        </div>`).join('')}
+      </section>`).join('')}</div>`;
+  }
+  function renderTournamentCard(event, state) {
+    const isFeatured = Boolean(event.featured);
+    const registeredElsewhere = Boolean(state.registeredTournamentId && state.registeredTournamentId !== event.id);
+    const mayJoin = event.status === 'registration' && !event.isRegistered && !registeredElsewhere;
+    const canWithdraw = ['registration', 'full'].includes(event.status) && event.isRegistered;
+    const statusClass = `status-${String(event.status || '').replace(/[^a-z_]/g, '')}`;
+    const prizeTable = Array.isArray(event.prizeSchedule) ? event.prizeSchedule : [];
+    const firstPrize = prizeTable.find(prize => prize.place === 1)?.prize || 0;
+    const prizeRows = prizeTable.map(prize => `<tr><td>${prize.place === 1 ? '🥇' : prize.place === 2 ? '🥈' : prize.place <= 4 ? '🥉' : 'Top 8'} · ${prize.place}.º puesto</td><td>◆ ${formatChips(prize.prize)}</td></tr>`).join('');
+    const button = mayJoin
+      ? `<button type="button" class="tournament-action" data-tournament-join="${escapeHtml(event.id)}">Inscribirme gratis</button>`
+      : canWithdraw
+        ? `<button type="button" class="tournament-action secondary" data-tournament-withdraw="${escapeHtml(event.id)}">Cancelar inscripción</button>`
+        : event.isRegistered && ['full', 'in_progress'].includes(event.status)
+          ? '<button type="button" class="tournament-action" disabled>Inscripción confirmada</button>'
+          : registeredElsewhere && event.status === 'registration'
+            ? '<button type="button" class="tournament-action" disabled>Ya estás en otro torneo</button>'
+            : event.status === 'registration' ? '<button type="button" class="tournament-action" disabled>Inscripción no disponible</button>' : '';
+    const participants = (event.participants || []).slice(0, 4).map(person => `${person.isYou ? 'Tú' : escapeHtml(person.name)}`).join(' · ');
+    const participantLine = participants ? `<p class="tournament-card-note">En la lista: ${participants}${event.registeredCount > 4 ? ` · +${event.registeredCount - 4}` : ''}</p>` : '';
+    return `<article class="tournament-card ${isFeatured ? 'is-featured' : ''} ${event.status === 'in_progress' ? 'is-live' : ''}" data-tournament-card="${escapeHtml(event.id)}">
+      <div class="tournament-card-top"><span>${isFeatured ? '✦ FINAL SEMANAL DESTACADA' : 'TORNEO RELÁMPAGO'}</span><span class="tournament-status ${statusClass}">${tournamentStatusLabel(event.status)}</span></div>
+      <h4>${escapeHtml(event.name)}</h4><time class="tournament-date" datetime="${new Date(event.startAt).toISOString()}">${tournamentDateLabel(event.startAt, state.timeZone)} · hora del casino</time>
+      ${isFeatured ? '<p class="tournament-card-note">Final semanal destacada · domingo, 19:00 en la zona horaria del casino.</p>' : ''}
+      <div class="tournament-card-stats"><span><b>${event.capacity}</b> participantes</span><span><b>${event.registeredCount}/${event.capacity}</b> inscritos</span><span>◆ <b>${formatChips(firstPrize)}</b> al 1.º</span></div>
+      <div class="tournament-prize-line"><b>ENTRADA</b><span>Gratis · stack de torneo virtual independiente del saldo personal.</span></div>
+      <details class="tournament-prizes"><summary>Tabla fija de premios virtuales</summary><table class="tournament-prize-table"><tbody>${prizeRows}</tbody></table><small>Se abonan al saldo de fichas virtuales cuando termina el torneo.</small></details>
+      ${participantLine}
+      <div class="tournament-card-actions">${button}<button type="button" class="tournament-bracket-toggle" data-tournament-bracket-toggle="${escapeHtml(event.id)}" aria-expanded="${ui.expandedTournamentBrackets.has(event.id)}">${ui.expandedTournamentBrackets.has(event.id) ? 'Ocultar bracket' : 'Ver bracket'}</button></div>
+      ${event.cancellationReason ? `<p class="tournament-card-note">${event.cancellationReason === 'not_enough_players' ? 'No se llenaron las plazas; se canceló sin cobrar entrada.' : event.cancellationReason === 'players_offline' ? 'Se canceló porque faltaban participantes conectados.' : event.cancellationReason === 'server_restarted_before_start' ? 'El servidor se reinició antes del inicio; se canceló sin cobrar entrada.' : event.cancellationReason === 'stored_bracket_unavailable' ? 'No se pudo recuperar el bracket; el encuentro no se cobró ni se perdió el saldo personal.' : 'No se pudo iniciar porque un participante estaba ocupado en otra mesa.'}</p>` : ''}
+      ${event.isRegistered && event.myPlacement ? `<p class="tournament-card-note">Terminaste en el puesto ${event.myPlacement} · premio ◆ ${formatChips(event.myPrize || 0)}.</p>` : ''}
+      ${renderTournamentBracket(event)}
+    </article>`;
+  }
+  function renderLobbyTournaments() {
+    if (!els.lobbyTournamentList) return;
+    const state = ui.lobbyTournaments;
+    if (!state || !Array.isArray(state.tournaments)) {
+      els.lobbyTournamentList.innerHTML = '<div class="tournament-loading">Sincronizando calendario con el servidor…</div>';
+      if (els.weeklyFinal) els.weeklyFinal.classList.add('hidden');
+      return;
+    }
+    const events = state.tournaments;
+    const featured = events.find(event => event.featured);
+    if (els.weeklyFinal) {
+      if (featured) {
+        els.weeklyFinal.classList.remove('hidden');
+        els.weeklyFinal.innerHTML = renderTournamentCard(featured, state);
+      } else {
+        els.weeklyFinal.classList.add('hidden');
+        els.weeklyFinal.replaceChildren();
+      }
+    }
+    const regular = events.filter(event => !event.featured);
+    els.lobbyTournamentList.innerHTML = regular.length
+      ? regular.map(event => renderTournamentCard(event, state)).join('')
+      : '<div class="tournament-empty">No hay torneos relámpago en este momento. El siguiente calendario aparecerá aquí.</div>';
+    $$('[data-tournament-join]').forEach(button => button.addEventListener('click', () => joinLobbyTournament(button.dataset.tournamentJoin, button)));
+    $$('[data-tournament-withdraw]').forEach(button => button.addEventListener('click', () => withdrawLobbyTournament(button.dataset.tournamentWithdraw, button)));
+    $$('[data-tournament-bracket-toggle]').forEach(button => button.addEventListener('click', () => {
+      const id = button.dataset.tournamentBracketToggle;
+      if (ui.expandedTournamentBrackets.has(id)) ui.expandedTournamentBrackets.delete(id);
+      else ui.expandedTournamentBrackets.add(id);
+      renderLobbyTournaments();
+    }));
+  }
+  async function joinLobbyTournament(tournamentId, button, chosenName = '') {
+    if (!tosAccepted()) { showTosModal(); return; }
+    const name = String(chosenName || ui.accountSession?.name || ui.playerName || localStorage.getItem('montecristo-name') || '').trim();
+    if (!name) {
+      ui.pendingTournamentSignup = tournamentId;
+      if (els.tournamentNameInput) els.tournamentNameInput.value = '';
+      els.tournamentNameDialog?.showModal?.();
+      els.tournamentNameInput?.focus();
+      return;
+    }
+    ui.playerName = name;
+    localStorage.setItem('montecristo-name', name);
+    const avatar = ui.accountSession?.avatar || ui.selectedAvatar || 'fox';
+    const response = await emitAck('lobby_tournament_register', {
+      tournamentId, accountId: ui.accountSession?.accountId, name, avatar,
+      tos: localStorage.getItem(TOS_KEY)
+    }, button);
+    if (!response.ok) return showToast('No se pudo inscribir', response.error || 'Intenta de nuevo.', 'error');
+    if (response.snapshot) ui.lobbyTournaments = response.snapshot;
+    renderLobbyTournaments();
+    showToast(response.code === 'already_registered' ? 'Ya estabas inscrito' : 'Inscripción confirmada', 'Entrada gratuita. Tu asiento y tu saldo personal están protegidos.', 'notice', 4200, '🏆');
+  }
+  async function withdrawLobbyTournament(tournamentId, button) {
+    const response = await emitAck('lobby_tournament_withdraw', { tournamentId, accountId: ui.accountSession?.accountId }, button);
+    if (!response.ok) return showToast('No se pudo cancelar', response.error || 'Intenta de nuevo.', 'error');
+    if (response.snapshot) ui.lobbyTournaments = response.snapshot;
+    renderLobbyTournaments();
+    showToast('Inscripción cancelada', 'Puedes volver a inscribirte mientras el registro siga abierto.', 'notice', 3500, '↩');
   }
   $$('[data-room-filter]').forEach(button => {
     button.setAttribute('role', 'tab');
@@ -921,13 +1232,14 @@
       if (room.game === 'slots' && !ui.slotsSpin) startSlotsSpin(room.quickResult.reels);
     }
     ui.room = room;
+    refreshSeasonalThemeVisibility();
     // Red de seguridad: si llegó el estado de resultados pero esta mesa no
     // está animando el descubrimiento (otro juego, o una reconexión directa
     // en fase de resultados), los avisos retenidos se muestran ya — no hay
     // animación que esperar.
     if (ui.resultQueue.length && !quickResultHold()) flushResultQueue();
     ui.activeCode = room.code;
-    ui.me = room.players.find(player => player.id === deviceToken) || (room.viewerSpectator ? null : room.players.find(player => player.name === ui.playerName)) || null;
+    ui.me = room.players.find(player => player.id === room.viewerId) || room.players.find(player => player.id === deviceToken) || (room.viewerSpectator ? null : room.players.find(player => player.name === ui.playerName)) || null;
     ui.spectating = Boolean(room.viewerSpectator) && !ui.me; // Fase 8: modo espectador
     if (ui.me) {
       ui.playerName = ui.me.name;
@@ -964,7 +1276,7 @@
   function renderRoom() {
     const room = ui.room;
     if (!room) return;
-    ui.me = room.players.find(player => player.id === deviceToken) || ui.me;
+    ui.me = room.players.find(player => player.id === room.viewerId) || room.players.find(player => player.id === deviceToken) || ui.me;
     if (room.viewerProfile) {
       ui.selectedAvatar = room.viewerProfile.avatar || ui.selectedAvatar;
       ui.profileAvatar = ui.selectedAvatar;
@@ -976,8 +1288,12 @@
     els.roomTitle.textContent = room.name || `Sala ${room.code}`;
     els.headerCode.textContent = room.code;
     const connectedCount = room.players.filter(player => player.connected).length;
-    els.playerCount.textContent = `${connectedCount} / 6`;
+    els.playerCount.textContent = `${connectedCount} / ${room.lobbyTournamentMatch ? 2 : 6}`;
     els.roomApp.dataset.game = room.game;
+    const equippedLooks = room.viewerProfile?.collection?.equipped || ui.me?.collection?.equipped || {};
+    els.roomApp.dataset.felt = equippedLooks.felt?.style || '';
+    els.roomApp.dataset.chipSkin = equippedLooks.chips?.style || '';
+    els.roomApp.dataset.cardBack = equippedLooks.cards?.style || '';
     els.roomApp.classList.toggle('my-turn', room.turnId === ui.me?.id);
     renderBotControls();
     renderProfile();
@@ -988,9 +1304,9 @@
     renderTournamentBanner(room);
     if (ui.profileOpen) renderProfileModal();
     const gameSignature = JSON.stringify([
-      room.game, room.phase, room.turnId, room.turnDeadline, room.dealerHand, room.community, room.pot, room.tournament,
+      room.game, room.phase, room.turnId, room.turnDeadline, room.dealerHand, room.community, room.pot, room.tournament, room.lobbyTournamentMatch,
       room.currentBet, room.minRaise, room.dealerIndex, room.handNumber, room.results, room.quickResult, room.specialEvent,
-      room.players.map(p => [p.id, p.name, p.avatar, p.chips, p.hand, p.bet, p.quickChoice, p.roundBet, p.totalBet, p.status, p.folded, p.allIn, p.connected, p.isBot, p.bot?.thinking, p.bot?.lastActionAt])
+      room.players.map(p => [p.id, p.name, p.avatar, p.passport, p.collection, p.chips, p.hand, p.bet, p.quickChoice, p.roundBet, p.totalBet, p.status, p.folded, p.allIn, p.connected, p.isBot, p.bot?.thinking, p.bot?.lastActionAt])
     ]);
     if (gameSignature !== ui.lastGameSignature) {
       ui.lastGameSignature = gameSignature;
@@ -1001,6 +1317,18 @@
   // Fase 8.1: banner del torneo sit & go sobre la mesa.
   function renderTournamentBanner(room) {
     if (!els.tournamentBanner) return;
+    const match = room.lobbyTournamentMatch;
+    if (match) {
+      els.tournamentBanner.classList.remove('hidden');
+      els.tournamentBanner.classList.add('lobby-flash-banner');
+      const smallBlind = 10 * (2 ** Math.min(6, Math.max(1, match.level || 1) - 1));
+      const matchCopy = match.status === 'completed'
+        ? `Encuentro terminado · ganador: ${escapeHtml(match.winnerName || '—')}`
+        : `${escapeHtml(match.roundLabel)} · encuentro ${match.matchNumber} · ciegas ${formatChips(smallBlind)}/${formatChips(smallBlind * 2)}`;
+      els.tournamentBanner.innerHTML = `<span class="tb-title">🏆 TORNEO RELÁMPAGO DEL LOBBY</span><span class="tb-item"><b>${escapeHtml(match.tournamentName)}</b> · ${matchCopy}</span><span class="tb-item">Entrada gratuita · stack virtual · premios fijos</span>`;
+      return;
+    }
+    els.tournamentBanner.classList.remove('lobby-flash-banner');
     const t = room.tournament;
     if (!t || (!t.active && !t.winnerName)) {
       els.tournamentBanner.classList.add('hidden');
@@ -1024,7 +1352,7 @@
   }
   function renderBotControls() {
     const room = ui.room;
-    const isHost = Boolean(ui.me?.isHost);
+    const isHost = Boolean(ui.me?.isHost && !room.lobbyTournamentMatch);
     const locked = isPokerActive(room) || room.phase === 'playing' || room.phase === 'rolling';
     const full = room.players.length >= (room.botOptions?.capacity || 6);
     els.botMenuToggle?.classList.toggle('hidden', !isHost);
@@ -1040,7 +1368,7 @@
       // Fase 8: tarjeta reducida para espectadores.
       if (ui.spectating && ui.room?.viewerSpectator) {
         const spectator = ui.room.viewerSpectator;
-        els.profileCard.innerHTML = `<div class="profile-avatar" style="background:${avatarColor(spectator.id)}">${avatarEmoji(spectator.avatar)}</div>
+        els.profileCard.innerHTML = `${equippedAvatarMarkup(spectator, 'profile-avatar')}
           <div class="profile-info"><small>👁 ESPECTADOR</small><b>${escapeHtml(spectator.name || ui.playerName)}</b><span>Viendo la mesa en vivo</span></div>`;
       } else els.profileCard.innerHTML = '';
       return;
@@ -1048,8 +1376,8 @@
     const stats = ui.room?.viewerProfile?.stats || ui.me.stats || {};
     const previous = ui.lastMeChips;
     const delta = previous == null ? 0 : Number(ui.me.chips) - previous;
-    els.profileCard.innerHTML = `<div class="profile-avatar" style="background:${avatarColor(ui.me.id)}">${avatarEmoji(ui.me.avatar)}</div>
-      <div class="profile-info"><small>TU PERFIL · ${formatChips(stats.wins || 0)} VICTORIAS</small><b>${escapeHtml(ui.me.name)}</b><span><strong>◆</strong> ${formatChips(ui.me.chips)} fichas ${delta > 0 ? `<em class="chip-delta">+${formatChips(delta)}</em>` : ''}</span></div>`;
+    els.profileCard.innerHTML = `${equippedAvatarMarkup(ui.me, 'profile-avatar')}
+      <div class="profile-info"><small>TU PERFIL · ${formatChips(stats.wins || 0)} VICTORIAS</small><b>${escapeHtml(ui.me.name)}${passportBadgeMarkup(ui.me.passport)}</b>${passportTitleMarkup(ui.me.passport)}<span><strong>◆</strong> ${formatChips(ui.me.chips)} fichas ${delta > 0 ? `<em class="chip-delta">+${formatChips(delta)}</em>` : ''}</span></div>`;
     if (delta > 0) {
       els.profileCard.classList.remove('chips-received');
       requestAnimationFrame(() => els.profileCard.classList.add('chips-received'));
@@ -1080,7 +1408,7 @@
       return `<div class="player-row ${player.isBot ? 'bot-player' : ''} ${isTurn ? 'turn' : ''} ${botThinking ? 'bot-thinking' : ''} ${rank === 1 ? 'rank-leader' : ''} ${chipsClass}">
         <span class="player-rank ${rank === 1 ? 'top' : ''}">${rank === 1 ? '♛' : '#' + rank}</span>
         ${avatarMarkup(player)}
-        <div class="player-meta"><b>${escapeHtml(player.name)}${botBadge} ${player.id === ui.me?.id ? '<small>(tú)</small>' : ''}</b>${botDescriptor}<span>${escapeHtml(status)}</span>${bet ? `<span class="player-bet-mini">◆ ${formatChips(bet)} en juego</span>` : ''}</div>
+        <div class="player-meta"><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${botBadge} ${player.id === ui.me?.id ? '<small>(tú)</small>' : ''}</b>${passportTitleMarkup(player.passport)}${botDescriptor}<span>${escapeHtml(status)}</span>${bet ? `<span class="player-bet-mini">◆ ${formatChips(bet)} en juego</span>` : ''}</div>
         <span class="rank-change ${rankClass}">${rankCopy}</span>
         ${player.isHost ? '<span class="host-crown" title="Anfitrión">♛</span>' : ''}${removeControl}
       </div>`;
@@ -1181,8 +1509,8 @@
     const bet = player.roundBet > 0 ? `<div class="seat-bet"><i></i>${formatChips(player.roundBet)}</div>` : '';
     const status = seatStatus(player, room);
     return `<div class="table-seat seat-${index} ${classes}"><div class="seat-cards">${cards}</div><div class="seat-head">
-      <div class="seat-avatar" style="background:${avatarColor(player.id)}">${avatarEmoji(player.avatar)}</div>
-      <div class="seat-info"><b>${escapeHtml(player.name)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}</b><span>◆ ${formatChips(player.chips)}</span></div>
+      ${equippedAvatarMarkup(player, 'seat-avatar')}
+      <div class="seat-info"><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}</b>${passportTitleMarkup(player.passport)}<span>◆ ${formatChips(player.chips)}</span></div>
       ${index === room.dealerIndex ? '<i class="dealer-button">D</i>' : ''}${status ? `<span class="seat-status">${escapeHtml(status)}</span>` : ''}
       </div>${bet}</div>`;
   }
@@ -1212,7 +1540,7 @@
       ? `${player.id === ui.me?.id ? 'TU TURNO' : 'EN TURNO'}${player.split ? ` · MANO ${player.split.active === 'split' ? '2' : '1'}` : ''}`
       : result?.label || (player.status === 'blackjack' ? 'BLACKJACK' : '');
     return `<div class="table-seat blackjack-seat seat-${index} ${classes}"><div class="seat-cards ${player.split && mainActive ? 'active-hand' : ''}">${cards}</div>${splitRow}<div class="seat-head">
-      <div class="seat-avatar" style="background:${avatarColor(player.id)}">${avatarEmoji(player.avatar)}</div><div class="seat-info"><b>${escapeHtml(player.name)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}${insuranceBadge}</b><span>◆ ${formatChips(player.chips)}</span></div>
+      ${equippedAvatarMarkup(player, 'seat-avatar')}<div class="seat-info"><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}${insuranceBadge}</b>${passportTitleMarkup(player.passport)}<span>◆ ${formatChips(player.chips)}</span></div>
       ${score !== '' ? `<i class="hand-total">${score}</i>` : ''}${status ? `<span class="seat-status">${escapeHtml(status)}</span>` : ''}
       </div>${bet}</div>`;
   }
@@ -1505,8 +1833,8 @@
     const choice = quickChoiceLabel(room.game, player.quickChoice);
     const suspense = (room.game === 'roulette' && ui.rouletteSpin) || (room.game === 'slots' && ui.slotsSpin); // sin brillo de ganador hasta que termine la animación
     return `<div class="quick-bet-seat ${player.bot?.thinking ? 'bot-thinking' : ''} ${!suspense && result?.amount > 0 ? 'winner' : ''}" style="--seat:${index}">
-      <div class="seat-avatar" style="background:${avatarColor(player.id)}">${avatarEmoji(player.avatar)}</div>
-      <div><b>${escapeHtml(player.name)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}</b><span>${player.bot?.thinking ? 'Pensando…' : player.bet ? `◆ ${formatChips(player.bet)} · ${escapeHtml(choice)}` : `${formatChips(player.chips)} fichas`}</span></div>
+      ${equippedAvatarMarkup(player, 'seat-avatar')}
+      <div><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}</b>${passportTitleMarkup(player.passport)}<span>${player.bot?.thinking ? 'Pensando…' : player.bet ? `◆ ${formatChips(player.bet)} · ${escapeHtml(choice)}` : `${formatChips(player.chips)} fichas`}</span></div>
     </div>`;
   }
   function quickCore(room) {
@@ -1589,7 +1917,13 @@
   }
   function renderPokerActions(room, me) {
     const active = isPokerActive(room);
+    const lobbyMatch = room.lobbyTournamentMatch;
     const myTurn = active && room.turnId === me.id;
+    if (lobbyMatch?.status === 'completed') {
+      els.actionPanel.innerHTML = `<div class="action-bar tournament-match-finished"><div class="waiting-copy"><b>🏆 Encuentro terminado · ${escapeHtml(lobbyMatch.winnerName || '—')}</b><span>${lobbyMatch.forfeit ? 'El resultado se resolvió por incomparecencia.' : 'El bracket del lobby se actualizará con el siguiente cruce. Tus fichas personales no participaron.'}</span></div><button class="game-btn primary" data-tournament-match-exit>Volver al lobby</button></div>`;
+      els.actionPanel.querySelector('[data-tournament-match-exit]')?.addEventListener('click', () => leaveToLobby(true));
+      return;
+    }
     if (myTurn) {
       const toCall = Math.max(0, room.currentBet - me.roundBet);
       const minRaise = Math.max(1, room.minRaise || 20);
@@ -1600,11 +1934,19 @@
         <button class="game-btn" data-poker-action="allin">All-in</button></div></div>`;
       return;
     }
-    const canStart = me.isHost && !active;
-    const startCopy = room.phase === 'showdown' ? 'Repartir otra mano' : 'Iniciar partida';
-    els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>${active ? 'La acción está en la mesa' : room.phase === 'showdown' ? 'La mano terminó' : 'La mesa está lista'}</b><span>${!active && me.chips < 20 && !room.tournament?.active ? 'Te quedaste sin fichas para las ciegas (mínimo 20): mañana recibes tu bono diario de 100 al entrar.' : active ? `Esperando a ${escapeHtml(room.players.find(p => p.id === room.turnId)?.name || 'la siguiente jugada')}…` : me.isHost ? 'Tú controlas el inicio de la próxima mano.' : 'El anfitrión iniciará cuando todos estén listos.'}</span></div><div class="action-buttons">
+    const canStart = me.isHost && !active && lobbyMatch?.status !== 'completed';
+    const startCopy = lobbyMatch
+      ? 'Repartir siguiente mano'
+      : room.phase === 'showdown' ? 'Repartir otra mano' : 'Iniciar partida';
+    const waitingCopy = lobbyMatch
+      ? 'Heads-up de Texas Hold’em · 1.000 fichas virtuales de stack · entrada gratuita; tu saldo personal está protegido.'
+      : !active && me.chips < 20 && !room.tournament?.active
+        ? 'Te quedaste sin fichas para las ciegas (mínimo 20): puedes reclamar el bono diario de 100 desde tu perfil.'
+        : active ? `Esperando a ${escapeHtml(room.players.find(p => p.id === room.turnId)?.name || 'la siguiente jugada')}…`
+          : me.isHost ? 'Tú controlas el inicio de la próxima mano.' : 'El anfitrión iniciará cuando todos estén listos.';
+    els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>${active ? 'La acción está en la mesa' : room.phase === 'showdown' ? 'La mano terminó' : 'La mesa está lista'}</b><span>${waitingCopy}</span></div><div class="action-buttons">
       ${canStart ? `<button class="game-btn primary" data-event="poker_start">${startCopy}</button>` : ''}
-      ${canStart && !room.tournament?.active && room.players.filter(p => p.connected).length >= 2 ? '<button class="game-btn tournament-btn" data-event="tournament_start" title="Entrada 200 fichas · stack 1000 · las ciegas suben cada 3 manos · el ganador se lleva todo">🏆 Iniciar torneo</button>' : ''}
+      ${canStart && !lobbyMatch && !room.tournament?.active && room.players.filter(p => p.connected).length >= 2 ? '<button class="game-btn tournament-btn" data-event="tournament_start" title="Sit & Go de mesa: entrada 200 fichas y premio para el ganador">🏆 Iniciar Sit & Go</button>' : ''}
       ${room.results?.length ? `<div class="result-strip">${room.results.map(result => `<span class="result-item ${result.amount > 0 ? 'win' : ''}">${escapeHtml(result.name)} <b>${result.amount > 0 ? '+' : ''}${formatDelta(result.amount)}</b></span>`).join('')}</div>` : ''}
       </div></div>`;
   }
@@ -1813,16 +2155,33 @@
       if (ui.profileOpen) renderProfileModal();
     }
     (payload?.events || []).forEach(event => {
-      // Los premios de la ronda (logros, retos, bonos) dependen del resultado:
+      // Los premios de la ronda (logros, retos, cosméticos) dependen del resultado:
       // en ruleta y tragamonedas se revelan junto con el descubrimiento, no
-      // mientras la rueda o los rodillos siguen girando.
+      // mientras la rueda o los rodillos siguen girando. El Pasaporte nunca
+      // agrega fichas al saldo.
       announceGameResult(() => {
+        if (event.type === 'cosmetic_unlock') {
+          showToast('Cosmético desbloqueado', `${event.icon || '✦'} ${event.name} · ${event.goal || 'meta de juego completada'} · ya puedes equiparlo en Colección.`, 'achievement', 5800, event.icon || '✦', true);
+          playTone('win');
+          return;
+        }
+        if (event.type === 'lobby_tournament_prize') {
+          showToast('Premio de torneo relámpago', `Puesto ${event.place} · +${formatChips(event.reward)} fichas virtuales.`, 'reward', 6000, '🏆', true);
+          playTone('win');
+          return;
+        }
+        if (event.type === 'passport_unlock') {
+          showToast('Recompensa del Pasaporte', `${event.icon || '✦'} ${event.name} · recompensa de la temporada; revisa la sección Pasaporte.`, 'achievement', 5600, event.icon || '✦', true);
+          playTone('win');
+          return;
+        }
         const kind = event.type === 'achievement' ? 'achievement' : event.type === 'challenge' ? 'challenge' : 'reward';
         showToast(event.type === 'challenge' ? 'Reto completado' : event.type === 'achievement' ? 'Logro desbloqueado' : event.name, `${event.name}${event.reward ? ` · +${event.reward} fichas` : ''}`, kind, 6500, event.icon, true);
         playTone('win');
       });
     });
   });
+  socket.on('seasonal_theme_updated', applySeasonalTheme);
   socket.on('social_event', event => {
     if (!event?.text) return;
     if (event.type === 'big_win') {
@@ -1926,8 +2285,15 @@
       const remaining = availableAt - Date.now();
       const waiting = Boolean(profile.dailyBonusClaimed) && Number.isFinite(availableAt) && remaining > 0;
       els.dailyBonusCountdown.classList.toggle('available', !waiting);
+      if (els.dailyBonusClaim) {
+        els.dailyBonusClaim.disabled = waiting;
+        els.dailyBonusClaim.textContent = waiting ? 'Reclamado' : 'Reclamar +100';
+        els.dailyBonusClaim.setAttribute('aria-label', waiting
+          ? 'Bono diario reclamado; estará disponible al terminar el contador'
+          : 'Reclamar bono diario de 100 fichas');
+      }
       if (!waiting) {
-        els.dailyBonusStatus.textContent = 'Disponible ahora · entra a una mesa para recibirlo.';
+        els.dailyBonusStatus.textContent = 'Disponible ahora · pulsa para reclamarlo.';
         els.dailyBonusCountdown.textContent = 'DISPONIBLE';
         els.dailyBonusCountdown.removeAttribute('datetime');
         els.dailyBonusCountdown.setAttribute('aria-label', 'Bono diario disponible ahora');
@@ -1945,6 +2311,31 @@
       ui.dailyBonusTimer = setInterval(tick, 1000);
     }
   }
+  async function claimDailyBonus(button) {
+    if (!button || button.disabled || !currentViewerProfile()) return;
+    const wasInTable = inTable();
+    const payload = wasInTable ? {} : { accountId: ui.accountSession?.accountId };
+    const response = await emitAck('daily_bonus_claim', payload, button);
+    if (!response.ok) {
+      showToast('No se pudo reclamar el bono', response.error || 'Inténtalo de nuevo.', 'error');
+      return;
+    }
+    if (response.profile) {
+      if (wasInTable && ui.room) ui.room.viewerProfile = response.profile;
+      if (!wasInTable) saveAccountSession(response.profile);
+      else syncAccountSessionIfSameProfile(response.profile);
+      if (wasInTable && ui.me) {
+        ui.me.chips = response.profile.chips;
+        renderProfile();
+      }
+    }
+    renderProfileModal();
+    if (response.claimed) {
+      showToast('Bono diario reclamado', `+${response.reward || 100} fichas virtuales añadidas a tu saldo.`, 'reward', 4400, '🎁');
+    } else {
+      showToast('Bono diario ya reclamado', 'Vuelve a reclamarlo cuando se reinicie el contador.', 'notice', 4000, '🎁');
+    }
+  }
   // El modal de perfil muestra el perfil de la mesa si hay una, o el de la
   // cuenta iniciada si no (ver currentViewerProfile). Nunca se fabrica un
   // objeto de mesa falso como sustituto de la sesión de cuenta: fuera de una
@@ -1959,6 +2350,7 @@
     els.profileModal.classList.add('open');
     els.profileModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
+    jumpToProfileSection(ui.profileSection || 'overview');
     // Fuera de una mesa, la caché de localStorage puede haber quedado vieja
     // (rondas jugadas aquí o desde otro dispositivo, nombre cambiado al entrar
     // a una mesa, bono diario…). Se pide SIEMPRE el perfil público actualizado
@@ -1990,8 +2382,23 @@
     // nuevo: nunca se pisa su edición en curso. El guardado sigue siendo
     // explícito, con el botón del formulario.
     if (!ui.profileNameDirty) els.profileNameInput.value = profile.name || ui.playerName;
+    if (els.profileDisplayName) {
+      els.profileDisplayName.textContent = ui.profileNameDirty
+        ? (els.profileNameInput.value.trim() || 'Jugador')
+        : (profile.name || ui.playerName || 'Jugador');
+    }
     ui.profileAvatar = ui.profileAvatar || profile.avatar;
-    els.profileBigAvatar.textContent = avatarEmoji(ui.profileAvatar);
+    const equippedAvatar = profile.collection?.equipped?.avatar;
+    const equippedArt = COSMETIC_AVATAR_ART.has(equippedAvatar?.art) ? equippedAvatar.art : null;
+    els.profileBigAvatar.classList.toggle('avatar-art-equipped', Boolean(equippedArt));
+    els.profileBigAvatar.classList.remove('frame-art-equipped', 'frame-obsidian', 'frame-starlight');
+    const equippedFrame = cosmeticFrameClass(profile.collection);
+    if (equippedFrame) els.profileBigAvatar.classList.add(...equippedFrame.split(' '));
+    if (equippedArt) {
+      const animation = ['float', 'glow', 'orbit'].includes(equippedAvatar.animation) ? ` animate-${equippedAvatar.animation}` : '';
+      els.profileBigAvatar.innerHTML = `<img class="equipped-avatar-art${animation}" src="${equippedArt}" alt="${escapeHtml(equippedAvatar.name)}" decoding="async">`;
+    } else els.profileBigAvatar.textContent = avatarEmoji(ui.profileAvatar);
+    applyPassportFrame(els.profileBigAvatar, profile.passport);
     renderAvatarChoices();
     // Cuenta: username (si hay) + recordatorio de que jugar sin cuenta sigue
     // funcionando igual. `profile.username` es un campo público del servidor,
@@ -2008,6 +2415,9 @@
     // Fase 11.4: insignias de fin de temporada (banner único + medallas coleccionables).
     if (els.profileBadges) {
       const chips = [];
+      const passportEquipped = serverFlags.passport === true ? profile.passport?.equipped || {} : {};
+      if (passportEquipped.title) chips.push(`<span class="profile-badge passport-equipped-title" title="Título del Pasaporte · ${escapeHtml(passportEquipped.title.seasonLabel)}">${escapeHtml(passportEquipped.title.icon)} ${escapeHtml(passportEquipped.title.name)}</span>`);
+      if (passportEquipped.badge) chips.push(`<span class="profile-badge passport-equipped-badge" title="Insignia del Pasaporte · ${escapeHtml(passportEquipped.badge.seasonLabel)}">${escapeHtml(passportEquipped.badge.icon)} ${escapeHtml(passportEquipped.badge.name)}</span>`);
       if (profile.championBanner) chips.push('<span class="profile-badge badge-champion" title="Banner dorado de por vida: fue líder de una temporada">🎖️ Banner dorado</span>');
       if (profile.medals) chips.push(`<span class="profile-badge badge-medals" title="${profile.medals} temporada${profile.medals === 1 ? '' : 's'} ganada${profile.medals === 1 ? '' : 's'}">🥇 ×${profile.medals}</span>`);
       els.profileBadges.innerHTML = chips.join('');
@@ -2024,6 +2434,8 @@
       ['JUEGOS PROBADOS', `${formatChips(stats.differentGames)} / 6`, ''], ['DERROTAS', formatChips(stats.losses), ''],
       ['LOGROS DESBLOQUEADOS', `${unlockedAchievements}/${totalAchievements}`, unlockedAchievements ? 'gold' : '']
     ].map(([label,value,kind]) => `<div class="profile-stat"><small>${label}</small><b class="${kind}">${value}</b></div>`).join('');
+    renderPassport(profile);
+    renderCollection(profile);
     renderBalanceChart(profile);
     // Fase 11.1: descarga del historial completo (no solo lo que cabe en la gráfica).
     // Usa el id del perfil que se está mostrando (mesa o cuenta), no siempre el
@@ -2080,6 +2492,174 @@
     }
     renderDailyBonusCountdown(profile);
   }
+  const PASSPORT_REWARD_ART_SLUGS = new Set([
+    'season-badge', 'frame-15', 'title-30', 'frame-50', 'emblem-75', 'explorer'
+  ]);
+  function passportRewardArtwork(item) {
+    const slug = PASSPORT_REWARD_ART_SLUGS.has(item?.slug) ? item.slug : null;
+    const artwork = slug
+      ? `<img class="passport-reward-art" src="/assets/passport/rewards/${slug}.svg" alt="" loading="lazy" decoding="async">`
+      : `<span class="passport-reward-art-fallback">${escapeHtml(item?.icon || '✦')}</span>`;
+    return `<span class="passport-reward-artbox">${artwork}</span>`;
+  }
+  const PASSPORT_GAME_ART_IDS = new Set(['poker', 'blackjack', 'roulette', 'dice', 'coinflip', 'slots']);
+  function passportGameArtwork(game) {
+    const gameId = PASSPORT_GAME_ART_IDS.has(game?.id) ? game.id : null;
+    const artwork = gameId
+      ? `<img class="passport-game-art" src="/assets/passport/games/${gameId}.svg" alt="" loading="lazy" decoding="async">`
+      : `<span class="passport-game-art-fallback">${escapeHtml(game?.icon || '✦')}</span>`;
+    return `<span class="passport-game-artbox">${artwork}</span>`;
+  }
+  const COSMETIC_STYLE_IDS = new Set(['phoenix', 'axolotl', 'nebula', 'obsidian', 'starlight', 'ember', 'tide', 'aurora', 'emerald', 'royal', 'cosmos']);
+  function cosmeticPreview(item, profile) {
+    const style = COSMETIC_STYLE_IDS.has(item.style) ? item.style : 'default';
+    const root = `collection-preview cosmetic-${item.slot} cosmetic-style-${style}`;
+    if (item.slot === 'avatar') {
+      const art = COSMETIC_AVATAR_ART.has(item.art) ? item.art : null;
+      const animation = ['float', 'glow', 'orbit'].includes(item.animation) ? ` animate-${item.animation}` : '';
+      return `<div class="${root}">${art ? `<img class="collection-avatar-art${animation}" src="${art}" alt="" loading="lazy" decoding="async">` : `<span>${escapeHtml(item.icon || '✦')}</span>`}</div>`;
+    }
+    if (item.slot === 'frame') return `<div class="${root}"><span class="collection-frame-sample">${avatarEmoji(profile.avatar)}</span></div>`;
+    if (item.slot === 'chips') return `<div class="${root}"><span class="collection-chip-sample">✦</span></div>`;
+    if (item.slot === 'felt') return `<div class="${root}"><span class="collection-felt-sample"></span></div>`;
+    return `<div class="${root}"><span class="collection-card-sample"></span></div>`;
+  }
+  function renderCollection(profile) {
+    if (!els.collectionItems) return;
+    const inventory = profile.collection;
+    const allItems = Array.isArray(inventory?.items) ? inventory.items : [];
+    if (els.collectionCount) els.collectionCount.textContent = `${inventory?.unlockedCount || 0} / ${inventory?.total || allItems.length || 11} objetos`;
+    const items = allItems.filter(item => ui.collectionFilter === 'all' || item.slot === ui.collectionFilter);
+    const slotNames = { avatar: 'Avatar animado', frame: 'Marco', chips: 'Diseño de fichas', felt: 'Tapete', cards: 'Dorso de cartas' };
+    els.collectionItems.innerHTML = items.length ? items.map(item => {
+      const goal = item.goal || {};
+      const target = Math.max(1, Number(goal.target) || 1);
+      const value = Math.min(target, Math.max(0, Number(goal.value) || 0));
+      const percent = Math.max(0, Math.min(100, Number(goal.percent) || Math.round(value / target * 100)));
+      const unlocked = Boolean(item.unlocked);
+      const equipped = Boolean(item.equipped);
+      const equipAction = !unlocked ? '' : equipped
+        ? `<button class="collection-equip" type="button" data-cosmetic-unequip="${escapeHtml(item.slot)}">Equipado · quitar</button>`
+        : `<button class="collection-equip" type="button" data-cosmetic-equip="${escapeHtml(item.id)}" data-cosmetic-slot="${escapeHtml(item.slot)}">Equipar</button>`;
+      return `<article class="collection-item ${unlocked ? 'is-unlocked' : 'collection-locked'} ${equipped ? 'is-equipped' : ''}" role="listitem">
+        ${cosmeticPreview(item, profile)}
+        <div class="collection-item-copy"><small>${escapeHtml(slotNames[item.slot] || item.slot)}${equipped ? ' · EN USO' : unlocked ? ' · DESBLOQUEADO' : ' · BLOQUEADO'}</small>
+          <h4>${escapeHtml(item.name)}</h4><p>${escapeHtml(item.description)}</p>
+          <p class="collection-goal-copy">${escapeHtml(goal.description || 'Juega rondas válidas para descubrir este objeto.')}</p>
+          <div class="collection-progress-track" role="progressbar" aria-label="Progreso para ${escapeHtml(item.name)}" aria-valuemin="0" aria-valuemax="${target}" aria-valuenow="${value}"><span style="width:${unlocked ? 100 : percent}%"></span></div>
+          <div class="collection-item-meta"><small>${unlocked ? 'Meta completada' : `${formatChips(value)} / ${formatChips(target)} de progreso`}</small></div>${equipAction}
+        </div>
+      </article>`;
+    }).join('') : '<div class="collection-no-items">La colección aparecerá cuando el servidor sincronice tu perfil.</div>';
+    $$('[data-cosmetic-equip]').forEach(button => button.addEventListener('click', () => equipProfileCosmetic(button, button.dataset.cosmeticSlot, button.dataset.cosmeticEquip)));
+    $$('[data-cosmetic-unequip]').forEach(button => button.addEventListener('click', () => equipProfileCosmetic(button, button.dataset.cosmeticUnequip, null)));
+  }
+  async function equipProfileCosmetic(button, slot, itemId) {
+    const payload = { slot, itemId };
+    if (!inTable()) payload.accountId = ui.accountSession?.accountId;
+    const response = await emitAck('cosmetic_equip', payload, button);
+    if (!response.ok) return showToast('No se pudo equipar', response.error || 'Intenta de nuevo.', 'error');
+    if (response.profile) {
+      if (inTable() && ui.room) {
+        ui.room.viewerProfile = response.profile;
+        if (ui.me) ui.me.collection = response.profile.collection;
+      } else saveAccountSession(response.profile);
+    }
+    renderProfileModal();
+    showToast(itemId ? 'Cosmético equipado' : 'Cosmético retirado', itemId ? 'Tu apariencia se actualizó en el servidor.' : 'El espacio quedó sin equipar.', 'notice', 3600, itemId ? '✦' : '◇');
+  }
+  function renderPassport(profile) {
+    if (serverFlags.passport !== true) return;
+    const passport = profile.passport;
+    const season = passport?.season;
+    if (!season) {
+      if (els.passportStamps) els.passportStamps.innerHTML = '<div class="passport-empty">El Pasaporte estará disponible al actualizar tu perfil.</div>';
+      return;
+    }
+    const points = Math.max(0, Math.floor(Number(season.points) || 0));
+    const pointCap = Math.max(1, Math.floor(Number(season.pointCap) || 75));
+    const percent = Math.max(0, Math.min(100, Number(season.progressPercent) || 0));
+    if (els.passportSeasonLabel) els.passportSeasonLabel.textContent = season.label || 'Temporada actual';
+    if (els.passportSeasonDates) {
+      els.passportSeasonDates.textContent = `Del ${season.startDate || ''} al ${season.endDate || ''} · ${season.timeZone || 'hora local del casino'}`;
+    }
+    if (els.passportPoints) els.passportPoints.textContent = formatChips(points);
+    if (els.passportNextMilestone) {
+      const next = season.nextMilestone;
+      els.passportNextMilestone.textContent = next
+        ? `Siguiente hito: ${next.threshold} puntos · faltan ${next.remaining} · ${next.rewardName}.`
+        : `¡Completaste los hitos de puntos! Llevas ${formatChips(points)} y puedes seguir sumando.`;
+    }
+    if (els.passportProgressBar) els.passportProgressBar.style.width = `${percent}%`;
+    if (els.passportProgressTrack) {
+      els.passportProgressTrack.setAttribute('aria-valuenow', String(Math.round(percent)));
+      els.passportProgressTrack.setAttribute('aria-valuetext', `${formatChips(points)} de ${pointCap} puntos para los hitos de temporada`);
+    }
+    if (els.passportStampHint) els.passportStampHint.textContent = season.allGamesComplete
+      ? '6/6 sellos · ¡Insignia Explorador desbloqueada!'
+      : `${season.completedGames || 0}/6 sellos · Juega una ronda válida en cada mesa.`;
+    if (els.passportStamps) {
+      els.passportStamps.innerHTML = (season.games || []).map(game => `
+        <div class="passport-stamp ${game.completed ? 'done' : ''}" role="listitem" aria-label="${escapeHtml(game.completed ? `${game.name}: sello obtenido` : `${game.name}: completa una ronda válida para obtener el sello`)}">
+          ${passportGameArtwork(game)}
+          <b>${escapeHtml(game.name)}</b>
+          <small>${game.completed ? 'Sello obtenido' : 'Juega una ronda válida'}</small>
+        </div>`).join('');
+    }
+    const rewardAction = reward => {
+      if (!reward.unlocked) return '<span class="passport-reward-locked">Bloqueado</span>';
+      if (reward.equipped) {
+        return `<button class="passport-equip-btn equipped" type="button" data-passport-unequip="${escapeHtml(reward.slot)}">Quitar</button>`;
+      }
+      return `<button class="passport-equip-btn" type="button" data-passport-equip="${escapeHtml(reward.id)}" data-passport-slot="${escapeHtml(reward.slot)}">Equipar</button>`;
+    };
+    if (els.passportRewards) {
+      els.passportRewards.innerHTML = (season.rewards || []).map(reward => `
+        <article class="passport-reward ${reward.unlocked ? 'unlocked' : 'locked'} ${reward.equipped ? 'is-equipped' : ''}">
+          ${passportRewardArtwork(reward)}
+          <div class="passport-reward-copy"><small>${escapeHtml(reward.requirement)}</small><b>${escapeHtml(reward.name)}</b><p>${escapeHtml(reward.description)}</p></div>
+          <div class="passport-reward-action">${reward.equipped ? '<span class="passport-equipped-label">Equipado</span>' : ''}${rewardAction(reward)}</div>
+        </article>`).join('');
+    }
+    if (els.passportCollection) {
+      const previousItems = (passport.inventory || []).filter(item => item.seasonKey !== season.key);
+      els.passportCollection.innerHTML = previousItems.length
+        ? previousItems.map(item => `
+          <article class="passport-inventory-item">
+            ${passportRewardArtwork(item)}
+            <div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.seasonLabel)} · ${escapeHtml(item.description)}</small></div>
+            ${item.equipped
+              ? `<button class="passport-equip-btn equipped" type="button" data-passport-unequip="${escapeHtml(item.slot)}">Quitar</button>`
+              : `<button class="passport-equip-btn" type="button" data-passport-equip="${escapeHtml(item.id)}" data-passport-slot="${escapeHtml(item.slot)}">Equipar</button>`}
+          </article>`).join('')
+        : '<div class="passport-empty">Tus cosméticos de temporadas anteriores se conservarán aquí.</div>';
+    }
+    $$('[data-passport-equip], [data-passport-unequip]').forEach(button => button.addEventListener('click', async () => {
+      const wasInTable = inTable();
+      const slot = button.dataset.passportSlot || button.dataset.passportUnequip;
+      const itemId = button.hasAttribute('data-passport-unequip') ? null : button.dataset.passportEquip;
+      const payload = { slot, itemId };
+      if (!wasInTable) payload.accountId = ui.accountSession?.accountId;
+      const response = await emitAck('passport_equip', payload, button);
+      if (!response.ok) {
+        showToast('No se actualizó el Pasaporte', response.error || 'No se pudo guardar el cosmético.', 'error');
+        return;
+      }
+      if (response.profile) {
+        if (wasInTable && ui.room) {
+          ui.room.viewerProfile = response.profile;
+          if (ui.me) ui.me.passport = { equipped: response.profile.passport?.equipped || {} };
+          syncAccountSessionIfSameProfile(response.profile);
+        } else saveAccountSession(response.profile);
+      }
+      renderProfile();
+      renderProfileModal();
+      showToast(itemId ? 'Cosmético equipado' : 'Cosmético retirado', itemId
+        ? `${button.closest('.passport-reward, .passport-inventory-item')?.querySelector('b')?.textContent || 'Listo'} · visible en tu perfil.`
+        : 'El espacio del perfil quedó vacío.', 'notice', 3600, itemId ? '✦' : '○');
+    }));
+  }
+
   // Fase 8.2: gráfica SVG de evolución del saldo (últimos 60 movimientos).
   function renderBalanceChart(profile) {
     if (!els.balanceChart) return;
@@ -2158,6 +2738,345 @@
       document.body.classList.remove('modal-open');
     }
   }
+  function setCommunityStatus(message = '', type = 'success') {
+    const element = document.getElementById('community-status');
+    if (!element) return;
+    element.textContent = message;
+    element.dataset.type = message ? type : '';
+  }
+  function showCommunityGuestState(unavailable = false) {
+    const title = document.querySelector('#community-guest-note b');
+    const copy = document.querySelector('#community-guest-note p');
+    const login = document.getElementById('community-login');
+    if (title) title.textContent = unavailable ? 'Comunidad no habilitada en este entorno' : 'Tu comunidad, con una cuenta segura';
+    if (copy) copy.textContent = unavailable
+      ? 'El servidor debe activar las sesiones seguras de cuenta para usar amistades y clubes.'
+      : 'Inicia sesión o crea tu cuenta para enviar solicitudes, aceptar amistades y unirte a clubes.';
+    if (login) login.hidden = unavailable;
+  }
+  function communityAccountMarkup(profile) {
+    if (!profile) return '';
+    return `<span class="community-account"><i class="community-avatar" style="background:${avatarColor(profile.id)}">${avatarEmoji(profile.avatar)}</i><span class="community-account-copy"><b>${escapeHtml(profile.name || profile.username)}</b><small>@${escapeHtml(profile.username)}</small></span></span>`;
+  }
+  function setCommunityTab(tab) {
+    ui.communityTab = tab;
+    $$('.community-tab').forEach(button => {
+      const selected = button.dataset.communityTab === tab;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    });
+    $$('.community-panel').forEach(panel => panel.classList.toggle('hidden', panel.dataset.communityPanel !== tab));
+  }
+  function renderCommunitySearchResults(users = []) {
+    const container = document.getElementById('community-search-results');
+    if (!container) return;
+    if (!users.length) {
+      container.innerHTML = '<p class="community-empty">Escribe al menos dos letras y busca una cuenta.</p>';
+      return;
+    }
+    container.innerHTML = users.map(user => {
+      const action = user.relationship === 'friend'
+        ? '<button type="button" class="social-action is-complete" disabled>Ya es amistad</button>'
+        : user.relationship === 'outgoing'
+          ? '<button type="button" class="social-action is-complete" disabled>Solicitud enviada</button>'
+          : user.relationship === 'incoming'
+            ? '<button type="button" class="social-action" data-social-action="open-requests">Ver solicitud</button>'
+            : `<button type="button" class="social-action" data-social-action="add-friend" data-username="${escapeHtml(user.username)}">＋ Agregar</button>`;
+      return `<article class="community-person-row">${communityAccountMarkup(user)}${action}</article>`;
+    }).join('');
+  }
+  function renderCommunityFriends() {
+    const data = ui.communityData;
+    if (!data) return;
+    const friends = document.getElementById('community-friends-list');
+    const incoming = document.getElementById('community-incoming-list');
+    const outgoing = document.getElementById('community-outgoing-list');
+    document.getElementById('community-friend-count').textContent = String(data.friends.length);
+    document.getElementById('community-request-count').textContent = String(data.incomingRequests.length + data.outgoingRequests.length);
+    document.getElementById('community-friends-subtitle').textContent = `${data.friends.length} ${data.friends.length === 1 ? 'persona' : 'personas'}`;
+    friends.innerHTML = data.friends.map(profile => `<article class="community-person-row">${communityAccountMarkup(profile)}<button type="button" class="social-action is-muted" data-social-action="remove-friend" data-profile-id="${escapeHtml(profile.id)}">Quitar</button></article>`).join('')
+      || '<div class="community-empty-card"><span>♧</span><b>Tu mesa empieza con una amistad</b><small>Busca su usuario y envíale una solicitud para tenerle a mano.</small></div>';
+    incoming.innerHTML = data.incomingRequests.map(request => `<article class="community-person-row">${communityAccountMarkup(request.profile)}<div class="community-row-actions"><button type="button" class="social-action" data-social-action="accept-friend" data-request-id="${escapeHtml(request.id)}">Aceptar</button><button type="button" class="social-action is-muted" data-social-action="cancel-friend" data-request-id="${escapeHtml(request.id)}">Rechazar</button></div></article>`).join('')
+      || '<p class="community-empty">No tienes solicitudes nuevas.</p>';
+    outgoing.innerHTML = data.outgoingRequests.map(request => `<article class="community-person-row">${communityAccountMarkup(request.profile)}<button type="button" class="social-action is-muted" data-social-action="cancel-friend" data-request-id="${escapeHtml(request.id)}">Retirar</button></article>`).join('')
+      || '<p class="community-empty">No hay solicitudes pendientes.</p>';
+  }
+  function clubTreasuryMarkup(club, ownId) {
+    const treasury = club.treasury;
+    if (!treasury) return '';
+    const balance = Math.max(0, Number(treasury.balance) || 0);
+    const available = Math.max(0, Number(ui.communityData.profile?.chips) || 0);
+    const isOwner = club.ownerId === ownId;
+    const inTable = Boolean(ui.room);
+    const members = club.members || [];
+    const payoutOptions = members.map(member => `<option value="${escapeHtml(member.id)}">${escapeHtml(member.name || member.username)} · @${escapeHtml(member.username)}</option>`).join('');
+    const movements = (treasury.movements || []).length
+      ? treasury.movements.map(movement => {
+        const actor = movement.actor?.name || movement.actor?.username || 'Una persona integrante';
+        const target = movement.target?.name || movement.target?.username || 'miembro';
+        const isDeposit = movement.type === 'deposit';
+        const description = isDeposit ? `${escapeHtml(actor)} aportó` : `${escapeHtml(actor)} distribuyó a ${escapeHtml(target)}`;
+        const note = movement.note ? `<small>${escapeHtml(movement.note)}</small>` : '';
+        return `<li class="club-ledger-row ${isDeposit ? 'is-deposit' : 'is-transfer'}"><span class="club-ledger-mark">${isDeposit ? '＋' : '↗'}</span><span class="club-ledger-copy"><b>${description}</b><small>${new Date(movement.time).toLocaleString()}</small>${note}</span><strong>${isDeposit ? '+' : '−'}${formatChips(movement.amount)}</strong></li>`;
+      }).join('')
+      : '<li class="club-ledger-empty">Los movimientos aparecerán aquí cuando alguien aporte o el liderazgo distribuya fichas.</li>';
+    return `<section class="club-treasury-panel" aria-label="Tesorería de ${escapeHtml(club.name)}">
+      <header class="club-treasury-heading"><div><small>TESORERÍA · ${escapeHtml(treasury.seasonKey || ui.communityData.seasonKey || 'TEMPORADA ACTUAL')}</small><b>◆ ${formatChips(balance)} <span>fichas del club</span></b></div><span class="club-treasury-lock">♜</span></header>
+      <p class="club-treasury-rule">Las aportaciones pasan a la tesorería común. Solo el liderazgo puede distribuirlas. El saldo se reinicia junto con las fichas al cambiar la temporada.</p>
+      <div class="club-treasury-forms">
+        <form class="club-money-form" data-club-money="deposit" data-club-id="${escapeHtml(club.id)}">
+          <div class="club-money-form-title"><span>＋</span><div><b>Aportar fichas</b><small>Tu saldo disponible: ◆ ${formatChips(available)}</small></div></div>
+          <label>Fichas<input name="amount" type="number" min="1" max="${Math.min(100000, available)}" step="1" required inputmode="numeric" aria-label="Cantidad de fichas para aportar a ${escapeHtml(club.name)}" ${available < 1 || inTable ? 'disabled' : ''} /></label>
+          <button class="social-action" type="submit" ${available < 1 || inTable ? 'disabled' : ''}>Aportar al club</button>
+          ${inTable ? '<small class="club-money-hint">Sal de la mesa para mover fichas.</small>' : '<small class="club-money-hint">Máximo 100.000 por movimiento. Aportar no es una apuesta.</small>'}
+        </form>
+        ${isOwner ? `<form class="club-money-form club-distribute-form" data-club-money="transfer" data-club-id="${escapeHtml(club.id)}">
+          <div class="club-money-form-title"><span>↗</span><div><b>Distribuir saldo</b><small>Solo para integrantes actuales</small></div></div>
+          <label>Destinatario<select name="targetProfileId" required ${balance < 1 || inTable ? 'disabled' : ''}><option value="">Elige a un integrante</option>${payoutOptions}</select></label>
+          <label>Fichas<input name="amount" type="number" min="1" max="${Math.min(100000, balance)}" step="1" required inputmode="numeric" aria-label="Cantidad de fichas a distribuir desde ${escapeHtml(club.name)}" ${balance < 1 || inTable ? 'disabled' : ''} /></label>
+          <label>Nota <span class="club-optional-label">Opcional</span><input name="note" type="text" maxlength="80" placeholder="Motivo del movimiento" ${balance < 1 || inTable ? 'disabled' : ''} /></label>
+          <button class="social-action" type="submit" ${balance < 1 || inTable ? 'disabled' : ''}>Enviar fichas</button>
+          ${inTable ? '<small class="club-money-hint">Sal de la mesa para mover fichas.</small>' : '<small class="club-money-hint">El pago se descuenta por completo de la tesorería.</small>'}
+        </form>` : ''}
+      </div>
+      <details class="club-ledger-details"><summary>Actividad de la tesorería <span>${treasury.movements?.length || 0} recientes</span></summary><ol class="club-ledger-list">${movements}</ol></details>
+    </section>`;
+  }
+
+  function renderCommunityClubs(clubs = ui.communityData?.clubs || []) {
+    const container = document.getElementById('community-clubs-list');
+    if (!container || !ui.communityData) return;
+    const ownId = ui.communityData.profile?.id;
+    const ownedClub = (ui.communityData.memberships || []).some(club => club.ownerId === ownId) || clubs.some(club => club.ownerId === ownId);
+    const createDetails = document.getElementById('community-create-club-details');
+    createDetails?.classList.toggle('hidden', ownedClub);
+    if (!clubs.length) {
+      container.innerHTML = '<div class="community-empty-card"><span>♜</span><b>Aún no hay clubes por aquí</b><small>Funda uno e invita a tus amistades, o explora los que aparezcan.</small></div>';
+      return;
+    }
+    container.innerHTML = clubs.map(club => {
+      const isMember = club.membershipStatus === 'member';
+      const isOwner = club.ownerId === ownId;
+      const pending = club.membershipStatus === 'pending';
+      const balance = Math.max(0, Number(club.treasury?.balance) || 0);
+      const action = isOwner
+        ? `<button type="button" class="social-action is-muted" data-social-action="disband-club" data-club-id="${escapeHtml(club.id)}" ${balance > 0 ? 'disabled title="Distribuye la tesorería antes de cerrar el club"' : ''}>${balance > 0 ? 'Vaciar para cerrar' : 'Cerrar club'}</button>`
+        : isMember
+          ? `<button type="button" class="social-action is-muted" data-social-action="leave-club" data-club-id="${escapeHtml(club.id)}">Salir</button>`
+          : pending
+            ? '<button type="button" class="social-action is-complete" disabled>Solicitud enviada</button>'
+            : `<button type="button" class="social-action" data-social-action="join-club" data-club-id="${escapeHtml(club.id)}">${club.visibility === 'private' ? 'Solicitar acceso' : '＋ Unirme'}</button>`;
+      const members = isMember && club.members?.length
+        ? `<div class="club-member-strip">${club.members.slice(0, 6).map(member => `<span title="${escapeHtml(member.name)} · @${escapeHtml(member.username)}">${avatarEmoji(member.avatar)}</span>`).join('')}${club.memberCount > 6 ? `<small>+${club.memberCount - 6}</small>` : ''}</div>` : '';
+      const requests = isOwner && club.requests?.length
+        ? `<div class="club-requests"><small>SOLICITUDES PARA ENTRAR · ${club.requests.length}</small>${club.requests.map(request => `<div class="club-request-row">${communityAccountMarkup(request.profile)}<button type="button" class="social-action" data-social-action="accept-club-request" data-club-id="${escapeHtml(club.id)}" data-request-id="${escapeHtml(request.id)}">Aceptar</button><button type="button" class="social-action is-muted" data-social-action="reject-club-request" data-club-id="${escapeHtml(club.id)}" data-request-id="${escapeHtml(request.id)}">Rechazar</button></div>`).join('')}</div>` : '';
+      const canManageMembers = isOwner && club.members?.length > 1;
+      const memberActions = canManageMembers ? `<details class="club-member-management"><summary>Gestionar miembros</summary>${club.members.filter(member => member.id !== ownId).map(member => `<div>${communityAccountMarkup(member)}<button type="button" class="social-action is-muted" data-social-action="remove-club-member" data-club-id="${escapeHtml(club.id)}" data-profile-id="${escapeHtml(member.id)}">Quitar</button></div>`).join('')}</details>` : '';
+      const treasury = isMember ? clubTreasuryMarkup(club, ownId) : '';
+      return `<article class="community-club-card" data-club-color="${escapeHtml(club.color)}"><div class="community-club-head"><div class="community-club-emblem">${escapeHtml(club.emblemGlyph)}</div><div class="community-club-title"><h3>${escapeHtml(club.name)}</h3><small>${club.visibility === 'private' ? '◉ PRIVADO' : '✦ PÚBLICO'} · ${club.memberCount}/${club.memberLimit} MIEMBROS</small></div>${action}</div><p class="community-club-description">${escapeHtml(club.description || 'Un círculo para compartir mesa y partidas.')}</p><div class="community-club-foot"><span>Fundado por ${escapeHtml(club.owner?.name || club.owner?.username || 'MonteCristo')}</span>${members}</div>${treasury}${requests}${memberActions}</article>`;
+    }).join('');
+  }
+
+  function renderCommunityClubRanking(ranking = ui.communityData?.clubRanking || []) {
+    const podium = document.getElementById('community-club-ranking-podium');
+    const list = document.getElementById('community-club-ranking-list');
+    if (!podium || !list || !ui.communityData) return;
+    const season = document.getElementById('community-club-ranking-season');
+    if (season) season.textContent = ui.communityData.seasonKey ? `Temporada ${ui.communityData.seasonKey}` : 'Temporada actual';
+    if (!ranking.length) {
+      podium.innerHTML = '<div class="community-empty-card club-ranking-empty"><span>♜</span><b>La tesorería todavía está por estrenarse</b><small>Cuando los clubes públicos aporten fichas, su saldo aparecerá aquí. Los saldos privados solo los ve cada club.</small></div>';
+      list.replaceChildren();
+      return;
+    }
+    podium.innerHTML = ranking.slice(0, 3).map(club => `<article class="club-podium-card rank-${club.rank}" data-club-color="${escapeHtml(club.color)}"><span class="club-podium-rank">${club.rank === 1 ? '♛' : `#${club.rank}`}</span><span class="club-podium-emblem">${escapeHtml(club.emblemGlyph)}</span><b>${escapeHtml(club.name)}</b><small>${club.memberCount} ${club.memberCount === 1 ? 'integrante' : 'integrantes'}</small><strong>◆ ${formatChips(club.balance)}</strong><span class="club-podium-caption">TESORERÍA</span></article>`).join('');
+    list.innerHTML = ranking.slice(3).map(club => `<article class="club-ranking-row" data-club-color="${escapeHtml(club.color)}"><span class="club-ranking-position">${club.rank}</span><span class="club-ranking-emblem">${escapeHtml(club.emblemGlyph)}</span><span class="club-ranking-copy"><b>${escapeHtml(club.name)}</b><small>${club.memberCount} integrantes · liderazgo de ${escapeHtml(club.owner?.name || club.owner?.username || 'club')}</small></span><strong>◆ ${formatChips(club.balance)}</strong></article>`).join('');
+  }
+  async function communityRequest(path, options = {}) {
+    const method = String(options.method || 'GET').toUpperCase();
+    const headers = { ...(options.headers || {}) };
+    if (method !== 'GET' && method !== 'HEAD') {
+      if (!ui.csrfToken) {
+        const session = await secureAuthRequest('/api/auth/session');
+        if (session.ok) {
+          ui.csrfToken = session.csrfToken || null;
+          if (session.profile) saveAccountSession(session.profile);
+        }
+      }
+      if (ui.csrfToken) headers['X-CSRF-Token'] = ui.csrfToken;
+      if (/\/api\/social\/v1\/clubs\/[^/]+\/(?:deposits|transfers)$/.test(path)) {
+        headers['Idempotency-Key'] = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      }
+    }
+    return secureAuthRequest(path, { ...options, headers });
+  }
+  async function loadCommunityOverview() {
+    const response = await communityRequest('/api/social/v1/me');
+    if (!response.ok) {
+      setCommunityStatus(response.error || 'No se cargó tu comunidad.', 'error');
+      if (response.status === 401) clearAccountSession();
+      if (response.status === 401 || response.status === 404) {
+        document.getElementById('community-content').classList.add('hidden');
+        document.getElementById('community-guest-note').classList.remove('hidden');
+        showCommunityGuestState(response.status === 404);
+      }
+      return false;
+    }
+    ui.communityData = { ...response, memberships: response.clubs || [], clubs: [], clubRanking: [] };
+    renderCommunityFriends();
+    const clubs = await communityRequest('/api/social/v1/clubs');
+    if (clubs.ok) ui.communityData.clubs = clubs.clubs;
+    renderCommunityClubs();
+    const ranking = await communityRequest('/api/social/v1/clubs/ranking');
+    if (ranking.ok) {
+      ui.communityData.clubRanking = ranking.ranking || [];
+      ui.communityData.seasonKey = ranking.seasonKey || ui.communityData.seasonKey;
+    }
+    renderCommunityClubRanking();
+    document.getElementById('community-content').classList.remove('hidden');
+    document.getElementById('community-guest-note').classList.add('hidden');
+    setCommunityStatus('');
+    setCommunityTab(ui.communityTab);
+    return true;
+  }
+  async function openCommunityModal() {
+    els.communityModal?.classList.add('open');
+    els.communityModal?.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    setCommunityStatus('Cargando tu círculo…');
+    const refreshButton = document.getElementById('community-refresh');
+    if (refreshButton) refreshButton.disabled = true;
+    const session = await secureAuthRequest('/api/auth/session');
+    if (!session.ok || !session.profile) {
+      if (session.status === 401) clearAccountSession();
+      document.getElementById('community-content').classList.add('hidden');
+      document.getElementById('community-guest-note').classList.remove('hidden');
+      showCommunityGuestState(session.status === 404);
+      setCommunityStatus(session.status === 404 ? 'La comunidad requiere una sesión de cuenta segura.' : 'Inicia sesión para abrir tu comunidad.', 'error');
+      return;
+    }
+    if (refreshButton) refreshButton.disabled = false;
+    ui.csrfToken = session.csrfToken || null;
+    saveAccountSession(session.profile);
+    const loaded = await loadCommunityOverview();
+    if (loaded) document.querySelector(`.community-tab[data-community-tab="${ui.communityTab}"]`)?.focus();
+  }
+  function closeCommunityModal() {
+    els.communityModal?.classList.remove('open');
+    els.communityModal?.setAttribute('aria-hidden', 'true');
+    if (!$$('.modal.open').length) document.body.classList.remove('modal-open');
+  }
+  els.communityOpenBtn?.addEventListener('click', openCommunityModal);
+  document.getElementById('community-refresh')?.addEventListener('click', () => loadCommunityOverview());
+  $$('[data-close-community]').forEach(element => element.addEventListener('click', closeCommunityModal));
+  document.getElementById('community-login')?.addEventListener('click', () => { closeCommunityModal(); openAccountModal(); });
+  $$('.community-tab').forEach(button => button.addEventListener('click', () => setCommunityTab(button.dataset.communityTab)));
+  document.getElementById('community-search-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const query = document.getElementById('community-search').value.trim();
+    if ([...query].length < 2) return renderCommunitySearchResults([]);
+    const response = await communityRequest(`/api/social/v1/users?q=${encodeURIComponent(query)}`);
+    if (!response.ok) return setCommunityStatus(response.error || 'No se pudo buscar.', 'error');
+    renderCommunitySearchResults(response.users);
+    setCommunityStatus(`${response.users.length} resultados`, 'success');
+  });
+  document.getElementById('community-club-search-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const query = document.getElementById('community-club-search').value.trim();
+    const response = await communityRequest(`/api/social/v1/clubs${query ? `?q=${encodeURIComponent(query)}` : ''}`);
+    if (!response.ok) return setCommunityStatus(response.error || 'No se pudieron buscar clubes.', 'error');
+    ui.communityData.clubs = response.clubs;
+    renderCommunityClubs();
+    setCommunityStatus(`${response.clubs.length} clubes encontrados`, 'success');
+  });
+  document.getElementById('community-create-club-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const response = await communityRequest('/api/social/v1/clubs', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: document.getElementById('community-club-name').value.trim(),
+        description: document.getElementById('community-club-description').value.trim(),
+        emblem: document.getElementById('community-club-emblem').value,
+        color: document.getElementById('community-club-color').value,
+        visibility: document.getElementById('community-club-visibility').value
+      })
+    });
+    if (!response.ok) return setCommunityStatus(response.error || 'No se pudo crear el club.', 'error');
+    document.getElementById('community-create-club-form').reset();
+    document.getElementById('community-create-club-details').open = false;
+    setCommunityStatus(response.message || 'Club fundado.', 'success');
+    await loadCommunityOverview();
+    setCommunityTab('clubs');
+  });
+  document.getElementById('community-clubs-list')?.addEventListener('submit', async event => {
+    const form = event.target.closest('[data-club-money]');
+    if (!form) return;
+    event.preventDefault();
+    if (form.dataset.busy === 'true') return;
+    if (ui.room) return setCommunityStatus('Sal de la mesa antes de mover fichas del perfil.', 'error');
+    form.dataset.busy = 'true';
+    form.setAttribute('aria-busy', 'true');
+    const action = form.dataset.clubMoney;
+    const clubId = form.dataset.clubId;
+    const amount = Number(form.elements.namedItem('amount')?.value);
+    const targetProfileId = form.elements.namedItem('targetProfileId')?.value;
+    const note = form.elements.namedItem('note')?.value?.trim() || '';
+    const button = form.querySelector('button[type="submit"]');
+    const path = action === 'deposit'
+      ? `/api/social/v1/clubs/${encodeURIComponent(clubId)}/deposits`
+      : `/api/social/v1/clubs/${encodeURIComponent(clubId)}/transfers`;
+    button.disabled = true;
+    const response = await communityRequest(path, {
+      method: 'POST',
+      body: JSON.stringify({ amount, ...(action === 'transfer' ? { targetProfileId, note } : {}) })
+    });
+    button.disabled = false;
+    form.dataset.busy = 'false';
+    form.removeAttribute('aria-busy');
+    if (!response.ok) return setCommunityStatus(response.error || 'No se pudo completar el movimiento.', 'error');
+    if (ui.communityData?.profile) ui.communityData.profile.chips = response.profileChips;
+    if (ui.accountSession?.accountId === ui.communityData?.profile?.id) {
+      saveAccountSession({ ...ui.accountSession, chips: response.profileChips });
+    }
+    if (ui.me?.id === ui.communityData?.profile?.id) {
+      ui.me.chips = response.profileChips;
+      renderProfile();
+    }
+    setCommunityStatus(response.message || 'Movimiento registrado.', 'success');
+    await loadCommunityOverview();
+    setCommunityTab('clubs');
+  });
+  document.getElementById('community-modal')?.addEventListener('click', async event => {
+    const button = event.target.closest('[data-social-action]');
+    if (!button) return;
+    const { socialAction: action, username, requestId, profileId, clubId } = button.dataset;
+    if (action === 'open-requests') return setCommunityTab('requests');
+    const routes = {
+      'add-friend': { path: '/api/social/v1/friends/requests', method: 'POST', body: { username } },
+      'accept-friend': { path: `/api/social/v1/friends/requests/${encodeURIComponent(requestId)}/accept`, method: 'POST' },
+      'cancel-friend': { path: `/api/social/v1/friends/requests/${encodeURIComponent(requestId)}`, method: 'DELETE' },
+      'remove-friend': { path: `/api/social/v1/friends/${encodeURIComponent(profileId)}`, method: 'DELETE' },
+      'join-club': { path: `/api/social/v1/clubs/${encodeURIComponent(clubId)}/join`, method: 'POST' },
+      'leave-club': { path: `/api/social/v1/clubs/${encodeURIComponent(clubId)}/membership`, method: 'DELETE' },
+      'disband-club': { path: `/api/social/v1/clubs/${encodeURIComponent(clubId)}`, method: 'DELETE' },
+      'accept-club-request': { path: `/api/social/v1/clubs/${encodeURIComponent(clubId)}/requests/${encodeURIComponent(requestId)}/accept`, method: 'POST' },
+      'reject-club-request': { path: `/api/social/v1/clubs/${encodeURIComponent(clubId)}/requests/${encodeURIComponent(requestId)}`, method: 'DELETE' },
+      'remove-club-member': { path: `/api/social/v1/clubs/${encodeURIComponent(clubId)}/members/${encodeURIComponent(profileId)}`, method: 'DELETE' }
+    };
+    const operation = routes[action];
+    if (!operation) return;
+    if (['remove-friend', 'leave-club', 'disband-club', 'remove-club-member'].includes(action) && !window.confirm('¿Quieres continuar con esta acción?')) return;
+    button.disabled = true;
+    const response = await communityRequest(operation.path, {
+      method: operation.method,
+      ...(operation.body ? { body: JSON.stringify(operation.body) } : {})
+    });
+    button.disabled = false;
+    if (!response.ok) return setCommunityStatus(response.error || 'No se pudo completar la acción.', 'error');
+    setCommunityStatus(response.message || 'Cambios guardados.', 'success');
+    await loadCommunityOverview();
+    if (action.includes('club')) setCommunityTab('clubs');
+  });
   async function loadMyReports(){const response=await secureAuthRequest('/api/reports/mine');if(!response.ok){els.myReportsList.textContent=response.error||'No se pudieron cargar.';return;}const labels={open:'Recibido',triaged:'Clasificado',investigating:'En revisión',resolved:'Resuelto',rejected:'Cerrado'};els.myReportsList.innerHTML=response.reports.map(report=>`<div class="my-report"><b>${escapeHtml(report.category)}</b><span>${escapeHtml(labels[report.status]||report.status)}</span><small>${new Date(report.createdAt).toLocaleDateString()} · ${escapeHtml(report.id.slice(0,8))}</small></div>`).join('')||'<small>No has enviado reportes.</small>';}
   async function openReportModal(username = '', messageId = null) {
     const isMessageReport = Boolean(messageId);
@@ -2384,10 +3303,44 @@
 
   els.profileCard.addEventListener('click', openProfileModal);
   els.profileCard.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openProfileModal(); } });
+  $$('[data-profile-jump]').forEach(button => {
+    button.addEventListener('click', () => jumpToProfileSection(button.dataset.profileJump, true));
+  });
+  $$('[data-collection-filter]').forEach(button => {
+    button.addEventListener('click', () => {
+      ui.collectionFilter = button.dataset.collectionFilter || 'all';
+      $$('[data-collection-filter]').forEach(item => {
+        const selected = item === button;
+        item.classList.toggle('active', selected);
+        item.setAttribute('aria-selected', String(selected));
+      });
+      const profile = currentViewerProfile();
+      if (profile) renderCollection(profile);
+    });
+  });
+  els.tournamentNameForm?.addEventListener('submit', event => {
+    event.preventDefault();
+    const name = String(els.tournamentNameInput?.value || '').trim().slice(0, 18);
+    const tournamentId = ui.pendingTournamentSignup;
+    if (!name || !tournamentId) return;
+    ui.pendingTournamentSignup = null;
+    els.tournamentNameDialog?.close?.();
+    joinLobbyTournament(tournamentId, null, name);
+  });
+  document.querySelector('[data-tournament-name-cancel]')?.addEventListener('click', () => {
+    ui.pendingTournamentSignup = null;
+    els.tournamentNameDialog?.close?.();
+  });
+  document.getElementById('profile-content-scroll')?.addEventListener('scroll', syncProfileSectionFromScroll, { passive: true });
   $$('[data-close-profile]').forEach(element => element.addEventListener('click', closeProfileModal));
+  els.dailyBonusClaim?.addEventListener('click', event => claimDailyBonus(event.currentTarget));
   // Marca la edición en curso del nombre para que los refrescos en segundo
-  // plano no sobrescriban lo que la persona está escribiendo.
-  els.profileNameInput.addEventListener('input', () => { ui.profileNameDirty = true; });
+  // plano no sobrescriban lo que la persona está escribiendo; el encabezado
+  // actúa como vista previa de la identidad que quedará al guardar.
+  els.profileNameInput.addEventListener('input', () => {
+    ui.profileNameDirty = true;
+    if (els.profileDisplayName) els.profileDisplayName.textContent = els.profileNameInput.value.trim() || 'Jugador';
+  });
   els.profileForm.addEventListener('submit', async event => {
     event.preventDefault();
     const button = event.currentTarget.querySelector('button[type="submit"]');
@@ -2488,6 +3441,7 @@
     els.roomApp.classList.add('exiting');
     setTimeout(() => {
       els.roomApp.classList.add('hidden'); els.roomApp.classList.remove('exiting'); els.landing.classList.remove('hidden');
+      refreshSeasonalThemeVisibility();
       els.lobbyChatWidget?.classList.remove('in-room');
       updateHistory(''); window.scrollTo(0, 0);
       tryAutoJoinLobbyChat();

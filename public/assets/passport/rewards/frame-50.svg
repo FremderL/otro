@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
+  <defs>
+    <linearGradient id="gold" x1="12" y1="10" x2="81" y2="88" gradientUnits="userSpaceOnUse"><stop stop-color="#FFF0BC"/><stop offset=".25" stop-color="#E9C56F"/><stop offset=".58" stop-color="#A8732E"/><stop offset=".84" stop-color="#F0D387"/><stop offset="1" stop-color="#A57839"/></linearGradient>
+    <linearGradient id="portrait" x1="30" y1="27" x2="66" y2="75" gradientUnits="userSpaceOnUse"><stop stop-color="#233F38"/><stop offset="1" stop-color="#0B1716"/></linearGradient>
+    <filter id="shadow" x="4" y="3" width="88" height="95" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation="3.5"/></filter>
+  </defs>
+  <rect x="16" y="13" width="64" height="72" rx="17" fill="#020A09" opacity=".68" filter="url(#shadow)"/>
+  <rect x="13" y="10" width="70" height="76" rx="18" fill="#101B18" stroke="url(#gold)" stroke-width="4"/>
+  <rect x="20" y="17" width="56" height="62" rx="12" fill="url(#portrait)" stroke="#E9C978" stroke-opacity=".7" stroke-width="1.4"/>
+  <path d="M15 32c7-1 11-5 11-12M81 32c-7-1-11-5-11-12M15 64c7 1 11 5 11 12M81 64c-7 1-11 5-11 12" stroke="#FFE8A5" stroke-width="2.1" stroke-linecap="round"/>
+  <path d="m48 20 6 6-6 6-6-6 6-6ZM48 64l6 6-6 6-6-6 6-6Z" fill="url(#gold)" stroke="#FFF1C7" stroke-width="1"/>
+  <circle cx="48" cy="42" r="10" fill="#D9B979"/>
+  <path d="M30 67c1.4-11.2 8-16.7 18-16.7S64.6 55.8 66 67v2H30v-2Z" fill="#C39A50" stroke="#F9E3A7" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M27 43h3M66 43h3" stroke="#F9E3A7" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="m48 34 2.2 4.5 5 .7-3.6 3.5.9 4.9-4.5-2.4-4.5 2.4.9-4.9-3.6-3.5 5-.7L48 34Z" fill="#FFF0BD" stroke="#D0AA5F" stroke-width=".8" stroke-linejoin="round"/>
+</svg>
