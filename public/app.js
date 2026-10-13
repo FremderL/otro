@@ -222,7 +222,7 @@
   const ACCOUNT_SESSION_FIELDS = [
     'accountId', 'username', 'name', 'avatar', 'chips', 'stats', 'achievements', 'gamesPlayed',
     'featuredAchievements', 'allAchievements', 'challenges', 'dailyChallenges', 'weeklyChallenges',
-    'gameStats', 'balanceHistory', 'medals', 'championBanner', 'dailyBonusClaimed', 'dailyBonusAvailableAt', 'passport', 'collection'
+    'gameStats', 'balanceHistory', 'medals', 'championBanner', 'dailyBonusClaimed', 'dailyBonusAvailableAt', 'passport', 'collection', 'cardAlbum'
   ];
   const ui = {
     accountMode: 'login',
@@ -2398,7 +2398,7 @@
       return `<article class="${classes}" role="listitem" aria-label="Carta sin descubrir · ${escapeHtml(rarityName)}"><div class="album-card-face"><span class="album-card-mystery" aria-hidden="true">?</span></div><div class="album-card-copy"><b>Sin descubrir</b><small>${escapeHtml(rarityName)}</small></div></article>`;
     }
     const copies = card.count > 1 ? ` · ×${card.count}` : '';
-    return `<article class="${classes}" role="listitem" aria-label="${escapeHtml(card.name)} · ${escapeHtml(rarityName)}${card.count > 1 ? `, ${card.count} copias` : ''}"><div class="album-card-face"><span class="ac-corner">${escapeHtml(card.rank)}</span><span class="ac-symbol" aria-hidden="true">${escapeHtml(card.symbol)}</span><span class="ac-corner ac-corner-b">${escapeHtml(card.rank)}</span><span class="ac-art" aria-hidden="true"></span></div><div class="album-card-copy"><b>${escapeHtml(card.name)}</b><small>${escapeHtml(rarityName)}${copies}</small></div></article>`;
+    return `<article class="${classes}" role="listitem" aria-label="${escapeHtml(card.name)} · ${escapeHtml(rarityName)}${card.count > 1 ? `, ${card.count} copias` : ''}"><div class="album-card-face">${card.art ? `<img class="ac-photo" src="${escapeHtml(card.art)}" alt="" loading="lazy" decoding="async">` : ''}<span class="ac-corner">${escapeHtml(card.rank)}</span><span class="ac-symbol" aria-hidden="true">${escapeHtml(card.symbol)}</span><span class="ac-corner ac-corner-b">${escapeHtml(card.rank)}</span><span class="ac-art" aria-hidden="true"></span></div><div class="album-card-copy"><b>${escapeHtml(card.name)}</b><small>${escapeHtml(rarityName)}${copies}</small></div></article>`;
   }
   function renderCardAlbum(profile) {
     if (!els.albumGrid) return;
@@ -2408,8 +2408,8 @@
       return;
     }
     if (els.albumCount) els.albumCount.textContent = `${album.ownedCount} / ${album.total} cartas · ${album.duplicates} repetidas`;
-    if (els.albumCost) els.albumCost.textContent = String(album.cost);
-    if (els.albumOpenCapsule) els.albumOpenCapsule.textContent = `Abrir cápsula · ${album.cost} fichas`;
+    if (els.albumCost) els.albumCost.textContent = formatChips(album.cost);
+    if (els.albumOpenCapsule) els.albumOpenCapsule.textContent = `Abrir cápsula · ${formatChips(album.cost)} fichas`;
     if (els.albumRates) {
       els.albumRates.innerHTML = (album.rates || []).map(rate => `<div class="album-rate rarity-${escapeHtml(rate.id)}"><span class="album-rate-swatch" aria-hidden="true"></span><b>${escapeHtml(rate.name)}</b><small>${formatPercent(rate.percent)} · ${rate.cards} cartas</small><em>${formatPercent(rate.perCardPercent)} cada una</em></div>`).join('');
     }

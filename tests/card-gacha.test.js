@@ -97,27 +97,27 @@ test('cleanCardAlbum descarta ids inventados, cantidades inválidas y limita las
   assert.deepEqual(cleanCardAlbum({ counts: [1, 2] }), { counts: {} });
 });
 
-test('una cápsula cobra 5 fichas, suma una copia y registra el movimiento', () => {
-  const player = profile({ chips: 50 });
+test('una cápsula cobra 5.000 fichas, suma una copia y registra el movimiento', () => {
+  const player = profile({ chips: 20000 });
   const result = openCardCapsule(player, { random: fixed(RARITY_UNITS_TOTAL - 1) });
   assert.equal(result.ok, true);
   assert.ok(CARD_BY_ID.has(result.card.id));
   assert.equal(result.card.rarity, 'mitico');
   assert.equal(result.card.count, 1);
   assert.equal(result.duplicate, false);
-  assert.equal(result.chips, 50 - CARD_GACHA_COST);
+  assert.equal(result.chips, 20000 - CARD_GACHA_COST);
   assert.equal(player.cardAlbum.counts[result.card.id], 1);
   assert.equal(player.transactions.at(-1).amount, -CARD_GACHA_COST);
 });
 
 test('una carta repetida suma copias y se marca como duplicada', () => {
-  const player = profile({ chips: 50 });
+  const player = profile({ chips: 20000 });
   const first = openCardCapsule(player, { random: fixed(0) });
   const second = openCardCapsule(player, { random: fixed(0) });
   assert.equal(first.card.id, second.card.id);
   assert.equal(second.duplicate, true);
   assert.equal(second.card.count, 2);
-  assert.equal(player.chips, 50 - 2 * CARD_GACHA_COST);
+  assert.equal(player.chips, 20000 - 2 * CARD_GACHA_COST);
 });
 
 test('sin fichas suficientes o con el gachapón apagado no se cobra ni se sortea nada', () => {
@@ -137,7 +137,7 @@ test('sin fichas suficientes o con el gachapón apagado no se cobra ni se sortea
 });
 
 test('el álbum sobrevive al guardado (cleanProfile) y solo el dueño recibe el detalle', () => {
-  const player = profile({ chips: 50, cardAlbum: { counts: { 'card-k-hearts': 2, 'card-zz': 4 } } });
+  const player = profile({ chips: 20000, cardAlbum: { counts: { 'card-k-hearts': 2, 'card-zz': 4 } } });
   assert.deepEqual(player.cardAlbum, { counts: { 'card-k-hearts': 2 } });
   const owner = publicProgress(player, true);
   assert.equal(owner.cardAlbum.ownedCount, 1);
@@ -148,6 +148,14 @@ test('el álbum sobrevive al guardado (cleanProfile) y solo el dueño recibe el 
   assert.equal(owner.cardAlbum.rates.length, RARITIES.length);
   const publicView = publicProgress(player, false);
   assert.equal(publicView.cardAlbum, undefined);
+});
+
+test('cada carta indica su ilustración si el archivo existe, o null para usar el respaldo CSS', () => {
+  const album = publicCardAlbum({});
+  const spadesJ = album.cards.find(card => card.id === 'card-j-spades');
+  assert.equal(spadesJ.art, '/assets/cards/card-j-spades.jpg');
+  const missing = album.cards.find(card => card.id === 'card-k-hearts');
+  assert.equal(missing.art, null);
 });
 
 test('publicCardAlbum funciona para perfiles nuevos sin álbum', () => {
@@ -171,11 +179,17 @@ test('la interfaz tiene la pestaña, la sección del álbum y el enlace a su hoj
   dom.window.close();
 });
 
+test('la sesión de cuenta del lobby conserva el álbum (cardAlbum en la caché)', () => {
+  const app = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const block = app.slice(app.indexOf('const ACCOUNT_SESSION_FIELDS = ['), app.indexOf('];', app.indexOf('const ACCOUNT_SESSION_FIELDS = [')));
+  assert.ok(block.includes("'cardAlbum'"));
+});
+
 test('la cápsula no altera fichas en mesa ni estadísticas de juego', () => {
-  const player = profile({ chips: 80, stats: { roundsPlayed: 4, wins: 2 } });
+  const player = profile({ chips: 20000, stats: { roundsPlayed: 4, wins: 2 } });
   openCardCapsule(player, { random: fixed(0) });
   assert.equal(player.stats.roundsPlayed, 4);
   assert.equal(player.stats.wins, 2);
-  assert.equal(player.chips, 75);
+  assert.equal(player.chips, 20000 - CARD_GACHA_COST);
   assert.ok(!player.achievements.length);
 });

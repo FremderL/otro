@@ -1,7 +1,7 @@
 # Álbum de cartas — gachapón MonteCristo
 
 **Estado:** implementado en la rama de trabajo. Activo por defecto; `CARD_GACHA_ENABLED=off` lo apaga (el servidor rechaza cápsulas nuevas y la interfaz deja de mostrar la pestaña).
-**Naturaleza:** cosmético y virtual. Una cápsula cuesta **5 fichas virtuales** y solo añade una carta al álbum del perfil. No da fichas, no cambia las probabilidades de ninguna mesa y no modifica estadísticas, retos, logros ni el Pasaporte.
+**Naturaleza:** cosmético y virtual. Una cápsula cuesta **5.000 fichas virtuales** y solo añade una carta al álbum del perfil. No da fichas, no cambia las probabilidades de ninguna mesa y no modifica estadísticas, retos, logros ni el Pasaporte.
 
 ## 1. Catálogo
 
@@ -16,6 +16,12 @@ Cada carta combina tres capas visuales, todas estáticas en `public/card-album.c
 | Rareza | Marco, brillo y animación | Común sobrio → Poco común cobre → Raro plata → Épico violeta → Legendario dorado → Mítico con aurora animada |
 
 Como cada par palo + rango es único, no hay dos cartas con el mismo estilo. Los dos Jokers tienen motivo propio (Fuego y Abismo). Las cartas sin copias se muestran como siluetas con «Sin descubrir» hasta que se obtienen.
+
+### Ilustraciones
+
+Cada carta usa una ilustración en `public/assets/cards/<id>.jpg` (sin texto: el rango y el palo se superponen en HTML para que sean exactos). Si una carta no tiene archivo, el servidor envía `art: null` y la interfaz muestra el estilo CSS de respaldo.
+
+Estado: 10 de 54 generadas (Picas del 2 al J). Pendientes: Q, K y As de Picas, los 2 Jokers y los 13 rangos de Corazones, Diamantes y Tréboles. Se completan sin cambios de código: basta con añadir cada archivo con el id de la carta.
 
 ## 2. Rarezas y tasas
 
@@ -41,7 +47,7 @@ Decisiones de diseño tomadas al cerrar las reglas:
 - El sorteo ocurre **solo en el servidor**, con `crypto.randomInt` (CSPRNG). El navegador no envía ni la rareza ni la carta.
 - El cobro usa un débito real y todo o nada: si no alcanza el saldo, no se sortea nada ni se modifica el perfil.
 - El evento `card_gacha_pull` sigue el mismo criterio de perfil que el bono diario: la mesa del jugador o la cuenta autenticada.
-- Cada cápsula queda en el historial de fichas del perfil como `Cápsula de cartas`, con su importe de −5.
+- Cada cápsula queda en el historial de fichas del perfil como `Cápsula de cartas`, con su importe de −5.000.
 - El álbum se guarda en `profile.cardAlbum.counts` y pasa por `cleanProfile`, así que funciona igual con el archivo JSON que con Postgres (sin migración). Solo se guardan ids del catálogo y se limita a 999 copias por carta.
 
 ## 4. Uso responsable
@@ -58,4 +64,5 @@ Decisiones de diseño tomadas al cerrar las reglas:
 - `lib/profile-store-shared.js`: saneado de `cardAlbum` en `cleanProfile`.
 - `server.js`: evento `card_gacha_pull` y `cardGachaEnabled` en `/healthz`.
 - `public/index.html`, `public/app.js`, `public/card-album.css`: pestaña «Álbum», tasas, cuadrícula y filtros por rareza.
+- `public/assets/cards/`: ilustraciones de las cartas.
 - `tests/card-gacha.test.js`: catálogo, tasas exactas, enumeración del sorteo, cobro, errores y privacidad.

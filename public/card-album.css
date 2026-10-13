@@ -54,9 +54,10 @@
 }
 .album-card-copy b { display: block; font-size: 11px; line-height: 1.25; }
 .album-card-copy small { display: block; margin-top: 2px; color: var(--muted); font-size: 9.5px; }
-.ac-corner { position: absolute; top: 5px; left: 7px; z-index: 2; color: var(--gc-a); font: 800 12px var(--display); text-shadow: 0 1px 3px #000; }
+.ac-corner { position: absolute; top: 5px; left: 7px; z-index: 2; color: var(--gc-a); font: 800 12px var(--display); text-shadow: 0 1px 3px #000; padding: 0 3px; border-radius: 4px; background: rgba(0, 0, 0, .45); }
 .ac-corner-b { top: auto; left: auto; right: 7px; bottom: 5px; transform: rotate(180deg); }
 .ac-symbol { position: absolute; left: 50%; top: 46%; z-index: 2; transform: translate(-50%, -50%); color: var(--gc-a); font-size: 30px; text-shadow: 0 0 12px var(--gc-a); }
+.ac-photo { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; }
 .ac-art { position: absolute; inset: 14px; border-radius: 6px; opacity: .9; background: var(--gc-a); }
 
 /* Motivos por rango (fondo del arte, sobre el color del palo). */
