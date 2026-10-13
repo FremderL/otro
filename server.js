@@ -1575,7 +1575,10 @@ function startPoker(room) {
         : room.players.filter(p => p.connected && p.chips >= 20);
   if (eligible.length < 2) return actionError(tourney ? 'El torneo necesita al menos 2 participantes con fichas.' : 'Se necesitan al menos 2 jugadores con 20 fichas.');
   beginSpecialEvent(room);
-  room.deck = makeDeck(1);
+  // Mazo fijo opcional para pruebas de showdown; el cliente nunca controla cartas.
+  room.deck = process.env.TEST_POKER_DECK
+    ? JSON.parse(process.env.TEST_POKER_DECK).slice().reverse()
+    : makeDeck(1);
   room.community = [];
   room.pot = 0;
   room.currentBet = 0;
