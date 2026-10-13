@@ -150,12 +150,13 @@ test('el álbum sobrevive al guardado (cleanProfile) y solo el dueño recibe el 
   assert.equal(publicView.cardAlbum, undefined);
 });
 
-test('cada carta indica su ilustración si el archivo existe, o null para usar el respaldo CSS', () => {
+test('cada carta indica su ilustración: las 54 tienen archivo y apuntan a su ruta', () => {
   const album = publicCardAlbum({});
   const spadesJ = album.cards.find(card => card.id === 'card-j-spades');
   assert.equal(spadesJ.art, '/assets/cards/card-j-spades.jpg');
-  const missing = album.cards.find(card => card.id === 'card-k-diamonds');
-  assert.equal(missing.art, null);
+  for (const card of album.cards) {
+    assert.equal(card.art, `/assets/cards/${card.id}.jpg`, `falta la ilustración de ${card.id}`);
+  }
 });
 
 test('publicCardAlbum funciona para perfiles nuevos sin álbum', () => {
