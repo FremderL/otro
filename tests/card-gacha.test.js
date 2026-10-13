@@ -172,7 +172,8 @@ test('la interfaz tiene la pestaña, la sección del álbum y el enlace a su hoj
   const dom = new JSDOM(html);
   const { document } = dom.window;
   assert.ok(document.getElementById('profile-tab-album'));
-  assert.ok(document.querySelector('[data-profile-section="album"]'));
+  assert.ok(document.getElementById('profile-section-album'));
+  assert.equal(document.querySelector('[data-profile-section="album"]'), null);
   assert.ok(document.getElementById('album-open-capsule'));
   assert.ok(document.querySelector('link[href="/card-album.css"]'));
   assert.ok(app.includes("'card_gacha_pull'"));

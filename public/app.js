@@ -2383,18 +2383,31 @@
     // que la persona volvía a guardar.
     if (!inTable()) refreshAccountProfile();
   }
-  // Colección: ventana propia, separada del perfil. Usa los mismos datos del perfil del dueño.
-  function openCollectionModal() {
-    const profile = currentViewerProfile();
-    if (!profile) return;
+  // Colección: ventana propia (cosméticos, libro de cartas y álbum), separada del perfil.
+  // `target` decide a qué parte baja la ventana: 'collection' o 'album'.
+  function openCollectionModal(target = 'collection') {
     const modal = document.getElementById('collection-modal');
     if (!modal) return;
-    renderCollection(profile);
-    renderCardBook(profile);
-    modal.classList.add('open');
-    modal.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('modal-open');
-    document.querySelector('#collection-modal .modal-close')?.focus();
+    try {
+      const profile = currentViewerProfile();
+      if (profile) {
+        renderCollection(profile);
+        renderCardBook(profile);
+        renderCardAlbum(profile);
+      } else {
+        showToast('Colección no disponible', 'Entra a una mesa o inicia sesión para ver tu colección.', 'notice', 4200, '◇');
+      }
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('modal-open');
+      const scroll = modal.querySelector('.collection-modal-scroll');
+      const section = document.getElementById(target === 'album' ? 'profile-section-album' : 'profile-section-collection');
+      if (scroll) scroll.scrollTop = section ? Math.max(0, section.offsetTop - 8) : 0;
+      modal.querySelector('.modal-close')?.focus();
+    } catch (error) {
+      console.error('No se pudo abrir la colección', error);
+      showToast('No se pudo abrir la colección', 'Recarga la página e inténtalo de nuevo.', 'error');
+    }
   }
   function closeCollectionModal() {
     const modal = document.getElementById('collection-modal');
@@ -3486,7 +3499,7 @@
   });
   document.getElementById('profile-content-scroll')?.addEventListener('scroll', syncProfileSectionFromScroll, { passive: true });
   $$('[data-close-profile]').forEach(element => element.addEventListener('click', closeProfileModal));
-  $$('[data-open-collection]').forEach(element => element.addEventListener('click', openCollectionModal));
+  $$('[data-open-collection]').forEach(element => element.addEventListener('click', () => openCollectionModal(element.dataset.openCollection)));
   $$('[data-close-collection]').forEach(element => element.addEventListener('click', closeCollectionModal));
   els.dailyBonusClaim?.addEventListener('click', event => claimDailyBonus(event.currentTarget));
   // Marca la edición en curso del nombre para que los refrescos en segundo
