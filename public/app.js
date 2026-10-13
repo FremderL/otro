@@ -908,7 +908,7 @@
     });
     updateTableSetupPreview();
   }));
-  document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeModal(); closeProfileModal(); closeAccountModal(); toggleShortcutHelp(false); } });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeCollectionModal(); closeModal(); closeProfileModal(); closeAccountModal(); toggleShortcutHelp(false); } });
   // Fases 5 y 6: saltar animaciones (botones presentes en mesa o panel de acciones)
   document.addEventListener('click', event => {
     if (!event.target.closest) return;
@@ -2383,6 +2383,28 @@
     // que la persona volvía a guardar.
     if (!inTable()) refreshAccountProfile();
   }
+  // Colección: ventana propia, separada del perfil. Usa los mismos datos del perfil del dueño.
+  function openCollectionModal() {
+    const profile = currentViewerProfile();
+    if (!profile) return;
+    const modal = document.getElementById('collection-modal');
+    if (!modal) return;
+    renderCollection(profile);
+    renderCardBook(profile);
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    document.querySelector('#collection-modal .modal-close')?.focus();
+  }
+  function closeCollectionModal() {
+    const modal = document.getElementById('collection-modal');
+    if (!modal || !modal.classList.contains('open')) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    if (!els.modal.classList.contains('open') && !els.profileModal?.classList.contains('open') && !els.accountModal?.classList.contains('open')) {
+      document.body.classList.remove('modal-open');
+    }
+  }
   function closeProfileModal() {
     ui.profileOpen = false;
     ui.profileNameDirty = false;
@@ -3464,6 +3486,8 @@
   });
   document.getElementById('profile-content-scroll')?.addEventListener('scroll', syncProfileSectionFromScroll, { passive: true });
   $$('[data-close-profile]').forEach(element => element.addEventListener('click', closeProfileModal));
+  $$('[data-open-collection]').forEach(element => element.addEventListener('click', openCollectionModal));
+  $$('[data-close-collection]').forEach(element => element.addEventListener('click', closeCollectionModal));
   els.dailyBonusClaim?.addEventListener('click', event => claimDailyBonus(event.currentTarget));
   // Marca la edición en curso del nombre para que los refrescos en segundo
   // plano no sobrescriban lo que la persona está escribiendo; el encabezado

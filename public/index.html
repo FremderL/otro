@@ -390,7 +390,7 @@
         <span class="profile-tabs-label">IR A</span>
         <button id="profile-tab-overview" class="profile-tab active" type="button" aria-controls="profile-section-overview" aria-current="location" data-profile-jump="overview">Resumen</button>
         <button id="profile-tab-passport" class="profile-tab hidden" type="button" aria-controls="profile-section-passport" data-profile-jump="passport">Pasaporte</button>
-        <button id="profile-tab-collection" class="profile-tab" type="button" aria-controls="profile-section-collection" data-profile-jump="collection">Colección</button>
+        <button id="profile-tab-collection" class="profile-tab" type="button" aria-haspopup="dialog" aria-controls="collection-modal" data-open-collection>Colección ↗</button>
         <button id="profile-tab-album" class="profile-tab" type="button" aria-controls="profile-section-album" data-profile-jump="album">Álbum</button>
         <button id="profile-tab-activity" class="profile-tab" type="button" aria-controls="profile-section-activity" data-profile-jump="activity">Actividad</button>
         <button id="profile-tab-goals" class="profile-tab" type="button" aria-controls="profile-section-goals" data-profile-jump="goals">Retos y logros</button>
@@ -442,24 +442,6 @@
               <div class="passport-subheading passport-collection-heading"><span>COLECCIÓN PERMANENTE</span><small>Los cosméticos no caducan</small></div>
               <div id="passport-collection" class="passport-collection"></div>
             </section>
-          </section>
-          <section id="profile-section-collection" class="profile-content-section" data-profile-section="collection" aria-labelledby="collection-heading" tabindex="-1">
-            <div class="profile-main-heading"><div><span class="kicker">COLECCIÓN MONTECRISTO</span><h3 id="collection-heading" tabindex="-1">Cosméticos ganados jugando</h3></div><span id="collection-count">0 / 11 objetos</span></div>
-            <p class="collection-rules-note">Cada objeto tiene una meta visible y se desbloquea jugando rondas válidas. No hay cajas aleatorias, compras ni ventajas de juego.</p>
-            <div class="collection-filters" role="tablist" aria-label="Filtrar cosméticos">
-              <button class="collection-filter active" type="button" data-collection-filter="all" role="tab" aria-selected="true">Todo</button>
-              <button class="collection-filter" type="button" data-collection-filter="avatar" role="tab" aria-selected="false">Avatares</button>
-              <button class="collection-filter" type="button" data-collection-filter="frame" role="tab" aria-selected="false">Marcos</button>
-              <button class="collection-filter" type="button" data-collection-filter="chips" role="tab" aria-selected="false">Fichas</button>
-              <button class="collection-filter" type="button" data-collection-filter="felt" role="tab" aria-selected="false">Tapetes</button>
-              <button class="collection-filter" type="button" data-collection-filter="cards" role="tab" aria-selected="false">Cartas</button>
-            </div>
-            <section class="card-book" aria-labelledby="card-book-heading">
-              <div class="profile-main-heading"><div><span class="kicker">LIBRO DE CARTAS</span><h3 id="card-book-heading" tabindex="-1">Tus cartas del gachapón</h3></div><span id="card-book-count">0 / 54 cartas</span></div>
-              <p class="collection-rules-note">Las cartas que tienes pueden usarse como dorso en las mesas. Las que faltan aparecen como «?».</p>
-              <div id="card-book-grid" class="album-grid card-book-grid" role="list" aria-label="Libro de cartas"></div>
-            </section>
-            <div id="collection-items" class="collection-grid" role="list" aria-label="Objetos cosméticos"></div>
           </section>
           <section id="profile-section-album" class="profile-content-section" data-profile-section="album" aria-labelledby="album-heading" tabindex="-1">
             <div class="profile-main-heading"><div><span class="kicker">ÁLBUM DE CARTAS</span><h3 id="album-heading" tabindex="-1">Cápsulas del gachapón</h3></div><span id="album-count">0 / 54 cartas</span></div>
@@ -696,6 +678,32 @@
   </dialog>
 
   <!-- Aceptación obligatoria de Términos y Condiciones (fase 3) -->
+  <div id="collection-modal" class="modal collection-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-collection></div>
+    <div class="modal-card profile-modal-card collection-modal-card" role="dialog" aria-modal="true" aria-labelledby="collection-heading">
+      <button class="modal-close" data-close-collection aria-label="Cerrar colección">×</button>
+      <div class="collection-modal-scroll">
+          <section id="profile-section-collection" class="collection-window-section" aria-labelledby="collection-heading">
+            <div class="profile-main-heading"><div><span class="kicker">COLECCIÓN MONTECRISTO</span><h3 id="collection-heading" tabindex="-1">Cosméticos ganados jugando</h3></div><span id="collection-count">0 / 11 objetos</span></div>
+            <p class="collection-rules-note">Cada objeto tiene una meta visible y se desbloquea jugando rondas válidas. No hay cajas aleatorias, compras ni ventajas de juego.</p>
+            <div class="collection-filters" role="tablist" aria-label="Filtrar cosméticos">
+              <button class="collection-filter active" type="button" data-collection-filter="all" role="tab" aria-selected="true">Todo</button>
+              <button class="collection-filter" type="button" data-collection-filter="avatar" role="tab" aria-selected="false">Avatares</button>
+              <button class="collection-filter" type="button" data-collection-filter="frame" role="tab" aria-selected="false">Marcos</button>
+              <button class="collection-filter" type="button" data-collection-filter="chips" role="tab" aria-selected="false">Fichas</button>
+              <button class="collection-filter" type="button" data-collection-filter="felt" role="tab" aria-selected="false">Tapetes</button>
+              <button class="collection-filter" type="button" data-collection-filter="cards" role="tab" aria-selected="false">Cartas</button>
+            </div>
+            <section class="card-book" aria-labelledby="card-book-heading">
+              <div class="profile-main-heading"><div><span class="kicker">LIBRO DE CARTAS</span><h3 id="card-book-heading" tabindex="-1">Tus cartas del gachapón</h3></div><span id="card-book-count">0 / 54 cartas</span></div>
+              <p class="collection-rules-note">Las cartas que tienes pueden usarse como dorso en las mesas. Las que faltan aparecen como «?».</p>
+              <div id="card-book-grid" class="album-grid card-book-grid" role="list" aria-label="Libro de cartas"></div>
+            </section>
+            <div id="collection-items" class="collection-grid" role="list" aria-label="Objetos cosméticos"></div>
+          </section>
+      </div>
+    </div>
+  </div>
   <div id="tos-modal" class="modal tos-modal hidden" aria-hidden="true">
     <div class="modal-backdrop"></div>
     <div class="modal-card tos-modal-card" role="dialog" aria-modal="true" aria-labelledby="tos-modal-title">
