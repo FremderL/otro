@@ -7,6 +7,7 @@
   <meta name="description" content="MonteCristo: póker, blackjack, ruleta y minijuegos en vivo con amigos. Fichas 100% virtuales, perfiles, retos y logros." />
   <title>MonteCristo — Casino social</title>
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/card-album.css" />
   <script src="/gate.js"></script>
 </head>
 <body>
@@ -390,6 +391,7 @@
         <button id="profile-tab-overview" class="profile-tab active" type="button" aria-controls="profile-section-overview" aria-current="location" data-profile-jump="overview">Resumen</button>
         <button id="profile-tab-passport" class="profile-tab hidden" type="button" aria-controls="profile-section-passport" data-profile-jump="passport">Pasaporte</button>
         <button id="profile-tab-collection" class="profile-tab" type="button" aria-controls="profile-section-collection" data-profile-jump="collection">Colección</button>
+        <button id="profile-tab-album" class="profile-tab" type="button" aria-controls="profile-section-album" data-profile-jump="album">Álbum</button>
         <button id="profile-tab-activity" class="profile-tab" type="button" aria-controls="profile-section-activity" data-profile-jump="activity">Actividad</button>
         <button id="profile-tab-goals" class="profile-tab" type="button" aria-controls="profile-section-goals" data-profile-jump="goals">Retos y logros</button>
         <span class="profile-scroll-hint" aria-hidden="true">Desliza para ver más <b>↓</b></span>
@@ -452,6 +454,25 @@
               <button class="collection-filter" type="button" data-collection-filter="cards" role="tab" aria-selected="false">Cartas</button>
             </div>
             <div id="collection-items" class="collection-grid" role="list" aria-label="Objetos cosméticos"></div>
+          </section>
+          <section id="profile-section-album" class="profile-content-section" data-profile-section="album" aria-labelledby="album-heading" tabindex="-1">
+            <div class="profile-main-heading"><div><span class="kicker">ÁLBUM DE CARTAS</span><h3 id="album-heading" tabindex="-1">Cápsulas del gachapón</h3></div><span id="album-count">0 / 54 cartas</span></div>
+            <div class="album-capsule-panel">
+              <div class="album-capsule-copy"><b>Cápsula de cartas · <span id="album-cost">5</span> fichas</b><small>Opcional y solo cosmética: la cápsula no da fichas ni ventajas en las mesas. Las fichas gastadas aparecen en tu historial.</small></div>
+              <button id="album-open-capsule" class="album-open-btn" type="button">Abrir cápsula · 5 fichas</button>
+              <div id="album-last-pull" class="album-last-pull" aria-live="polite"></div>
+            </div>
+            <section class="album-rates-box" aria-labelledby="album-rates-heading"><div class="progress-title"><span id="album-rates-heading">TASAS PUBLICADAS</span><small>Cada rareza reparte su porcentaje entre sus cartas</small></div><div id="album-rates" class="album-rates"></div></section>
+            <div class="collection-filters album-filters" role="tablist" aria-label="Filtrar cartas por rareza">
+              <button class="collection-filter active" type="button" data-album-filter="all" role="tab" aria-selected="true">Todas</button>
+              <button class="collection-filter" type="button" data-album-filter="comun" role="tab" aria-selected="false">Comunes</button>
+              <button class="collection-filter" type="button" data-album-filter="poco-comun" role="tab" aria-selected="false">Poco comunes</button>
+              <button class="collection-filter" type="button" data-album-filter="raro" role="tab" aria-selected="false">Raras</button>
+              <button class="collection-filter" type="button" data-album-filter="epico" role="tab" aria-selected="false">Épicas</button>
+              <button class="collection-filter" type="button" data-album-filter="legendario" role="tab" aria-selected="false">Legendarias</button>
+              <button class="collection-filter" type="button" data-album-filter="mitico" role="tab" aria-selected="false">Míticas</button>
+            </div>
+            <div id="album-grid" class="album-grid" role="list" aria-label="Cartas del álbum"></div>
           </section>
           <section id="profile-section-activity" class="profile-content-section" data-profile-section="activity" aria-labelledby="profile-section-activity-title" tabindex="-1">
             <div class="profile-main-heading"><div><span class="kicker">ACTIVIDAD</span><h3 id="profile-section-activity-title" tabindex="-1">Saldo e historial</h3></div><span>◆ Fichas virtuales</span></div>

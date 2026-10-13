@@ -20,7 +20,7 @@
   // sesiones de cuenta conservan su fallback si healthz falla; el Pasaporte,
   // en cambio, queda oculto por seguridad hasta que el servidor confirme que
   // está activado expresamente.
-  const serverFlags = { accountSessions: null, passport: null };
+  const serverFlags = { accountSessions: null, passport: null, cardGacha: null };
   const serverFlagsReady = fetch('/healthz', { cache: 'no-store' })
     .then(response => (response.ok ? response.json() : null))
     .then(data => {
@@ -28,6 +28,11 @@
       // El Pasaporte usa activación fail-closed: healthz debe confirmarlo de
       // forma explícita para mostrar la sección del perfil.
       serverFlags.passport = data?.passportEnabled === true;
+      // Gachapón de cartas: solo se muestra si healthz lo confirma de forma explícita.
+      serverFlags.cardGacha = data?.cardGachaEnabled === true;
+      document.getElementById('profile-section-album')?.classList.toggle('hidden', !serverFlags.cardGacha);
+      document.getElementById('profile-tab-album')?.classList.toggle('hidden', !serverFlags.cardGacha);
+      if (!serverFlags.cardGacha && ui.profileSection === 'album') jumpToProfileSection('overview');
       document.getElementById('passport-panel')?.classList.toggle('hidden', !serverFlags.passport);
       document.getElementById('profile-section-passport')?.classList.toggle('hidden', !serverFlags.passport);
       document.getElementById('profile-tab-passport')?.classList.toggle('hidden', !serverFlags.passport);
@@ -124,6 +129,8 @@
     passportStamps: $('#passport-stamps'), passportRewards: $('#passport-rewards'), passportCollection: $('#passport-collection'),
     featuredAchievements: $('#featured-achievements'),
     collectionCount: $('#collection-count'), collectionItems: $('#collection-items'),
+    albumCount: $('#album-count'), albumCost: $('#album-cost'), albumOpenCapsule: $('#album-open-capsule'),
+    albumLastPull: $('#album-last-pull'), albumRates: $('#album-rates'), albumGrid: $('#album-grid'),
     balanceChart: $('#balance-chart'), balanceChartNote: $('#balance-chart-note'), gameBreakdown: $('#game-breakdown'),
     historyDownload: $('#history-download'),
     dailyBonusStatus: $('#daily-bonus-status'), dailyBonusCountdown: $('#daily-bonus-countdown'), dailyBonusClaim: $('#daily-bonus-claim'),
@@ -228,7 +235,7 @@
     lobbyChat: { joined: false, joining: false, open: false, messages: [], unread: 0 },
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
     lastEventKey: '', clockTimer: null, dailyBonusTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null,
-    profileOpen: false, profileNameDirty: false, profileSection: 'overview', collectionFilter: 'all',
+    profileOpen: false, profileNameDirty: false, profileSection: 'overview', collectionFilter: 'all', albumFilter: 'all', albumLastPullId: null,
     lobbyTournaments: null, expandedTournamentBrackets: new Set(), pendingTournamentSignup: null,
     communityTab: 'friends', communityData: null,
     rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null, resultQueue: [],
@@ -2373,6 +2380,75 @@
     els.profileModal?.setAttribute('aria-hidden', 'true');
     if (!els.modal.classList.contains('open')) document.body.classList.remove('modal-open');
   }
+  // Gachapón de cartas (álbum del perfil). Las tasas y las cartas vienen del
+  // servidor; aquí solo se pintan. Las cartas sin copias se muestran como
+  // siluetas: su nombre y motivo no se revelan hasta que se obtienen.
+  const ALBUM_RARITY_LABELS = { comun: 'Común', 'poco-comun': 'Poco común', raro: 'Raro', epico: 'Épico', legendario: 'Legendario', mitico: 'Mítico' };
+  function formatPercent(value) {
+    return `${Number(value || 0).toLocaleString('es-MX', { maximumFractionDigits: 4 })}%`;
+  }
+  function albumCardMarkup(card) {
+    const owned = card.count > 0;
+    const rarityName = card.rarityName || ALBUM_RARITY_LABELS[card.rarity] || card.rarity;
+    const classes = [
+      'album-card', `rarity-${card.rarity}`, `suit-${card.suit}`, `motif-${card.motif}`,
+      owned ? 'owned' : 'locked', card.id === ui.albumLastPullId ? 'just-pulled' : ''
+    ].filter(Boolean).join(' ');
+    if (!owned) {
+      return `<article class="${classes}" role="listitem" aria-label="Carta sin descubrir · ${escapeHtml(rarityName)}"><div class="album-card-face"><span class="album-card-mystery" aria-hidden="true">?</span></div><div class="album-card-copy"><b>Sin descubrir</b><small>${escapeHtml(rarityName)}</small></div></article>`;
+    }
+    const copies = card.count > 1 ? ` · ×${card.count}` : '';
+    return `<article class="${classes}" role="listitem" aria-label="${escapeHtml(card.name)} · ${escapeHtml(rarityName)}${card.count > 1 ? `, ${card.count} copias` : ''}"><div class="album-card-face"><span class="ac-corner">${escapeHtml(card.rank)}</span><span class="ac-symbol" aria-hidden="true">${escapeHtml(card.symbol)}</span><span class="ac-corner ac-corner-b">${escapeHtml(card.rank)}</span><span class="ac-art" aria-hidden="true"></span></div><div class="album-card-copy"><b>${escapeHtml(card.name)}</b><small>${escapeHtml(rarityName)}${copies}</small></div></article>`;
+  }
+  function renderCardAlbum(profile) {
+    if (!els.albumGrid) return;
+    const album = profile.cardAlbum;
+    if (!album || !Array.isArray(album.cards)) {
+      els.albumGrid.innerHTML = '<div class="collection-no-items">El álbum aparecerá cuando el servidor sincronice tu perfil.</div>';
+      return;
+    }
+    if (els.albumCount) els.albumCount.textContent = `${album.ownedCount} / ${album.total} cartas · ${album.duplicates} repetidas`;
+    if (els.albumCost) els.albumCost.textContent = String(album.cost);
+    if (els.albumOpenCapsule) els.albumOpenCapsule.textContent = `Abrir cápsula · ${album.cost} fichas`;
+    if (els.albumRates) {
+      els.albumRates.innerHTML = (album.rates || []).map(rate => `<div class="album-rate rarity-${escapeHtml(rate.id)}"><span class="album-rate-swatch" aria-hidden="true"></span><b>${escapeHtml(rate.name)}</b><small>${formatPercent(rate.percent)} · ${rate.cards} cartas</small><em>${formatPercent(rate.perCardPercent)} cada una</em></div>`).join('');
+    }
+    const cards = album.cards.filter(card => ui.albumFilter === 'all' || card.rarity === ui.albumFilter);
+    els.albumGrid.innerHTML = cards.map(albumCardMarkup).join('');
+  }
+  async function openCardCapsule(button) {
+    if (!button || button.disabled || !currentViewerProfile()) return;
+    const wasInTable = inTable();
+    const payload = wasInTable ? {} : { accountId: ui.accountSession?.accountId };
+    const response = await emitAck('card_gacha_pull', payload, button);
+    if (!response.ok) {
+      showToast('No se pudo abrir la cápsula', response.error || 'Inténtalo de nuevo.', 'error');
+      return;
+    }
+    if (response.profile) {
+      if (wasInTable && ui.room) ui.room.viewerProfile = response.profile;
+      if (!wasInTable) saveAccountSession(response.profile);
+      else syncAccountSessionIfSameProfile(response.profile);
+      if (wasInTable && ui.me) {
+        ui.me.chips = response.profile.chips;
+        renderProfile();
+      }
+    }
+    const card = response.card;
+    if (!card) return;
+    const rarityName = card.rarityName || ALBUM_RARITY_LABELS[card.rarity] || card.rarity;
+    if (els.albumLastPull) {
+      els.albumLastPull.className = `album-last-pull rarity-${card.rarity}`;
+      els.albumLastPull.innerHTML = `<span class="album-pull-label">${escapeHtml(rarityName)} · ${card.duplicate ? 'repetida' : 'nueva'}</span><b>${escapeHtml(card.name)}</b>`;
+    }
+    // La carta recién obtenida anima su entrada solo en este render: se limpia
+    // después para que filtrar o volver a pintar no repita la animación.
+    ui.albumLastPullId = card.id;
+    renderProfileModal();
+    ui.albumLastPullId = null;
+    playTone(card.rarity === 'mitico' || card.rarity === 'legendario' ? 'win' : 'notice');
+    showToast(card.duplicate ? 'Carta repetida' : 'Carta nueva', `${card.name} · ${rarityName}`, 'reward', 4200, card.symbol);
+  }
   function renderProfileModal() {
     const profile = currentViewerProfile();
     if (!profile) return;
@@ -2436,6 +2512,7 @@
     ].map(([label,value,kind]) => `<div class="profile-stat"><small>${label}</small><b class="${kind}">${value}</b></div>`).join('');
     renderPassport(profile);
     renderCollection(profile);
+    renderCardAlbum(profile);
     renderBalanceChart(profile);
     // Fase 11.1: descarga del historial completo (no solo lo que cabe en la gráfica).
     // Usa el id del perfil que se está mostrando (mesa o cuenta), no siempre el
@@ -3305,6 +3382,19 @@
   els.profileCard.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openProfileModal(); } });
   $$('[data-profile-jump]').forEach(button => {
     button.addEventListener('click', () => jumpToProfileSection(button.dataset.profileJump, true));
+  });
+  els.albumOpenCapsule?.addEventListener('click', () => openCardCapsule(els.albumOpenCapsule));
+  $$('[data-album-filter]').forEach(button => {
+    button.addEventListener('click', () => {
+      ui.albumFilter = button.dataset.albumFilter || 'all';
+      $$('[data-album-filter]').forEach(item => {
+        const selected = item === button;
+        item.classList.toggle('active', selected);
+        item.setAttribute('aria-selected', String(selected));
+      });
+      const profile = currentViewerProfile();
+      if (profile) renderCardAlbum(profile);
+    });
   });
   $$('[data-collection-filter]').forEach(button => {
     button.addEventListener('click', () => {

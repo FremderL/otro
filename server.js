@@ -9,7 +9,7 @@ const { AVATARS, avatarInfo } = require('./lib/profile-store');
 // se mantiene el ProfileStore de archivo JSON de siempre. Ver lib/profile-store-factory.js.
 const { createProfileStore } = require('./lib/profile-store-factory');
 const { HISTORY_LIMITS, INACTIVITY_LIMIT_MS, CASINO_TIME_ZONE, normalizeDisplayName } = require('./lib/profile-store-shared');
-const { credit, recordWager, recordOutcome, claimDailyBonus, publicProgress } = require('./lib/progression');
+const { credit, recordWager, recordOutcome, claimDailyBonus, openCardCapsule, publicProgress } = require('./lib/progression');
 const { equipPassportCosmetic, publicPassportIdentity } = require('./lib/passport');
 const { equipCosmetic, publicCollectionIdentity } = require('./lib/cosmetics');
 const { LobbyTournamentManager } = require('./lib/lobby-tournaments');
@@ -50,6 +50,9 @@ const { installSeasonalThemeRoutes } = require('./lib/seasonal-theme-http');
 // cualquier secreto o requisito de producción.
 const adminConfig = loadAdminConfig();
 const passportConfig = loadPassportConfig();
+// Gachapón de cartas: activo por defecto; CARD_GACHA_ENABLED=off lo apaga de
+// inmediato (el servidor rechaza nuevas cápsulas y la interfaz lo oculta).
+const cardGachaEnabled = process.env.CARD_GACHA_ENABLED !== 'off';
 
 // Estadio MonteCristo (Fase E4): feature flag fail-closed, apagado por defecto.
 // loadFootballConfig() se invoca aquí, junto a loadAdminConfig y ANTES de la red
@@ -190,6 +193,7 @@ app.get('/healthz', (_req, res) => {
     tosVersion: TOS_VERSION,
     accountSessionsEnabled: adminConfig.accountSessionsEnabled,
     passportEnabled: passportConfig.enabled,
+    cardGachaEnabled,
     promotionsEnabled: footballConfig.enabled && adminConfig.enabled && adminConfig.accountSessionsEnabled,
     // Estadio MonteCristo (§15.8): bloque de salud del motor. Con el flag apagado
     // (o antes de bootstrap) queda reducido a { enabled: false }; footballHealth
@@ -2623,6 +2627,34 @@ io.on('connection', socket => {
   // perfil desde otra computadora. No reemplaza el modo sin cuenta: solo
   // vincula credenciales al perfil que ya tiene este dispositivo (mismas
   // fichas, logros e historial) para poder volver a entrar a él después.
+  // Gachapón de cartas: cobra 5 fichas y suma una carta cosmética al álbum.
+  // Mismo criterio de perfil que el bono diario: la mesa del jugador o la
+  // cuenta autenticada; nunca un perfil ajeno enviado por el navegador.
+  socket.on('card_gacha_pull', ({ accountId } = {}, ack) => {
+    const { room, player } = playerForSocket(socket);
+    let targetProfile = player?._profile || null;
+    if (!targetProfile) {
+      const id = adminConfig.accountSessionsEnabled
+        ? socket.data.accountProfileId
+        : String(accountId || '').slice(0, 80);
+      const candidate = id ? profiles.profiles.get(id) : null;
+      if (candidate?.username) targetProfile = candidate;
+    }
+    if (!targetProfile) return ackError(ack, 'Perfil no disponible. Inicia sesión o abre tu perfil desde una mesa.');
+
+    const result = openCardCapsule(targetProfile, { enabled: cardGachaEnabled });
+    if (!result.ok) return ackError(ack, result.error);
+    profiles.touch(targetProfile);
+    logEvent('card_capsule_opened', { profileId: targetProfile.id, rarity: result.card.rarity });
+    if (room && player) broadcast(room);
+    return ackOk(ack, {
+      card: result.card,
+      duplicate: result.duplicate,
+      cost: result.cost,
+      profile: publicProgress(targetProfile, true)
+    });
+  });
+
   socket.on('account_signup', ({ token, name, avatar, username, password, tos } = {}, ack) => {
     if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
     const id = String(token).slice(0, 80);
