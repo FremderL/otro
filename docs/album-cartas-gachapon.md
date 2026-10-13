@@ -21,7 +21,7 @@ Como cada par palo + rango es único, no hay dos cartas con el mismo estilo. Los
 
 Cada carta usa una ilustración en `public/assets/cards/<id>.jpg` (sin texto: el rango y el palo se superponen en HTML para que sean exactos). Si una carta no tiene archivo, el servidor envía `art: null` y la interfaz muestra el estilo CSS de respaldo.
 
-Estado: 10 de 54 generadas (Picas del 2 al J). Pendientes: Q, K y As de Picas, los 2 Jokers y los 13 rangos de Corazones, Diamantes y Tréboles. Se completan sin cambios de código: basta con añadir cada archivo con el id de la carta.
+Estado: 19 de 54 generadas. Hechas: Picas completas (2–10, J, Q, K, As), los 2 Jokers y Corazones del 2 al 5. Pendientes (35): Corazones del 6 al As (9), Diamantes (13) y Tréboles (13). Se completan sin cambios de código: basta con añadir cada archivo con el id de la carta.
 
 ## 2. Rarezas y tasas
 
