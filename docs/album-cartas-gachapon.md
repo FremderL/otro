@@ -11,7 +11,7 @@ Cada carta combina tres capas visuales, todas estáticas en `public/card-album.c
 
 | Capa | Qué define | Ejemplo |
 | --- | --- | --- |
-| Palo | Colores propios (`--gc-a`, `--gc-b`) | Picas azul acero · Corazones coral · Diamantes ámbar · Tréboles esmeralda · Jokers naranja |
+| Palo | Colores propios (`--gc-a`, `--gc-b`) | Picas azul acero · Corazones coral · Diamantes ámbar · Tréboles plata y azul (estilo escudo heráldico) · Jokers naranja |
 | Rango | Motivo visual del arte | 2 órbitas · 3 olas · 4 retícula · 5 franjas · 6 anillos · 7 estrellas · 8 chevrones · 9 facetas · 10 sol · J escudo · Q corona · K cruces · A aurora |
 | Rareza | Marco, brillo y animación | Común sobrio → Poco común cobre → Raro plata → Épico violeta → Legendario dorado → Mítico con aurora animada |
 
@@ -21,7 +21,7 @@ Como cada par palo + rango es único, no hay dos cartas con el mismo estilo. Los
 
 Cada carta usa una ilustración en `public/assets/cards/<id>.jpg` (sin texto: el rango y el palo se superponen en HTML para que sean exactos). Si una carta no tiene archivo, el servidor envía `art: null` y la interfaz muestra el estilo CSS de respaldo.
 
-Estado: 38 de 54 generadas. Completas: Picas, Corazones, Diamantes del 2 al J, los 2 Jokers. Pendientes (16): Diamantes Q, K, As (3) y Tréboles (13). Entregas previstas: 10 Tréboles, luego 3 Diamantes y 3 Tréboles para completar.
+Estado: 48 de 54 generadas. Completas: Picas, Corazones, Diamantes del 2 al J, Tréboles del 2 al J, los 2 Jokers. Pendientes (6): Diamantes Q, K, As y Tréboles Q, K, As. Entrega final prevista: 3 Diamantes y 3 Tréboles.
 
 ## 2. Rarezas y tasas
 
