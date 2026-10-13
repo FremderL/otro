@@ -7,6 +7,7 @@
   <meta name="description" content="MonteCristo: póker, blackjack, ruleta y minijuegos en vivo con amigos. Fichas 100% virtuales, perfiles, retos y logros." />
   <title>MonteCristo — Casino social</title>
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/card-album.css" />
   <script src="/gate.js"></script>
 </head>
 <body>
@@ -389,7 +390,8 @@
         <span class="profile-tabs-label">IR A</span>
         <button id="profile-tab-overview" class="profile-tab active" type="button" aria-controls="profile-section-overview" aria-current="location" data-profile-jump="overview">Resumen</button>
         <button id="profile-tab-passport" class="profile-tab hidden" type="button" aria-controls="profile-section-passport" data-profile-jump="passport">Pasaporte</button>
-        <button id="profile-tab-collection" class="profile-tab" type="button" aria-controls="profile-section-collection" data-profile-jump="collection">Colección</button>
+        <button id="profile-tab-collection" class="profile-tab" type="button" aria-haspopup="dialog" aria-controls="collection-modal" data-open-collection="collection">Colección ↗</button>
+        <button id="profile-tab-album" class="profile-tab" type="button" aria-haspopup="dialog" aria-controls="collection-modal" data-open-collection="album">Álbum ↗</button>
         <button id="profile-tab-activity" class="profile-tab" type="button" aria-controls="profile-section-activity" data-profile-jump="activity">Actividad</button>
         <button id="profile-tab-goals" class="profile-tab" type="button" aria-controls="profile-section-goals" data-profile-jump="goals">Retos y logros</button>
         <span class="profile-scroll-hint" aria-hidden="true">Desliza para ver más <b>↓</b></span>
@@ -419,6 +421,7 @@
         </aside>
         <main class="profile-main">
           <section id="profile-section-overview" class="profile-content-section" data-profile-section="overview" aria-labelledby="profile-section-overview-title" tabindex="-1">
+            <p id="profile-sync-note" class="profile-sync-note hidden" role="status">Sin conexión: estos datos son los guardados en este dispositivo. Se actualizarán al reconectar.</p>
             <div class="profile-main-heading"><div><span class="kicker">RESUMEN DEL PERFIL</span><h3 id="profile-section-overview-title" tabindex="-1">Tu progreso</h3></div><span>◆ Saldo solo virtual</span></div>
             <div id="profile-stats" class="profile-stats"></div>
             <section class="featured-achievements-box"><div class="progress-title"><span>VITRINA DE LOGROS</span><small>Elige hasta 3 para destacar</small></div><div id="featured-achievements" class="featured-achievements"></div></section>
@@ -439,19 +442,6 @@
               <div class="passport-subheading passport-collection-heading"><span>COLECCIÓN PERMANENTE</span><small>Los cosméticos no caducan</small></div>
               <div id="passport-collection" class="passport-collection"></div>
             </section>
-          </section>
-          <section id="profile-section-collection" class="profile-content-section" data-profile-section="collection" aria-labelledby="collection-heading" tabindex="-1">
-            <div class="profile-main-heading"><div><span class="kicker">COLECCIÓN MONTECRISTO</span><h3 id="collection-heading" tabindex="-1">Cosméticos ganados jugando</h3></div><span id="collection-count">0 / 11 objetos</span></div>
-            <p class="collection-rules-note">Cada objeto tiene una meta visible y se desbloquea jugando rondas válidas. No hay cajas aleatorias, compras ni ventajas de juego.</p>
-            <div class="collection-filters" role="tablist" aria-label="Filtrar cosméticos">
-              <button class="collection-filter active" type="button" data-collection-filter="all" role="tab" aria-selected="true">Todo</button>
-              <button class="collection-filter" type="button" data-collection-filter="avatar" role="tab" aria-selected="false">Avatares</button>
-              <button class="collection-filter" type="button" data-collection-filter="frame" role="tab" aria-selected="false">Marcos</button>
-              <button class="collection-filter" type="button" data-collection-filter="chips" role="tab" aria-selected="false">Fichas</button>
-              <button class="collection-filter" type="button" data-collection-filter="felt" role="tab" aria-selected="false">Tapetes</button>
-              <button class="collection-filter" type="button" data-collection-filter="cards" role="tab" aria-selected="false">Cartas</button>
-            </div>
-            <div id="collection-items" class="collection-grid" role="list" aria-label="Objetos cosméticos"></div>
           </section>
           <section id="profile-section-activity" class="profile-content-section" data-profile-section="activity" aria-labelledby="profile-section-activity-title" tabindex="-1">
             <div class="profile-main-heading"><div><span class="kicker">ACTIVIDAD</span><h3 id="profile-section-activity-title" tabindex="-1">Saldo e historial</h3></div><span>◆ Fichas virtuales</span></div>
@@ -668,6 +658,51 @@
     </form>
   </dialog>
 
+  <div id="collection-modal" class="modal collection-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-collection></div>
+    <div class="modal-card profile-modal-card collection-modal-card" role="dialog" aria-modal="true" aria-labelledby="collection-heading">
+      <button class="modal-close" data-close-collection aria-label="Cerrar colección">×</button>
+      <div class="collection-modal-scroll">
+          <section id="profile-section-collection" class="collection-window-section" aria-labelledby="collection-heading">
+            <div class="profile-main-heading"><div><span class="kicker">COLECCIÓN MONTECRISTO</span><h3 id="collection-heading" tabindex="-1">Cosméticos ganados jugando</h3></div><span id="collection-count">0 / 11 objetos</span></div>
+            <p class="collection-rules-note">Cada objeto tiene una meta visible y se desbloquea jugando rondas válidas. No hay cajas aleatorias, compras ni ventajas de juego.</p>
+            <div class="collection-filters" role="tablist" aria-label="Filtrar cosméticos">
+              <button class="collection-filter active" type="button" data-collection-filter="all" role="tab" aria-selected="true">Todo</button>
+              <button class="collection-filter" type="button" data-collection-filter="avatar" role="tab" aria-selected="false">Avatares</button>
+              <button class="collection-filter" type="button" data-collection-filter="frame" role="tab" aria-selected="false">Marcos</button>
+              <button class="collection-filter" type="button" data-collection-filter="chips" role="tab" aria-selected="false">Fichas</button>
+              <button class="collection-filter" type="button" data-collection-filter="felt" role="tab" aria-selected="false">Tapetes</button>
+              <button class="collection-filter" type="button" data-collection-filter="cards" role="tab" aria-selected="false">Cartas</button>
+            </div>
+            <section class="card-book" aria-labelledby="card-book-heading">
+              <div class="profile-main-heading"><div><span class="kicker">LIBRO DE CARTAS</span><h3 id="card-book-heading" tabindex="-1">Tus cartas del gachapón</h3></div><span id="card-book-count">0 / 54 cartas</span></div>
+              <p class="collection-rules-note">Las cartas que tienes pueden usarse como dorso en las mesas. Las que faltan aparecen como «?».</p>
+              <div id="card-book-grid" class="album-grid card-book-grid" role="list" aria-label="Libro de cartas"></div>
+            </section>
+            <div id="collection-items" class="collection-grid" role="list" aria-label="Objetos cosméticos"></div>
+          </section>
+          <section id="profile-section-album" class="collection-window-section collection-window-album" aria-labelledby="album-heading">
+            <div class="profile-main-heading"><div><span class="kicker">ÁLBUM DE CARTAS</span><h3 id="album-heading" tabindex="-1">Cápsulas del gachapón</h3></div><span id="album-count">0 / 54 cartas</span></div>
+            <div class="album-capsule-panel">
+              <div class="album-capsule-copy"><b>Cápsula de cartas · <span id="album-cost">5.000</span> fichas</b><small>Opcional y solo cosmética: la cápsula no da fichas ni ventajas en las mesas. Las fichas gastadas aparecen en tu historial.</small></div>
+              <button id="album-open-capsule" class="album-open-btn" type="button">Abrir cápsula · 5.000 fichas</button>
+              <div id="album-last-pull" class="album-last-pull" aria-live="polite"></div>
+            </div>
+            <section class="album-rates-box" aria-labelledby="album-rates-heading"><div class="progress-title"><span id="album-rates-heading">TASAS PUBLICADAS</span><small>Cada rareza reparte su porcentaje entre sus cartas</small></div><div id="album-rates" class="album-rates"></div></section>
+            <div class="collection-filters album-filters" role="tablist" aria-label="Filtrar cartas por rareza">
+              <button class="collection-filter active" type="button" data-album-filter="all" role="tab" aria-selected="true">Todas</button>
+              <button class="collection-filter" type="button" data-album-filter="comun" role="tab" aria-selected="false">Comunes</button>
+              <button class="collection-filter" type="button" data-album-filter="poco-comun" role="tab" aria-selected="false">Poco comunes</button>
+              <button class="collection-filter" type="button" data-album-filter="raro" role="tab" aria-selected="false">Raras</button>
+              <button class="collection-filter" type="button" data-album-filter="epico" role="tab" aria-selected="false">Épicas</button>
+              <button class="collection-filter" type="button" data-album-filter="legendario" role="tab" aria-selected="false">Legendarias</button>
+              <button class="collection-filter" type="button" data-album-filter="mitico" role="tab" aria-selected="false">Míticas</button>
+            </div>
+            <div id="album-grid" class="album-grid" role="list" aria-label="Cartas del álbum"></div>
+          </section>
+      </div>
+    </div>
+  </div>
   <!-- Aceptación obligatoria de Términos y Condiciones (fase 3) -->
   <div id="tos-modal" class="modal tos-modal hidden" aria-hidden="true">
     <div class="modal-backdrop"></div>

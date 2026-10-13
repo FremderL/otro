@@ -12,7 +12,152 @@
         "closedAt": 1791664153125,
         "timeZone": "America/Mexico_City"
       }
-    ]
+    ],
+    "clubTreasury": {
+      "seasonKey": "2026-10",
+      "accounts": {},
+      "history": []
+    }
   },
-  "profiles": []
+  "profiles": [
+    {
+      "id": "90a8968c-bd35-4acc-8957-c5f00665a8b4",
+      "name": "kjkjkjkj",
+      "avatar": "fox",
+      "chips": 800,
+      "stats": {
+        "roundsPlayed": 2,
+        "wins": 0,
+        "losses": 0,
+        "biggestWin": 0,
+        "totalWagered": 0,
+        "currentStreak": 0,
+        "bestStreak": 0,
+        "eligibleCurrentStreak": 0,
+        "eligibleBestStreak": 0,
+        "eligibleTracking": true
+      },
+      "gamesPlayed": [
+        "poker"
+      ],
+      "passport": {
+        "currentSeason": {
+          "key": "2026-10",
+          "points": 0,
+          "games": [],
+          "processedRoundIds": []
+        },
+        "unlockedCosmetics": [],
+        "equipped": {
+          "frame": null,
+          "title": null,
+          "badge": null
+        }
+      },
+      "collection": {
+        "unlocked": [],
+        "equipped": {
+          "avatar": null,
+          "frame": null,
+          "chips": null,
+          "felt": null,
+          "cards": null
+        }
+      },
+      "cardAlbum": {
+        "counts": {}
+      },
+      "lobbyTournamentPayouts": [],
+      "gameStats": {
+        "poker": {
+          "rounds": 2,
+          "wins": 0,
+          "net": 0
+        }
+      },
+      "balanceHistory": [
+        {
+          "t": 1791928821547,
+          "chips": 800
+        },
+        {
+          "t": 1791928855150,
+          "chips": 800
+        }
+      ],
+      "achievements": [],
+      "championBanner": false,
+      "medals": 0,
+      "challenges": {},
+      "rotatingChallenges": {
+        "daily": {
+          "key": "2026-10-13",
+          "rounds": 2,
+          "wins": 0,
+          "wagered": 0,
+          "games": [
+            "poker"
+          ],
+          "currentStreak": 0,
+          "bestStreak": 0,
+          "completed": false,
+          "completedAt": null
+        },
+        "weekly": {
+          "key": "2026-W42",
+          "rounds": 2,
+          "wins": 0,
+          "wagered": 0,
+          "games": [
+            "poker"
+          ],
+          "currentStreak": 0,
+          "bestStreak": 0,
+          "completed": false,
+          "completedAt": null
+        }
+      },
+      "featuredAchievements": [],
+      "dailyBonusDate": null,
+      "transactions": [
+        {
+          "amount": 0,
+          "reason": "Empate en poker",
+          "time": 1791928821547
+        },
+        {
+          "amount": 0,
+          "reason": "Empate en poker",
+          "time": 1791928855150
+        }
+      ],
+      "promotions": [],
+      "flags": {
+        "tosVersion": "2026-09-28",
+        "tosAcceptedAt": 1791928704617
+      },
+      "username": "fhsdfhskhfks",
+      "passwordHash": "d43d464cd88d9c88e49f9f8770e10476:471a6e1b4848b95b9c60efdbbe71c3cd025706e5685838f80665c4c5ee258f23be6ac63a59f3e35c1fc0d421ccf1f461417fa24f86cd90497a6f1441f31569bf",
+      "role": "user",
+      "moderation": {
+        "status": "active",
+        "reason": null,
+        "until": null,
+        "actionId": null,
+        "updatedAt": null
+      },
+      "security": {
+        "sessionVersion": 1,
+        "mustChangePassword": false,
+        "passwordChangedAt": null,
+        "mfaEnabled": false,
+        "mfaSecretEncrypted": null,
+        "mfaPendingSecretEncrypted": null,
+        "recoveryCodeHashes": [],
+        "mfaEnrolledAt": null
+      },
+      "createdAt": 1791928704616,
+      "updatedAt": 1791928916401
+    }
+  ]
 }

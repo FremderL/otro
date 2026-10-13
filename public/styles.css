@@ -1959,6 +1959,12 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 #room-app[data-card-back="cosmos"] .play-card.back { background:#30265b; }
 #room-app[data-card-back="cosmos"] .play-card.back::before { border-color:#b89af0; background:radial-gradient(circle at 30% 25%,#6d54a8,#32245c 68%,#18213d); box-shadow:inset 0 0 0 2px #191a3b; }
 #room-app[data-card-back="cosmos"] .play-card.back::after { content:'✧'; position:absolute; inset:0; display:grid; place-items:center; color:#e9dcff; font-size:20px; text-shadow:0 0 8px #d2adff; }
+#room-app[data-card-back="album"] .playing-card.back,
+#room-app[data-card-back="album"] .play-card.back { background: var(--card-back-art) center / cover no-repeat, #1b2328; }
+#room-app[data-card-back="album"] .playing-card.back::before,
+#room-app[data-card-back="album"] .playing-card.back::after,
+#room-app[data-card-back="album"] .play-card.back::before,
+#room-app[data-card-back="album"] .play-card.back::after { content: none; border: 0; background: none; box-shadow: none; }
 .lobby-flash-banner { flex-wrap:wrap; min-height:48px; margin-bottom:9px; padding:8px 14px; border-color:rgba(82,224,174,.3); color:#d6f2df; background:linear-gradient(90deg,rgba(82,224,174,.045),rgba(229,189,114,.1),rgba(82,224,174,.045)); animation:none; }
 .lobby-flash-banner .tb-title { color:var(--gold-2); }
 .lobby-flash-banner .tb-item { color:#bfcec6; }
@@ -1973,3 +1979,12 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 @media(prefers-reduced-motion:reduce) {
   .collection-avatar-art.animate-orbit,.equipped-avatar-art.animate-orbit { animation:none!important; }
 }
+
+/* Perfil de cuenta sin confirmar (lobby sin conexión). */
+.profile-sync-note { margin: 0 0 12px; padding: 9px 12px; border: 1px solid rgba(229, 189, 114, .4); border-radius: 10px; background: rgba(229, 189, 114, .08); color: var(--gold-2); font-size: 11.5px; line-height: 1.45; }
+.profile-sync-note.hidden { display: none; }
+
+/* Ventana de Colección (separada del perfil) */
+.collection-modal-card { display: flex; flex-direction: column; max-height: min(90vh, 960px); width: min(1080px, 96vw); }
+.collection-modal-scroll { overflow-y: auto; min-height: 0; flex: 1; padding: 4px 4px 12px; }
+.collection-window-section { padding: 6px 2px 0; }

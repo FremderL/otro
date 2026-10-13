@@ -1,0 +1,138 @@
+/* Álbum de cartas (gachapón del perfil).
+   Cada carta combina tres capas, todas estáticas y sin estilos inline:
+   - palo   → colores (.suit-*)            : --gc-a / --gc-b
+   - rango  → motivo visual (.motif-*)     : fondo del arte
+   - rareza → marco, brillo y animación    (.rarity-*)
+   Como cada par palo + rango es único en la baraja, cada carta tiene su estilo. */
+
+.album-capsule-panel {
+  display: grid; grid-template-columns: 1fr auto; gap: 10px 16px; align-items: center;
+  margin: 14px 0; padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: 14px;
+  background: linear-gradient(120deg, rgba(229, 189, 114, .08), rgba(82, 224, 174, .05)), var(--panel-2);
+}
+.album-capsule-copy b { display: block; color: var(--gold-2); font-size: 13px; letter-spacing: .04em; }
+.album-capsule-copy small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.album-open-btn {
+  padding: 10px 16px; border: 1px solid rgba(229, 189, 114, .45); border-radius: 999px; cursor: pointer;
+  background: linear-gradient(180deg, #2a2412, #15110a); color: var(--gold-2); font-weight: 800; font-size: 12px;
+  letter-spacing: .03em; white-space: nowrap;
+}
+.album-open-btn:hover:not(:disabled) { box-shadow: 0 0 22px rgba(229, 189, 114, .25); }
+.album-open-btn:disabled { opacity: .5; cursor: not-allowed; }
+.album-open-btn.is-loading { opacity: .7; }
+.album-last-pull { grid-column: 1 / -1; min-height: 0; }
+.album-last-pull:empty { display: none; }
+.album-pull-label { display: block; color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.album-last-pull b { display: block; margin-top: 2px; font-size: 14px; }
+.album-last-pull.rarity-mitico b, .album-last-pull.rarity-legendario b { color: var(--gold-2); }
+
+.album-rates-box { margin: 12px 0; }
+.album-rates { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+.album-rate {
+  display: grid; grid-template-columns: 10px 1fr; column-gap: 8px; row-gap: 2px; padding: 9px 10px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2);
+}
+.album-rate-swatch { grid-row: span 3; width: 10px; height: 100%; min-height: 34px; border-radius: 4px; background: var(--rarity-color, #888); }
+.album-rate b { font-size: 11px; }
+.album-rate small, .album-rate em { color: var(--muted); font-size: 10px; font-style: normal; }
+
+.album-filters { flex-wrap: wrap; }
+.album-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 12px; margin-top: 12px;
+}
+
+/* Carta */
+.album-card {
+  --gc-a: #9aa7b0; --gc-b: #1b2328; --rarity-color: #b7c4c9;
+  position: relative; display: flex; flex-direction: column; gap: 6px; padding: 6px;
+  border-radius: 12px; border: 1px solid var(--line-strong); background: var(--panel); transition: transform .18s ease;
+}
+.album-card:hover { transform: translateY(-2px); }
+.album-card-face {
+  position: relative; aspect-ratio: 5 / 7; border-radius: 9px; overflow: hidden;
+  background: linear-gradient(160deg, var(--gc-b), #07090b); border: 1px solid rgba(255, 255, 255, .12);
+}
+.album-card-copy b { display: block; font-size: 11px; line-height: 1.25; }
+.album-card-copy small { display: block; margin-top: 2px; color: var(--muted); font-size: 9.5px; }
+.ac-corner { position: absolute; top: 5px; left: 7px; z-index: 2; color: var(--gc-a); font: 800 12px var(--display); text-shadow: 0 1px 3px #000; padding: 0 3px; border-radius: 4px; background: rgba(0, 0, 0, .45); }
+.ac-corner-b { top: auto; left: auto; right: 7px; bottom: 5px; transform: rotate(180deg); }
+.ac-symbol { position: absolute; left: 50%; top: 46%; z-index: 2; transform: translate(-50%, -50%); color: var(--gc-a); font-size: 30px; text-shadow: 0 0 12px var(--gc-a); }
+.ac-photo { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; }
+.ac-art { position: absolute; inset: 14px; border-radius: 6px; opacity: .9; background: var(--gc-a); }
+
+/* Motivos por rango (fondo del arte, sobre el color del palo). */
+.motif-orbit .ac-art { background: radial-gradient(circle at 50% 50%, transparent 0 18%, var(--gc-a) 19% 21%, transparent 22% 34%, var(--gc-a) 35% 37%, transparent 38%), var(--gc-b); }
+.motif-waves .ac-art { background: repeating-radial-gradient(ellipse at 50% 120%, var(--gc-a) 0 2px, transparent 2px 9px), var(--gc-b); }
+.motif-lattice .ac-art { background: linear-gradient(45deg, transparent 46%, var(--gc-a) 47% 53%, transparent 54%), linear-gradient(-45deg, transparent 46%, var(--gc-a) 47% 53%, transparent 54%), var(--gc-b); background-size: 18px 18px; }
+.motif-stripes .ac-art { background: repeating-linear-gradient(90deg, var(--gc-a) 0 4px, var(--gc-b) 4px 11px); }
+.motif-rings .ac-art { background: repeating-radial-gradient(circle at 50% 50%, var(--gc-a) 0 2px, transparent 2px 8px), var(--gc-b); }
+.motif-stars .ac-art { background: radial-gradient(circle, var(--gc-a) 1.5px, transparent 2px) 0 0 / 16px 16px, radial-gradient(circle, var(--gc-a) 1px, transparent 1.5px) 8px 8px / 16px 16px, var(--gc-b); }
+.motif-chevrons .ac-art { background: linear-gradient(135deg, var(--gc-a) 25%, transparent 25%) -6px 0, linear-gradient(225deg, var(--gc-a) 25%, transparent 25%) -6px 0, linear-gradient(315deg, var(--gc-a) 25%, transparent 25%), linear-gradient(45deg, var(--gc-a) 25%, transparent 25%); background-size: 16px 16px; background-color: var(--gc-b); }
+.motif-facets .ac-art { background: conic-gradient(from 45deg, var(--gc-a), var(--gc-b), var(--gc-a), var(--gc-b), var(--gc-a)); clip-path: polygon(50% 0, 100% 35%, 80% 100%, 20% 100%, 0 35%); }
+.motif-sunburst .ac-art { background: repeating-conic-gradient(from 0deg, var(--gc-a) 0 6deg, transparent 6deg 15deg), radial-gradient(circle, var(--gc-a) 0 16%, var(--gc-b) 17%); }
+.motif-shield .ac-art { background: linear-gradient(180deg, var(--gc-a), var(--gc-b) 85%); clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%); }
+.motif-crown .ac-art { background: linear-gradient(0deg, var(--gc-a) 0 18%, transparent 18%), linear-gradient(90deg, transparent 20%, var(--gc-a) 20% 24%, transparent 24% 38%, var(--gc-a) 38% 42%, transparent 42% 58%, var(--gc-a) 58% 62%, transparent 62% 76%, var(--gc-a) 76% 80%, transparent 80%); background-color: var(--gc-b); clip-path: polygon(0 100%, 0 25%, 25% 60%, 50% 0, 75% 60%, 100% 25%, 100% 100%); }
+.motif-crossed .ac-art { background: linear-gradient(45deg, transparent 44%, var(--gc-a) 45% 55%, transparent 56%), linear-gradient(-45deg, transparent 44%, var(--gc-a) 45% 55%, transparent 56%), var(--gc-b); }
+.motif-aurora .ac-art { background: linear-gradient(160deg, var(--gc-a), #6bf5ff 35%, #b78bff 65%, var(--gc-b)); }
+.motif-joker-fuego .ac-art { background: radial-gradient(circle at 50% 80%, #ffd36b, #ff5a2a 45%, #3a0c05 75%); }
+.motif-joker-abismo .ac-art { background: radial-gradient(circle at 50% 30%, #7d5cff, #1a0f3d 55%, #040208 80%); }
+
+/* Palos: colores propios; el joker usa el color de su motivo. */
+.suit-spades { --gc-a: #8fb4ff; --gc-b: #14234d; }
+.suit-hearts { --gc-a: #ff7f8e; --gc-b: #4a1424; }
+.suit-diamonds { --gc-a: #ffd27a; --gc-b: #4a3210; }
+.suit-clubs { --gc-a: #7ff0bd; --gc-b: #0f3d2c; }
+.suit-joker { --gc-a: #ffb36b; --gc-b: #1a0a14; }
+
+/* Rarezas: marco, brillo y color de la barra de tasas. */
+.rarity-comun { --rarity-color: #b7c4c9; }
+.rarity-poco-comun { --rarity-color: #d9925a; border-color: rgba(217, 146, 90, .45); }
+.rarity-raro { --rarity-color: #9fd3e8; border-color: rgba(159, 211, 232, .6); box-shadow: 0 0 14px rgba(159, 211, 232, .15); }
+.rarity-epico { --rarity-color: #c58bff; border-color: rgba(197, 139, 255, .7); box-shadow: 0 0 18px rgba(197, 139, 255, .25); }
+.rarity-legendario { --rarity-color: #e5bd72; border-color: rgba(229, 189, 114, .75); box-shadow: 0 0 22px rgba(229, 189, 114, .28); }
+.rarity-mitico { --rarity-color: #7ef5e0; border-color: rgba(126, 245, 224, .8); box-shadow: 0 0 26px rgba(126, 245, 224, .3); }
+.album-card.rarity-epico.owned .album-card-face::after,
+.album-card.rarity-mitico.owned .album-card-face::after,
+.album-card.rarity-legendario.owned .album-card-face::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 3; mix-blend-mode: screen;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, .28) 45%, transparent 60%);
+  background-size: 250% 100%; animation: album-sheen 3.6s linear infinite;
+}
+.album-card.rarity-mitico.owned .album-card-face { animation: album-aurora 6s ease-in-out infinite; }
+.album-card.rarity-legendario.owned .album-card-face { border-color: rgba(255, 227, 165, .6); }
+.album-card.rarity-epico.owned .album-card-face { border-color: rgba(230, 200, 255, .6); }
+
+/* Carta sin descubrir: silueta. */
+.album-card.locked { opacity: .78; }
+.album-card.locked .album-card-face {
+  background: repeating-linear-gradient(135deg, #0d1518 0 8px, #101d21 8px 16px); border-style: dashed; border-color: var(--line-strong);
+}
+.album-card-mystery { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted-2); font: 800 34px var(--display); }
+.album-card.locked .album-card-copy b { color: var(--muted); }
+
+/* Carta recién obtenida. */
+.album-card.just-pulled { animation: album-reveal 1.1s cubic-bezier(.2, .9, .3, 1.2) both; }
+
+@keyframes album-sheen { from { background-position: 150% 0; } to { background-position: -150% 0; } }
+@keyframes album-aurora { 0%, 100% { filter: hue-rotate(0deg); } 50% { filter: hue-rotate(70deg); } }
+@keyframes album-reveal {
+  0% { opacity: 0; transform: translateY(14px) scale(.7) rotate(-6deg); }
+  60% { opacity: 1; transform: translateY(-4px) scale(1.06) rotate(2deg); }
+  100% { transform: none; }
+}
+
+@media (max-width: 720px) {
+  .album-capsule-panel { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .album-card, .album-card.just-pulled, .album-card.rarity-mitico.owned .album-card-face,
+  .album-card.rarity-epico.owned .album-card-face::after, .album-card.rarity-mitico.owned .album-card-face::after,
+  .album-card.rarity-legendario.owned .album-card-face::after { animation: none !important; transition: none !important; }
+}
+
+/* Libro de cartas (perfil → Colección) */
+.card-book { margin-top: 18px; }
+.card-book-grid .album-card { min-width: 0; }
+.card-book-action { margin-top: 2px; }
+.card-book-action .collection-equip { width: 100%; font-size: 11px; }
