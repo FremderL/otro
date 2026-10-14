@@ -10,6 +10,7 @@ const { AVATARS, avatarInfo } = require('./lib/profile-store');
 const { createProfileStore } = require('./lib/profile-store-factory');
 const { HISTORY_LIMITS, INACTIVITY_LIMIT_MS, CASINO_TIME_ZONE, normalizeDisplayName } = require('./lib/profile-store-shared');
 const { credit, recordWager, recordOutcome, claimDailyBonus, openCardCapsule, publicProgress } = require('./lib/progression');
+const { seatIdentity } = require('./lib/seat-identity');
 const { equipPassportCosmetic, publicPassportIdentity } = require('./lib/passport');
 const { equipCosmetic, publicCollectionIdentity } = require('./lib/cosmetics');
 const { LobbyTournamentManager } = require('./lib/lobby-tournaments');
@@ -574,6 +575,17 @@ function playerForSocket(socket) {
   const player = room.players.find(p => p.id === socket.data.playerId);
   if (player) player.lastActiveAt = Date.now();
   return { room, player };
+}
+// Identidad de asiento. Con sesión de cuenta verificada por cookie (middleware
+// io.use), la persona se sienta con el perfil de SU cuenta, sin importar el
+// dispositivo: iniciar sesión recupera el mismo perfil y sus fichas (README).
+// Sin esa sesión, el asiento sigue siendo el perfil del dispositivo (token).
+function seatIdFor(socket, token) {
+  return seatIdentity({
+    accountSessionsEnabled: adminConfig.accountSessionsEnabled,
+    accountProfileId: socket.data.accountProfileId,
+    token
+  });
 }
 function syncSocketLobbyIdentity(socket, profile) {
   if (!profile || socket.data.lobbyChat?.id !== profile.id) return;
@@ -2236,10 +2248,11 @@ io.on('connection', socket => {
     game = ['poker', 'blackjack', ...Object.keys(QUICK_GAMES)].includes(game) ? game : 'poker';
     if (!name) return ackError(ack, 'Escribe tu nombre.');
     if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
-    // Unicidad global del nombre (excepto el perfil propio de este dispositivo).
-    const createIssue = nameIssue(name, { exceptId: String(token).slice(0, 80) });
+    const seatId = seatIdFor(socket, token);
+    // Unicidad global del nombre (excepto el perfil propio con el que se sienta).
+    const createIssue = nameIssue(name, { exceptId: seatId });
     if (createIssue) return ackError(ack, createIssue);
-    const player = newPlayer(String(token).slice(0, 80), socket, name, avatar);
+    const player = newPlayer(seatId, socket, name, avatar);
     if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
     syncSocketLobbyIdentity(socket, player._profile);
     const room = createRoom(game, player, socket, roomName);
@@ -2258,7 +2271,8 @@ io.on('connection', socket => {
     code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
     const room = rooms.get(code);
     if (!room) return ackError(ack, 'Esa sala no existe o ya cerró.');
-    let player = room.players.find(p => !p.isBot && p.id === String(token).slice(0, 80));
+    const seatId = seatIdFor(socket, token);
+    let player = room.players.find(p => !p.isBot && p.id === seatId);
     const tournamentAccountId = socket.data.accountProfileId
       || (!adminConfig.accountSessionsEnabled ? String(accountId || '').slice(0, 80) : null);
     if (!player && room.lobbyTournamentMatch && tournamentAccountId) {
@@ -2298,9 +2312,9 @@ io.on('connection', socket => {
       // exceptId = su propio token: quien viene de la tribuna a tomar asiento
       // conserva su nombre sin chocar con su propia entrada de espectadora,
       // y el nombre debe estar libre en el casino entero, no solo en la mesa.
-      const seatIssue = nameIssue(name, { room, exceptId: String(token).slice(0, 80) });
+      const seatIssue = nameIssue(name, { room, exceptId: seatId });
       if (seatIssue) return ackError(ack, seatIssue);
-      player = newPlayer(String(token).slice(0, 80), socket, name, avatar);
+      player = newPlayer(seatId, socket, name, avatar);
       if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
       // Si la mesa está llena pero hay bots, un bot cede su asiento a la persona real.
       if (room.players.length >= ROOM_CAPACITY) makeSeatForHuman(room);
@@ -2335,7 +2349,7 @@ io.on('connection', socket => {
     code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
     const room = rooms.get(code);
     if (!room) return ackError(ack, 'Esa sala no existe o ya cerró.');
-    const id = String(token).slice(0, 80);
+    const id = seatIdFor(socket, token);
     if (room.players.some(p => !p.isBot && p.id === id)) return ackError(ack, 'Ya tienes asiento en esta mesa: entra como jugador.');
     if (!name) return ackError(ack, 'Escribe tu nombre.');
     // La tribuna comparte el chat y los avisos de la mesa: el apodo tampoco
@@ -2627,7 +2641,7 @@ io.on('connection', socket => {
   // perfil desde otra computadora. No reemplaza el modo sin cuenta: solo
   // vincula credenciales al perfil que ya tiene este dispositivo (mismas
   // fichas, logros e historial) para poder volver a entrar a él después.
-  // Gachapón de cartas: cobra CARD_GACHA_COST fichas (5.000) y suma una carta cosmética al álbum.
+  // Gachapón de cartas: cobra CARD_GACHA_COST fichas (5.000) y suma una carta al álbum; si es repetida, abona CARD_DUPLICATE_CHIPS.
   // Mismo criterio de perfil que el bono diario: la mesa del jugador o la
   // cuenta autenticada; nunca un perfil ajeno enviado por el navegador.
   socket.on('card_gacha_pull', ({ accountId } = {}, ack) => {
@@ -2650,6 +2664,7 @@ io.on('connection', socket => {
     return ackOk(ack, {
       card: result.card,
       duplicate: result.duplicate,
+      refundChips: result.refundChips,
       cost: result.cost,
       profile: publicProgress(targetProfile, true)
     });

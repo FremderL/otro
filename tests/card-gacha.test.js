@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const {
-  CARD_GACHA_COST, MAX_COPIES, RARITY_UNITS_TOTAL, RARITIES, CARD_CATALOG, CARD_BY_ID,
+  CARD_GACHA_COST, CARD_DUPLICATE_CHIPS, MAX_COPIES, RARITY_UNITS_TOTAL, RARITIES, CARD_CATALOG, CARD_BY_ID,
   rollRarity, rollCard, publicRates, cleanCardAlbum, publicCardAlbum
 } = require('../lib/card-gacha');
 const { cleanProfile } = require('../lib/profile-store-shared');
@@ -110,14 +110,80 @@ test('una cápsula cobra 5.000 fichas, suma una copia y registra el movimiento',
   assert.equal(player.transactions.at(-1).amount, -CARD_GACHA_COST);
 });
 
-test('una carta repetida suma copias y se marca como duplicada', () => {
+test('una carta repetida suma copias, se marca como duplicada y abona 100 fichas', () => {
   const player = profile({ chips: 20000 });
   const first = openCardCapsule(player, { random: fixed(0) });
   const second = openCardCapsule(player, { random: fixed(0) });
   assert.equal(first.card.id, second.card.id);
   assert.equal(second.duplicate, true);
   assert.equal(second.card.count, 2);
-  assert.equal(player.chips, 20000 - 2 * CARD_GACHA_COST);
+  assert.equal(player.chips, 20000 - 2 * CARD_GACHA_COST + CARD_DUPLICATE_CHIPS);
+});
+
+test('la primera copia de una carta no abona fichas; la repetida sí, por CARD_DUPLICATE_CHIPS', () => {
+  assert.equal(CARD_DUPLICATE_CHIPS, 100);
+  const player = profile({ chips: 20000 });
+  const first = openCardCapsule(player, { random: fixed(0) });
+  assert.equal(first.ok, true);
+  assert.equal(first.duplicate, false);
+  assert.equal(first.refundChips, 0);
+  assert.equal(first.chips, 20000 - CARD_GACHA_COST, 'la primera copia solo cobra');
+  assert.equal(player.cardAlbum.counts[first.card.id], 1);
+
+  const second = openCardCapsule(player, { random: fixed(0) });
+  assert.equal(second.duplicate, true);
+  assert.equal(second.refundChips, CARD_DUPLICATE_CHIPS);
+  assert.equal(second.card.count, 2);
+  assert.equal(second.chips, 20000 - 2 * CARD_GACHA_COST + CARD_DUPLICATE_CHIPS);
+  assert.equal(player.chips, second.chips, 'el saldo devuelto es el del perfil');
+});
+
+test('cobro y abono quedan en el historial como movimientos separados y en orden', () => {
+  const player = profile({ chips: 20000 });
+  openCardCapsule(player, { random: fixed(0) });
+  const beforeDuplicate = player.transactions.length;
+  const result = openCardCapsule(player, { random: fixed(0) });
+  const added = player.transactions.slice(beforeDuplicate);
+  assert.equal(added.length, 2, 'una cápsula repetida registra exactamente dos movimientos');
+  assert.equal(added[0].reason, 'Cápsula de cartas');
+  assert.equal(added[0].amount, -CARD_GACHA_COST);
+  assert.equal(added[1].reason, `Carta repetida: ${result.card.name}`);
+  assert.equal(added[1].amount, CARD_DUPLICATE_CHIPS);
+  assert.equal(player.transactions.filter(entry => entry.reason === 'Cápsula de cartas').length, 2);
+});
+
+test('una copia repetida con la carta ya en MAX_COPIES también abona 100 y no supera el límite', () => {
+  const player = profile({ chips: 20000, cardAlbum: { counts: { [CARD_CATALOG[0].id]: MAX_COPIES } } });
+  const result = openCardCapsule(player, { random: fixed(0) });
+  assert.equal(result.card.id, CARD_CATALOG[0].id);
+  assert.equal(result.duplicate, true);
+  assert.equal(result.refundChips, CARD_DUPLICATE_CHIPS);
+  assert.equal(result.card.count, MAX_COPIES);
+  assert.equal(player.cardAlbum.counts[CARD_CATALOG[0].id], MAX_COPIES);
+  assert.equal(player.chips, 20000 - CARD_GACHA_COST + CARD_DUPLICATE_CHIPS);
+});
+
+test('el saldo tras varias cápsulas: −5.000 por cada una y +100 por cada repetida', () => {
+  const start = 50000;
+  const player = profile({ chips: start });
+  const pulls = 5;
+  for (let i = 0; i < pulls; i++) openCardCapsule(player, { random: fixed(0) });
+  // 1 primera copia + 4 repetidas: costo neto 5 × 5.000 − 4 × 100 = 24.600.
+  assert.equal(player.chips, start - pulls * CARD_GACHA_COST + (pulls - 1) * CARD_DUPLICATE_CHIPS);
+  assert.equal(player.chips, start - 24600);
+  const sum = player.transactions.reduce((total, entry) => total + entry.amount, 0);
+  assert.equal(sum, player.chips - start, 'el historial cuadra con el saldo');
+});
+
+test('una cápsula con saldo insuficiente no abona nada aunque la carta fuera repetida', () => {
+  const player = profile({ chips: CARD_GACHA_COST - 1, cardAlbum: { counts: { [CARD_CATALOG[0].id]: 1 } } });
+  const before = JSON.stringify(player.cardAlbum);
+  const denied = openCardCapsule(player, { random: fixed(0) });
+  assert.equal(denied.ok, false);
+  assert.equal(denied.refundChips, undefined);
+  assert.equal(player.chips, CARD_GACHA_COST - 1);
+  assert.equal(JSON.stringify(player.cardAlbum), before);
+  assert.equal(player.transactions.length, 0);
 });
 
 test('sin fichas suficientes o con el gachapón apagado no se cobra ni se sortea nada', () => {

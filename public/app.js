@@ -238,6 +238,7 @@
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
     lastEventKey: '', clockTimer: null, dailyBonusTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null,
     profileOpen: false, profileNameDirty: false, profileSection: 'overview', collectionFilter: 'all', albumFilter: 'all', albumLastPullId: null, profileStale: false,
+    profileRevision: 0, // sube con cada snapshot de perfil aplicado (ver applyProfileSnapshot)
     lobbyTournaments: null, expandedTournamentBrackets: new Set(), pendingTournamentSignup: null,
     communityTab: 'friends', communityData: null,
     rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null, resultQueue: [],
@@ -436,6 +437,38 @@
       saveAccountSession(profile);
     }
   }
+  // ÚNICA vía de escritura del perfil que llega del servidor (ack de cápsula,
+  // bono, equipar, edición, profile_event, room_state o refresco). Deja al día,
+  // en el mismo paso y con el mismo objeto:
+  //  - ui.room.viewerProfile: si la persona está sentada y el perfil es el suyo;
+  //  - ui.me.chips: lo que usan los controles de apuesta de la mesa;
+  //  - ui.accountSession y localStorage: si el perfil es la cuenta iniciada.
+  // El encabezado de la mesa y el modal de perfil leen de ui.room.viewerProfile,
+  // así que ambos se ven igual sin recargar. Quien llama pinta lo que le toca.
+  // `ambient` = llegó sin que la persona hiciera nada (profile_event): en ese
+  // caso solo se toca la cuenta si el id coincide, nunca otra sesión.
+  function applyProfileSnapshot(profile, { ambient = false } = {}) {
+    if (!profile || typeof profile !== 'object' || !profile.id) return false;
+    ui.profileRevision += 1;
+    const viewer = ui.room?.viewerProfile || null;
+    if (viewer && viewer.id === profile.id) {
+      ui.room.viewerProfile = profile;
+      if (ui.me) ui.me.chips = Number(profile.chips) || 0;
+    }
+    if (ui.accountSession && profile.id === ui.accountSession.accountId) saveAccountSession(profile);
+    else if (!ambient && !inTable() && profile.username) saveAccountSession(profile);
+    return true;
+  }
+  // Saldo de la cuenta cambiado por una respuesta que solo trae `profileChips`
+  // (p. ej. tesorería del club). Mismas fuentes que applyProfileSnapshot.
+  function applyAccountChips(profileId, chips) {
+    const balance = Number(chips);
+    if (!profileId || !Number.isFinite(balance)) return;
+    if (ui.room?.viewerProfile?.id === profileId) ui.room.viewerProfile = { ...ui.room.viewerProfile, chips: balance };
+    if (ui.me?.id === profileId) ui.me.chips = balance;
+    if (ui.accountSession?.accountId === profileId) saveAccountSession({ ...ui.accountSession, chips: balance });
+    ui.profileRevision += 1;
+  }
   async function secureAuthRequest(path, options = {}) {
     try {
       const response = await fetch(path, {
@@ -456,8 +489,17 @@
     ui.profileStale = Boolean(stale);
     if (ui.profileOpen && !inTable()) renderProfileModal();
   }
+  // Un refresco puede terminar DESPUÉS de un ack que ya trajo un saldo más nuevo
+  // (cápsula, bono, ronda): con sesión por cookie viaja por HTTP y no hay orden
+  // garantizado frente al socket. Si entretanto llegó otro snapshot, la respuesta
+  // vieja se descarta para no volver a mostrar el saldo de antes.
+  function adoptRefreshedProfile(profile, revisionAtStart) {
+    if (ui.profileRevision !== revisionAtStart) return false;
+    return applyProfileSnapshot(profile);
+  }
   async function refreshAccountProfile() {
     if (!ui.accountSession?.accountId) return;
+    const revisionAtStart = ui.profileRevision;
     await serverFlagsReady;
     // Con ACCOUNT_SESSIONS_ENABLED apagado, /api/auth/session responde 404
     // fail-closed; se va directo al fallback por socket para no generar ese
@@ -466,8 +508,9 @@
     if (secure.status !== 404) {
       if (secure.ok && secure.profile) {
         ui.csrfToken = secure.csrfToken || null;
-        saveAccountSession(secure.profile);
+        adoptRefreshedProfile(secure.profile, revisionAtStart);
         setProfileStale(false);
+        renderAfterProfileChange();
       } else if (secure.status === 401) {
         // localStorage es solo caché visual: una cookie ausente/revocada manda.
         clearAccountSession();
@@ -476,11 +519,18 @@
     }
     // Compatibilidad temporal mientras ACCOUNT_SESSIONS_ENABLED está apagado.
     if (!socket.connected) { setProfileStale(true); return; }
-    const response = await emitAck('account_profile', { accountId: ui.accountSession.accountId });
+    const response = await emitAck('account_profile', { accountId: ui.accountSession?.accountId });
     if (response.ok && response.profile) {
-      saveAccountSession(response.profile);
+      adoptRefreshedProfile(response.profile, revisionAtStart);
       setProfileStale(false);
+      renderAfterProfileChange();
     } else setProfileStale(true);
+  }
+  // Repinta lo que muestra el perfil después de aplicar un snapshot. El
+  // encabezado solo existe dentro de una mesa.
+  function renderAfterProfileChange() {
+    if (ui.room && ui.me) renderProfile();
+    if (ui.profileOpen) renderProfileModal();
   }
   function getRouteCode() {
     const match = location.pathname.match(/^\/room\/([A-Z0-9]{5})/i);
@@ -1250,6 +1300,10 @@
       if (room.game === 'slots' && !ui.slotsSpin) startSlotsSpin(room.quickResult.reels);
     }
     ui.room = room;
+    // Cada estado de mesa trae el saldo actual del asiento. Si es la cuenta
+    // iniciada, la caché se actualiza aquí y no solo al salir de la mesa: así la
+    // caché nunca conserva el saldo de antes de una ronda.
+    syncAccountSessionIfSameProfile(room.viewerProfile);
     refreshSeasonalThemeVisibility();
     // Red de seguridad: si llegó el estado de resultados pero esta mesa no
     // está animando el descubrimiento (otro juego, o una reconexión directa
@@ -1394,16 +1448,20 @@
       } else els.profileCard.innerHTML = '';
       return;
     }
-    const stats = ui.room?.viewerProfile?.stats || ui.me.stats || {};
+    // El saldo del encabezado sale del mismo perfil que el modal (viewerProfile),
+    // no de una copia aparte en ui.me: así no pueden verse distintos.
+    const viewer = ui.room?.viewerProfile || ui.me;
+    const stats = viewer.stats || ui.me.stats || {};
+    const chips = Number(viewer.chips) || 0;
     const previous = ui.lastMeChips;
-    const delta = previous == null ? 0 : Number(ui.me.chips) - previous;
+    const delta = previous == null ? 0 : chips - previous;
     els.profileCard.innerHTML = `${equippedAvatarMarkup(ui.me, 'profile-avatar')}
-      <div class="profile-info"><small>TU PERFIL · ${formatChips(stats.wins || 0)} VICTORIAS</small><b>${escapeHtml(ui.me.name)}${passportBadgeMarkup(ui.me.passport)}</b>${passportTitleMarkup(ui.me.passport)}<span><strong>◆</strong> ${formatChips(ui.me.chips)} fichas ${delta > 0 ? `<em class="chip-delta">+${formatChips(delta)}</em>` : ''}</span></div>`;
+      <div class="profile-info"><small>TU PERFIL · ${formatChips(stats.wins || 0)} VICTORIAS</small><b>${escapeHtml(ui.me.name)}${passportBadgeMarkup(ui.me.passport)}</b>${passportTitleMarkup(ui.me.passport)}<span><strong>◆</strong> ${formatChips(chips)} fichas ${delta > 0 ? `<em class="chip-delta">+${formatChips(delta)}</em>` : ''}</span></div>`;
     if (delta > 0) {
       els.profileCard.classList.remove('chips-received');
       requestAnimationFrame(() => els.profileCard.classList.add('chips-received'));
     } else els.profileCard.classList.remove('chips-received');
-    ui.lastMeChips = Number(ui.me.chips);
+    ui.lastMeChips = chips;
   }
   function renderPlayers() {
     const room = ui.room;
@@ -2164,15 +2222,13 @@
     else present();
   });
   socket.on('profile_event', payload => {
-    if (payload?.profile && ui.room) {
-      ui.room.viewerProfile = payload.profile;
-      // La caché de la sesión de cuenta también adopta los cambios (fichas de
-      // recompensas, renombrado…), para que el perfil del lobby no muestre
-      // datos de antes al salir de la mesa. syncAccountSessionIfSameProfile
-      // solo actúa si es el MISMO perfil de la cuenta.
-      syncAccountSessionIfSameProfile(payload.profile);
-      if (ui.me) { ui.me.chips = payload.profile.chips; ui.me.avatar = payload.profile.avatar; ui.me.name = payload.profile.name; }
-      renderProfile();
+    // Fuera de una mesa también llega (p. ej. premio de un torneo del lobby):
+    // antes se descartaba y la cuenta del lobby no se enteraba hasta refrescar.
+    if (payload?.profile) {
+      const seated = ui.room?.viewerProfile?.id === payload.profile.id;
+      applyProfileSnapshot(payload.profile, { ambient: true });
+      if (ui.room && seated && ui.me) { ui.me.avatar = payload.profile.avatar; ui.me.name = payload.profile.name; }
+      if (ui.room) renderProfile();
       if (ui.profileOpen) renderProfileModal();
     }
     (payload?.events || []).forEach(event => {
@@ -2342,13 +2398,8 @@
       return;
     }
     if (response.profile) {
-      if (wasInTable && ui.room) ui.room.viewerProfile = response.profile;
-      if (!wasInTable) saveAccountSession(response.profile);
-      else syncAccountSessionIfSameProfile(response.profile);
-      if (wasInTable && ui.me) {
-        ui.me.chips = response.profile.chips;
-        renderProfile();
-      }
+      applyProfileSnapshot(response.profile);
+      if (ui.room && ui.me) renderProfile();
     }
     renderProfileModal();
     if (response.claimed) {
@@ -2475,20 +2526,18 @@
       return;
     }
     if (response.profile) {
-      if (wasInTable && ui.room) ui.room.viewerProfile = response.profile;
-      if (!wasInTable) saveAccountSession(response.profile);
-      else syncAccountSessionIfSameProfile(response.profile);
-      if (wasInTable && ui.me) {
-        ui.me.chips = response.profile.chips;
-        renderProfile();
-      }
+      applyProfileSnapshot(response.profile);
+      if (ui.room && ui.me) renderProfile();
     }
     const card = response.card;
     if (!card) return;
     const rarityName = card.rarityName || ALBUM_RARITY_LABELS[card.rarity] || card.rarity;
+    // Una repetida no suma al álbum: el servidor abona fichas (refundChips).
+    const refund = Number(response.refundChips) || 0;
+    const refundText = refund > 0 ? `+${formatChips(refund)} fichas` : '';
     if (els.albumLastPull) {
       els.albumLastPull.className = `album-last-pull rarity-${card.rarity}`;
-      els.albumLastPull.innerHTML = `<span class="album-pull-label">${escapeHtml(rarityName)} · ${card.duplicate ? 'repetida' : 'nueva'}</span><b>${escapeHtml(card.name)}</b>`;
+      els.albumLastPull.innerHTML = `<span class="album-pull-label">${escapeHtml(rarityName)} · ${card.duplicate ? 'repetida' : 'nueva'}${refundText ? ` · ${refundText}` : ''}</span><b>${escapeHtml(card.name)}</b>`;
     }
     // La carta recién obtenida anima su entrada solo en este render: se limpia
     // después para que filtrar o volver a pintar no repita la animación.
@@ -2496,7 +2545,10 @@
     renderProfileModal();
     ui.albumLastPullId = null;
     playTone(card.rarity === 'mitico' || card.rarity === 'legendario' ? 'win' : 'notice');
-    showToast(card.duplicate ? 'Carta repetida' : 'Carta nueva', `${card.name} · ${rarityName}`, 'reward', 4200, card.symbol);
+    const toastBody = card.duplicate
+      ? `${card.name} · ${rarityName}. Ya la tenías: ${refundText ? `recibiste ${refundText}.` : 'no hubo abono.'}`
+      : `${card.name} · ${rarityName}`;
+    showToast(card.duplicate ? 'Carta repetida' : 'Carta nueva', toastBody, 'reward', 4200, card.symbol);
   }
   function renderProfileModal() {
     const profile = currentViewerProfile();
@@ -2612,12 +2664,8 @@
           // toca ui.room ni ui.accountSession) y se avisa con un error claro.
           return showToast('No se actualizó la vitrina', response.error || 'No se pudo guardar en el servidor. Se conservó tu vitrina anterior.', 'error');
         }
-        if (response.profile) {
-          if (ui.room) ui.room.viewerProfile = response.profile;
-          if (!inTable()) saveAccountSession(response.profile);
-          else syncAccountSessionIfSameProfile(response.profile);
-        }
-        renderProfileModal();
+        if (response.profile) applyProfileSnapshot(response.profile);
+        renderAfterProfileChange();
       }));
     }
     renderDailyBonusCountdown(profile);
@@ -2713,12 +2761,10 @@
     const response = await emitAck('cosmetic_equip', payload, button);
     if (!response.ok) return showToast('No se pudo equipar', response.error || 'Intenta de nuevo.', 'error');
     if (response.profile) {
-      if (inTable() && ui.room) {
-        ui.room.viewerProfile = response.profile;
-        if (ui.me) ui.me.collection = response.profile.collection;
-      } else saveAccountSession(response.profile);
+      applyProfileSnapshot(response.profile);
+      if (ui.me && ui.room?.viewerProfile?.id === response.profile.id) ui.me.collection = response.profile.collection;
     }
-    renderProfileModal();
+    renderAfterProfileChange();
     showToast(itemId ? 'Cosmético equipado' : 'Cosmético retirado', itemId ? 'Tu apariencia se actualizó en el servidor.' : 'El espacio quedó sin equipar.', 'notice', 3600, itemId ? '✦' : '◇');
   }
   function renderPassport(profile) {
@@ -2799,11 +2845,8 @@
         return;
       }
       if (response.profile) {
-        if (wasInTable && ui.room) {
-          ui.room.viewerProfile = response.profile;
-          if (ui.me) ui.me.passport = { equipped: response.profile.passport?.equipped || {} };
-          syncAccountSessionIfSameProfile(response.profile);
-        } else saveAccountSession(response.profile);
+        applyProfileSnapshot(response.profile);
+        if (ui.me && ui.room?.viewerProfile?.id === response.profile.id) ui.me.passport = { equipped: response.profile.passport?.equipped || {} };
       }
       renderProfile();
       renderProfileModal();
@@ -3188,13 +3231,8 @@
     form.removeAttribute('aria-busy');
     if (!response.ok) return setCommunityStatus(response.error || 'No se pudo completar el movimiento.', 'error');
     if (ui.communityData?.profile) ui.communityData.profile.chips = response.profileChips;
-    if (ui.accountSession?.accountId === ui.communityData?.profile?.id) {
-      saveAccountSession({ ...ui.accountSession, chips: response.profileChips });
-    }
-    if (ui.me?.id === ui.communityData?.profile?.id) {
-      ui.me.chips = response.profileChips;
-      renderProfile();
-    }
+    applyAccountChips(ui.communityData?.profile?.id, response.profileChips);
+    renderAfterProfileChange();
     setCommunityStatus(response.message || 'Movimiento registrado.', 'success');
     await loadCommunityOverview();
     setCommunityTab('clubs');
@@ -3524,11 +3562,7 @@
       // ni localStorage) y se muestra un error claro.
       return showToast('No se guardó el perfil', response.error || 'No se pudo actualizar tu perfil en el servidor. Se conservaron tus datos anteriores.', 'error');
     }
-    if (response.profile) {
-      if (ui.room) ui.room.viewerProfile = response.profile;
-      if (!inTable()) saveAccountSession(response.profile);
-      else syncAccountSessionIfSameProfile(response.profile);
-    }
+    if (response.profile) applyProfileSnapshot(response.profile);
     ui.playerName = response.profile?.name || name;
     ui.selectedAvatar = response.profile?.avatar || avatar;
     ui.profileNameDirty = false; // lo guardado ya es el estado actual: se puede volver a pintar desde el perfil
