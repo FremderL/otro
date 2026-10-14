@@ -1988,3 +1988,13 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 .collection-modal-card { display: flex; flex-direction: column; max-height: min(90vh, 960px); width: min(1080px, 96vw); }
 .collection-modal-scroll { overflow-y: auto; min-height: 0; flex: 1; padding: 4px 4px 12px; }
 .collection-window-section { padding: 6px 2px 0; }
+/* Los filtros ordenan la cuadrícula que tienen justo debajo (mismo bloque en
+   public/index.html). Se quedan pegados arriba al desplazar la ventana para
+   que se pueda cambiar de espacio sin volver al principio: si se iban con el
+   scroll, pulsar un filtro repintaba fuera de la vista y parecía que no hacía
+   nada. La banda necesita fondo propio porque el contenido pasa por detrás. */
+.collection-filtered-block > .collection-filters {
+  position: sticky; top: 0; z-index: 4; margin-bottom: 10px; padding: 8px 2px;
+  border-radius: 12px; background: rgba(8, 15, 17, .94); box-shadow: 0 12px 22px rgba(0, 0, 0, .38);
+  backdrop-filter: blur(7px);
+}

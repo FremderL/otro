@@ -2434,6 +2434,40 @@
     // que la persona volvía a guardar.
     if (!inTable()) refreshAccountProfile();
   }
+  // Aviso dentro de la ventana cuando no hay perfil que pintar (lobby sin
+  // cuenta y sin mesa): evita dejar una ventana vacía que parece averiada.
+  function renderCollectionEmptyState(message) {
+    const note = `<div class="collection-no-items">${escapeHtml(message)}</div>`;
+    if (els.collectionItems) els.collectionItems.innerHTML = note;
+    if (els.cardBookGrid) els.cardBookGrid.innerHTML = note;
+    if (els.albumGrid) els.albumGrid.innerHTML = note;
+  }
+  // Baja (o sube) la ventana de Colección hasta una de sus dos secciones. Se
+  // calcula con rectángulos y no con `offsetTop` porque `offsetTop` se mide
+  // contra el ancestro posicionado más cercano (la tarjeta del modal), no
+  // contra la caja que realmente se desplaza, y eso dejaba el salto torcido.
+  function scrollToCollectionSection(sectionId) {
+    const scroll = document.querySelector('#collection-modal .collection-modal-scroll');
+    if (!scroll) return;
+    const section = document.getElementById(sectionId === 'album' ? 'profile-section-album' : 'profile-section-collection');
+    if (!section) { scroll.scrollTop = 0; return; }
+    const delta = section.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+    scroll.scrollTop = Math.max(0, scroll.scrollTop + delta - 8);
+  }
+  // Después de filtrar, la cuadrícula se repinta. Si quedó fuera de la vista
+  // (p. ej. la persona estaba leyendo el Libro de cartas), se alinea justo
+  // debajo de los filtros para que el cambio se vea sin tener que buscarlo.
+  function revealCollectionResults() {
+    const scroll = document.querySelector('#collection-modal .collection-modal-scroll');
+    const filters = document.querySelector('#profile-section-collection .collection-filters');
+    const grid = els.collectionItems;
+    if (!scroll || !grid) return;
+    const viewport = scroll.getBoundingClientRect();
+    const edge = (filters || scroll).getBoundingClientRect().bottom;
+    const gridTop = grid.getBoundingClientRect().top;
+    if (gridTop >= edge - 1 && gridTop <= viewport.bottom - 80) return; // ya está a la vista
+    scroll.scrollTop = Math.max(0, scroll.scrollTop + gridTop - edge - 10);
+  }
   // Colección: ventana propia (cosméticos, libro de cartas y álbum), separada del perfil.
   // `target` decide a qué parte baja la ventana: 'collection' o 'album'.
   function openCollectionModal(target = 'collection') {
@@ -2447,13 +2481,14 @@
         renderCardAlbum(profile);
       } else {
         showToast('Colección no disponible', 'Entra a una mesa o inicia sesión para ver tu colección.', 'notice', 4200, '◇');
+        // Sin perfil no se pinta nada: se deja el aviso DENTRO de la ventana
+        // (no solo en el toast) para que no parezca una ventana rota.
+        renderCollectionEmptyState('Entra a una mesa o inicia sesión para ver tu colección.');
       }
       modal.classList.add('open');
       modal.setAttribute('aria-hidden', 'false');
       document.body.classList.add('modal-open');
-      const scroll = modal.querySelector('.collection-modal-scroll');
-      const section = document.getElementById(target === 'album' ? 'profile-section-album' : 'profile-section-collection');
-      if (scroll) scroll.scrollTop = section ? Math.max(0, section.offsetTop - 8) : 0;
+      scrollToCollectionSection(target);
       modal.querySelector('.modal-close')?.focus();
     } catch (error) {
       console.error('No se pudo abrir la colección', error);
@@ -2752,8 +2787,11 @@
         </div>
       </article>`;
     }).join('') : '<div class="collection-no-items">La colección aparecerá cuando el servidor sincronice tu perfil.</div>';
-    $$('[data-cosmetic-equip]').forEach(button => button.addEventListener('click', () => equipProfileCosmetic(button, button.dataset.cosmeticSlot, button.dataset.cosmeticEquip)));
-    $$('[data-cosmetic-unequip]').forEach(button => button.addEventListener('click', () => equipProfileCosmetic(button, button.dataset.cosmeticUnequip, null)));
+    // Ámbito acotado a la cuadrícula de cosméticos: el selector global también
+    // alcanzaba los botones del Libro de cartas y les sumaba un segundo
+    // listener en cada repintado, lo que disparaba el equipado dos veces.
+    $$('#collection-items [data-cosmetic-equip]').forEach(button => button.addEventListener('click', () => equipProfileCosmetic(button, button.dataset.cosmeticSlot, button.dataset.cosmeticEquip)));
+    $$('#collection-items [data-cosmetic-unequip]').forEach(button => button.addEventListener('click', () => equipProfileCosmetic(button, button.dataset.cosmeticUnequip, null)));
   }
   async function equipProfileCosmetic(button, slot, itemId) {
     const payload = { slot, itemId };
@@ -3520,6 +3558,7 @@
       });
       const profile = currentViewerProfile();
       if (profile) renderCollection(profile);
+      revealCollectionResults();
     });
   });
   els.tournamentNameForm?.addEventListener('submit', event => {

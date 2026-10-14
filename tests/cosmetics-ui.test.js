@@ -91,3 +91,28 @@ test('la colección muestra metas, filtra por espacio y equipa el arte sin modif
   assert.equal(document.querySelectorAll('#collection-items .collection-item').length, 3);
   assert.equal(document.querySelectorAll('#collection-items .collection-equip').length, 1);
 });
+
+// Regresión: el Libro de cartas (54 cartas) se había quedado INTERCALADO entre
+// los filtros y la cuadrícula de cosméticos. Al pulsar un filtro la cuadrícula
+// se repintaba más de mil píxeles más abajo, fuera de la vista, y la ventana
+// parecía congelada («no se mueve ni se abre nada»). Orden correcto: filtros,
+// cuadrícula que ordenan y, después, el Libro como bloque propio.
+test('los filtros de la colección quedan pegados a la cuadrícula que ordenan', t => {
+  const dom = new JSDOM(HTML);
+  t.after(() => dom.window.close());
+  const { document } = dom.window;
+  const filters = document.querySelector('#profile-section-collection .collection-filters');
+  const grid = document.getElementById('collection-items');
+  const book = document.querySelector('#profile-section-collection .card-book');
+  assert.ok(filters, 'existe la fila de filtros de la colección');
+  assert.ok(grid, 'existe la cuadrícula de cosméticos');
+  assert.ok(book, 'existe el Libro de cartas');
+  assert.equal(filters.nextElementSibling, grid, 'la cuadrícula va justo debajo de los filtros');
+  assert.ok(
+    grid.compareDocumentPosition(book) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING,
+    'el Libro de cartas va después de la cuadrícula, no entre los filtros y la cuadrícula'
+  );
+  const albumFilters = document.querySelector('#profile-section-album .collection-filters');
+  assert.equal(albumFilters?.nextElementSibling, document.getElementById('album-grid'),
+    'en el Álbum los filtros también van junto a su cuadrícula');
+});
