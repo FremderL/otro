@@ -252,6 +252,26 @@ tests/bots-smoke.js               Integración normal, ciclo de vida y carreras 
 tests/bots-fallback-smoke.js      Fallo forzado, alternativa segura y continuidad
 ```
 
+### Cómo se comunican el navegador, el servidor y la base de datos
+
+Diagrama y explicación completa: [`docs/arquitectura-comunicacion.md`](docs/arquitectura-comunicacion.md).
+
+En corto: el navegador carga la página por **HTTP**, mantiene una conexión
+**WebSocket (Socket.IO)** para todo lo que ocurre en vivo y **nunca** se conecta a
+la base de datos. El servidor valida cada jugada (es autoritativo) y es el único
+que lee y escribe en la persistencia: **Postgres** si existe `DATABASE_URL`, o los
+archivos JSON de `data/` en caso contrario.
+
+```mermaid
+flowchart LR
+  UI["🖥️ Navegador<br/>public/app.js"] -->|HTTP| API["⚙️ Express<br/>página, /api/*"]
+  UI <-->|WebSocket| WS["⚙️ Socket.IO<br/>salas y eventos"]
+  API --> ST["lib/*-store.js"]
+  WS --> ST
+  ST --> DB[("💾 Postgres o data/*.json")]
+  UI -.->|"❌ nunca directo"| DB
+```
+
 Los nuevos minijuegos comparten un protocolo genérico (`quick_bet`, `quick_resolve`, `quick_new`). Para agregar otro, se registra su definición y resolución en `lib/quick-games.js` y se incorpora su presentación en el cliente, sin mezclar sus reglas con Poker o Blackjack.
 
 ## Consideraciones para producción
