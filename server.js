@@ -2627,7 +2627,7 @@ io.on('connection', socket => {
   // perfil desde otra computadora. No reemplaza el modo sin cuenta: solo
   // vincula credenciales al perfil que ya tiene este dispositivo (mismas
   // fichas, logros e historial) para poder volver a entrar a él después.
-  // Gachapón de cartas: cobra CARD_GACHA_COST fichas (5.000) y suma una carta cosmética al álbum.
+  // Gachapón de cartas: cobra CARD_GACHA_COST fichas (5.000) y suma una carta al álbum; si es repetida, abona CARD_DUPLICATE_CHIPS.
   // Mismo criterio de perfil que el bono diario: la mesa del jugador o la
   // cuenta autenticada; nunca un perfil ajeno enviado por el navegador.
   socket.on('card_gacha_pull', ({ accountId } = {}, ack) => {
@@ -2650,6 +2650,7 @@ io.on('connection', socket => {
     return ackOk(ack, {
       card: result.card,
       duplicate: result.duplicate,
+      refundChips: result.refundChips,
       cost: result.cost,
       profile: publicProgress(targetProfile, true)
     });

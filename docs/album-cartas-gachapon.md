@@ -1,7 +1,7 @@
 # Álbum de cartas — gachapón MonteCristo
 
 **Estado:** implementado en la rama de trabajo. Activo por defecto; `CARD_GACHA_ENABLED=off` lo apaga (el servidor rechaza cápsulas nuevas y la interfaz deja de mostrar la pestaña).
-**Naturaleza:** cosmético y virtual. Una cápsula cuesta **5.000 fichas virtuales** y solo añade una carta al álbum del perfil. No da fichas, no cambia las probabilidades de ninguna mesa y no modifica estadísticas, retos, logros ni el Pasaporte.
+**Naturaleza:** virtual y sin ventajas en las mesas. Una cápsula cuesta **5.000 fichas virtuales** y añade una carta al álbum del perfil. Si la carta ya estaba en el álbum (copia **repetida**), la cápsula **no suma otra copia**: abona **100 fichas virtuales**. Como la cápsula cuesta 5.000, cada repetida reduce el costo neto a **4.900 fichas**. Ninguna cápsula devuelve más de 100, así que el costo neto nunca baja de 4.900. No cambia las probabilidades de ninguna mesa y no modifica estadísticas, retos, logros ni el Pasaporte.
 
 ## 1. Catálogo
 
@@ -45,15 +45,21 @@ Decisiones de diseño tomadas al cerrar las reglas:
 ## 3. Sorteo y seguridad
 
 - El sorteo ocurre **solo en el servidor**, con `crypto.randomInt` (CSPRNG). El navegador no envía ni la rareza ni la carta.
-- El cobro usa un débito real y todo o nada: si no alcanza el saldo, no se sortea nada ni se modifica el perfil.
+- El cobro usa un débito real y todo o nada: si no alcanza el saldo, no se sortea nada, no se modifica el álbum y no hay abono.
+- **Repetida:** se decide con el álbum **antes** de la tirada. Si el perfil ya tenía al menos una copia de la carta sorteada, esa copia es repetida: no suma al álbum y se abonan `CARD_DUPLICATE_CHIPS` (100) fichas. La primera copia de cada carta sigue yendo al álbum sin abono.
+- **Tope de copias:** si la carta ya tiene 999 copias (`MAX_COPIES`), la copia también es repetida y abona 100; el contador se queda en 999.
+- **Cobro y abono en la misma operación:** el cobro, el sorteo, la copia del álbum y el abono ocurren en un solo paso síncrono del servidor. El perfil se guarda una sola vez, así que no puede quedar el cobro sin el abono (ni al revés).
+- **Historial:** son dos movimientos separados. `Cápsula de cartas` con −5.000 y, si es repetida, `Carta repetida: <nombre>` con +100.
+- **Respuesta de `card_gacha_pull`:** incluye `duplicate` (true si es repetida) y `refundChips` (100 si hubo abono, 0 si no). Con eso la interfaz muestra cuántas fichas se recibieron.
 - El evento `card_gacha_pull` sigue el mismo criterio de perfil que el bono diario: la mesa del jugador o la cuenta autenticada.
-- Cada cápsula queda en el historial de fichas del perfil como `Cápsula de cartas`, con su importe de −5.000.
 - El álbum se guarda en `profile.cardAlbum.counts` y pasa por `cleanProfile`, así que funciona igual con el archivo JSON que con Postgres (sin migración). Solo se guardan ids del catálogo y se limita a 999 copias por carta.
 
 ## 4. Uso responsable
 
 - Es opcional: solo se abre con el botón del álbum; nada se compra automáticamente.
-- Las tasas están visibles antes de cada cápsula.
+- Las tasas están visibles antes de cada cápsula, y el aviso de la cápsula indica si hubo abono y cuántas fichas se recibieron.
+- **Costo real:** cada cápsula cuesta 5.000 fichas. Una copia repetida devuelve 100, así que el costo neto es 4.900. Una cápsula nunca devuelve más de 100 fichas: no es rentable ni recupera lo gastado, y cada repetida solo reduce el costo un 2 %.
+- Las fichas abonadas son fichas virtuales, iguales a las demás: se gastan en las mesas y no tienen valor fuera del casino.
 - No hay compras con dinero real ni canje por fichas: el resultado no tiene valor fuera del perfil.
 - Pendiente de decidir por el equipo: un tope diario de cápsulas, si se desea reforzar la protección frente a uso compulsivo.
 
@@ -65,7 +71,7 @@ Decisiones de diseño tomadas al cerrar las reglas:
 - `server.js`: evento `card_gacha_pull` y `cardGachaEnabled` en `/healthz`.
 - `public/index.html`, `public/app.js`, `public/card-album.css`: pestaña «Álbum», tasas, cuadrícula y filtros por rareza.
 - `public/assets/cards/`: ilustraciones de las cartas.
-- `tests/card-gacha.test.js`: catálogo, tasas exactas, enumeración del sorteo, cobro, errores y privacidad.
+- `tests/card-gacha.test.js`: catálogo, tasas exactas, enumeración del sorteo, cobro, abono por repetida (incluido el tope de 999), historial, errores y privacidad.
 
 ## 6. Libro de cartas y dorsos
 

@@ -2532,9 +2532,12 @@
     const card = response.card;
     if (!card) return;
     const rarityName = card.rarityName || ALBUM_RARITY_LABELS[card.rarity] || card.rarity;
+    // Una repetida no suma al álbum: el servidor abona fichas (refundChips).
+    const refund = Number(response.refundChips) || 0;
+    const refundText = refund > 0 ? `+${formatChips(refund)} fichas` : '';
     if (els.albumLastPull) {
       els.albumLastPull.className = `album-last-pull rarity-${card.rarity}`;
-      els.albumLastPull.innerHTML = `<span class="album-pull-label">${escapeHtml(rarityName)} · ${card.duplicate ? 'repetida' : 'nueva'}</span><b>${escapeHtml(card.name)}</b>`;
+      els.albumLastPull.innerHTML = `<span class="album-pull-label">${escapeHtml(rarityName)} · ${card.duplicate ? 'repetida' : 'nueva'}${refundText ? ` · ${refundText}` : ''}</span><b>${escapeHtml(card.name)}</b>`;
     }
     // La carta recién obtenida anima su entrada solo en este render: se limpia
     // después para que filtrar o volver a pintar no repita la animación.
@@ -2542,7 +2545,10 @@
     renderProfileModal();
     ui.albumLastPullId = null;
     playTone(card.rarity === 'mitico' || card.rarity === 'legendario' ? 'win' : 'notice');
-    showToast(card.duplicate ? 'Carta repetida' : 'Carta nueva', `${card.name} · ${rarityName}`, 'reward', 4200, card.symbol);
+    const toastBody = card.duplicate
+      ? `${card.name} · ${rarityName}. Ya la tenías: ${refundText ? `recibiste ${refundText}.` : 'no hubo abono.'}`
+      : `${card.name} · ${rarityName}`;
+    showToast(card.duplicate ? 'Carta repetida' : 'Carta nueva', toastBody, 'reward', 4200, card.symbol);
   }
   function renderProfileModal() {
     const profile = currentViewerProfile();
