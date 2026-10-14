@@ -10,6 +10,12 @@ escribe en la base de datos.
 
 ## Diagrama general
 
+![Diagrama de comunicación entre el navegador, el servidor y la base de datos](arquitectura-comunicacion.jpg)
+
+La imagen se dibuja con `scripts/diagramas/comunicacion.py` (Pillow). Abajo queda
+el mismo esquema como **código Mermaid**, para poder editarlo sin salir del
+repositorio; GitHub lo renderiza automáticamente:
+
 ```mermaid
 flowchart LR
   subgraph NAV["🖥️ Navegador (public/)"]
