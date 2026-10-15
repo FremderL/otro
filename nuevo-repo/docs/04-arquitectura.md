@@ -150,6 +150,7 @@ espera la acción (o vence el reloj), aplica la jugada y vuelve a difundir `esta
 ├─ public/
 │  ├─ assets/             # YA EXISTE: imágenes de los juegos y del casino
 │  ├─ index.html          # inicio: crear sala / entrar con código
+│  ├─ perfil.html         # nombre y avatar antes de entrar a jugar
 │  ├─ sala.html           # mesa (o vista única manejada por app.js)
 │  ├─ styles.css
 │  └─ app.js              # socket.io-client, render y animaciones

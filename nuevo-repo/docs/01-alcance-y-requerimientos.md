@@ -190,6 +190,8 @@ Cualquier persona que se unió a la sala y ocupa un asiento.
 | Chat | Texto libre + mensajes rápidos, solo dentro de la sala | Máximo 200 caracteres por mensaje |
 | Dinero real | **Ninguno** | Aviso visible en el pie de la página |
 | Entorno | **Local** | Corre en `http://localhost:3000`; sin hosting, dominio ni túnel |
+| Pantalla | **1024 px de ancho o más** | Solo escritorio y laptop; no hay versión de celular |
+| Recursos | **Todos locales** | Imágenes de `public/assets/`, tipografías del sistema; sin CDNs ni peticiones externas |
 | Datos | **En la propia máquina** | SQLite en `data/casino.db`; el respaldo JSON queda opcional |
 
 ---
