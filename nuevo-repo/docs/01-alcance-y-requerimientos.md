@@ -42,6 +42,10 @@ repositorio usa otro).
 5. Chat de sala con mensajes rápidos.
 6. Saldo persistente por dispositivo durante la sesión del servidor.
 7. Estado autoritativo en el servidor (el navegador nunca decide resultados).
+8. **Base de datos SQLite local**: un solo archivo (`data/casino.db`) con las tablas `jugadores`,
+   `salas`, `partidas` y `apuestas`. No hay servidor de base de datos que instalar.
+9. **Ejecución 100 % local**: un solo proceso de Node en la computadora de quien arranca el
+   servidor; se abre en `http://localhost:3000`. No hace falta internet para jugar.
 
 ### No incluye (queda para versiones posteriores)
 
@@ -96,7 +100,8 @@ lanzamiento y liquidación inmediata para toda la sala.
 | Acceso | Enlace directo `/sala/K7Q2M` o escribiendo el código en el inicio |
 | Juego por sala | **Uno solo**, elegido al crearla; no se cambia con la sala llena |
 | Duración | La sala se elimina automáticamente cuando queda vacía |
-| Estados | `espera` → `apuestas` → `jugando` → `resultados` → (nueva ronda) |
+| Estado de la sala | `abierta` o `cerrada` | `cerrada` cuando el anfitrión la cierra o se vacía |
+| Fase de la ronda | `espera` → `apuestas` → `jugando` → `resultados` → (nueva ronda) | Es la que usa el motor de juego |
 
 Cada sala tiene un **anfitrión**: la persona que la creó. Si el anfitrión se desconecta más de
 60 segundos, el rol pasa automáticamente al siguiente jugador conectado.
@@ -185,7 +190,7 @@ Cualquier persona que se unió a la sala y ocupa un asiento.
 | Chat | Texto libre + mensajes rápidos, solo dentro de la sala | Máximo 200 caracteres por mensaje |
 | Dinero real | **Ninguno** | Aviso visible en el pie de la página |
 | Entorno | **Local** | Corre en `http://localhost:3000`; sin hosting, dominio ni túnel |
-| Datos | **En la propia máquina** | Memoria del proceso y, si se activa, `data/estado.json` |
+| Datos | **En la propia máquina** | SQLite en `data/casino.db`; el respaldo JSON queda opcional |
 
 ---
 
@@ -230,14 +235,14 @@ Cualquier persona que se unió a la sala y ocupa un asiento.
 | 6 jugadores por sala | Mesa suficiente para póker sin que el turno sea lento |
 | 5 juegos (Cara o Cruz, Dados, Ruleta, Blackjack, Texas Hold'em) | Cubren rápidos, de cartas y de mesa |
 | Un solo juego por sala | Simplifica el estado y la interfaz |
-| Sin base de datos: estado en memoria + snapshot JSON | MVP rápido, cero configuración para el equipo |
+| Base de datos **SQLite en archivo local** | Persistencia real sin instalar ni configurar un servidor de base de datos |
 | Saldo inicial 1.000 y apuesta mínima 10 | Deja margen para ~100 apuestas mínimas |
 | El anfitrión también juega | Evita mesas con una persona fuera de la partida |
 
 ### Pendientes (decidir antes de programar)
 
-1. ¿El saldo se conserva al reiniciar el servidor o vuelve a 1.000? → **propuesta: se conserva
-   con snapshot JSON en `data/estado.json`**.
+1. ¿El saldo se conserva al reiniciar el servidor o vuelve a 1.000? → **decidido: se conserva,
+   porque ahora hay base de datos SQLite (`data/casino.db`)**.
 2. ¿Se guarda el historial de rondas o solo el saldo actual? → **propuesta: solo saldo + últimas
    20 rondas en memoria**.
 3. ¿Límite de salas simultáneas por servidor? → **propuesta: 50**.

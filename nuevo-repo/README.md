@@ -69,7 +69,7 @@ Las reglas completas, los multiplicadores y los casos de prueba están en
 | Tiempo real | **Socket.IO** | 4.x | WebSocket: salas, eventos y difusión de estado |
 | Cliente | **HTML5 + CSS3 + JavaScript** (vanilla, sin framework) | — | Interfaz y animaciones (canvas para la ruleta) |
 | Pruebas | **node:test** (incluido en Node) | — | Pruebas unitarias de reglas y pagos |
-| Persistencia | **Memoria + archivo JSON** (opcional) | — | Estado de salas y jugadores; **no requiere base de datos** |
+| Persistencia | **SQLite** (archivo local `data/casino.db`) | — | Estado de salas, jugadores, partidas y apuestas |
 | Control de versiones | **Git + GitHub** | — | Repositorio y trabajo en equipo |
 
 > La v1 **no usa base de datos** a propósito: cualquiera del equipo puede clonar el repo y
@@ -87,8 +87,9 @@ Las reglas completas, los multiplicadores y los casos de prueba están en
 - Un navegador actualizado (Chrome, Edge, Firefox o Safari).
 - Sistema operativo: **Windows 10/11, macOS o Linux**. La interfaz está pensada para pantallas de
   **1024 px de ancho o más** (computadora de escritorio o laptop).
-- **No se necesita nada más**: sin base de datos, sin hosting, sin cuentas externas y sin conexión
-  a internet durante el juego. El único requisito de red es la instalación inicial
+- **No se necesita nada más**: la base de datos es un archivo SQLite que se crea solo, así que no
+  hay que instalar PostgreSQL, MySQL ni ningún servidor. Sin hosting, sin cuentas externas y sin
+  conexión a internet durante el juego. El único requisito de red es la instalación inicial
   (`git clone` y `npm install`).
 
 ---
@@ -115,7 +116,16 @@ npm install
 
 Tarda entre 20 segundos y 2 minutos. Si aparecen avisos de `deprecated`, no son errores.
 
-### 3. Ejecuta el servidor
+### 3. Crea la base de datos (se hace una sola vez)
+
+```bash
+npm run db:migrar
+```
+
+Crea el archivo `data/casino.db` con las tablas `jugadores`, `salas`, `partidas` y `apuestas`.
+Debe avisar en consola «Base de datos lista» o, si algo falla, el error concreto.
+
+### 4. Ejecuta el servidor
 
 ```bash
 npm start
@@ -127,11 +137,11 @@ Deberías ver algo como:
 MonteCristo escuchando en http://localhost:3000
 ```
 
-### 4. Abre la página
+### 5. Abre la página
 
 Entra a **http://localhost:3000** en tu navegador.
 
-### 5. Crea tu primera sala
+### 6. Crea tu primera sala
 
 1. Escribe tu nombre y elige un avatar.
 2. Pulsa **Crear sala** y elige el juego.
@@ -172,6 +182,7 @@ Para detener el servidor pulsa `Ctrl + C` en la terminal.
 
 | Comando | Qué hace |
 | --- | --- |
+| `npm run db:migrar` | Crea o actualiza `data/casino.db` con las tablas del proyecto |
 | `npm start` | Inicia el servidor en el puerto 3000 (o el de `PORT`) |
 | `npm run dev` | Igual que `npm start`, pensado para desarrollo |
 | `npm test` | Ejecuta las pruebas de reglas, pagos y validaciones |
@@ -186,7 +197,8 @@ Todas son **opcionales**; sin configurar nada el proyecto funciona.
 | Variable | Valor por defecto | Descripción |
 | --- | --- | --- |
 | `PORT` | `3000` | Puerto en el que escucha el servidor |
-| `GUARDAR_ESTADO` | `false` | Si vale `true`, guarda `data/estado.json` al apagar y lo carga al arrancar |
+| `DB_FILE` | `data/casino.db` | Ruta del archivo SQLite |
+| `GUARDAR_ESTADO` | `false` | Si vale `true`, guarda además un respaldo `data/estado.json` al apagar |
 | `MAX_SALAS` | `50` | Máximo de salas simultáneas |
 | `LOG_NIVEL` | `info` | Nivel de detalle de los registros en consola |
 
@@ -210,6 +222,8 @@ $env:PORT=4000; $env:GUARDAR_ESTADO="true"; npm start
 montecristo/
 ├─ server.js              # por crear: Express + Socket.IO, arranque y eventos
 ├─ package.json           # por crear
+├─ db/                    # por crear: schema.sql + migrar.js
+├─ data/                  # se crea solo: casino.db (SQLite) y respaldo JSON
 ├─ public/                # todo lo que ve el navegador
 │  ├─ assets/             # YA EXISTE en el repo: imágenes de los juegos y del casino
 │  ├─ index.html          # por crear
@@ -249,7 +263,7 @@ montecristo/
 | La página carga pero dice «Desconectado» | Revisa que el servidor siga encendido y que no haya un bloqueador/proxy cerrando el WebSocket. |
 | Mis amigos no pueden entrar desde otra red | Es esperado: la v1 es **solo local**. Jueguen en la misma máquina o en la misma red Wi-Fi con la IP local; exponer el puerto queda fuera del alcance del proyecto. |
 | El navegador muestra una versión vieja de la página | Recarga con `Ctrl + Shift + R` (Windows/Linux) o `Cmd + Shift + R` (macOS). |
-| Las fichas volvieron a 1.000 al reiniciar | Es el comportamiento por defecto; activa `GUARDAR_ESTADO=true` para conservarlas. |
+| Las fichas volvieron a 1.000 al reiniciar | Falta correr `npm run db:migrar` o el servidor no encuentra `data/casino.db`; revisa `DB_FILE`. |
 
 Si algo no está en esta lista, abre un *issue* en el repositorio con el sistema operativo, la
 versión de Node (`node -v`) y el mensaje completo del error.

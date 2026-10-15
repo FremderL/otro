@@ -10,9 +10,9 @@
 | **Desbloquea** | Estructuras en memoria, eventos de Socket.IO, snapshot JSON |
 | **Imagen** | `docs/diagrama-er.png` (fuente editable: `docs/diagrama-er.svg`) |
 
-> La v1 **no usa base de datos**: el estado vive en memoria del servidor y opcionalmente se guarda
-> en un archivo JSON. El modelo se documenta igual que un esquema relacional para que migrar a
-> PostgreSQL después sea un cambio de almacenamiento, no un rediseño.
+> **Motor: SQLite en un archivo local** (`data/casino.db`). No hay que instalar ni levantar ningún
+> servidor de base de datos: el archivo se crea solo al ejecutar el script de migración. La ronda en
+> curso puede mantenerse en memoria y solo se persiste al cerrar cada ronda.
 
 ---
 
@@ -53,6 +53,7 @@ Una sala por mesa activa. Se crea al pedirla y se elimina cuando queda vacía.
 | `juego` | ENUM | | `coinflip` · `dice` · `roulette` · `blackjack` · `poker` | `roulette` |
 | `anfitrion_id` | UUID | **FK** → `jugadores.id` | Quién creó la sala | `p_7f3a91` |
 | `capacidad` | SMALLINT | | Máximo de jugadores: **6** | `6` |
+| `estado` | ENUM | | `abierta` · `cerrada` — si la sala admite o no participantes | `abierta` |
 | `fase` | ENUM | | `espera` · `apuestas` · `jugando` · `resultados` | `apuestas` |
 | `apuesta_minima` | INTEGER | | Mínimo permitido en la sala: **10** | `10` |
 | `creada_en` | TIMESTAMP | | Cuándo se creó | `2026-10-14T20:10:00Z` |
@@ -111,105 +112,132 @@ Reglas que el diagrama no dibuja pero el código debe cumplir:
 
 ---
 
-## 4. Implementación en memoria (v1)
+## 4. Implementación con SQLite (v1)
+
+El esquema vive en **`db/schema.sql`** y se aplica con **`db/migrar.js`**
+(`npm run db:migrar`), que crea `data/casino.db` y **avisa en consola** si la conexión funcionó o
+si falló. La conexión se abre una sola vez, en `lib/db.js`, y se comparte en todo el servidor.
 
 ```js
-// Estructuras del servidor (Map = tabla)
-const salas     = new Map(); // id  -> sala
-const jugadores = new Map(); // id  -> jugador
-const partidas  = new Map(); // id  -> partida   (se poda a las últimas 20 por sala)
-const apuestas  = new Map(); // id  -> apuesta
+// lib/db.js — apertura de la conexión y aviso en consola
+const Database = require('better-sqlite3');
+const path = require('path');
 
-// Una sala en memoria se ve así:
-{
-  id: 's_K7Q2M',
-  codigo: 'K7Q2M',
-  juego: 'roulette',
-  anfitrionId: 'p_7f3a91',
-  capacidad: 6,
-  fase: 'apuestas',
-  apuestaMinima: 10,
-  jugadores: ['p_7f3a91', 'p_2b8c04'], // hasta 6 ids, en orden de asiento
-  rondaActual: 'r_0042',
-  creadaEn: 1760475000000,
-  actualizadaEn: 1760476931000
+const archivo = process.env.DB_FILE || path.join(__dirname, '..', 'data', 'casino.db');
+
+let db;
+try {
+  db = new Database(archivo);
+  db.pragma('journal_mode = WAL');   // mejor rendimiento en escrituras frecuentes
+  db.pragma('foreign_keys = ON');    // respeta las claves foráneas
+  console.log(`✅ Base de datos conectada: ${archivo}`);
+} catch (error) {
+  console.error(`❌ No se pudo conectar la base de datos: ${error.message}`);
+  throw error;                       // el servidor no arranca sin base de datos
 }
+
+module.exports = db;
 ```
 
-- **Sin base de datos:** no hay que instalar ni configurar nada; el estado se pierde al reiniciar
-  salvo que se guarde el snapshot.
-- **Snapshot opcional:** `data/estado.json` escrito al apagar (y cada 5 minutos) con el contenido
-  de los cuatro `Map`. Al arrancar, si el archivo existe, se carga.
-- **Migración futura a PostgreSQL:** crear las cuatro tablas con el DDL de la sección 5 y cambiar
-  los `Map` por consultas. Ni las reglas ni los eventos cambian.
+**Cómo se reparte el estado:**
+
+| Dónde vive | Qué se guarda ahí | Cuándo se escribe |
+| --- | --- | --- |
+| **Memoria del servidor** | La ronda en curso: turno, cartas repartidas, temporizadores y apuestas ya confirmadas | Cada evento de Socket.IO |
+| **SQLite (`data/casino.db`)** | `jugadores`, `salas`, `partidas` y `apuestas` | Al crear la sala, al entrar o salir alguien, al confirmar una apuesta y al liquidar la ronda |
+
+De este modo el servidor no depende de la base de datos durante cada animación, pero **nada se
+pierde al reiniciar**: los saldos y el historial quedan en el archivo.
+
+- **Cero instalación:** SQLite es un archivo, así que no hay que instalar ni levantar un servidor de
+  base de datos. `data/` se crea sola al ejecutar la migración.
+- **Respaldo opcional:** con `GUARDAR_ESTADO=true` se escribe además `data/estado.json` al apagar.
+- **Migrar a PostgreSQL en el futuro:** basta con cambiar `lib/db.js` por `pg` y ajustar los tipos
+  (`TEXT` → `VARCHAR`, `INTEGER` → `BOOLEAN/SMALLINT`, `TEXT` con `datetime('now')` → `TIMESTAMPTZ`).
+  Ni las reglas ni los eventos cambian.
 
 ---
 
-## 5. DDL de referencia (para cuando se use PostgreSQL)
+## 5. `db/schema.sql` (SQLite)
 
 ```sql
-CREATE TABLE jugadores (
-  id                TEXT PRIMARY KEY,
-  nombre            VARCHAR(24) NOT NULL,
-  avatar            VARCHAR(8)  NOT NULL DEFAULT '🙂',
-  saldo_fichas      INTEGER     NOT NULL DEFAULT 1000 CHECK (saldo_fichas >= 0),
-  sala_id           TEXT        REFERENCES salas(id) ON DELETE SET NULL,
-  asiento           SMALLINT    CHECK (asiento BETWEEN 1 AND 6),
-  es_anfitrion      BOOLEAN     NOT NULL DEFAULT FALSE,
-  conectado         BOOLEAN     NOT NULL DEFAULT TRUE,
-  device_id         VARCHAR(64) UNIQUE,
-  creado_en         TIMESTAMPTZ NOT NULL DEFAULT now(),
-  ultima_actividad  TIMESTAMPTZ NOT NULL DEFAULT now()
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS jugadores (
+  id               TEXT PRIMARY KEY,
+  nombre           TEXT    NOT NULL,
+  avatar           TEXT    NOT NULL DEFAULT '🙂',
+  saldo_fichas     INTEGER NOT NULL DEFAULT 1000 CHECK (saldo_fichas >= 0),
+  sala_id          TEXT    REFERENCES salas(id),
+  asiento          INTEGER CHECK (asiento BETWEEN 1 AND 6),
+  es_anfitrion     INTEGER NOT NULL DEFAULT 0 CHECK (es_anfitrion IN (0, 1)),
+  conectado        INTEGER NOT NULL DEFAULT 1 CHECK (conectado IN (0, 1)),
+  device_id        TEXT    UNIQUE,
+  creado_en        TEXT    NOT NULL DEFAULT (datetime('now')),
+  ultima_actividad TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE salas (
-  id              TEXT PRIMARY KEY,
-  codigo          CHAR(5)    UNIQUE NOT NULL,
-  juego           TEXT       NOT NULL CHECK (juego IN ('coinflip','dice','roulette','blackjack','poker')),
-  anfitrion_id    TEXT       REFERENCES jugadores(id),
-  capacidad       SMALLINT   NOT NULL DEFAULT 6 CHECK (capacidad BETWEEN 1 AND 6),
-  fase            TEXT       NOT NULL DEFAULT 'espera',
-  apuesta_minima  INTEGER    NOT NULL DEFAULT 10,
-  creada_en       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  actualizada_en  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE partidas (
+CREATE TABLE IF NOT EXISTS salas (
   id             TEXT PRIMARY KEY,
-  sala_id        TEXT REFERENCES salas(id) ON DELETE CASCADE,
+  codigo         TEXT    UNIQUE NOT NULL,
+  juego          TEXT    NOT NULL CHECK (juego IN ('coinflip','dice','roulette','blackjack','poker')),
+  anfitrion_id   TEXT    REFERENCES jugadores(id),
+  capacidad      INTEGER NOT NULL DEFAULT 6 CHECK (capacidad BETWEEN 1 AND 6),
+  estado         TEXT    NOT NULL DEFAULT 'abierta'  CHECK (estado IN ('abierta','cerrada')),
+  fase           TEXT    NOT NULL DEFAULT 'espera'   CHECK (fase IN ('espera','apuestas','jugando','resultados')),
+  apuesta_minima INTEGER NOT NULL DEFAULT 10,
+  creada_en      TEXT    NOT NULL DEFAULT (datetime('now')),
+  actualizada_en TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS partidas (
+  id             TEXT PRIMARY KEY,
+  sala_id        TEXT    NOT NULL REFERENCES salas(id) ON DELETE CASCADE,
   numero_ronda   INTEGER NOT NULL,
   juego          TEXT    NOT NULL,
   fase           TEXT    NOT NULL,
-  resultado      JSONB,
+  resultado      TEXT,                       -- JSON: número, cartas o manos del showdown
   bote_total     INTEGER NOT NULL DEFAULT 0,
-  semilla_rng    VARCHAR(64),
-  iniciada_en    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  finalizada_en  TIMESTAMPTZ,
+  semilla_rng    TEXT,
+  iniciada_en    TEXT    NOT NULL DEFAULT (datetime('now')),
+  finalizada_en  TEXT,
   UNIQUE (sala_id, numero_ronda)
 );
 
-CREATE TABLE apuestas (
-  id             TEXT PRIMARY KEY,
-  partida_id     TEXT REFERENCES partidas(id) ON DELETE CASCADE,
-  jugador_id     TEXT REFERENCES jugadores(id) ON DELETE CASCADE,
-  monto          INTEGER       NOT NULL CHECK (monto >= 10),
-  opcion         VARCHAR(16)   NOT NULL,
-  multiplicador  NUMERIC(5,2)  NOT NULL DEFAULT 0,
-  pago           INTEGER       NOT NULL DEFAULT 0,
-  resultado      TEXT          CHECK (resultado IN ('gana','pierde','empate')),
-  creada_en      TIMESTAMPTZ   NOT NULL DEFAULT now(),
+CREATE TABLE IF NOT EXISTS apuestas (
+  id            TEXT PRIMARY KEY,
+  partida_id    TEXT    NOT NULL REFERENCES partidas(id) ON DELETE CASCADE,
+  jugador_id    TEXT    NOT NULL REFERENCES jugadores(id) ON DELETE CASCADE,
+  monto         INTEGER NOT NULL CHECK (monto >= 10),
+  opcion        TEXT    NOT NULL,
+  multiplicador REAL    NOT NULL DEFAULT 0,
+  pago          INTEGER NOT NULL DEFAULT 0,
+  resultado     TEXT    CHECK (resultado IN ('gana','pierde','empate')),
+  creada_en     TEXT    NOT NULL DEFAULT (datetime('now')),
   UNIQUE (partida_id, jugador_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_jugadores_sala    ON jugadores(sala_id);
+CREATE INDEX IF NOT EXISTS idx_partidas_sala     ON partidas(sala_id);
+CREATE INDEX IF NOT EXISTS idx_apuestas_partida  ON apuestas(partida_id);
+CREATE INDEX IF NOT EXISTS idx_apuestas_jugador  ON apuestas(jugador_id);
 ```
+
+> **Nota sobre `estado` y `fase`:** son dos cosas distintas y las dos van en la tabla. `estado`
+> (`abierta`/`cerrada`) dice si la sala admite participantes; `fase` dice en qué momento de la ronda
+> está (`espera`, `apuestas`, `jugando`, `resultados`). Una sala puede estar `abierta` y en
+> `apuestas`, o `cerrada` y en `resultados`.
 
 ---
 
 ## 6. Criterios de aceptación
 
-- [ ] Existen las cuatro entidades con los campos y tipos de este documento.
+- [ ] Existen las cuatro tablas con los campos y tipos de este documento.
+- [ ] `db/schema.sql` está en el repositorio y `npm run db:migrar` crea `data/casino.db` sin errores.
+- [ ] `lib/db.js` imprime en consola un mensaje claro cuando conecta y otro cuando falla.
 - [ ] La relación `salas → jugadores` respeta el máximo de **6** y rechaza el séptimo ingreso.
 - [ ] Cada ronda crea **una** fila en `partidas` y **una** en `apuestas` por jugador que apostó.
 - [ ] `multiplicador` y `pago` se guardan en la apuesta y coinciden con `02-reglas-y-pagos.md`.
 - [ ] Al salir un jugador sin lanzar la ronda, su apuesta desaparece y su saldo vuelve al valor previo.
-- [ ] El snapshot JSON (si está activo) recrea salas, jugadores y saldos al reiniciar.
-- [ ] El DDL de la sección 5 se ejecuta sin errores si en el futuro se activa PostgreSQL.
+- [ ] Al reiniciar el servidor se conservan saldos, salas abiertas e historial de rondas.
+- [ ] `estado` y `fase` de `salas` se actualizan juntos, sin pisarse entre sí.
