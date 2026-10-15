@@ -1,234 +1,191 @@
-# Prompt para generar los tickets de Backend 2
+# Prompt de implementación · Backend 2
 
-Archivo auxiliar: contiene el texto listo para copiar y pegar en una nueva conversación y que ahí
-redacten los 3 tickets de Backend 2 con el mismo formato que el resto de la documentación.
-Puedes borrar `docs/backlog/` cuando ya no lo necesites.
+Pega este prompt en una conversación de Arena **con este repositorio montado**. Arena debe escribir
+el código real de los tickets BE-04, BE-05 y BE-06.
 
 ---
 
 ## INICIO DEL PROMPT (copia desde aquí)
 
-```text
-Eres un asistente que redacta tickets de desarrollo para un equipo escolar. Vas a escribir TRES
-tickets en archivos Markdown. Tu trabajo es documentar, no programar: cada ticket debe quedar lo
-suficientemente claro como para que otra persona lo implemente sin preguntar nada.
+````text
+Eres el desarrollador BACKEND 2 de este repositorio. Tu trabajo es IMPLEMENTAR el código de tres
+tickets (no redactar documentos): las fases de una ronda, los resultados al azar y el manejo de
+fichas. Son la base que usarán TODOS los juegos.
 
 ═══════════════════════════════════════════════════════════════════════════════
-1. CONTEXTO DEL PROYECTO
+1. PROYECTO
 ═══════════════════════════════════════════════════════════════════════════════
-"MonteCristo" es un casino social multijugador para jugar con amigos desde el navegador. Una
-persona crea una sala, comparte un enlace o un código de 5 caracteres y hasta 6 personas juegan en
-tiempo real. Las fichas son 100 % virtuales: no hay dinero real, depósitos ni premios canjeables.
-
-Juegos incluidos: Cara o Cruz, Dados, Ruleta (europea 0-36), Blackjack/21 y Texas Hold'em.
-Saldo inicial: 1.000 fichas. Apuesta mínima: 10 fichas.
+"MonteCristo": casino social multijugador local. Salas de hasta 6 personas, código de 5 caracteres,
+juegos Cara o Cruz, Dados, Ruleta (europea 0-36), Blackjack/21 y Texas Hold'em. Fichas 100 %
+virtuales: no hay dinero real.
 
 Stack: Node.js 18+, Express 4, Socket.IO 4, SQLite en archivo local (data/casino.db, abierta desde
-lib/db.js con better-sqlite3) y JavaScript vanilla en el cliente. Pruebas con node:test.
-
-RESTRICCIÓN IMPORTANTE: el proyecto se desarrolla y se ejecuta SOLO EN LOCAL. No hay hosting,
-dominio, túneles, contenedores ni servicios en la nube.
-
-ESTADO DEL REPOSITORIO: empieza de cero. Lo único que existe es:
-  - public/assets/  → imágenes de los juegos y del casino (ya están, no las toques)
-  - docs/           → documentación 01 a 04, README y docs/backlog/ con los tickets ya escritos
-Esta es la segunda tanda de tickets. Los tickets BE-01 (conexión a SQLite), BE-02 (tabla
-jugadores) y BE-03 (tabla salas) pertenecen a otro compañero y sus tablas se dan por existentes:
-no las vuelvas a definir, solo consúmelas.
+lib/db.js con better-sqlite3), JavaScript vanilla en el cliente. Todo corre SOLO EN LOCAL.
 
 ═══════════════════════════════════════════════════════════════════════════════
-2. DOCUMENTOS QUE DEBES RESPETAR (son la fuente de la verdad)
+2. ESTADO DEL REPOSITORIO
 ═══════════════════════════════════════════════════════════════════════════════
-  - docs/01-alcance-y-requerimientos.md → juegos, salas de 6 jugadores, roles (anfitrión, jugador,
-    servidor), flujo de una sala (§8) y reglas transversales (§7).
-  - docs/02-reglas-y-pagos.md → TODOS los números: multiplicadores (Cara o Cruz x2, Dados x2 y x6,
-    Ruleta x36/x3/x2, Blackjack x2 / x2,5 / x1 / x0 y seguro x3), constantes (SALDO_INICIAL 1000,
-    APUESTA_MINIMA 10, JUGADORES_POR_SALA 6, MAZOS_BLACKJACK 4, MAZOS_POKER 1,
-    REBARAJAR_SI_QUEDAN_MENOS_DE 52, PLANTARSE_CASA 17, turnos de 25 s y 30 s), el convenio
-    "pago total" (pago = truncar(apuesta × multiplicador), ganancia = pago − apuesta), los 20
-    casos de prueba (§9) y las 7 validaciones obligatorias (§10).
-    NUNCA inventes ni cambies estos números: cítalos tal cual.
-  - docs/03-modelo-de-datos.md → tablas jugadores, salas, partidas y apuestas con sus campos,
-    tipos y claves; incluye db/schema.sql en SQLite y la forma de usar lib/db.js.
-  - docs/04-arquitectura.md → capas, endpoints HTTP, eventos de Socket.IO (§3.2 y §3.3), tiempos,
-    reconexión e idempotencia (§5), reglas de seguridad (§6) y estructura de carpetas (§7).
+Trabajan en paralelo tres personas. Da por hecho que existen (o existirán muy pronto):
+  - package.json, db/schema.sql, db/migrar.js y lib/db.js  → de BACKEND 1 (no los reescribas)
+  - public/styles.css, public/index.html, public/perfil.html, public/app.js → de FRONTEND
+Y que otro compañero hará server.js y la pantalla de la sala (integración).
 
 ═══════════════════════════════════════════════════════════════════════════════
-3. DECISIONES YA TOMADAS (no las cambies, no las discutas, aplícalas)
+3. LEE ESTO PRIMERO (es el contrato del proyecto)
 ═══════════════════════════════════════════════════════════════════════════════
-  a) Las fases de la ronda son CUATRO y se escriben exactamente así, en minúsculas:
-     'espera' · 'apuestas' · 'jugando' · 'resultados'.
-     La "vuelta a empezar" NO es un estado: es la transición automática de 'resultados' a
-     'apuestas' cuando se abre la siguiente ronda.
-  b) 'fase' (de la ronda) y 'estado' (de la sala: 'abierta' o 'cerrada') son DOS CAMPOS DISTINTOS
-     de la tabla salas. No los fusiones.
-  c) La función de apuesta y liquidación cubre los juegos rápidos (Cara o Cruz, Dados, Ruleta) y
-     Blackjack. TEXAS HOLD'EM QUEDA FUERA: el reparto del bote, los botes laterales y la ficha
-     sobrante van en otro ticket. La función debe quedar reutilizable para cuando llegue.
-  d) Todo resultado aleatorio se genera en el servidor. Nunca en el navegador. Nunca por petición
-     del cliente. El cliente solo recibe el resultado ya decidido y lo anima.
-  e) Todo corre en local: la base de datos es un archivo, no un servicio de red.
+  - docs/02-reglas-y-pagos.md → TU DOCUMENTO PRINCIPAL. Trae el convenio "pago total"
+    (pago = truncar(apuesta × multiplicador), ganancia = pago − apuesta), las constantes
+    (SALDO_INICIAL 1000, APUESTA_MINIMA 10, JUGADORES_POR_SALA 6, MAZOS_BLACKJACK 4, MAZOS_POKER 1,
+    REBARAJAR_SI_QUEDAN_MENOS_DE 52, PLANTARSE_CASA 17, turnos de 25 s y 30 s), la tabla de
+    multiplicadores (§8), los 20 casos de prueba (§9) y las 7 validaciones obligatorias (§10).
+    NO inventes ni cambies ningún número: cítalos tal cual.
+  - docs/03-modelo-de-datos.md → campos de partidas y apuestas (incluido semilla_rng).
+  - docs/04-arquitectura.md → eventos de Socket.IO (§3.2 y §3.3), tiempos e idempotencia (§5) y
+    reglas de seguridad (§6).
+  - docs/01-alcance-y-requerimientos.md → roles y flujo de una sala (§8).
 
 ═══════════════════════════════════════════════════════════════════════════════
-4. MATERIAL EN BRUTO QUE TE PASÓ EL COMPAÑERO DE BACKEND 2
+4. TUS TRES TICKETS
 ═══════════════════════════════════════════════════════════════════════════════
-Esto es exactamente lo que él dijo que va a hacer. Conviértelo en tres tickets formales:
-
-  1) "Programar las fases por las que pasa una ronda: esperando jugadores, recibiendo apuestas,
-     mostrando el resultado y vuelta a empezar. Es la base que van a usar todos los juegos."
-
-  2) "Hacer la funcion que saca los resultados al azar (cara o cruz, numero del dado, numero de la
-     ruleta, carta del mazo). Siempre corre en el servidor, nunca en el navegador, para que nadie
-     pueda hacer trampa."
-
-  3) "Programar la funcion que descuenta las fichas al apostar y acredita el premio segun lo que
-     pague el juego. Antes de aceptar la apuesta revisa que sea de minimo 10 fichas y que al
-     jugador le alcance el saldo. Es la misma funcion para todos los juegos."
+BE-04 · Programar las fases por las que pasa una ronda. Es la base que usan todos los juegos.
+BE-05 · La función que saca los resultados al azar (cara o cruz, dado, ruleta, carta del mazo).
+        Siempre corre en el servidor, nunca en el navegador, para que nadie pueda hacer trampa.
+BE-06 · La función que descuenta fichas al apostar y acredita el premio según lo que pague el
+        juego. Valida mínimo 10 fichas y saldo suficiente. Es la misma para todos los juegos.
 
 ═══════════════════════════════════════════════════════════════════════════════
-5. QUÉ DEBES ENTREGAR
+5. ARCHIVOS QUE TE TOCAN (y los que NO)
 ═══════════════════════════════════════════════════════════════════════════════
-Tres archivos Markdown, uno por ticket, en la carpeta docs/backlog/:
+CREAS TÚ:
+  lib/reglas.js     → constantes compartidas (REGLAS, FASES, PAGOS). Eres el dueño: si otro
+                      compañero la necesita, que la importe de aquí.
+  lib/ronda.js      → máquina de estados de la ronda y transiciones válidas
+  lib/rng.js        → resultados al azar + mazo (crearMazo, barajar, sacarCarta, crearRng)
+  lib/fichas.js     → validar, apostar, liquidar, costoSeguro, reembolsar
+  tests/ronda.test.js · tests/rng.test.js · tests/fichas.test.js
 
-  docs/backlog/BE-04-fases-de-la-ronda.md
-  docs/backlog/BE-05-resultados-al-azar.md
-  docs/backlog/BE-06-apostar-y-liquidar.md
-
-Cada archivo usa EXACTAMENTE esta plantilla:
-
-  # Ticket BE-0X · <título corto>
-
-  | Campo | Valor |
-  | --- | --- |
-  | **ID** | BE-0X |
-  | **Área** | Backend 2 |
-  | **Tipo** | Implementación |
-  | **Estado** | Pendiente · listo para implementar |
-  | **Prioridad** | Alta |
-  | **Depende de** | BE-01 (conexión), BE-02 (tabla jugadores), BE-03 (tabla salas) |
-  | **Desbloquea** | <IDs de los tickets de juegos, o "todos los juegos"> |
-  | **Documento base** | docs/02-reglas-y-pagos.md y docs/04-arquitectura.md |
-
-  ## 1. Objetivo
-  ## 2. Alcance            → "Sí incluye" y "No incluye" en dos listas
-  ## 3. Especificación     → el detalle técnico (ver punto 6)
-  ## 4. Archivos a crear o modificar → rutas exactas dentro del repo
-  ## 5. Criterios de aceptación → lista de casillas "- [ ]" verificables una por una
-  ## 6. Fuera de este ticket → lo que NO le toca y en qué ticket cae
-  ## 7. Notas y dudas      → supuestos que hiciste, o "—"
+NO TOQUES: package.json (salvo agregar un script "test" si no existe), db/**, lib/db.js,
+public/**, server.js ni docs/**. Si necesitas la base de datos, usa require('../lib/db.js') y da
+por hecho que las tablas de docs/03 ya existen.
 
 ═══════════════════════════════════════════════════════════════════════════════
-6. CONTENIDO TÉCNICO QUE CADA TICKET DEBE PRECISAR
+6. ESPECIFICACIÓN TÉCNICA
 ═══════════════════════════════════════════════════════════════════════════════
-BE-04 · Fases de la ronda
-  · Estado único de la ronda: un campo 'fase' en la sala, con los cuatro valores del punto 3a.
-    Debe vivir en un solo lugar (constante FASES en lib/reglas.js) para que ningún módulo invente
-    un quinto nombre. El valor se persiste en salas.fase.
-  · Tabla obligatoria de transiciones. Para cada una indica: fase de origen, fase destino, quién la
-    dispara y la condición:
-      - (crear sala) → 'espera'
-      - 'espera' → 'apuestas': automático al cumplirse el mínimo de jugadores (1 en juegos rápidos
-        y blackjack; 2 en Texas Hold'em) o cuando el anfitrión pulse "Comenzar".
-      - 'apuestas' → 'jugando': solo el ANFITRIÓN (lanzar la moneda/dado/ruleta o repartir cartas)
-        y solo si al menos una persona confirmó apuesta. Rechaza a cualquier otro con un error.
-      - 'jugando' → 'resultados': lo hace el SERVIDOR, nunca el cliente: cuando se generó el
-        resultado y se liquidó la ronda, o cuando terminaron todos los turnos.
-      - 'resultados' → 'apuestas': el anfitrión pulsa "Nueva ronda" (o automático tras N segundos,
-        indícalo como decisión abierta). Limpia apuestas, manos y temporizadores, y incrementa
-        numero_ronda en partidas.
-  · Reglas de la máquina de estados:
-      - Ninguna acción válida fuera de su fase: apostar solo en 'apuestas'; pedir/plantarse/igualar
-        solo en 'jugando'; abrir otra ronda solo en 'resultados'. Toda acción fuera de fase se
-        rechaza con un mensaje, sin cambiar el estado.
-      - No se puede pasar de 'apuestas' a 'resultados' sin pasar por 'jugando'.
-      - Nadie entra ni sale de la sala durante 'jugando' (plantilla bloqueada); si alguien se
-        desconecta en 'jugando', su mano se marca inactiva y continúa la ronda.
-      - Temporizadores: 25 s por turno en blackjack (al vencer se planta) y 30 s en póker (al
-        vencer pasa si puede, si no se retira). Los juegos rápidos no tienen reloj.
-      - Al cerrar una sala (estado='cerrada') se cancelan temporizadores y tareas pendientes.
-  · Difusión: después de CADA cambio de fase el servidor emite 'estado_sala' con la sala completa,
-    y los eventos 'ronda_iniciada', 'turno' y 'resultado' según corresponda (docs/04 §3.3).
-  · Archivos sugeridos: lib/ronda.js (máquina de estados y transiciones válidas), lib/reglas.js
-    (constante FASES), integración en server.js y en lib/juegos/*.js.
+a) lib/reglas.js
+   Exporta al menos:
+     REGLAS = { SALDO_INICIAL: 1000, APUESTA_MINIMA: 10, JUGADORES_POR_SALA: 6,
+                LONGITUD_CODIGO_SALA: 5, TIEMPO_TURNO_BLACKJACK_MS: 25000,
+                TIEMPO_TURNO_POKER_MS: 30000, CIEGA_PEQUENA: 10, CIEGA_GRANDE: 20,
+                MAZOS_BLACKJACK: 4, MAZOS_POKER: 1, REBARAJAR_SI_QUEDAN_MENOS_DE: 52,
+                PLANTARSE_CASA: 17, TIEMPO_HOST_INACTIVO_MS: 60000 }
+     FASES  = { ESPERA: 'espera', APUESTAS: 'apuestas', JUGANDO: 'jugando',
+                RESULTADOS: 'resultados' }
+     PAGOS  = { coinflip: { acierto: 2 }, dice: { bajo: 2, alto: 2, exacto: 6 },
+                roulette: { pleno: 36, docena: 3, columna: 3, simple: 2 },
+                blackjack: { victoria: 2, natural: 2.5, empate: 1, derrota: 0, seguro: 3 } }
 
-BE-05 · Resultados al azar en el servidor
-  · Módulo lib/rng.js con funciones puras que reciben el generador por parámetro (por defecto
-    Math.random) para poder probarlas con una semilla fija:
-      lanzarMoneda(rng) → 'cara' | 'cruz'          (50 % / 50 %)
-      lanzarDado(rng)   → entero de 1 a 6          (uniforme)
-      girarRuleta(rng)  → { numero: 0..36, color: 'verde'|'rojo'|'negro' }
-      crearMazo(cuantasBarajas) → arreglo barajado (solo servidor)
-      sacarCarta(mazo)  → la siguiente carta, sin reposición, o null si el mazo se vació
-  · La ruleta es EUROPEA: 37 casillas (0-36). El 0 es 'verde'. Los rojos son exactamente:
-    1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36. El resto son negros.
-  · El mazo: BLACKJACK usa 4 barajas (208 cartas) y PÓKER 1 baraja (52). Se rebaraja cuando quedan
-    MENOS de 52 cartas, antes de repartir. Carta = rango + palo (ejemplos: 'A♠', '10♥', 'K♦').
-    Valores: A = 11 (o 1 si se pasa de 21), K/Q/J = 10, numéricas su valor.
-  · Semilla y pruebas: cada función debe poder recibir una semilla (crearRng(semilla)) y el
-    servidor guarda la semilla de la ronda en partidas.semilla_rng (docs/03) para poder repetir un
-    caso exacto. Incluye casos de prueba con semilla fija.
-  · Seguridad (déjalo explícito en el ticket):
-      - Ningún evento ni endpoint permite que el cliente envíe, elija o adelante un resultado.
-      - El cliente recibe el resultado YA decidido y solo lo anima (docs/04 regla de oro).
-      - El mazo nunca se envía completo al cliente; cada quien recibe solo sus cartas.
-      - Las animaciones de ruleta y dados no pueden cambiar el número: muestran el del servidor.
-  · Archivos sugeridos: lib/rng.js y su prueba tests/rng.test.js.
+b) BE-04 · Fases de la ronda (lib/ronda.js)
+   · La fase se guarda en salas.fase y SOLO puede valer: 'espera', 'apuestas', 'jugando',
+     'resultados'. La "vuelta a empezar" NO es un estado: es la transición de 'resultados' a
+     'apuestas' al abrir la siguiente ronda.
+   · No confundir con salas.estado ('abierta'/'cerrada'): son dos campos distintos.
+   · Transiciones válidas (quién las dispara y la condición):
+       (crear sala)      → 'espera'
+       'espera'          → 'apuestas'  : automático al cumplirse el mínimo (1 jugador en rápidos y
+                                         blackjack; 2 en Texas Hold'em) o al pulsar "Comenzar"
+       'apuestas'        → 'jugando'   : SOLO el anfitrión (lanzar o repartir) y solo si al menos
+                                         una persona confirmó apuesta
+       'jugando'         → 'resultados': lo hace el SERVIDOR al generar el resultado y liquidar, o
+                                         al terminar todos los turnos
+       'resultados'      → 'apuestas'  : el anfitrión abre la nueva ronda; limpia apuestas, manos y
+                                         temporizadores y incrementa numero_ronda
+   · Reglas duras:
+       - Toda acción fuera de su fase se rechaza con un error y sin cambiar el estado.
+       - No se puede pasar de 'apuestas' a 'resultados' sin pasar por 'jugando'.
+       - Nadie entra ni sale de la sala durante 'jugando'.
+       - Temporizadores: 25 s por turno en blackjack (al vencer, se planta) y 30 s en póker (al
+         vencer, pasa si puede y si no se retira). Juegos rápidos sin reloj.
+       - Al cerrar la sala se cancelan temporizadores y tareas pendientes.
+   · Expón funciones claras, por ejemplo: puedeTransicionar(desde, hasta), cambiarFase(sala, fase,
+     motivo), fasePermiteAccion(fase, accion), abrirNuevaRonda(sala).
+   · Deja el módulo listo para que server.js emita 'estado_sala', 'ronda_iniciada', 'turno' y
+     'resultado' (docs/04 §3.3). Tú no creas esos eventos; solo el estado y las reglas.
 
-BE-06 · Apostar y liquidar fichas (juegos rápidos y blackjack; SIN póker)
-  · Módulo lib/fichas.js con UNA SOLA función de validación y liquidación reutilizable:
-      validarApuesta(saldo, monto) → { ok: true } | { ok: false, error: '<mensaje>' }
-        Rechaza si: no es entero, es menor que 10 (APUESTA_MINIMA), es mayor que el saldo
-        disponible, o el jugador ya apostó en esta ronda. Mensaje sugerido:
-        "Apuesta entre 10 y tus fichas disponibles."
-      apostar(jugadorId, partidaId, monto, opcion)
-        Descuenta las fichas al confirmar, crea la fila en 'apuestas' y suma a partidas.bote_total.
-      liquidar(monto, multiplicador) → { pago, neto }
-        pago = Math.floor(monto * multiplicador);  neto = pago − monto.   (docs/02 §1)
-      costoSeguro(monto) → Math.ceil(monto / 2)      (blackjack, docs/02 §6)
-      reembolsar(apuestaId) → devuelve el monto si el jugador sale antes del lanzamiento.
-  · Los multiplicadores NO se escriben aquí: se leen de la tabla de docs/02 §8. El ticket debe
-    incluir la tabla resumen (Cara o Cruz x2; Dados x2 y x6; Ruleta x36, x3 y x2; Blackjack x2,
-    x2,5, x1, x0 y seguro x3) y decir que el valor sale de lib/reglas.js.
-  · Persistencia (depende de BE-02 y BE-03): al apostar, UPDATE jugadores.saldo_fichas e INSERT en
-    apuestas (monto, opcion); al liquidar, UPDATE apuestas (multiplicador, pago, resultado) y
-    UPDATE jugadores.saldo_fichas. Usa una transacción de better-sqlite3 para que el descuento y
-    el registro de la apuesta ocurran juntos o no ocurran.
-  · Reglas que el ticket debe dejar claras:
-      - El saldo NUNCA puede quedar negativo (CHECK de la tabla + validación previa).
-      - Una sola apuesta por jugador por ronda (UNIQUE partida_id + jugador_id).
-      - Idempotencia: una ronda se liquida UNA SOLA vez, aunque lleguen dos "lanzar" repetidos.
-      - Si el jugador sale antes del lanzamiento se le reembolsa; si ya se lanzó, no.
-      - Truncar, no redondear: apuesta 15 × 2,5 = 37 fichas (no 38).
-      - Texas Hold'em NO entra: el reparto del bote va en otro ticket, pero liquidar() debe quedar
-        lista para reutilizarse.
-  · Mensajes de error en español y accionables: "Apuesta entre 10 y tus fichas disponibles.",
-    "Ya confirmaste tu apuesta para esta ronda.", "Ahora no se puede apostar."
-  · Archivos sugeridos: lib/fichas.js y tests/fichas.test.js con los casos 1 a 20 de docs/02 §9
-    (los de blackjack y validación incluidos; omite el 7 si prefieres no usar póker).
+c) BE-05 · Resultados al azar (lib/rng.js)
+   · Funciones puras que reciben el generador por parámetro (por defecto Math.random) para poder
+     probarlas con semilla:
+       lanzarMoneda(rng) → 'cara' | 'cruz'   (50 % / 50 %)
+       lanzarDado(rng)   → entero 1 a 6      (uniforme)
+       girarRuleta(rng)  → { numero: 0..36, color: 'verde' | 'rojo' | 'negro' }
+       crearMazo(cuantasBarajas, rng) → arreglo barajado
+       sacarCarta(mazo)  → siguiente carta sin reposición (null si el mazo se vació)
+       crearRng(semilla) → generador determinista (por ejemplo mulberry32)
+   · Ruleta EUROPEA de 37 casillas. El 0 es 'verde'. Rojos exactos:
+     1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36. El resto, negros.
+   · Mazos: blackjack 4 barajas (208 cartas), póker 1 baraja (52). Se rebaraja cuando quedan menos
+     de 52 cartas, antes de repartir. Carta = rango + palo (ejemplos: 'A♠', '10♥', 'K♦').
+     Valores: A = 11 (o 1 si se pasa de 21), K/Q/J = 10, numéricas su valor.
+   · Seguridad (déjalo por escrito en comentarios del código):
+       - Ningún evento ni endpoint permite que el cliente envíe, elija o adelante un resultado.
+       - El cliente recibe el resultado YA decidido y solo lo anima.
+       - El mazo nunca se envía completo; cada quien recibe solo sus cartas.
+   · Guarda la semilla de la ronda para poder repetir un caso (partidas.semilla_rng, docs/03).
+
+d) BE-06 · Fichas (lib/fichas.js)
+   · validarApuesta(saldo, monto) → { ok: true } | { ok: false, error }
+       Rechaza si no es entero, si es menor que 10, si es mayor que el saldo, o si el jugador ya
+       apostó en la ronda. Mensaje: "Apuesta entre 10 y tus fichas disponibles."
+   · apostar({ jugadorId, partidaId, monto, opcion }) → descuenta del saldo, inserta la fila en
+     apuestas y suma a partidas.bote_total. Todo dentro de una transacción de better-sqlite3
+     (db.transaction(...)) para que ocurra completo o no ocurra.
+   · liquidar(monto, multiplicador) → { pago, neto }
+       pago = Math.floor(monto * multiplicador);  neto = pago − monto.
+       Los multiplicadores salen de PAGOS (lib/reglas.js), nunca escritos a mano.
+   · acreditar({ apuestaId, multiplicador, resultado }) → actualiza apuestas
+     (multiplicador, pago, resultado) y suma el pago al saldo del jugador. Idempotente: si la
+     apuesta ya está liquidada, no la vuelva a pagar.
+   · costoSeguro(monto) → Math.ceil(monto / 2)   (blackjack, docs/02 §6)
+   · reembolsar(apuestaId) → devuelve el monto si el jugador sale antes del lanzamiento.
+   · Reglas: el saldo NUNDA queda negativo; una sola apuesta por jugador y ronda; una ronda se
+     liquida una sola vez; truncar, no redondear (15 × 2,5 = 37).
+   · TEXAS HOLD'EM QUEDA FUERA: el reparto del bote va en otro ticket. Deja liquidar() lista para
+     reutilizarse y documenta con un comentario dónde entrará el póker.
 
 ═══════════════════════════════════════════════════════════════════════════════
-7. REGLAS PARA REDACTAR
+7. REGLAS DE CONVIVENCIA
 ═══════════════════════════════════════════════════════════════════════════════
-  1. Español, tono directo, sin relleno. Usa "debe", "crea", "valida"; evita "sería recomendable".
-  2. No inventes reglas ni números: si el ticket toca pagos, saldos, tiempos, mazos o
-     multiplicadores, copia los valores de docs/02-reglas-y-pagos.md y cítalos.
-  3. No redefinas las tablas jugadores ni salas: son de BE-02 y BE-03. Solo consúmelas.
-  4. Si el material del compañero contradice los documentos, NO lo resuelvas por tu cuenta:
-     ponlo en una sección "Conflictos detectados" al final del ticket explicando ambas fuentes.
-     (Ya hay uno identificado: él describe cuatro fases sin la fase 'jugando' y con otros nombres;
-     usa el enum de docs/03 y explica el cambio en esa sección.)
-  5. Cada criterio de aceptación se comprueba con sí o no, sin interpretación.
-  6. Si incluyes código, que sea un ejemplo corto y marcado como referencia, nunca una
-     implementación completa.
-  7. No toques public/assets/, el README, los documentos 01 a 04 ni los tickets BE-01 a BE-03:
-     solo escribes los tres archivos nuevos en docs/backlog/.
+  1. No modifiques db/**, lib/db.js, public/**, server.js ni docs/**.
+  2. No inventes reglas ni números: todo viene de docs/02.
+  3. Código en español (nombres y mensajes), comillas simples, 2 espacios, punto y coma.
+  4. Cada función pura y testeable por separado: sin depender de sockets ni de Express.
 
 ═══════════════════════════════════════════════════════════════════════════════
-8. AL TERMINAR
+8. CÓMO VERIFICAR QUE TERMINASTE
 ═══════════════════════════════════════════════════════════════════════════════
-Devuélveme un resumen con: los tres archivos creados, el objetivo de cada uno en una línea, y la
-lista de conflictos o dudas (o "sin conflictos"). No ejecutes comandos ni modifiques nada fuera de
-docs/backlog/.
-```
+  1. npm install
+  2. npm run db:migrar   (si aún no existe la base, créala con el script de Backend 1)
+  3. node --test tests/  →  todas las pruebas pasan:
+       FASES:  las transiciones inválidas se rechazan (apuestas → resultados, resultados →
+               jugando, espera → jugando); las válidas pasan; ninguna acción permitida fuera de
+               su fase.
+       RNG:    10 000 monedas dan entre 45 % y 55 % de caras; el dado solo da 1 a 6; la ruleta
+               solo da 0 a 36 y el 0 es verde; con la misma semilla el resultado se repite; el
+               mazo de blackjack tiene 208 cartas únicas; sacarCarta no devuelve la misma dos
+               veces; se rebaraja al bajar de 52.
+       FICHAS: los casos 1 a 18 de docs/02 §9 dan exactamente el pago y la ganancia indicados
+               (incluido 15 × 2,5 = 37); apuesta de 9 se rechaza; apuesta mayor que el saldo se
+               rechaza; el saldo nunca queda negativo; liquidar dos veces la misma apuesta solo
+               paga una; reembolsar devuelve el monto íntegro.
+  4. Comprueba que ningún módulo tuyo abre sockets ni toca Express.
+
+═══════════════════════════════════════════════════════════════════════════════
+9. REPORTE FINAL
+═══════════════════════════════════════════════════════════════════════════════
+  · Archivos creados y qué exporta cada uno (nombres de funciones y firmas).
+  · Resultado de las verificaciones del punto 8.
+  · Dudas o conflictos con los documentos (por ejemplo: si crees que falta algún estado en FASES,
+    dilo por escrito, pero NO lo agregues sin autorización).
+  · Qué debe llamar server.js para avanzar de fase, generar un resultado y liquidar una apuesta.
+````
 
 ## FIN DEL PROMPT
