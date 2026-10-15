@@ -48,6 +48,9 @@ repositorio usa otro).
 - Dinero real, depósitos, retiros, compras dentro de la app o premios canjeables.
 - Cuentas con correo, contraseña, recuperación o verificación en dos pasos.
 - Versión móvil o responsiva para celular.
+- **Despliegue, hosting, dominio, túneles (ngrok y similares), contenedores ni servicios en la
+  nube.** El proyecto se desarrolla y se usa en local; el estado muere con el proceso si no se
+  activa el snapshot en disco.
 - Bots que ocupen asientos libres.
 - Torneos, ligas, ranking global, temporadas y misiones.
 - Tragamonedas, jackpots, eventos especiales, colección cosmética o pasaporte.
@@ -181,6 +184,8 @@ Cualquier persona que se unió a la sala y ocupa un asiento.
 | Privacidad de cartas | Cada cliente recibe únicamente las suyas | En póker y blackjack |
 | Chat | Texto libre + mensajes rápidos, solo dentro de la sala | Máximo 200 caracteres por mensaje |
 | Dinero real | **Ninguno** | Aviso visible en el pie de la página |
+| Entorno | **Local** | Corre en `http://localhost:3000`; sin hosting, dominio ni túnel |
+| Datos | **En la propia máquina** | Memoria del proceso y, si se activa, `data/estado.json` |
 
 ---
 

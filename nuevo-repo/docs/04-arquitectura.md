@@ -23,11 +23,18 @@
 | Capa | Qué es | Qué hace | Qué **no** hace |
 | --- | --- | --- | --- |
 | **Navegador** | HTML + CSS + JavaScript que se descarga al abrir la página | Pide la página, abre el WebSocket, muestra la sala y manda la intención del jugador («apuesto 100 al rojo») | No calcula resultados, no reparte cartas, no mueve fichas por su cuenta |
-| **Servidor Node.js** | Un solo proceso: Express + Socket.IO + motor de juego | Guarda el estado real, valida cada acción, genera el resultado con su RNG, liquida pagos y difunde el nuevo estado a todos | No confía en nada que le mande el cliente |
-| **Capa de datos** | Memoria del proceso (+ snapshot JSON opcional) | Guarda salas, jugadores, partidas y apuestas del modelo DOC-03 | No guarda contraseñas, correos ni datos de pago (no existen) |
+| **Servidor Node.js** | Un solo proceso **en la computadora de quien lo arranca**: Express + Socket.IO + motor de juego | Guarda el estado real, valida cada acción, genera el resultado con su RNG, liquida pagos y difunde el nuevo estado a todos | No confía en nada que le mande el cliente; no llama a servicios externos |
+| **Capa de datos** | Memoria del proceso local (+ `data/estado.json` opcional, en el disco de esa misma máquina) | Guarda salas, jugadores, partidas y apuestas del modelo DOC-03 | No usa base de datos remota ni guarda contraseñas, correos ni datos de pago (no existen) |
 
 **Regla de oro:** el servidor es **autoritativo**. El cliente envía intenciones y recibe estados;
 el resultado de una ronda se genera una sola vez, en el servidor, y todos los clientes lo reciben.
+
+> **Todo corre en local.** Las tres capas viven en la **misma computadora**: el navegador se abre en
+> `http://localhost:3000`, el servidor es un proceso de Node en esa máquina y los datos están en su
+> memoria (y opcionalmente en `data/estado.json`, en su disco). No hay despliegue, hosting, dominio,
+> túneles ni servicios en la nube, y **la aplicación no necesita internet para funcionar**.
+> Para jugar desde otra computadora basta con usar la IP local de la máquina que corre el servidor
+> dentro de la misma red.
 
 ---
 

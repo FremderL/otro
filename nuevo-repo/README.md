@@ -87,6 +87,9 @@ Las reglas completas, los multiplicadores y los casos de prueba están en
 - Un navegador actualizado (Chrome, Edge, Firefox o Safari).
 - Sistema operativo: **Windows 10/11, macOS o Linux**. La interfaz está pensada para pantallas de
   **1024 px de ancho o más** (computadora de escritorio o laptop).
+- **No se necesita nada más**: sin base de datos, sin hosting, sin cuentas externas y sin conexión
+  a internet durante el juego. El único requisito de red es la instalación inicial
+  (`git clone` y `npm install`).
 
 ---
 
@@ -153,10 +156,15 @@ Para detener el servidor pulsa `Ctrl + C` en la terminal.
 | --- | --- |
 | **Misma computadora** | Abre dos ventanas o pestañas (una en modo incógnito) en `http://localhost:3000` y entra con el mismo código. |
 | **Misma red Wi-Fi** | Quien ejecuta el servidor comparte su IP local: `http://192.168.X.X:3000`. Obtenla con `ipconfig` (Windows) o `ip a` / `ifconfig` (macOS/Linux). |
-| **Otra red / internet** | Hay que exponer el puerto 3000 (por ejemplo con [ngrok](https://ngrok.com): `ngrok http 3000`) y compartir la URL que genera. |
+| **Otra red / internet** | **Fuera de alcance en la v1.** No hay despliegue ni hosting: para jugar desde otra red habría que exponer el puerto manualmente, y eso queda fuera del proyecto. |
 
 > **Recordatorio:** comparte el enlace solo con las personas que quieres invitar; cualquiera que
 > tenga el código puede entrar a la sala mientras exista.
+>
+> **El proyecto se ejecuta en local.** Todo vive en la computadora de quien corre `npm start`: el
+> servidor en `localhost:3000`, el estado en memoria y, si activas `GUARDAR_ESTADO`, en
+> `data/estado.json` de esa misma máquina. No se despliega ni se usa ningún servicio en la nube, y
+> **no necesitas internet para jugar** (solo para clonar el repositorio e instalar dependencias).
 
 ---
 
@@ -239,7 +247,7 @@ montecristo/
 | `Error: listen EADDRINUSE :::3000` | El puerto está ocupado: cierra la otra terminal o usa `PORT=4000 npm start`. |
 | `npm install` falla por permisos | En Linux/macOS no uses `sudo`; revisa la configuración de npm o borra `node_modules` y reintenta. |
 | La página carga pero dice «Desconectado» | Revisa que el servidor siga encendido y que no haya un bloqueador/proxy cerrando el WebSocket. |
-| Mis amigos no pueden entrar desde otra red | Necesitas exponer el puerto (ngrok o similar) o desplegar el servidor en un hosting. |
+| Mis amigos no pueden entrar desde otra red | Es esperado: la v1 es **solo local**. Jueguen en la misma máquina o en la misma red Wi-Fi con la IP local; exponer el puerto queda fuera del alcance del proyecto. |
 | El navegador muestra una versión vieja de la página | Recarga con `Ctrl + Shift + R` (Windows/Linux) o `Cmd + Shift + R` (macOS). |
 | Las fichas volvieron a 1.000 al reiniciar | Es el comportamiento por defecto; activa `GUARDAR_ESTADO=true` para conservarlas. |
 
