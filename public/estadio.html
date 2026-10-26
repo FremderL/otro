@@ -35,6 +35,11 @@
     <div class="estadio-nav-right">
       <span id="est-connection" class="connection-badge connecting"><i></i><span>Conectando</span></span>
       <span id="est-chips" class="est-chips" title="Tus fichas virtuales">— fichas</span>
+      <button id="est-ledger-open-nav" class="est-nav-ledger" type="button" aria-haspopup="dialog" aria-controls="est-ledger" aria-label="Ver historial de apuestas y pagos" title="Historial de apuestas y pagos">
+        <span class="est-nav-ledger-icon" aria-hidden="true">🧾</span>
+        <span class="est-nav-ledger-text">Mis apuestas</span>
+        <span id="est-nav-badge" class="est-nav-badge" hidden>0</span>
+      </button>
       <button id="est-ads-open" class="btn btn-ghost btn-small" type="button" aria-controls="est-ads" hidden>📢 Publicidad</button>
       <button id="est-sound" class="icon-btn" type="button" aria-label="Silenciar campana de avisos" aria-pressed="false">🔔</button>
       <button id="est-music" class="icon-btn" type="button" aria-label="Activar música de ambiente" aria-pressed="false" title="Música de ambiente">🎵</button>
@@ -151,28 +156,17 @@
       <section class="est-panel" id="est-mybets-panel">
         <div class="est-bets-head">
           <h2 class="est-panel-title">Mis apuestas</h2>
-          <button id="est-bets-refresh" class="text-button" type="button" aria-label="Actualizar historial de apuestas y pagos" title="Actualizar historial y pagos">↻</button>
+          <span id="est-mybets-count" class="est-badge" hidden>0 abiertas</span>
         </div>
-        <div id="est-bets-unseen" class="est-bets-unseen" role="status" aria-live="polite" hidden></div>
-        <div class="est-bets-tabs" role="tablist" aria-label="Vistas de apuestas">
-          <button id="est-bets-tab-open" class="est-bets-tab active" type="button" role="tab" aria-selected="true" aria-controls="est-bets-open" data-bets-tab="open">Abiertas</button>
-          <button id="est-bets-tab-history" class="est-bets-tab" type="button" role="tab" aria-selected="false" aria-controls="est-bets-history" data-bets-tab="history">Historial y pagos</button>
-        </div>
-        <div id="est-bets-open" class="est-bets-view" role="tabpanel" aria-labelledby="est-bets-tab-open">
-          <ul id="est-mybets" class="est-mybets" aria-label="Tus apuestas abiertas">
-            <li class="est-muted">Sin apuestas abiertas.</li>
-          </ul>
-        </div>
-        <div id="est-bets-history" class="est-bets-view" role="tabpanel" aria-labelledby="est-bets-tab-history" hidden>
-          <div id="est-bets-summary" class="est-bets-summary" aria-label="Resumen de apuestas y pagos"></div>
-          <div class="est-bets-filters">
-            <button id="est-bets-only-match" class="est-bets-filter" type="button" aria-pressed="false" hidden>Solo este partido</button>
-          </div>
-          <ul id="est-bet-history" class="est-mybets" aria-label="Historial de apuestas y pagos">
-            <li class="est-muted">Cargando historial…</li>
-          </ul>
-          <p id="est-bets-note" class="est-muted">Los pagos se acreditan solos al liquidarse el partido, aunque no estés conectado.</p>
-        </div>
+        <ul id="est-mybets" class="est-mybets" aria-label="Tus apuestas abiertas">
+          <li class="est-muted">Sin apuestas abiertas.</li>
+        </ul>
+        <button id="est-ledger-open" class="est-bets-link" type="button" aria-haspopup="dialog" aria-controls="est-ledger">
+          <span class="est-bets-link-label">Historial y pagos</span>
+          <span id="est-bets-link-note" class="est-bets-link-note">Ver todas tus apuestas</span>
+          <span id="est-bets-link-dot" class="est-bets-link-dot" hidden aria-hidden="true"></span>
+          <span class="est-bets-link-arrow" aria-hidden="true">→</span>
+        </button>
       </section>
 
       <section class="est-panel est-ads" id="est-ads" aria-labelledby="est-ads-title" hidden>
@@ -351,6 +345,54 @@
   </main>
 
   <!-- Guía de atajos -->
+  <!-- Historial de apuestas y pagos: vista propia a pantalla completa.
+       Vive fuera de las columnas del Estadio para no saturarlas; se abre desde el
+       nav, desde el panel «Mis apuestas» o con la URL /estadio#apuestas. Solo lee
+       por HTTP (no depende del socket), así funciona también al volver con el
+       partido ya jugado. -->
+  <div id="est-ledger" class="est-ledger" hidden role="dialog" aria-modal="true" aria-labelledby="est-ledger-title" tabindex="-1">
+    <div class="est-ledger-shell">
+      <header class="est-ledger-head">
+        <div class="est-ledger-head-copy">
+          <span class="est-ledger-kicker">Estadio MonteCristo · fichas virtuales</span>
+          <h1 id="est-ledger-title" class="est-ledger-title" tabindex="-1">Historial de apuestas y pagos</h1>
+          <p class="est-ledger-sub">Todas tus apuestas del Estadio, cómo terminó cada partido y lo que se acreditó a tu saldo.</p>
+        </div>
+        <div class="est-ledger-head-actions">
+          <span class="est-ledger-chips-now"><small>Saldo actual</small><b id="est-ledger-chips">— fichas</b></span>
+          <button id="est-ledger-refresh" class="est-ledger-action" type="button" aria-label="Actualizar historial y pagos">↻ Actualizar</button>
+          <button id="est-ledger-close" class="est-ledger-close" type="button" aria-label="Cerrar historial de apuestas y pagos">✕</button>
+        </div>
+      </header>
+
+      <div id="est-ledger-unseen" class="est-ledger-unseen" role="status" aria-live="polite" hidden></div>
+
+      <section id="est-ledger-stats" class="est-ledger-stats" aria-label="Resumen de apuestas y pagos"></section>
+
+      <div class="est-ledger-toolbar">
+        <div class="est-ledger-chips" role="group" aria-label="Filtrar por estado de la apuesta">
+          <button class="est-ledger-chip" type="button" data-ledger-filter="all" aria-pressed="true">Todas</button>
+          <button class="est-ledger-chip" type="button" data-ledger-filter="open" aria-pressed="false">Abiertas</button>
+          <button class="est-ledger-chip" type="button" data-ledger-filter="won" aria-pressed="false">Ganadas</button>
+          <button class="est-ledger-chip" type="button" data-ledger-filter="lost" aria-pressed="false">Perdidas</button>
+          <button class="est-ledger-chip" type="button" data-ledger-filter="void" aria-pressed="false">Anuladas</button>
+        </div>
+        <div class="est-ledger-tools">
+          <button id="est-ledger-only-match" class="est-ledger-chip est-ledger-chip-tool" type="button" aria-pressed="false" hidden>Solo este partido</button>
+        </div>
+      </div>
+
+      <div id="est-ledger-list" class="est-ledger-list" aria-live="polite">
+        <p class="est-ledger-empty">Cargando historial…</p>
+      </div>
+
+      <footer class="est-ledger-foot">
+        <p>Los pagos se acreditan automáticamente al liquidarse el partido, aunque no estés conectado. Todas las fichas son virtuales y no tienen valor real.</p>
+        <button id="est-ledger-back" class="est-ledger-back" type="button">← Volver al Estadio</button>
+      </footer>
+    </div>
+  </div>
+
   <div id="est-help" class="est-modal" hidden role="dialog" aria-modal="true" aria-label="Atajos de teclado">
     <div class="est-modal-card">
       <h2>Atajos de teclado</h2>
