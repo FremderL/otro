@@ -3700,3 +3700,94 @@ revisión la aprueba o rechaza un administrador, y la imagen se elimina del disc
 **Pruebas:** `tests/football-promotion-media.test.js` (validación, metadatos, lectura y borrado) y
 `tests/football-promotion-media-routes.test.js` (envío, rechazo de imagen inválida, bandeja, servicio
 público antes y después de aprobar, borrado al kickoff y al rechazar).
+
+## 34. Historial de apuestas y pagos acreditados (cobrar al volver)
+
+**Problema.** La liquidación del Estadio ya es automática y autoritativa: cuando el
+partido termina, `FootballEngine._settleResult()` llama al hook
+`betting.settleMatchBets()`, que paga cada apuesta contra el perfil y persiste el
+saldo con `saveNow()` — sin sockets, sin presencia y sin que el jugador pulse nada.
+Lo que faltaba era **poder verlo**: el panel «Mis apuestas» solo listaba las
+apuestas `open` del partido seleccionado, así que quien entraba al sitio con el
+partido ya jugado veía el marcador final pero ninguna de sus apuestas ni el pago.
+
+### 34.1 Garantía de cobro sin presencia
+
+- El pago se acredita **en el servidor** en el instante de la liquidación: no
+  depende de que el navegador esté abierto ni de que el socket siga conectado.
+- Si el proceso estuvo caído a la hora del pitazo final, `engine.reconcile()` al
+  arrancar liquida el partido desde `(seed, now)` y `betting.reconcileEscrow()`
+  fuerza el pago de cualquier apuesta `open` cuyo partido ya esté `finished`/
+  `settled`. Es idempotente: el store solo hace transitar filas `open`, así que un
+  barrido duplicado nunca paga dos veces.
+- El pago queda en el perfil persistido (`profile.chips` + `recordOutcome` con
+  `net = payout − stake`), por lo que sobrevive a reinicios y a sesiones nuevas.
+
+### 34.2 Registro completo: `betting.getBetHistory(profileId, { limit, since })`
+
+Devuelve `{ entries, summary, unseen, totalEntries, serverNow }`.
+
+- **`entries`** unifica apuestas simples, combinadas (`kind: 'parlay'`, con sus
+  patas resueltas una por una) y futuros (`kind: 'future'`), ordenadas por
+  `settledAt || placedAt` descendente. Cada entrada incluye `stake`, `odds`,
+  `potentialPayout`, `status`, `payout`, `placedAt`, `settledAt`, `inPlay`,
+  `minuteAtPlacement` y el contexto congelado del partido: `homeId`, `awayId`,
+  `jornada`, `kickoffAt`, `status` y `result` en cuanto el partido está
+  `finished`/`settled`. Nunca viaja `profileId`, `idempotencyKey` ni `deviceToken`.
+- **`summary`** agrega `total`, `open`, `byStatus`, `staked`, `returned`, `net`
+  (solo sobre lo ya liquidado, para no contar como pérdida el dinero en juego),
+  `openStake`, `openPotentialPayout` y `latestSettlementAt`.
+- **`unseen`** (opcional, con `since > 0`): las liquidaciones posteriores a ese
+  instante, con `count`, `credited` (fichas acreditadas), `staked`, `net`,
+  `throughAt` y hasta cinco `items`. Es lo que el jugador se perdió por no estar
+  conectado. `since ≤ 0` devuelve `null` (primera visita: sin avisos de pagos
+  antiguos).
+- `limit` se acota a **1–200** (40 por defecto). `totalEntries` conserva el total
+  real para que la interfaz pueda indicar que hay más.
+
+### 34.3 Ruta HTTP
+
+`GET /api/estadio/my-bets?token=<deviceToken>&limit=40&since=<ms>`
+
+- Resuelve la identidad con lectura estricta (`profiles.getProfile`) y **nunca
+  crea perfiles** (A11). Sin token, o con un token desconocido, responde
+  `401 { code: 'no_identity' }` y no filtra nada de terceros.
+- Devuelve `{ ok, history, profile: { id, name, avatar, chips } }` con
+  `Cache-Control: no-store`. El saldo incluido es el ya actualizado por la
+  liquidación, de modo que la entrada tardía reconcilia la barra de fichas.
+- Funciona sin socket: es la vía de la primera pintura y de cualquier regreso al
+  sitio. En partido propio terminado, el contexto de cada apuesta ya trae el
+  resultado, así que la interfaz no necesita abrir el partido.
+
+### 34.4 Interfaz «Mis apuestas»
+
+- Dos vistas en el mismo panel: **Abiertas** (igual que antes, con `cash-out`) e
+  **Historial y pagos**, con contadores por pestaña.
+- **Resumen de pagos**: APOSTADO, COBRADO y NETO (verde si es positivo, coral si
+  es negativo) más el dinero en juego de las apuestas abiertas.
+- **Tarjeta por apuesta**: competición (`Local vs Visitante · J#`), selección y
+  mercado, cuota, monto, marcador final cuando existe, fecha, distintivo de
+  estado (Ganada, Perdida, Anulada, Cobrada, Abierta) y el pago concreto
+  («Pagada: +240 fichas», «Reembolso: +100», «Sin pago», «Paga 240 si acierta»).
+  Las combinadas muestran cada pata con su resolución.
+- **Aviso de pagos nuevos**: al entrar con `since` (marca `localStorage` por
+  perfil, clave `mc-estadio-bets-seen`), si hubo liquidaciones posteriores se
+  muestra un aviso dorado «Se liquidaron N apuestas mientras no estabas · +X
+  fichas acreditadas». Desaparece al abrir el historial o cerrarlo. La primera
+  visita fija la marca sin avisar de pagos antiguos; la marca vive en el cliente
+  porque una lectura `GET` no debe escribir estado en el servidor.
+- **Filtro «Solo este partido»** para revisar las apuestas (incluidas las
+  liquidadas) del partido seleccionado; el historial se refresca al apostar, al
+  cobrar cash-out, al recibir `football:settlement` y con el botón ↻.
+- Si el partido seleccionado ya terminó y no hay apuestas abiertas, la vista
+  Abiertas invita a revisar «Historial y pagos».
+
+### 34.5 Pruebas
+
+`tests/football-bet-history.test.js`: liquidación sin conexión con pago persistido
+tras releer el perfil desde disco, resultado y pago en el historial, resumen
+`staked/returned/net`, `unseen` con `since`, combinadas con patas resueltas,
+aislamiento por perfil, y la ruta HTTP (401 sin token, saldo actualizado, `since`).
+`tests/football-stadium-ui.test.js` cubre la pestaña «Historial y pagos» al entrar
+después del partido: aviso de pagos acreditados, tarjeta con resultado y pago, y
+resumen de tres cifras.

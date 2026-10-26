@@ -32,6 +32,7 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Atajos de teclado en mesa (`F/C/R/A` en póker, `H/S/D` en blackjack, `Enter` confirma apuestas rápidas, `T` enfoca el chat y `?` muestra la guía) e imágenes originales en las cinco tarjetas del lobby.
 - Ruleta europea completa: paño de apuestas con docenas y columnas, fichas visibles sobre el paño y rueda animada en canvas cuya pelota cae siempre en el número autoritativo del servidor.
 - Tragamonedas MonteCristo: tres rodillos que se detienen en secuencia con los símbolos que decidió el servidor, tabla de pagos visible y símbolo premium ♠.
+- Estadio MonteCristo: liga de fútbol simulada con apuestas en fichas virtuales. **Los pagos se acreditan automáticamente** al liquidarse el partido, aunque no estés conectado; al volver, «Mis apuestas → Historial y pagos» lista todas tus apuestas simples, combinadas y futuros con el resultado del partido, el pago recibido y un resumen de apostado/cobrado/neto, además de un aviso de lo que se liquidó mientras no estabas.
 - Interfaz exclusiva para computadoras de escritorio y laptops, sin animaciones largas que bloqueen la partida.
 
 ## Experiencia visual y accesibilidad
