@@ -242,6 +242,7 @@ const promotionMediaDeps = {
 installFootballRoutes(app, {
   get store() { return footballStore; },
   get profiles() { return profiles; },
+  get betting() { return footballBetting; },
   get buildLobby() { return footballSockets ? footballSockets.buildLobby : null; },
   get buildMatchState() { return footballSockets ? footballSockets.buildMatchState : null; },
   get config() { return { tosVersion: TOS_VERSION }; },

@@ -149,10 +149,30 @@
       </section>
 
       <section class="est-panel" id="est-mybets-panel">
-        <h2 class="est-panel-title">Mis apuestas</h2>
-        <ul id="est-mybets" class="est-mybets" aria-label="Tus apuestas abiertas">
-          <li class="est-muted">Sin apuestas abiertas.</li>
-        </ul>
+        <div class="est-bets-head">
+          <h2 class="est-panel-title">Mis apuestas</h2>
+          <button id="est-bets-refresh" class="text-button" type="button" aria-label="Actualizar historial de apuestas y pagos" title="Actualizar historial y pagos">↻</button>
+        </div>
+        <div id="est-bets-unseen" class="est-bets-unseen" role="status" aria-live="polite" hidden></div>
+        <div class="est-bets-tabs" role="tablist" aria-label="Vistas de apuestas">
+          <button id="est-bets-tab-open" class="est-bets-tab active" type="button" role="tab" aria-selected="true" aria-controls="est-bets-open" data-bets-tab="open">Abiertas</button>
+          <button id="est-bets-tab-history" class="est-bets-tab" type="button" role="tab" aria-selected="false" aria-controls="est-bets-history" data-bets-tab="history">Historial y pagos</button>
+        </div>
+        <div id="est-bets-open" class="est-bets-view" role="tabpanel" aria-labelledby="est-bets-tab-open">
+          <ul id="est-mybets" class="est-mybets" aria-label="Tus apuestas abiertas">
+            <li class="est-muted">Sin apuestas abiertas.</li>
+          </ul>
+        </div>
+        <div id="est-bets-history" class="est-bets-view" role="tabpanel" aria-labelledby="est-bets-tab-history" hidden>
+          <div id="est-bets-summary" class="est-bets-summary" aria-label="Resumen de apuestas y pagos"></div>
+          <div class="est-bets-filters">
+            <button id="est-bets-only-match" class="est-bets-filter" type="button" aria-pressed="false" hidden>Solo este partido</button>
+          </div>
+          <ul id="est-bet-history" class="est-mybets" aria-label="Historial de apuestas y pagos">
+            <li class="est-muted">Cargando historial…</li>
+          </ul>
+          <p id="est-bets-note" class="est-muted">Los pagos se acreditan solos al liquidarse el partido, aunque no estés conectado.</p>
+        </div>
       </section>
 
       <section class="est-panel est-ads" id="est-ads" aria-labelledby="est-ads-title" hidden>

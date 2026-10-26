@@ -85,6 +85,8 @@
     promotionsEnabled: false, promoSessionChecked: false, promoProfile: null, promoCsrfToken: null,
     promoWindowOpen: false, promoMatchId: null, promoPollId: null, promoRequestSeq: 0,
     currentMatchId: null, match: null, markets: {}, movement: {}, myBets: [],
+    betTab: 'open', betHistory: null, betsUnseen: null, betsLoading: false,
+    betsOnlyMatch: false, betsRequestSeq: 0,
     slip: null, muted: false, soundOn: localStorage.getItem('montecristo-notifications') !== 'off', musicOn: localStorage.getItem('montecristo-music') === 'on',
     players: [], authoritativePlayers: [], possessionTeam: 'home', ballCarrierId: null, playStopped: true,
     ball: { x: .5, y: .5 }, ballStart: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 },
@@ -108,7 +110,9 @@
       'est-scoreboard', 'crest-home', 'crest-away', 'name-home', 'name-away', 'score-home', 'score-away',
       'est-clock', 'est-pitch', 'est-goal-banner', 'est-commentary', 'est-text-state', 'est-market-phase',
       'est-markets', 'est-bet-slip', 'est-slip-pick', 'est-slip-clear', 'est-slip-odds', 'est-slip-implied',
-      'est-stake', 'est-denoms', 'est-slip-range', 'est-place-bet', 'est-bet-msg', 'est-mybets', 'est-help',
+      'est-stake', 'est-denoms', 'est-slip-range', 'est-place-bet', 'est-bet-msg', 'est-mybets',
+      'est-bets-refresh', 'est-bets-unseen', 'est-bets-summary', 'est-bet-history', 'est-bets-only-match',
+      'est-bets-open', 'est-bets-history', 'est-bets-note', 'est-help',
       'est-help-close', 'est-tos', 'est-tos-accept', 'est-toast', 'est-canvas-wrap'].forEach(function (id) { el[id] = $(id); });
   }
 
@@ -332,6 +336,8 @@
       S.teams = res.teams || S.teams;
       if (res.profile) { S.profile = res.profile; S.chips = res.profile.chips; updateChips(); }
       renderLobby(res.lobby);
+      // Al entrar (también si el partido ya terminó) se trae el historial y pagos.
+      loadBetHistory();
     });
   }
   function onSubError(res) {
@@ -351,6 +357,8 @@
       S.teams = res.teams || S.teams;
       if (res.profile) { S.chips = res.profile.chips; updateChips(); }
       applyMatchState(res.matchState);
+      syncOnlyMatchFilter();
+      if (S.betTab === 'history') renderBetHistory();
       highlightActive();
     });
   }
@@ -1661,6 +1669,7 @@
       S.chips = res.chips; updateChips();
       if (res.bet) S.myBets.push(res.bet);
       renderMyBets();
+      loadBetHistory();
       betMsg('¡Apuesta colocada! ' + fmt(stake) + ' fichas a ' + Number(res.bet.odds).toFixed(2) + '.', true);
       bell('bet');
       closeSlip();
@@ -1692,7 +1701,13 @@
   function renderMyBets() {
     var box = el['est-mybets']; box.innerHTML = '';
     var open = (S.myBets || []).filter(function (b) { return b.status === 'open'; });
-    if (!open.length) { box.innerHTML = '<li class="est-muted">Sin apuestas abiertas.</li>'; return; }
+    if (!open.length) {
+      var ended = S.match && ['settled', 'finished', 'postponed'].indexOf(S.match.status) >= 0;
+      box.innerHTML = '<li class="est-muted">Sin apuestas abiertas.' +
+        (ended ? ' Este partido ya terminó: revisa «Historial y pagos» para ver el resultado y lo acreditado.' : '') + '</li>';
+      updateBetsTabCounts();
+      return;
+    }
     open.forEach(function (b) {
       var li = document.createElement('li'); li.className = 'est-mybet';
       li.innerHTML = '<span class="est-mybet-pick">' + esc(selLabel(b.market, b.selection)) + '</span>' +
@@ -1713,6 +1728,214 @@
       }
       box.appendChild(li);
     });
+    updateBetsTabCounts();
+  }
+
+  // ===== Historial completo y pagos (entrar después del partido) =====
+  //
+  // La liquidación ocurre en el servidor aunque el jugador esté desconectado, así
+  // que las fichas ya están acreditadas cuando vuelve. Este bloque hace visible ese
+  // pago: trae el historial por HTTP (funciona sin socket y en cualquier momento),
+  // resume lo apostado/cobrado/neto y avisa de lo que se liquidó mientras no estaba.
+  var BETS_SEEN_KEY = 'mc-estadio-bets-seen';
+  function betsSeenId() { return 'p:' + ((S.profile && S.profile.id) || S.token || 'anon'); }
+  function betsSeenAt() {
+    try {
+      var map = JSON.parse(localStorage.getItem(BETS_SEEN_KEY) || '{}') || {};
+      return Number(map[betsSeenId()]) || 0;
+    } catch (e) { return 0; }
+  }
+  function markBetsSeen(ts) {
+    try {
+      var map = {};
+      try { map = JSON.parse(localStorage.getItem(BETS_SEEN_KEY) || '{}') || {}; } catch (e2) { map = {}; }
+      map[betsSeenId()] = Math.max(Number(map[betsSeenId()]) || 0, Math.floor(Number(ts) || Date.now()));
+      localStorage.setItem(BETS_SEEN_KEY, JSON.stringify(map));
+    } catch (e) { /* sin storage: el aviso se recalcula al volver a entrar */ }
+  }
+  function loadBetHistory() {
+    if (!S.token) return Promise.resolve(null);
+    var seen = betsSeenAt();
+    var url = '/api/estadio/my-bets?token=' + encodeURIComponent(S.token) + '&limit=60';
+    if (seen > 0) url += '&since=' + Math.floor(seen);
+    var seq = ++S.betsRequestSeq;
+    S.betsLoading = true;
+    if (S.betTab === 'history') renderBetHistory();
+    return fetch(url, { cache: 'no-store' })
+      .then(function (r) { return r.json().catch(function () { return null; }); })
+      .then(function (data) {
+        if (seq !== S.betsRequestSeq) return null;
+        S.betsLoading = false;
+        if (!data || !data.ok || !data.history) return null;
+        S.betHistory = data.history;
+        if (data.profile) {
+          if (data.profile.id) { S.profile = S.profile || {}; S.profile.id = data.profile.id; }
+          if (data.profile.chips != null) { S.chips = Number(data.profile.chips) || 0; updateChips(); }
+        }
+        if (data.history.unseen && data.history.unseen.count) {
+          S.betsUnseen = data.history.unseen;
+          markBetsSeen(data.history.unseen.throughAt || Date.now());
+        } else if (!betsSeenAt()) {
+          // Primera visita: se fija la base sin mostrar avisos de pagos viejos.
+          markBetsSeen(Date.now());
+        }
+        renderBetHistory();
+        return data.history;
+      })
+      .catch(function () { if (seq === S.betsRequestSeq) S.betsLoading = false; return null; });
+  }
+  function betStatusLabel(status) {
+    return ({ open: 'Abierta', pending: 'En proceso', won: 'Ganada', lost: 'Perdida', void: 'Anulada', cashed: 'Cobrada' })[status] || status || '';
+  }
+  function whenLabel(ms) {
+    if (!ms) return '';
+    try {
+      return new Date(ms).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: CASINO_TIME_ZONE });
+    } catch (e) { return ''; }
+  }
+  function entryMatchLabel(entry) {
+    var m = entry && entry.match;
+    if (!m) {
+      if (entry && entry.kind === 'future' && entry.seasonMonth) return 'Temporada ' + entry.seasonMonth;
+      return 'Partido no disponible';
+    }
+    return teamFull(m.homeId) + ' vs ' + teamFull(m.awayId) + ' · J' + m.jornada;
+  }
+  function entryMatchResult(entry) {
+    var m = entry && entry.match;
+    if (!m || !m.result) return '';
+    return 'Final ' + m.result.home + '–' + m.result.away;
+  }
+  function entryPickLabel(entry) {
+    if (entry.kind === 'parlay') return 'Combinada · ' + ((entry.legs || []).length) + ' selecciones';
+    if (entry.kind === 'future') {
+      var what = entry.market === 'champion' ? 'campeón de liga' : entry.market === 'top4' ? 'top 4' : entry.market === 'golden_boot' ? 'bota de oro' : entry.market;
+      return 'Futuro · ' + what + ': ' + teamName(entry.selection);
+    }
+    return selLabel(entry.market, entry.selection) + ' · ' + (MARKET_LABEL[entry.market] || entry.market);
+  }
+  function entryPayoutLabel(entry) {
+    var payout = Number(entry.payout) || 0;
+    if (entry.status === 'won') return 'Pagada: +' + fmt(payout) + ' fichas';
+    if (entry.status === 'cashed') return 'Cash-out: +' + fmt(payout) + ' fichas';
+    if (entry.status === 'void') return 'Reembolso: +' + fmt(payout || entry.stake) + ' fichas';
+    if (entry.status === 'lost') return 'Sin pago';
+    if (entry.status === 'open' || entry.status === 'pending') return 'Paga ' + fmt(entry.potentialPayout || 0) + ' si acierta';
+    return '';
+  }
+  function renderBetsSummary(summary) {
+    var box = el['est-bets-summary']; if (!box) return;
+    var staked = Number(summary.staked) || 0, returned = Number(summary.returned) || 0;
+    var net = Number(summary.net) || 0;
+    var wonCount = (summary.byStatus && (summary.byStatus.won || 0)) + (summary.byStatus && (summary.byStatus.cashed || 0));
+    box.innerHTML =
+      '<div class="est-bets-stat"><span>APOSTADO</span><b>' + fmt(staked) + '</b><small>' + (Number(summary.total) || 0) + ' apuestas</small></div>' +
+      '<div class="est-bets-stat"><span>COBRADO</span><b>' + fmt(returned) + '</b><small>' + (wonCount || 0) + ' ganadas</small></div>' +
+      '<div class="est-bets-stat ' + (net > 0 ? 'up' : net < 0 ? 'down' : '') + '"><span>NETO</span><b>' + (net > 0 ? '+' : '') + fmt(net) + '</b><small>' +
+        (Number(summary.open) ? (Number(summary.open) + ' abiertas · ' + fmt(summary.openStake || 0) + ' en juego') : 'sin apuestas abiertas') + '</small></div>';
+  }
+  function renderBetsUnseen() {
+    var box = el['est-bets-unseen']; if (!box) return;
+    var unseen = S.betsUnseen;
+    if (!unseen || !unseen.count) { box.hidden = true; box.innerHTML = ''; return; }
+    var net = Number(unseen.net) || 0;
+    box.hidden = false;
+    box.innerHTML = '<div class="est-bets-unseen-copy"><b>Se liquidaron ' + unseen.count + ' apuesta' + (unseen.count === 1 ? '' : 's') + ' mientras no estabas</b>' +
+      '<span>' + (Number(unseen.credited) > 0 ? '+' + fmt(unseen.credited) + ' fichas acreditadas a tu saldo' : 'Sin pagos en esas apuestas') +
+      ' · neto ' + (net > 0 ? '+' : '') + fmt(net) + '</span></div>' +
+      '<div class="est-bets-unseen-actions"><button type="button" class="text-button" data-bets-unseen="open">Ver historial</button>' +
+      '<button type="button" class="text-button" data-bets-unseen="dismiss" aria-label="Ocultar aviso de pagos">✕</button></div>';
+    var openBtn = box.querySelector('[data-bets-unseen="open"]');
+    if (openBtn) openBtn.addEventListener('click', function () { setBetsTab('history'); });
+    var dismissBtn = box.querySelector('[data-bets-unseen="dismiss"]');
+    if (dismissBtn) dismissBtn.addEventListener('click', function () { S.betsUnseen = null; renderBetsUnseen(); });
+  }
+  function updateBetsTabCounts() {
+    var openBtn = $('est-bets-tab-open'), histBtn = $('est-bets-tab-history');
+    var openCount = (S.myBets || []).filter(function (b) { return b.status === 'open'; }).length;
+    var total = S.betHistory ? (Number(S.betHistory.summary && S.betHistory.summary.total) || (S.betHistory.entries || []).length) : 0;
+    if (openBtn) openBtn.textContent = 'Abiertas' + (openCount ? ' (' + openCount + ')' : '');
+    if (histBtn) histBtn.textContent = 'Historial y pagos' + (total ? ' (' + total + ')' : '');
+  }
+  function syncOnlyMatchFilter() {
+    var btn = el['est-bets-only-match']; if (!btn) return;
+    btn.hidden = !S.currentMatchId;
+    if (!S.currentMatchId) S.betsOnlyMatch = false;
+    btn.setAttribute('aria-pressed', String(Boolean(S.betsOnlyMatch)));
+    btn.classList.toggle('active', Boolean(S.betsOnlyMatch));
+  }
+  function setBetsTab(tab) {
+    S.betTab = tab === 'history' ? 'history' : 'open';
+    var openBtn = $('est-bets-tab-open'), histBtn = $('est-bets-tab-history');
+    if (openBtn) { openBtn.classList.toggle('active', S.betTab === 'open'); openBtn.setAttribute('aria-selected', String(S.betTab === 'open')); }
+    if (histBtn) { histBtn.classList.toggle('active', S.betTab === 'history'); histBtn.setAttribute('aria-selected', String(S.betTab === 'history')); }
+    if (el['est-bets-open']) el['est-bets-open'].hidden = S.betTab !== 'open';
+    if (el['est-bets-history']) el['est-bets-history'].hidden = S.betTab !== 'history';
+    if (S.betTab === 'history') {
+      S.betsUnseen = null;
+      renderBetsUnseen();
+      syncOnlyMatchFilter();
+      renderBetHistory();
+      if (!S.betHistory) loadBetHistory();
+    }
+  }
+  function renderBetHistory() {
+    var box = el['est-bet-history']; if (!box) return;
+    var history = S.betHistory;
+    box.innerHTML = '';
+    renderBetsUnseen();
+    if (!history) {
+      if (el['est-bets-summary']) el['est-bets-summary'].innerHTML = '';
+      box.innerHTML = '<li class="est-muted">' + (S.betsLoading ? 'Cargando historial…' : 'Aún no hay historial disponible.') + '</li>';
+      updateBetsTabCounts();
+      return;
+    }
+    var entries = (history.entries || []).slice();
+    if (S.betsOnlyMatch && S.currentMatchId) {
+      var matchId = S.currentMatchId;
+      entries = entries.filter(function (entry) {
+        if (entry.matchId === matchId) return true;
+        return (entry.legs || []).some(function (leg) { return leg.matchId === matchId; });
+      });
+    }
+    renderBetsSummary(history.summary || {});
+    if (!entries.length) {
+      box.innerHTML = '<li class="est-muted">' + (S.betsOnlyMatch && S.currentMatchId
+        ? 'No tienes apuestas en este partido.'
+        : 'Todavía no tienes apuestas liquidadas. Cuando terminen tus partidos verás aquí el resultado y el pago acreditado.') + '</li>';
+    }
+    entries.forEach(function (entry) {
+      var li = document.createElement('li');
+      li.className = 'est-mybet';
+      li.dataset.status = entry.status || '';
+      li.dataset.kind = entry.kind || 'bet';
+      var meta = fmt(entry.stake) + ' fichas' + (entry.inPlay ? " · en vivo " + entry.minuteAtPlacement + "'" : '');
+      var result = entryMatchResult(entry);
+      if (result) meta += ' · ' + result;
+      if (entry.settledAt || entry.placedAt) meta += ' · ' + whenLabel(entry.settledAt || entry.placedAt);
+      li.innerHTML = '<span class="est-mybet-pick">' + esc(entryPickLabel(entry)) + '</span>' +
+        '<span class="est-mybet-odds">' + Number(entry.odds || 1).toFixed(2) + '</span>' +
+        '<span class="est-mybet-meta est-mybet-match">' + esc(entryMatchLabel(entry)) + '</span>' +
+        '<span class="est-mybet-meta">' + esc(meta) + '</span>' +
+        '<span class="est-mybet-result"><span class="est-mybet-status ' + esc(entry.status || '') + '">' + esc(betStatusLabel(entry.status)) + '</span>' +
+        '<span class="est-mybet-payout">' + esc(entryPayoutLabel(entry)) + '</span></span>';
+      if (entry.legs && entry.legs.length) {
+        var legs = document.createElement('span');
+        legs.className = 'est-mybet-meta est-mybet-legs';
+        legs.textContent = entry.legs.map(function (leg) {
+          return selLabel(leg.market, leg.selection) + ' (' + betStatusLabel(leg.status) + ')';
+        }).join(' · ');
+        li.appendChild(legs);
+      }
+      box.appendChild(li);
+    });
+    if (history.totalEntries && Number(history.totalEntries) > (history.entries || []).length) {
+      var more = document.createElement('li');
+      more.className = 'est-muted';
+      more.textContent = 'Se muestran las ' + (history.entries || []).length + ' más recientes de ' + history.totalEntries + ' apuestas.';
+      box.appendChild(more);
+    }
+    updateBetsTabCounts();
   }
   function cashout(betId, btn) {
     if (S.playStopped) { toast('Cash-out suspendido durante la pausa del juego.', ''); return; }
@@ -1722,6 +1945,7 @@
       S.chips = res.chips; updateChips();
       S.myBets = S.myBets.filter(function (b) { return b.id !== betId; });
       renderMyBets();
+      loadBetHistory();
       toast('Cash-out: +' + fmt(res.cashout) + ' fichas.', 'win'); bell('win');
     });
   }
@@ -1734,6 +1958,9 @@
     else if (data.status === 'lost') { toast('Apuesta perdida' + (data.reason ? ': ' + data.reason : '') + '.', 'lose'); }
     else { toast('Apuesta ' + (data.status === 'void' ? 'anulada (reembolso)' : data.status) + '.', ''); }
     updateChips();
+    // El historial se refresca aquí para que el pago quede registrado aunque el
+    // jugador cierre la pestaña justo después de ver el aviso.
+    loadBetHistory();
     // Refresca saldo autoritario del servidor en la siguiente pintura de lobby.
   }
   function updateChips() { el['est-chips'].textContent = fmt(S.chips) + ' fichas'; }
@@ -2115,6 +2342,21 @@
     });
     el['est-slip-clear'].addEventListener('click', closeSlip);
     el['est-place-bet'].addEventListener('click', placeBet);
+    // Historial y pagos: pestañas, refresco manual y filtro por partido.
+    var tabOpen = $('est-bets-tab-open'), tabHistory = $('est-bets-tab-history');
+    if (tabOpen) tabOpen.addEventListener('click', function () { setBetsTab('open'); });
+    if (tabHistory) tabHistory.addEventListener('click', function () { setBetsTab('history'); });
+    if (el['est-bets-refresh']) el['est-bets-refresh'].addEventListener('click', function () {
+      S.betHistory = null;
+      loadBetHistory();
+      toast('Actualizando historial y pagos…', '');
+    });
+    if (el['est-bets-only-match']) el['est-bets-only-match'].addEventListener('click', function () {
+      S.betsOnlyMatch = !S.betsOnlyMatch;
+      syncOnlyMatchFilter();
+      renderBetHistory();
+    });
+    syncOnlyMatchFilter();
     el['est-stake'].addEventListener('keydown', function (e) { if (e.key === 'Enter') placeBet(); });
     el['est-sound'].addEventListener('click', function () {
       S.soundOn = !S.soundOn; el['est-sound'].setAttribute('aria-pressed', String(!S.soundOn));

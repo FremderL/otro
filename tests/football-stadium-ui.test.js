@@ -153,6 +153,9 @@ function createHarness(options = {}) {
       submittedPromotion = JSON.parse(requestOptions.body);
       return { ok: true, status: 201, json: async () => ({ ok: true, promotion: { status: 'pending' } }) };
     }
+    if (target.startsWith('/api/estadio/my-bets')) {
+      return { ok: true, json: async () => ({ ok: true, history: options.betHistory || null, profile: { id: 'alice', chips: 1000 } }) };
+    }
     if (target.endsWith('/mine')) {
       return { ok: true, json: async () => ({ promotion: null }) };
     }
@@ -521,6 +524,50 @@ test('Mis apuestas mantiene tarjetas y jerarquía visual propias', async t => {
   assert.equal(window.getComputedStyle(card).borderRadius, '10px');
   assert.equal(window.getComputedStyle(card.querySelector('.est-mybet-pick')).fontWeight, '800');
   assert.notEqual(window.getComputedStyle(panel).borderTopColor, '');
+});
+
+test('«Historial y pagos» muestra apuestas liquidadas al entrar después del partido', async t => {
+  const settledEntry = {
+    kind: 'bet', id: 'bet-old', matchId: 'ui-match', market: '1x2', selection: 'home',
+    stake: 100, odds: 2.4, potentialPayout: 240, status: 'won', payout: 240,
+    inPlay: false, minuteAtPlacement: null, placedAt: 1000, settledAt: 2000,
+    match: { id: 'ui-match', homeId: 'home', awayId: 'away', jornada: 1, status: 'settled', result: { home: 2, away: 0 } }
+  };
+  const h = createHarness({
+    betHistory: {
+      entries: [settledEntry],
+      summary: {
+        total: 1, open: 0, byStatus: { won: 1 }, staked: 100, returned: 240, net: 140,
+        openStake: 0, openPotentialPayout: 0, latestSettlementAt: 2000
+      },
+      unseen: { count: 1, credited: 240, staked: 100, net: 140, throughAt: 2000, items: [settledEntry] },
+      totalEntries: 1
+    }
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  await new Promise(resolve => setImmediate(resolve));
+
+  const { window } = h;
+  const notice = window.document.getElementById('est-bets-unseen');
+  assert.equal(notice.hidden, false, 'avisa de los pagos acreditados mientras no estaba');
+  assert.match(notice.textContent, /Se liquidaron 1 apuesta/);
+  assert.match(notice.textContent, /240/);
+
+  window.document.getElementById('est-bets-tab-history').click();
+  const list = window.document.getElementById('est-bet-history');
+  const card = list.querySelector('.est-mybet');
+  assert.ok(card, 'la apuesta liquidada aparece en el historial');
+  assert.equal(card.dataset.status, 'won');
+  assert.match(card.textContent, /Ganada/);
+  assert.match(card.textContent, /Pagada: \+240 fichas/);
+  assert.match(card.textContent, /Home FC vs Away FC/);
+  assert.match(card.textContent, /Final 2–0/);
+  const summary = window.document.getElementById('est-bets-summary').textContent;
+  assert.match(summary, /APOSTADO/);
+  assert.match(summary, /COBRADO/);
+  assert.match(summary, /NETO/);
+  assert.equal(window.document.getElementById('est-bets-open').hidden, true, 'la pestaña de abiertas se oculta');
 });
 
 test('La Previa también se oculta si el partido se pospone', async t => {
