@@ -526,7 +526,7 @@ test('Mis apuestas mantiene tarjetas y jerarquía visual propias', async t => {
   assert.notEqual(window.getComputedStyle(panel).borderTopColor, '');
 });
 
-test('«Historial y pagos» muestra apuestas liquidadas al entrar después del partido', async t => {
+test('el historial y los pagos viven en una vista propia, no en las columnas del Estadio', async t => {
   const settledEntry = {
     kind: 'bet', id: 'bet-old', matchId: 'ui-match', market: '1x2', selection: 'home',
     stake: 100, odds: 2.4, potentialPayout: 240, status: 'won', payout: 240,
@@ -549,25 +549,104 @@ test('«Historial y pagos» muestra apuestas liquidadas al entrar después del p
   await new Promise(resolve => setImmediate(resolve));
 
   const { window } = h;
-  const notice = window.document.getElementById('est-bets-unseen');
+  const document = window.document;
+  const ledger = document.getElementById('est-ledger');
+  const panel = document.getElementById('est-mybets-panel');
+
+  // La vista vive FUERA de las columnas del Estadio y nace cerrada.
+  assert.ok(ledger, 'existe la vista propia del historial');
+  assert.equal(ledger.hidden, true, 'nace cerrada');
+  assert.equal(ledger.closest('.estadio-shell'), null, 'no ocupa espacio dentro del Estadio');
+  assert.equal(ledger.getAttribute('role'), 'dialog');
+
+  // El panel de la columna queda compacto: solo abiertas + un acceso al historial.
+  assert.equal(panel.querySelector('#est-mybets'), panel.querySelector('#est-mybets'), 'las abiertas siguen en su panel');
+  assert.equal(panel.querySelectorAll('[role="tab"]').length, 0, 'sin pestañas apretadas dentro de la columna');
+  assert.equal(panel.querySelectorAll('.est-bets-summary, #est-bet-history').length, 0, 'el resumen y la lista no se meten en la columna');
+  const link = panel.querySelector('#est-ledger-open');
+  assert.ok(link, 'el panel tiene una puerta al historial');
+  assert.equal(link.getAttribute('aria-controls'), 'est-ledger');
+
+  // El nav muestra el aviso de pagos pendientes de ver.
+  const navButton = document.getElementById('est-ledger-open-nav');
+  const navBadge = document.getElementById('est-nav-badge');
+  assert.ok(navButton, 'acceso desde el nav');
+  assert.equal(navBadge.hidden, false, 'la insignia señala pagos nuevos');
+  assert.equal(navBadge.textContent, '1');
+  assert.match(link.textContent, /1 pago nuevo/);
+
+  // Abrir desde el panel: la vista toma la pantalla y queda enlazada en la URL.
+  link.click();
+  assert.equal(ledger.hidden, false, 'se abre la vista propia');
+  assert.equal(window.location.hash, '#apuestas');
+  assert.equal(window.getComputedStyle(ledger).position, 'fixed', 'ocupa la pantalla completa');
+
+  const notice = document.getElementById('est-ledger-unseen');
   assert.equal(notice.hidden, false, 'avisa de los pagos acreditados mientras no estaba');
   assert.match(notice.textContent, /Se liquidaron 1 apuesta/);
   assert.match(notice.textContent, /240/);
 
-  window.document.getElementById('est-bets-tab-history').click();
-  const list = window.document.getElementById('est-bet-history');
-  const card = list.querySelector('.est-mybet');
+  const card = document.querySelector('#est-ledger-list .est-ledger-row');
   assert.ok(card, 'la apuesta liquidada aparece en el historial');
   assert.equal(card.dataset.status, 'won');
   assert.match(card.textContent, /Ganada/);
-  assert.match(card.textContent, /Pagada: \+240 fichas/);
-  assert.match(card.textContent, /Home FC vs Away FC/);
-  assert.match(card.textContent, /Final 2–0/);
-  const summary = window.document.getElementById('est-bets-summary').textContent;
-  assert.match(summary, /APOSTADO/);
-  assert.match(summary, /COBRADO/);
-  assert.match(summary, /NETO/);
-  assert.equal(window.document.getElementById('est-bets-open').hidden, true, 'la pestaña de abiertas se oculta');
+  assert.match(card.textContent, /\+240/);
+  assert.match(card.textContent, /Home FC/);
+  assert.match(card.textContent, /2–0/);
+  assert.match(card.textContent, /pagado/i);
+  assert.match(document.querySelector('.est-ledger-day').textContent, /apuesta/, 'agrupa por día');
+
+  const stats = document.getElementById('est-ledger-stats').textContent;
+  ['Apostado', 'Cobrado', 'Neto', 'En juego'].forEach(label => {
+    assert.match(stats, new RegExp(label), 'el resumen incluye ' + label);
+  });
+  assert.match(stats, /140/, 'neto de la apuesta ganadora');
+
+  // Filtros por estado: uno sin resultados muestra un estado vacío claro.
+  const lostChip = document.querySelector('[data-ledger-filter="lost"]');
+  lostChip.click();
+  assert.equal(lostChip.getAttribute('aria-pressed'), 'true');
+  assert.match(document.querySelector('#est-ledger-list .est-ledger-state').textContent, /Perdidas: nada por aquí/);
+  document.querySelector('[data-ledger-filter="all"]').click();
+  assert.ok(document.querySelector('#est-ledger-list .est-ledger-row'), 'al volver a Todas reaparece la apuesta');
+
+  // El foco queda dentro del diálogo: Tab desde el contenedor va al primer control.
+  assert.equal(document.activeElement, ledger, 'al abrir, el foco entra en la vista');
+  ledger.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  assert.equal(document.activeElement.id, 'est-ledger-refresh', 'Tab no escapa a la página de atrás');
+
+  // Esc cierra y limpia el hash, devolviendo el foco al disparador.
+  h.handlers.keydown = null;
+  const escape = new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+  document.dispatchEvent(escape);
+  assert.equal(ledger.hidden, true, 'Esc cierra la vista');
+  assert.notEqual(window.location.hash, '#apuestas');
+  assert.ok(document.activeElement === link || document.activeElement === document.body, 'el foco vuelve al disparador');
+});
+
+test('la vista del historial se abre también desde el nav y con /estadio#apuestas', async t => {
+  const h = createHarness({ betHistory: { entries: [], summary: { total: 0, open: 0, byStatus: {}, staked: 0, returned: 0, net: 0, openStake: 0, openPotentialPayout: 0, latestSettlementAt: null }, unseen: null, totalEntries: 0 } });
+  t.after(h.close);
+  await h.connectToMatch();
+  await new Promise(resolve => setImmediate(resolve));
+  const { window } = h;
+  const document = window.document;
+  const ledger = document.getElementById('est-ledger');
+
+  document.getElementById('est-ledger-open-nav').click();
+  assert.equal(ledger.hidden, false, 'el nav abre la vista');
+  document.getElementById('est-ledger-close').click();
+  assert.equal(ledger.hidden, true, 'la ✕ la cierra');
+
+  document.getElementById('est-ledger-back').click();
+  assert.equal(ledger.hidden, true, 'el botón de volver también cierra');
+
+  // Estado vacío explícito, con salida hacia las cuotas.
+  document.getElementById('est-ledger-open-nav').click();
+  const empty = document.querySelector('#est-ledger-list .est-ledger-state');
+  assert.ok(empty, 'sin apuestas se explica qué hacer');
+  assert.match(empty.textContent, /Todavía no tienes apuestas/);
+  assert.ok(empty.querySelector('[data-ledger-go-markets]'), 'ofrece ir a las cuotas');
 });
 
 test('La Previa también se oculta si el partido se pospone', async t => {

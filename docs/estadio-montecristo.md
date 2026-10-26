@@ -3759,28 +3759,60 @@ Devuelve `{ entries, summary, unseen, totalEntries, serverNow }`.
   sitio. En partido propio terminado, el contexto de cada apuesta ya trae el
   resultado, así que la interfaz no necesita abrir el partido.
 
-### 34.4 Interfaz «Mis apuestas»
+### 34.4 Interfaz: panel compacto + vista propia
 
-- Dos vistas en el mismo panel: **Abiertas** (igual que antes, con `cash-out`) e
-  **Historial y pagos**, con contadores por pestaña.
-- **Resumen de pagos**: APOSTADO, COBRADO y NETO (verde si es positivo, coral si
-  es negativo) más el dinero en juego de las apuestas abiertas.
-- **Tarjeta por apuesta**: competición (`Local vs Visitante · J#`), selección y
-  mercado, cuota, monto, marcador final cuando existe, fecha, distintivo de
-  estado (Ganada, Perdida, Anulada, Cobrada, Abierta) y el pago concreto
-  («Pagada: +240 fichas», «Reembolso: +100», «Sin pago», «Paga 240 si acierta»).
-  Las combinadas muestran cada pata con su resolución.
-- **Aviso de pagos nuevos**: al entrar con `since` (marca `localStorage` por
-  perfil, clave `mc-estadio-bets-seen`), si hubo liquidaciones posteriores se
-  muestra un aviso dorado «Se liquidaron N apuestas mientras no estabas · +X
-  fichas acreditadas». Desaparece al abrir el historial o cerrarlo. La primera
-  visita fija la marca sin avisar de pagos antiguos; la marca vive en el cliente
-  porque una lectura `GET` no debe escribir estado en el servidor.
-- **Filtro «Solo este partido»** para revisar las apuestas (incluidas las
-  liquidadas) del partido seleccionado; el historial se refresca al apostar, al
-  cobrar cash-out, al recibir `football:settlement` y con el botón ↻.
-- Si el partido seleccionado ya terminó y no hay apuestas abiertas, la vista
-  Abiertas invita a revisar «Historial y pagos».
+El historial **no vive dentro de las columnas del Estadio**. La columna izquierda
+ya carga lobby, posiciones, mercados y el estudio de publicidad; meter ahí el
+resumen, los filtros y la lista de apuestas saturaba la pantalla y dejaba bloques
+de 270 px ilegibles. La solución son dos piezas separadas:
+
+**A. Panel «Mis apuestas» (columna izquierda, compacto).** Solo lo que se usa
+mientras se apuesta:
+
+- Lista de apuestas **abiertas** del partido con `cash-out` (comportamiento previo).
+- Insignia con el número de abiertas.
+- Una única puerta de entrada: **«Historial y pagos»**, que muestra «Ver todas tus
+  apuestas y pagos» o, si hay pagos sin ver, «N pagos nuevos · +X fichas» con un
+  punto dorado.
+
+**B. Vista propia a pantalla completa (`#est-ledger`).** Diálogo modal
+(`role="dialog"`, `aria-modal`), fuera de `.estadio-shell`, con fondo opaco sobre
+el Estadio:
+
+- **Cabecera**: título «Historial de apuestas y pagos», bajada explicativa, saldo
+  actual, botón ↻ Actualizar y ✕ Cerrar.
+- **Aviso de pagos nuevos**: «Se liquidaron N apuestas mientras no estabas ·
+  +X fichas acreditadas · neto ±Y» cuando el servidor devuelve `unseen`.
+- **Cuatro cifras grandes**: Apostado, Cobrado, Neto (verde/coral) y En juego (con
+  el pago potencial máximo). Cada una con una nota que da contexto (apuestas
+  resueltas, con pago, % de acierto, abiertas).
+- **Chips de filtro**: Todas · Abiertas · Ganadas · Perdidas · Anuladas, más
+  «Solo <local> vs <visitante>» cuando hay partido seleccionado.
+- **Agrupación por día** («Hoy», «Ayer», «Miércoles 22 de octubre») con el subtotal
+  de esa fecha: apuestas, fichas apostadas, cobradas y en juego.
+- **Fila por apuesta** (`est-ledger-row`): icono de estado, selección y mercado,
+  equipos con marcador final (`Local 2–0 Visitante`) y jornada, línea de metadatos
+  (monto, cuota, en vivo minuto, fecha) y, a la derecha, el distintivo de estado y
+  el dinero en tipografía grande con su etiqueta (pagado, cash-out, reembolso,
+  potencial). Las combinadas despliegan cada pata con su marca ✓/✕/↩, su cuota y
+  el partido al que pertenecen; los futuros muestran temporada y mercado.
+- **Estados vacíos explícitos** por filtro («Perdidas: nada por aquí» y una
+  explicación), esqueleto de carga con brillo y error con botón «Reintentar».
+- **Accesibilidad**: `Esc` cierra, el foco entra en el diálogo y se atrapa con
+  `Tab`/`Shift+Tab`, y al cerrar vuelve al control que lo abrió.
+
+**Apertura y enlaces.** Se abre desde la puerta del panel, desde el botón
+«🧾 Mis apuestas» del nav (con insignia de pagos nuevos o apuestas abiertas) y con
+`/estadio#apuestas`; el `hashchange` mantiene la vista sincronizada con el botón
+atrás del navegador, y al cerrar se limpia el hash.
+
+**Refresco.** El historial se pide al entrar, al abrir la vista si tiene más de
+`LEDGER_STALE_MS` (20 s), al apostar, al cobrar cash-out, al recibir
+`football:settlement` y con ↻. La marca de «visto» (`localStorage`, clave
+`mc-estadio-bets-seen`, por perfil) se mueve al abrir o cerrar la vista, de modo
+que el aviso aparece una vez por tanda de pagos; la primera visita fija la base
+sin avisar de pagos antiguos. Vive en el cliente porque una lectura `GET` no debe
+escribir estado en el servidor.
 
 ### 34.5 Pruebas
 
