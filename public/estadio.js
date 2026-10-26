@@ -2123,12 +2123,27 @@
     });
   }
 
+  // Datos de la apuesta en fichas independientes: una fila de etiqueta + valor se
+  // lee de un vistazo, mientras que un párrafo con separadores «·» obliga a
+  // descifrarlo.
+  function entryFacts(entry) {
+    var facts = [{ label: 'Monto', value: fmt(entry.stake) + ' fichas' }];
+    facts.push({ label: entry.kind === 'parlay' ? 'Cuota total' : 'Cuota', value: Number(entry.odds || 1).toFixed(2) });
+    if (entry.inPlay && entry.minuteAtPlacement != null) {
+      facts.push({ label: 'En vivo', value: entry.minuteAtPlacement + "'" });
+    }
+    if (entry.kind === 'future' && entry.seasonMonth) {
+      facts.push({ label: 'Temporada', value: entry.seasonMonth });
+    }
+    if (entry._at) {
+      facts.push({ label: entry.status === 'open' || entry.status === 'pending' ? 'Apostada' : 'Liquidada', value: whenLabel(entry._at) });
+    }
+    return facts;
+  }
+
   function ledgerRow(entry) {
     var status = entry.status || 'open';
     var money = entryMoney(entry);
-    var meta = fmt(entry.stake) + ' fichas · cuota ' + Number(entry.odds || 1).toFixed(2) +
-      (entry.inPlay ? " · en vivo " + entry.minuteAtPlacement + "'" : '') +
-      (entry._at ? ' · ' + whenLabel(entry._at) : '');
     var score = entryScoreLine(entry);
     var legs = '';
     if (entry.legs && entry.legs.length) {
@@ -2136,12 +2151,16 @@
         var legMatch = leg.match ? teamFull(leg.match.homeId) + ' vs ' + teamFull(leg.match.awayId) : 'Partido';
         return '<li data-leg="' + esc(leg.status || '') + '">' +
           '<span class="est-ledger-leg-mark" aria-hidden="true">' + esc(betStatusGlyph(leg.status)) + '</span>' +
-          '<span class="est-ledger-leg-copy"><b>' + esc(selLabel(leg.market, leg.selection)) + '</b> · ' + esc(MARKET_LABEL[leg.market] || leg.market) +
-          ' <small>' + esc(legMatch) + ' · ' + esc(betStatusLabel(leg.status)) + '</small></span>' +
-          '<span class="est-ledger-leg-odds">' + Number(leg.odds || 1).toFixed(2) + '</span>' +
+          '<span class="est-ledger-leg-copy"><b>' + esc(selLabel(leg.market, leg.selection)) + '</b>' +
+          '<span class="est-ledger-leg-market">' + esc(MARKET_LABEL[leg.market] || leg.market) + '</span>' +
+          '<small>' + esc(legMatch) + ' · ' + esc(betStatusLabel(leg.status)) + '</small></span>' +
+          '<span class="est-ledger-leg-odds" title="Cuota">' + Number(leg.odds || 1).toFixed(2) + '</span>' +
           '</li>';
       }).join('') + '</ul>';
     }
+    var facts = '<ul class="est-ledger-facts">' + entryFacts(entry).map(function (fact) {
+      return '<li><span>' + esc(fact.label) + '</span><b>' + esc(fact.value) + '</b></li>';
+    }).join('') + '</ul>';
     return '<article class="est-ledger-row" data-status="' + esc(status) + '" data-kind="' + esc(entry.kind || 'bet') + '">' +
       '<span class="est-ledger-glyph" aria-hidden="true">' + esc(betStatusGlyph(status)) + '</span>' +
       '<div class="est-ledger-row-main">' +
@@ -2154,7 +2173,7 @@
         ? score + '<span class="est-ledger-jornada">J' + esc(entry.match.jornada) + '</span>'
         : '<span class="est-ledger-team">' + esc(entryMatchLabel(entry)) + '</span>') +
       '</p>' +
-      '<p class="est-ledger-row-meta">' + esc(meta) + '</p>' +
+      facts +
       legs +
       '</div>' +
       '<div class="est-ledger-row-money">' +

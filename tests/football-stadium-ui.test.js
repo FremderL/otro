@@ -596,6 +596,20 @@ test('el historial y los pagos viven en una vista propia, no en las columnas del
   assert.match(card.textContent, /pagado/i);
   assert.match(document.querySelector('.est-ledger-day').textContent, /apuesta/, 'agrupa por día');
 
+  // Legibilidad: cada dato va en su propia ficha, con tipografía suficiente.
+  const facts = card.querySelectorAll('.est-ledger-facts li');
+  assert.ok(facts.length >= 2, 'monto, cuota y fecha se muestran como fichas separadas');
+  const factsText = Array.from(facts).map(li => li.textContent.replace(/\s+/g, ' ').trim());
+  assert.ok(factsText.some(text => /Monto100 fichas/.test(text)), 'la ficha de monto es explícita');
+  assert.ok(factsText.some(text => /Cuota2\.40/.test(text)), 'la ficha de cuota es explícita');
+  assert.equal(card.querySelector('.est-ledger-row-meta'), null, 'ya no hay un párrafo único y apretado con todo');
+  const pickSize = parseFloat(window.getComputedStyle(card.querySelector('.est-ledger-pick')).fontSize);
+  const factSize = parseFloat(window.getComputedStyle(card.querySelector('.est-ledger-facts li b')).fontSize);
+  const rowGap = parseFloat(window.getComputedStyle(card).gap);
+  assert.ok(pickSize >= 15, 'la selección se lee a 15 px o más (era 14)');
+  assert.ok(factSize >= 12, 'los valores de las fichas se leen a 12 px o más (era 10,5)');
+  assert.ok(rowGap >= 16, 'hay aire horizontal entre las tres zonas de la fila');
+
   const stats = document.getElementById('est-ledger-stats').textContent;
   ['Apostado', 'Cobrado', 'Neto', 'En juego'].forEach(label => {
     assert.match(stats, new RegExp(label), 'el resumen incluye ' + label);

@@ -3790,12 +3790,19 @@ el Estadio:
   «Solo <local> vs <visitante>» cuando hay partido seleccionado.
 - **Agrupación por día** («Hoy», «Ayer», «Miércoles 22 de octubre») con el subtotal
   de esa fecha: apuestas, fichas apostadas, cobradas y en juego.
-- **Fila por apuesta** (`est-ledger-row`): icono de estado, selección y mercado,
-  equipos con marcador final (`Local 2–0 Visitante`) y jornada, línea de metadatos
-  (monto, cuota, en vivo minuto, fecha) y, a la derecha, el distintivo de estado y
-  el dinero en tipografía grande con su etiqueta (pagado, cash-out, reembolso,
-  potencial). Las combinadas despliegan cada pata con su marca ✓/✕/↩, su cuota y
-  el partido al que pertenecen; los futuros muestran temporada y mercado.
+- **Fila por apuesta** (`est-ledger-row`), pensada para leerse sin esfuerzo:
+  icono de estado (38 px), selección a **17 px** y mercado como distintivo,
+  equipos con escudos y marcador final (`Vantora FC 2–0 Atlético Solaris`) más la
+  jornada, y los datos de la apuesta en **fichas independientes** (Monto, Cuota,
+  En vivo, Temporada, Apostada/Liquidada) con etiqueta de 10 px y valor de 13 px,
+  en lugar de un párrafo único con separadores «·». A la derecha, separada por una
+  línea fina, el estado y el dinero a **27 px** con su etiqueta (pagado, cash-out,
+  reembolso, potencial). La fila respira: 20×24 px de relleno, 20 px entre zonas y
+  14 px entre tarjetas. Por debajo de 1100 px se compacta y por debajo de 900 px la
+  columna del dinero baja a su propia franja; nunca se aprieta el texto.
+  Las combinadas despliegan cada pata con su marca ✓/✕/↩, mercado, cuota en
+  distintivo y el partido al que pertenecen; los futuros muestran temporada y
+  mercado.
 - **Estados vacíos explícitos** por filtro («Perdidas: nada por aquí» y una
   explicación), esqueleto de carga con brillo y error con botón «Reintentar».
 - **Accesibilidad**: `Esc` cierra, el foco entra en el diálogo y se atrapa con
