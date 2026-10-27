@@ -8,8 +8,11 @@ const { AVATARS, avatarInfo } = require('./lib/profile-store');
 // Fase 10.2: DATABASE_URL activa el backend de Postgres (Neon free); sin ella,
 // se mantiene el ProfileStore de archivo JSON de siempre. Ver lib/profile-store-factory.js.
 const { createProfileStore } = require('./lib/profile-store-factory');
-const { HISTORY_LIMITS, INACTIVITY_LIMIT_MS, CASINO_TIME_ZONE, normalizeDisplayName } = require('./lib/profile-store-shared');
+const {
+  HISTORY_LIMITS, INACTIVITY_LIMIT_MS, CASINO_TIME_ZONE, monthKey, normalizeDisplayName
+} = require('./lib/profile-store-shared');
 const { credit, recordWager, recordOutcome, claimDailyBonus, openCardCapsule, publicProgress } = require('./lib/progression');
+const { buildBettingLeaderboard, createBettingLeaderboard } = require('./lib/betting-leaderboard');
 const { seatIdentity } = require('./lib/seat-identity');
 const { equipPassportCosmetic, publicPassportIdentity } = require('./lib/passport');
 const { equipCosmetic, publicCollectionIdentity } = require('./lib/cosmetics');
@@ -65,6 +68,11 @@ const { createFootballStore } = require('./lib/football-store-factory');
 const { FootballEngine } = require('./lib/football/engine');
 const { FootballScheduler } = require('./lib/football/scheduler');
 const { createBettingService } = require('./lib/football/betting');
+const { BallonDorMarketService } = require('./lib/football/ballon-dor-market');
+const {
+  createBallonDorAudioTelemetry, isPrivateBallonDorBetLog
+} = require('./lib/football/rollout-telemetry');
+const { footballSeasonResetGate } = require('./lib/football/reset-gate');
 const { SimulatedFlow } = require('./lib/football/simulated-flow');
 const { registerFootballSockets } = require('./lib/football/sockets');
 const { installFootballRoutes, installFootballAdminRoutes, footballHealth, startPromotionMediaSweep } = require('./lib/football/http');
@@ -84,6 +92,7 @@ function logEvent(event, data = {}) {
   if (!LOG_JSON) return;
   try { console.log(JSON.stringify({ ...sanitizeLogValue(data), time: new Date().toISOString(), event:String(event).slice(0,80) })); } catch (_) { /* un log nunca debe tumbar el servidor */ }
 }
+const footballAudioTelemetry = createBallonDorAudioTelemetry({ log: logEvent });
 
 // Última red de seguridad a nivel proceso (refuerzo de la auditoría; las
 // envolturas específicas están en socket.on, scheduleRoomTask, los barridos
@@ -200,7 +209,12 @@ app.get('/healthz', (_req, res) => {
     // (o antes de bootstrap) queda reducido a { enabled: false }; footballHealth
     // nunca lanza, así que el health check de Render no puede fallar por el motor.
     football: footballConfig.enabled && footballEngine
-      ? footballHealth({ engine: footballEngine, enabled: footballConfig.enabled })
+      ? footballHealth({
+        engine: footballEngine,
+        enabled: footballConfig.enabled,
+        ballonDorMarket: footballBallonDorMarket,
+        audioTelemetry: footballAudioTelemetry
+      })
       : { enabled: false }
   });
 });
@@ -243,14 +257,18 @@ installFootballRoutes(app, {
   get store() { return footballStore; },
   get profiles() { return profiles; },
   get betting() { return footballBetting; },
+  getBallonDorMarket: () => footballBallonDorMarket,
+  audioTelemetry: footballAudioTelemetry,
   get buildLobby() { return footballSockets ? footballSockets.buildLobby : null; },
   get buildMatchState() { return footballSockets ? footballSockets.buildMatchState : null; },
   get config() { return { tosVersion: TOS_VERSION }; },
   get accountConfig() { return adminConfig; },
   getAccountAuth: () => accountAuth,
+  verifyTosAcceptance,
   promotionsEnabled: () => footballConfig.enabled && adminConfig.enabled && adminConfig.accountSessionsEnabled,
   now: () => Date.now(),
   log: logEvent,
+  onBetPlaced: () => broadcastBetRanking(),
   enabled: () => footballConfig.enabled
 });
 // Retención de creatividades: borra imágenes rechazadas o de partidos ya iniciados.
@@ -338,6 +356,7 @@ let lobbyTournamentTimer = null;
 let footballStore = null;
 let footballEngine = null;
 let footballBetting = null;
+let footballBallonDorMarket = null;
 let footballScheduler = null;
 let footballSockets = null;
 let accountSessionStore = null;
@@ -786,6 +805,44 @@ function lobbyTournamentProfileIdForSocket(socket, legacyAccountId = null) {
   }
   return String(socket?.handshake?.auth?.deviceToken || '').trim().slice(0, 80);
 }
+function betRankingProfileIdForSocket(socket) {
+  if (!socket || !profiles?.profiles) return null;
+  // Cada contexto conserva la identidad que ya resolvió de forma confiable:
+  // asiento/tribuna del casino, suscripción del Estadio o cookie de cuenta.
+  // Nunca se aceptan ids enviados en el payload de la clasificación.
+  const deviceToken = String(socket.handshake?.auth?.deviceToken || '').trim().slice(0, 80);
+  const candidates = [
+    socket.data?.playerId,
+    socket.data?.spectatorId,
+    socket.data?.football?.profileId,
+    socket.data?.lobbyTournamentProfileId,
+    socket.data?.accountProfileId,
+    deviceToken
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate && profiles.profiles.has(candidate)) return candidate;
+  }
+  return null;
+}
+function emitBetRanking(socket) {
+  if (!profiles?.profiles) return;
+  const profileId = betRankingProfileIdForSocket(socket);
+  socket.emit('bet_ranking_state', buildBettingLeaderboard({
+    profiles: profiles.profiles, footballStore, profileId, limit: 25
+  }));
+}
+function broadcastBetRanking() {
+  if (!profiles?.profiles) return;
+  const subscribers = [...io.of('/').sockets.values()].filter(socket => socket.data?.betRankingSubscribed);
+  if (!subscribers.length) return;
+  const leaderboard = createBettingLeaderboard({ profiles: profiles.profiles, footballStore, limit: 25 });
+  for (const socket of subscribers) {
+    socket.emit('bet_ranking_state', {
+      ...leaderboard.snapshot,
+      me: leaderboard.personal(betRankingProfileIdForSocket(socket))
+    });
+  }
+}
 function broadcastLobbyTournaments() {
   if (!lobbyTournaments) return;
   for (const socket of io.of('/').sockets.values()) {
@@ -813,6 +870,9 @@ function trackWager(room, player, amount) {
   const events = recordWager(player._profile, amount);
   if (!player.isBot) profiles.touch(player._profile);
   emitProgress(room, player, events);
+  // El ranking se alimenta en el instante en que se confirma cada apuesta, no
+  // al liquidarse la ronda. Los bots no forman parte de la clasificación pública.
+  if (!player.isBot) broadcastBetRanking();
 }
 function completePlayerRound(room, player, net) {
   let finalNet = Math.floor(Number(net) || 0);
@@ -2181,6 +2241,16 @@ io.on('connection', socket => {
     }
   });
 
+  socket.on('bet_ranking_get', (_payload = {}, ack) => {
+    socket.data.betRankingSubscribed = true;
+    emitBetRanking(socket);
+    ackOk(ack);
+  });
+  socket.on('bet_ranking_unsubscribe', (_payload = {}, ack) => {
+    socket.data.betRankingSubscribed = false;
+    ackOk(ack);
+  });
+
   // El callback de conexión en sí tampoco está cubierto por la envoltura de
   // socket.on (que protege lo que se registra después): si armar el snapshot
   // fallara, la excepción subiría a uncaughtException. Mismo tratamiento.
@@ -2535,6 +2605,7 @@ io.on('connection', socket => {
     }
     ackOk(ack, { profile: publicProgress(targetProfile, true) });
     if (room) broadcast(room);
+    broadcastBetRanking();
   });
 
   // Refresca el perfil público de una cuenta ya vinculada (username presente).
@@ -2914,12 +2985,26 @@ hostInactivitySweep.unref?.();
 
 // Fase 8.7: vigila el cambio de mes con el servidor encendido. Al cerrar la
 // temporada, todos los perfiles vuelven a 1000 fichas y se anuncia el podio.
-const seasonSweep = setInterval(() => {
-  if (!profiles) return; // Fase 10.2: red de seguridad si Postgres tardara más de 5 min en responder al arrancar.
-  // Auditoría: igual que el barrido de anfitriones, un error aquí mataba el
-  // proceso entero (setInterval sin envoltura). Se prefiere perder UN barrido
-  // y reintentar en 5 minutos a tumbar el casino en plena temporada.
+let seasonSweepRunning = false;
+const seasonSweep = setInterval(async () => {
+  if (!profiles || seasonSweepRunning) return; // no solapar una escritura lenta de Postgres
+  seasonSweepRunning = true;
   try {
+    // Antes del reset, dar al ciclo BDO una oportunidad completa de cerrar y
+    // liquidar. El hook síncrono de ensureSeason queda como red de seguridad.
+    const now = new Date();
+    const localMonth = monthKey(now, CASINO_TIME_ZONE);
+    if (footballBallonDorMarket && profiles.seasons?.current < localMonth) {
+      try {
+        await footballBallonDorMarket.beforeSeasonReset(profiles.seasons.current, now.getTime());
+      } catch (error) {
+        logEvent('football_ballon_dor_pre_reset_error', { message: String(error?.message || error) });
+      }
+    }
+    // Auditoría: igual que el barrido de anfitriones, un error aquí mataba el
+    // proceso entero (setInterval sin envoltura). Se prefiere perder UN barrido
+    // y reintentar en 5 minutos a tumbar el casino en plena temporada.
+    try {
     // Fase 11.4: junto con el cambio de mes, se aprovecha el mismo barrido de 5
     // min para borrar cuentas sin actividad desde hace ~3 meses (ahorra espacio,
     // sobre todo en Postgres). No afecta a nadie conectado: si alguien reconecta
@@ -2967,9 +3052,12 @@ const seasonSweep = setInterval(() => {
       broadcast(room);
     }
     broadcastLobby();
-  } catch (error) {
-    console.error('[SWEEP_ERROR] cierre-de-temporada:', error);
-    logEvent('season_sweep_error', { message: String(error?.message || error) });
+    } catch (error) {
+      console.error('[SWEEP_ERROR] cierre-de-temporada:', error);
+      logEvent('season_sweep_error', { message: String(error?.message || error) });
+    }
+  } finally {
+    seasonSweepRunning = false;
   }
 }, 5 * 60 * 1000);
 seasonSweep.unref?.();
@@ -3071,10 +3159,27 @@ async function initFootball() {
   //    (football:settlement). El log de betting no trae profileId, así que se
   //    resuelve del betId con una lectura estricta del store.
   const footballLog = (event, data) => {
-    logEvent(event, data);
+    // Los eventos por boleto se mantienen en el store/ledger y se enrutan al perfil
+    // dueño por Socket.IO, pero nunca se persisten como telemetría de producción.
+    // /healthz conserva solo conteos agregados, sin IDs, selecciones ni importes.
+    if (!isPrivateBallonDorBetLog(event)) logEvent(event, data);
     if (event === 'football_bet_settled' && data && data.betId && footballSockets && footballStore) {
       const bet = footballStore.getBet(data.betId);
       if (bet) footballSockets.broadcastSettlement({ profileId: bet.profileId, betId: bet.id, status: data.status, payout: data.payout, reason: data.reason });
+    }
+    if (event === 'football_ballon_dor_bet_settled' || event === 'football_ballon_dor_bet_refunded') {
+      const future = data?.futureId && footballStore?.getFuture(data.futureId);
+      if (future && footballSockets) {
+        footballSockets.broadcastSettlement({
+          profileId: future.profileId, betId: future.id, status: future.status,
+          payout: future.payout, reason: event === 'football_ballon_dor_bet_refunded' ? 'balon_de_oro_cancelado' : null
+        });
+      }
+      broadcastBetRanking();
+    }
+    if (['football_ballon_dor_odds_updated', 'football_ballon_dor_cancelled', 'football_ballon_dor_settled',
+      'football_ballon_dor_announcement_available', 'football_ballon_dor_payouts_updated'].includes(event)) {
+      footballSockets?.broadcastBallonDorMarket?.(data?.seasonMonth);
     }
   };
 
@@ -3082,6 +3187,9 @@ async function initFootball() {
   const simulatedFlow = new SimulatedFlow({ log: footballLog });
   footballBetting = createBettingService({
     store: footballStore, profiles, simulatedFlow, log: footballLog, now: () => Date.now()
+  });
+  footballBallonDorMarket = new BallonDorMarketService({
+    store: footballStore, betting: footballBetting, now: () => Date.now(), log: footballLog
   });
 
   // 4. Motor determinista con los hooks de apuestas cableados (Fase D) y el gate de
@@ -3100,6 +3208,16 @@ async function initFootball() {
   // 5. Reconciliación de arranque (§15.6): reconstruye el estado de los partidos no
   //    terminales desde (seed, now) y cuadra el escrow. ANTES de aceptar tráfico.
   footballEngine.reconcile(Date.now());
+  // Recupera/transiciona ciclos BDO antes de aceptar tráfico y antes del reset
+  // mensual de perfiles. Un fallo del premio se registra, pero nunca impide casino.
+  try {
+    const bdoSummary = await footballBallonDorMarket.sweep(Date.now());
+    const operationalSummary = { ...bdoSummary };
+    delete operationalSummary.refunded;
+    logEvent('football_ballon_dor_boot_sweep', operationalSummary);
+  } catch (error) {
+    logEvent('football_ballon_dor_boot_sweep_error', { message: String(error?.message || error) });
+  }
 
   // 6. Capa de protocolo Socket.IO (§14). Añade su propio io.on('connection'),
   //    independiente del handler de mesas del casino. Helpers del casino inyectados:
@@ -3107,14 +3225,18 @@ async function initFootball() {
   //    nombres) y verifyTosAcceptance. La identidad se resuelve SOLO en subscribe.
   footballSockets = registerFootballSockets(io, {
     betting: footballBetting, engine: footballEngine, store: footballStore, profiles,
+    ballonDorMarket: footballBallonDorMarket,
     config: footballConfig.sockets, log: footballLog, now: () => Date.now(),
     ackOk,
     ackError: (ack, message, code) => ackResult(ack, actionError(message, code || 'invalid')),
-    cleanMessage, nameIssue, verifyTosAcceptance
+    cleanMessage, nameIssue, verifyTosAcceptance,
+    onBetPlaced: () => broadcastBetRanking()
   });
 
   // 7. Scheduler: sweeps de kickoff, avance, partidos atascados y temporada (§15).
-  footballScheduler = new FootballScheduler(footballEngine);
+  footballScheduler = new FootballScheduler(footballEngine, {
+    ballonDorService: footballBallonDorMarket, logEvent: footballLog
+  });
   footballScheduler.start();
 
   logEvent('football_initialized', {
@@ -3164,17 +3286,38 @@ async function bootstrap() {
     // Fallo abierto: si la consulta falla, se permite el cierre — el casino no puede
     // quedar atascado por un error del gate (y ensureSeason lleva su propio tope de
     // aplazamientos, SEASON_RESET_MAX_DEFERRALS).
-    profiles.onBeforeSeasonReset = ({ fromMonth }) => {
+    profiles.onBeforeSeasonReset = ({ fromMonth, date }) => {
+      // Intenta cerrar/resolver el ciclo que termina. El gancho existente es
+      // síncrono; la promesa queda aislada para que un fallo del premio jamás
+      // detenga el reset del casino. El recovery posterior al reset aplica los
+      // pagos terminales que deban esperar a que se reinicie el saldo mensual.
+      if (footballBallonDorMarket) {
+        Promise.resolve(footballBallonDorMarket.beforeSeasonReset(
+          fromMonth, date instanceof Date ? date.getTime() : Date.now()
+        )).catch(error => logEvent('football_ballon_dor_pre_reset_error', {
+          seasonMonth: fromMonth, message: String(error?.message || error)
+        }));
+      }
       try {
-        if (!footballStore) return null;
-        const openBets = footballStore.hasOpenBets({ seasonMonth: fromMonth });
-        const openParlays = footballStore.getParlays({ status: 'open' }).some(p => p.seasonMonth === fromMonth);
-        const openFutures = footballStore.getOpenFutures(fromMonth).length > 0;
-        if (openBets || openParlays || openFutures) return { type: 'deferred', reason: 'apuestas_de_futbol_abiertas' };
+        return footballSeasonResetGate(footballStore, fromMonth);
       } catch (error) {
         console.warn('Gate de reset de temporada: no se pudo consultar el fútbol; se permite el cierre:', error.message);
       }
       return null;
+    };
+    profiles.onAfterSeasonReset = ({ fromMonth, toMonth }) => {
+      if (!footballBallonDorMarket) return;
+      Promise.resolve(footballBallonDorMarket.sweep(Date.now()))
+        .then(summary => {
+          const operationalSummary = { ...summary };
+          delete operationalSummary.refunded;
+          logEvent('football_ballon_dor_post_reset_recovery', {
+            fromMonth, toMonth, summary: operationalSummary
+          });
+        })
+        .catch(error => logEvent('football_ballon_dor_post_reset_error', {
+          fromMonth, toMonth, message: String(error?.message || error)
+        }));
     };
   }
   // Fase F (A12): comprobación/cierre de la temporada del casino, AHORA con el gate

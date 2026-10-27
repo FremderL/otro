@@ -53,6 +53,16 @@
   function accountSessionsAvailable() { return serverFlags.accountSessions !== false; }
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
+  function syncBetRankingSubscription() {
+    const shouldSubscribe = Boolean(ui.profileOpen && ui.profileSection === 'betting');
+    if (shouldSubscribe && !ui.betRankingSubscribed) {
+      ui.betRankingSubscribed = true;
+      if (socket.connected) socket.emit('bet_ranking_get');
+    } else if (!shouldSubscribe && ui.betRankingSubscribed) {
+      ui.betRankingSubscribed = false;
+      if (socket.connected) socket.emit('bet_ranking_unsubscribe');
+    }
+  }
   function setActiveProfileSection(sectionId) {
     const section = document.querySelector(`[data-profile-section="${sectionId}"]`);
     if (!section || section.classList.contains('hidden')) sectionId = 'overview';
@@ -64,6 +74,7 @@
     });
     document.getElementById('profile-modal')?.setAttribute('data-active-profile-section', sectionId);
     ui.profileSection = sectionId;
+    syncBetRankingSubscription();
   }
   function jumpToProfileSection(sectionId, moveFocus = false) {
     const scrollRoot = document.getElementById('profile-content-scroll');
@@ -238,6 +249,7 @@
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
     lastEventKey: '', clockTimer: null, dailyBonusTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null,
     profileOpen: false, profileNameDirty: false, profileSection: 'overview', collectionFilter: 'all', albumFilter: 'all', albumLastPullId: null, profileStale: false,
+    betRanking: null, betRankingSource: 'total', betRankingSubscribed: false,
     profileRevision: 0, // sube con cada snapshot de perfil aplicado (ver applyProfileSnapshot)
     lobbyTournaments: null, expandedTournamentBrackets: new Set(), pendingTournamentSignup: null,
     communityTab: 'friends', communityData: null,
@@ -834,6 +846,8 @@
   socket.on('connect', async () => {
     setConnection('connected');
     setColdStartHint(false);
+    renderBettingRanking();
+    if (ui.betRankingSubscribed && ui.profileOpen && ui.profileSection === 'betting') socket.emit('bet_ranking_get');
     tryAutoJoinLobbyChat();
     requestLobbyTournaments();
     // Si el perfil de cuenta quedó sin confirmar (sin conexión), se pide ahora.
@@ -869,6 +883,7 @@
   });
   socket.on('disconnect', () => {
     setConnection('disconnected');
+    renderBettingRanking();
     if (ui.room) showToast('Conexión interrumpida', 'Intentaremos devolverte a la mesa automáticamente.', 'error', 5000);
   });
   socket.io.on('reconnect_attempt', attempt => {
@@ -1032,6 +1047,83 @@
     // room_state completes the visual transition.
     setTimeout(() => { if (ui.room) setOverlay(false); }, 450);
   });
+
+  // ---------- Ranking transversal: Casino + Estadio ----------
+  socket.on('bet_ranking_state', snapshot => {
+    if (!snapshot || !snapshot.ranking) return;
+    ui.betRanking = snapshot;
+    renderBettingRanking();
+  });
+  function renderBettingRanking() {
+    const list = $('#bet-ranking-list');
+    const personal = $('#bet-ranking-personal');
+    if (!list || !personal) return;
+    const snapshot = ui.betRanking;
+    const source = ['total', 'casino', 'stadium'].includes(ui.betRankingSource) ? ui.betRankingSource : 'total';
+    const sourceLabels = { total: 'Total', casino: 'Casino', stadium: 'Estadio' };
+    const metricFields = {
+      total: { rank: 'totalRank', value: 'totalWagered' },
+      casino: { rank: 'casinoRank', value: 'casinoWagered' },
+      stadium: { rank: 'stadiumRank', value: 'stadiumWagered' }
+    };
+    $$('[data-bet-ranking-source]').forEach(button => {
+      const selected = button.dataset.betRankingSource === source;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+    const live = $('#bet-ranking-live');
+    if (live) {
+      const connected = Boolean(socket.connected);
+      live.textContent = connected ? '● Actualización en vivo' : '○ Reconectando…';
+      live.classList.toggle('disconnected', !connected);
+    }
+    if (!snapshot) {
+      personal.innerHTML = `<div class="bet-ranking-empty">${socket.connected ? 'Conectando con el ranking…' : 'Sin conexión. Se actualizará al reconectar.'}</div>`;
+      list.innerHTML = `<div class="bet-ranking-empty">${socket.connected ? 'Solicitando la clasificación combinada…' : 'El ranking requiere conexión.'}</div>`;
+      return;
+    }
+    const me = snapshot.me;
+    const metric = metricFields[source];
+    if (me) {
+      const rank = me[metric.rank];
+      const sourceParticipants = snapshot.participantsBySource?.[source] ?? snapshot.participants ?? 0;
+      const stadiumDecisions = Number(me.stadiumDecisions) || 0;
+      const stadiumWins = Number(me.stadiumWins) || 0;
+      const stadiumLosses = Number(me.stadiumLosses) || 0;
+      const stadiumHitRate = me.stadiumHitRate == null ? '—' : `${formatChips(me.stadiumHitRate)}%`;
+      const stadiumNet = Math.trunc(Number(me.stadiumNet) || 0);
+      const stadiumNetLabel = `${stadiumNet > 0 ? '+' : stadiumNet < 0 ? '−' : ''}◆ ${formatChips(Math.abs(stadiumNet))}`;
+      const stadiumNetTone = stadiumNet > 0 ? 'positive' : stadiumNet < 0 ? 'negative' : 'neutral';
+      personal.innerHTML = `
+        <div class="bet-ranking-me-place"><small>TU PUESTO · ${sourceLabels[source].toUpperCase()}</small><b>${rank ? `#${formatChips(rank)}` : '—'}</b><span>${rank ? `de ${formatChips(sourceParticipants)} jugadores` : 'Aún sin apuestas en este ranking'}</span></div>
+        <div class="bet-ranking-me-total"><small>VOLUMEN ACUMULADO</small><b>◆ ${formatChips(me.totalWagered)}</b><span>Casino + Estadio</span></div>
+        <div class="bet-ranking-me-source"><small>CASINO</small><b>◆ ${formatChips(me.casinoWagered)}</b><span>Fichas apostadas</span></div>
+        <div class="bet-ranking-me-source"><small>ESTADIO</small><b>◆ ${formatChips(me.stadiumWagered)}</b><span>${formatChips(me.stadiumBets || 0)} apuestas</span></div>
+        <div class="bet-ranking-me-source bet-ranking-me-performance"><small>ACIERTOS · ESTADIO</small><b>${stadiumHitRate}</b><span>${stadiumDecisions ? `${formatChips(stadiumWins)} ganadas · ${formatChips(stadiumLosses)} perdidas` : 'Sin resultados definitivos'}</span></div>
+        <div class="bet-ranking-me-source bet-ranking-me-performance"><small>NETO · ESTADIO</small><b class="bet-ranking-net ${stadiumNetTone}">${stadiumNetLabel}</b><span>Balance de ${formatChips(me.stadiumSettledBets || 0)} apuestas liquidadas</span></div>`;
+    } else {
+      personal.innerHTML = '<div class="bet-ranking-empty">No pudimos asociar el ranking con este perfil. Vuelve a entrar a una mesa o inicia sesión.</div>';
+    }
+    const updated = $('#bet-ranking-updated');
+    if (updated) {
+      const time = snapshot.updatedAt ? new Date(snapshot.updatedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '';
+      updated.textContent = `${formatChips(snapshot.totalWagered || 0)} fichas apostadas en ${formatChips(snapshot.participants || 0)} jugadores${time ? ` · actualizado ${time}` : ''}. Fichas 100% virtuales.`;
+    }
+    const entries = snapshot.ranking[source] || [];
+    if (!entries.length) {
+      list.innerHTML = `<div class="bet-ranking-empty">Todavía no hay apuestas registradas en ${sourceLabels[source]}.</div>`;
+      return;
+    }
+    const medals = ['🥇', '🥈', '🥉'];
+    list.innerHTML = entries.map(entry => `
+      <div class="bet-ranking-row ${entry.place === 1 ? 'leader' : ''} ${me && entry.name === me.name ? 'self' : ''}" role="row">
+        <span class="bet-ranking-place" role="cell">${medals[entry.place - 1] || `#${formatChips(entry.place)}`}</span>
+        <span class="bet-ranking-player" role="cell"><i>${avatarEmoji(entry.avatar)}</i><b>${escapeHtml(entry.name)}</b></span>
+        <span class="bet-ranking-value primary" role="cell">◆ ${formatChips(entry.totalWagered)}</span>
+        <span class="bet-ranking-value" role="cell">◆ ${formatChips(entry.casinoWagered)}</span>
+        <span class="bet-ranking-value" role="cell">◆ ${formatChips(entry.stadiumWagered)}</span>
+      </div>`).join('');
+  }
 
   // ---------- Live lobby ----------
   socket.on('lobby_state', payload => {
@@ -2507,6 +2599,7 @@
   function closeProfileModal() {
     ui.profileOpen = false;
     ui.profileNameDirty = false;
+    syncBetRankingSubscription();
     stopDailyBonusCountdown();
     els.passwordChangeForm?.reset();
     els.passwordChangeForm?.classList.add('hidden');
@@ -2704,6 +2797,7 @@
       }));
     }
     renderDailyBonusCountdown(profile);
+    renderBettingRanking();
   }
   const PASSPORT_REWARD_ART_SLUGS = new Set([
     'season-badge', 'frame-15', 'title-30', 'frame-50', 'emblem-75', 'explorer'
@@ -3534,6 +3628,12 @@
   els.profileCard.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openProfileModal(); } });
   $$('[data-profile-jump]').forEach(button => {
     button.addEventListener('click', () => jumpToProfileSection(button.dataset.profileJump, true));
+  });
+  $$('[data-bet-ranking-source]').forEach(button => {
+    button.addEventListener('click', () => {
+      ui.betRankingSource = button.dataset.betRankingSource || 'total';
+      renderBettingRanking();
+    });
   });
   els.albumOpenCapsule?.addEventListener('click', () => openCardCapsule(els.albumOpenCapsule));
   $$('[data-album-filter]').forEach(button => {

@@ -28,6 +28,11 @@ test('generateSeason construye una temporada completa y la persiste', () => {
   assert.strictEqual(league.calendar.jornadas.length, 30, '30 jornadas');
   assert.strictEqual(league.standings.length, 16, 'tabla con 16 filas');
   assert.ok(league.standings.every(r => r.played === 0 && r.points === 0), 'tabla inicial en cero');
+  assert.ok(league.ballonDor, 'la liga crea el contrato del Balón de Oro');
+  assert.strictEqual(league.ballonDor.id, 'bdo_2026-10');
+  assert.strictEqual(league.ballonDor.status, 'scheduled');
+  assert.strictEqual(league.ballonDor.candidates.length, 16, 'un candidato por club');
+  assert.ok(league.ballonDor.candidates.every(c => c.position === 'ST' && c.stats.appearances === 0), 'candidatos ST y stats en cero');
   assert.ok(Number.isInteger(league.seed) && league.seed >= 0, 'seed de temporada');
   assert.ok(fs.existsSync(store.filePath), 'el archivo se escribió');
   store.close();
@@ -38,6 +43,7 @@ test('generateSeason es determinista e idempotente por mes', () => {
   const b = newStore('det-b').generateSeason('2026-10');
   assert.strictEqual(a.seed, b.seed, 'mismo mes → mismo seed');
   assert.deepStrictEqual(a.calendar.matches.map(m => m.id), b.calendar.matches.map(m => m.id));
+  assert.deepStrictEqual(a.ballonDor.candidates, b.ballonDor.candidates, 'mismo mes → mismos candidatos y orden');
   // Llamar de nuevo devuelve la misma liga, no regenera.
   const store = newStore('det-c');
   const first = store.generateSeason('2026-10');
@@ -81,11 +87,13 @@ test('asentar es idempotente: re-procesar no duplica ni altera la tabla', () => 
   const match = league.calendar.jornadas[0].matches[0];
   store.settleMatch(match.id, { home: 2, away: 1 });
   const pointsAfterFirst = store.getStandings('2026-10').find(r => r.teamId === match.homeId).points;
+  const awardAfterFirst = JSON.stringify(league.ballonDor);
 
   const again = store.settleMatch(match.id, { home: 2, away: 1 });
   assert.ok(again.ok && again.alreadySettled, 'segunda llamada marcada alreadySettled');
   const pointsAfterSecond = store.getStandings('2026-10').find(r => r.teamId === match.homeId).points;
   assert.strictEqual(pointsAfterFirst, pointsAfterSecond, 'los puntos no cambian');
+  assert.strictEqual(JSON.stringify(league.ballonDor), awardAfterFirst, 'el replay no duplica stats ni puntos del premio');
   store.close();
 });
 
@@ -126,6 +134,7 @@ test('persistencia JSON de ida y vuelta preserva temporada, tabla y resultados',
   const originalStandings = JSON.parse(JSON.stringify(store.getStandings('2026-10')));
   const originalSeed = league.seed;
   const originalCtx = JSON.parse(JSON.stringify(league.ctx));
+  const originalBallonDor = JSON.parse(JSON.stringify(league.ballonDor));
   store.close();
 
   // Recarga desde disco con una instancia nueva.
@@ -136,12 +145,31 @@ test('persistencia JSON de ida y vuelta preserva temporada, tabla y resultados',
   assert.strictEqual(lg.calendar.matches.length, 240);
   assert.strictEqual(lg.calendar.matches.filter(m => m.status === 'settled').length, 8, '8 asentados persistidos');
   assert.deepStrictEqual(lg.ctx, originalCtx, 'ctx (leagueAvg/homeAdv) preservado');
+  assert.deepStrictEqual(lg.ballonDor, originalBallonDor, 'evento, candidatos y estado preservados en JSON');
   assert.deepStrictEqual(reloaded.getStandings('2026-10'), originalStandings, 'tabla idéntica tras recarga');
   // Las jornadas rehidratan referencias a los mismos objetos de partido.
   const j1r = lg.calendar.jornadas[0];
   assert.strictEqual(j1r.matches.length, 8);
   assert.strictEqual(j1r.matches[0].status, 'settled', 'la jornada apunta a partidos asentados');
   assert.strictEqual(j1r.matches[0], lg.calendar.matches.find(m => m.id === j1r.matches[0].id), 'identidad preservada');
+  reloaded.close();
+});
+
+test('transición del evento se valida y persiste en el store JSON', async () => {
+  const filePath = path.join(tmpDir, 'ballon-dor-state.json');
+  const store = new FootballStore(filePath);
+  const league = store.generateSeason('2026-10');
+  const startAt = league.ballonDor.createdAt + 10;
+  const started = await store.transitionBallonDor('2026-10', 'active', { at: startAt });
+  assert.equal(started.ok, true);
+  assert.equal(store.getBallonDor('2026-10').status, 'active');
+  const invalid = await store.transitionBallonDor('2026-10', 'settled', { at: startAt + 1 });
+  assert.equal(invalid.reason, 'transicion_no_permitida');
+  store.close();
+
+  const reloaded = new FootballStore(filePath);
+  assert.equal(reloaded.getBallonDor('2026-10').status, 'active', 'estado rehidratado desde JSON');
+  assert.equal(reloaded.getBallonDor('2026-10').startedAt, startAt);
   reloaded.close();
 });
 

@@ -36,11 +36,9 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  position: sticky;
-  top: 74px;
-  max-height: calc(100vh - 88px);
-  overflow-y: auto;
-  overflow-x: hidden;
+  position: static;
+  max-height: none;
+  overflow: visible;
   scrollbar-width: thin;
   scrollbar-color: rgba(194,223,216,.2) transparent;
 }
@@ -1431,3 +1429,412 @@ body.est-ledger-open { overflow: hidden; }
 }
 .est-enter.est-enter-out, .est-enter.est-enter-out * { animation: none !important; }
 .est-enter.est-enter-out { opacity: 0; visibility: hidden; transition: opacity .3s ease; }
+
+/* Mi espacio del Estadio: historial propio + clasificación transversal en vivo. */
+.est-ledger-views { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:-2px 0 1px; }
+.est-ledger-view-button { min-height:40px; display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:0 16px; border:1px solid rgba(194,223,216,.16); border-radius:999px; color:var(--muted); background:rgba(255,255,255,.025); font:700 11px var(--sans); cursor:pointer; transition:border-color .16s,color .16s,background .16s; }
+.est-ledger-view-button:hover { border-color:rgba(82,224,174,.36); color:var(--text); }
+.est-ledger-view-button.active,.est-ledger-view-button[aria-pressed="true"] { border-color:rgba(82,224,174,.47); color:var(--mint); background:rgba(82,224,174,.1); }
+.est-ledger-view-button:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+.est-ranking-live-badge { padding:3px 6px; border:1px solid rgba(82,224,174,.23); border-radius:999px; color:var(--mint); background:rgba(82,224,174,.07); font-size:7px; letter-spacing:.08em; }
+.est-ledger-history-view[hidden],.est-ledger-ranking-view[hidden] { display:none!important; }
+.est-ledger-history-view { display:flex; flex-direction:column; gap:18px; }
+.est-ledger-ranking-view { display:flex; flex-direction:column; gap:13px; }
+.est-bet-ranking-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; padding:15px 17px; border:1px solid rgba(82,224,174,.16); border-radius:14px; background:radial-gradient(90% 120% at 0% 0%,rgba(82,224,174,.08),transparent 68%),linear-gradient(145deg,rgba(255,255,255,.035),rgba(255,255,255,.01)); }
+.est-bet-ranking-heading > div { min-width:0; }
+.est-bet-ranking-heading > div > span { color:var(--mint); font-size:9px; font-weight:900; letter-spacing:.15em; }
+.est-bet-ranking-heading p { margin:6px 0 0; color:var(--muted); font-size:12px; line-height:1.5; }
+.est-bet-ranking-live { flex:none; padding:7px 10px; border:1px solid rgba(82,224,174,.25); border-radius:999px; color:var(--mint); background:rgba(82,224,174,.08); font-size:9px; letter-spacing:.08em; white-space:nowrap; }
+.est-bet-ranking-live.disconnected { border-color:rgba(229,189,114,.3); color:var(--gold-2); background:rgba(229,189,114,.07); }
+.est-bet-ranking-personal { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:9px; }
+.est-bet-ranking-me-place,.est-bet-ranking-me-total,.est-bet-ranking-me-source { min-width:0; min-height:91px; display:flex; flex-direction:column; justify-content:center; gap:6px; padding:13px; border:1px solid rgba(194,223,216,.12); border-radius:12px; background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.012)); }
+.est-bet-ranking-me-place { border-color:rgba(229,189,114,.25); background:linear-gradient(145deg,rgba(229,189,114,.09),rgba(255,255,255,.012)); }
+.est-bet-ranking-personal small { color:var(--muted-2); font-size:8px; font-weight:850; letter-spacing:.12em; }
+.est-bet-ranking-personal b { color:var(--text); font-family:var(--display); font-size:17px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.est-bet-ranking-me-place b { color:var(--gold-2); font-size:23px; }
+.est-bet-ranking-me-total b { color:var(--mint); font-size:15px; }
+.est-bet-ranking-personal span { color:var(--muted-2); font-size:9px; line-height:1.35; }
+.est-bet-ranking-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.est-bet-ranking-filters { display:flex; flex-wrap:wrap; gap:7px; }
+.est-bet-ranking-filter { min-height:33px; padding:0 15px; border:1px solid rgba(194,223,216,.17); border-radius:999px; color:var(--muted); background:rgba(255,255,255,.025); font:700 11px var(--sans); cursor:pointer; transition:border-color .15s,color .15s,background .15s; }
+.est-bet-ranking-filter:hover { border-color:rgba(82,224,174,.35); color:var(--text); }
+.est-bet-ranking-filter.active,.est-bet-ranking-filter[aria-pressed="true"] { border-color:rgba(82,224,174,.5); color:var(--mint); background:rgba(82,224,174,.11); }
+.est-bet-ranking-filter:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+.est-bet-ranking-updated { color:var(--muted-2); font-size:9px; line-height:1.4; text-align:right; }
+.est-bet-ranking-table { overflow-x:auto; border:1px solid rgba(194,223,216,.12); border-radius:12px; background:rgba(0,0,0,.12); scrollbar-width:thin; scrollbar-color:rgba(82,224,174,.32) transparent; }
+.est-bet-ranking-table-head,.est-bet-ranking-row { min-width:650px; display:grid; grid-template-columns:64px minmax(170px,1fr) repeat(3,minmax(112px,.7fr)); align-items:center; gap:10px; }
+.est-bet-ranking-table-head { min-height:34px; padding:0 14px; border-bottom:1px solid rgba(194,223,216,.1); color:var(--muted-2); font-size:8px; font-weight:900; letter-spacing:.14em; }
+.est-bet-ranking-row { min-height:53px; padding:7px 14px; border-bottom:1px solid rgba(194,223,216,.065); color:var(--muted); transition:background .15s; }
+.est-bet-ranking-row:last-child { border-bottom:0; }
+.est-bet-ranking-row:hover { background:rgba(255,255,255,.025); }
+.est-bet-ranking-row.leader { background:linear-gradient(90deg,rgba(229,189,114,.08),transparent 66%); }
+.est-bet-ranking-row.self { box-shadow:inset 2px 0 rgba(82,224,174,.76); }
+.est-bet-ranking-place { color:var(--muted); font-family:var(--display); font-size:11px; font-weight:850; }
+.est-bet-ranking-row.leader .est-bet-ranking-place { color:var(--gold-2); font-size:16px; }
+.est-bet-ranking-player { min-width:0; display:flex; align-items:center; gap:9px; }
+.est-bet-ranking-player i { width:29px; height:29px; flex:none; display:grid; place-items:center; border:1px solid rgba(194,223,216,.13); border-radius:9px; background:rgba(255,255,255,.045); font-size:16px; font-style:normal; }
+.est-bet-ranking-player b { overflow:hidden; color:var(--text); font-size:11px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
+.est-bet-ranking-row.self .est-bet-ranking-player b { color:#aaf0cd; }
+.est-bet-ranking-value { color:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.est-bet-ranking-value.primary { color:var(--gold-2); font-weight:850; }
+.est-bet-ranking-net.positive { color:#8ee6b4; }
+.est-bet-ranking-net.negative { color:#f29592; }
+.est-bet-ranking-net.neutral { color:var(--text); }
+.est-bet-ranking-empty { padding:20px 12px; color:var(--muted-2); font-size:11px; line-height:1.5; text-align:center; }
+.est-bet-ranking-note { margin:0; color:var(--muted-2); font-size:10px; line-height:1.45; }
+@media(max-width:900px) {
+  .est-bet-ranking-personal { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+@media(max-width:680px) {
+  .est-ledger-view-button { flex:1 1 140px; padding:0 10px; font-size:10px; }
+  .est-bet-ranking-heading { align-items:flex-start; flex-direction:column; gap:10px; }
+  .est-bet-ranking-personal { grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+  .est-bet-ranking-me-place,.est-bet-ranking-me-total,.est-bet-ranking-me-source { min-height:76px; padding:10px; }
+  .est-bet-ranking-personal b { font-size:14px; }
+  .est-bet-ranking-me-place b { font-size:20px; }
+  .est-bet-ranking-me-total b { font-size:13px; }
+  .est-bet-ranking-toolbar { align-items:flex-start; flex-direction:column; }
+  .est-bet-ranking-updated { text-align:left; }
+}
+
+/* --- Balón de Oro MonteCristo: estado, tabla y predicción funcional --- */
+.estadio-nav .est-bdo-nav-link { white-space:nowrap; text-decoration:none; }
+.est-bdo-panel { grid-column:1 / -1; min-width:0; scroll-margin-top:78px; }
+.est-bdo-panel [hidden] { display:none !important; }
+.est-bdo-header { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
+.est-bdo-kicker { margin:0 0 4px; color:var(--gold-2); font-size:9px; font-weight:850; letter-spacing:.16em; text-transform:uppercase; }
+.est-bdo-title { margin:0; color:var(--text); font-family:var(--display); font-size:clamp(19px,2.2vw,28px); letter-spacing:.015em; }
+.est-bdo-header-state { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; }
+.est-bdo-status,.est-bdo-feed { display:inline-flex; align-items:center; min-height:26px; padding:4px 10px; border:1px solid rgba(82,224,174,.25); border-radius:999px; background:rgba(82,224,174,.07); color:var(--mint); font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+.est-bdo-status[data-state="scheduled"],.est-bdo-status[data-state="active"] { border-color:rgba(229,189,114,.38); background:rgba(229,189,114,.08); color:var(--gold-2); }
+.est-bdo-status[data-state="cancelled"] { border-color:rgba(242,149,146,.38); background:rgba(242,149,146,.08); color:#f29592; }
+.est-bdo-feed { border-color:rgba(194,223,216,.15); background:rgba(255,255,255,.025); color:var(--muted); letter-spacing:.035em; text-transform:none; }
+.est-bdo-feed[data-state="http"] { border-color:rgba(229,189,114,.28); color:var(--gold-2); }
+.est-bdo-feed[data-state="error"] { border-color:rgba(242,149,146,.35); color:#f29592; }
+.est-bdo-summary { max-width:880px; margin:10px 0 12px; color:var(--muted); font-size:11px; line-height:1.55; }
+.est-bdo-demo-notice { margin:11px 0 0; padding:9px 12px; border:1px solid rgba(255,208,111,.4); border-left:3px solid #ffd06f; border-radius:9px; background:linear-gradient(105deg,rgba(103,67,13,.34),rgba(255,255,255,.035)); color:#ffebc2; font-size:11px; font-weight:650; line-height:1.5; }
+.est-bdo-demo-notice strong { color:#ffd06f; font-weight:900; letter-spacing:.045em; }
+.est-bdo-demo-notice[hidden] { display:none !important; }
+.est-bdo-demo-notice-modal { margin:10px 18px 0; }
+.est-bdo-feedback { margin:0 0 10px; padding:9px 11px; border:1px solid rgba(194,223,216,.12); border-radius:9px; background:rgba(0,0,0,.12); color:var(--muted); font-size:11px; line-height:1.5; }
+.est-bdo-feedback[data-state="error"] { border-color:rgba(242,149,146,.35); color:#f29592; }
+.est-bdo-feedback[data-state="success"] { border-color:rgba(82,224,174,.3); color:var(--mint); }
+.est-bdo-panel > #est-bdo-retry { margin:0 0 10px; }
+.est-bdo-table-wrap { max-width:100%; overflow-x:auto; border:1px solid rgba(194,223,216,.13); border-radius:11px; background:rgba(0,0,0,.12); scrollbar-width:thin; scrollbar-color:rgba(82,224,174,.32) transparent; }
+.est-bdo-table { width:100%; min-width:940px; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+.est-bdo-table caption { padding:8px 12px; color:var(--muted-2); font-size:9px; text-align:left; }
+.est-bdo-table th { padding:8px 9px; border-bottom:1px solid rgba(194,223,216,.13); color:var(--muted-2); font-size:8px; font-weight:850; letter-spacing:.08em; text-align:right; text-transform:uppercase; white-space:nowrap; }
+.est-bdo-table th:nth-child(2) { min-width:205px; text-align:left; }
+.est-bdo-table td { padding:8px 9px; border-bottom:1px solid rgba(194,223,216,.07); color:var(--muted); font-size:10px; text-align:right; white-space:nowrap; }
+.est-bdo-table tbody tr:last-child td { border-bottom:0; }
+.est-bdo-table tbody tr:hover { background:rgba(255,255,255,.025); }
+.est-bdo-table td:first-child { color:var(--gold-2); font-family:var(--display); font-weight:850; }
+.est-bdo-table td:nth-child(2) { text-align:left; }
+.est-bdo-candidate { display:flex; align-items:center; gap:8px; min-width:190px; }
+.est-bdo-candidate-avatar { width:38px; height:38px; flex:none; border:1px solid rgba(229,189,114,.34); border-radius:50%; object-fit:cover; background:#0a1514; }
+.est-bdo-candidate-dot { width:9px; height:9px; flex:none; border:1px solid rgba(255,255,255,.28); border-radius:50%; }
+.est-bdo-candidate-copy { min-width:0; display:flex; flex-direction:column; gap:2px; }
+.est-bdo-candidate-copy b { overflow:hidden; color:var(--text); font-size:10px; text-overflow:ellipsis; }
+.est-bdo-candidate-copy small { color:var(--muted-2); font-size:8px; }
+.est-bdo-points { color:var(--gold-2) !important; font-weight:900; }
+.est-bdo-odds { color:var(--mint) !important; font-weight:850; }
+.est-bdo-select { padding:5px 8px; border:1px solid rgba(82,224,174,.35); border-radius:7px; background:rgba(82,224,174,.08); color:var(--mint); font:750 9px var(--sans); cursor:pointer; }
+.est-bdo-select:hover:not(:disabled) { border-color:var(--mint); background:rgba(82,224,174,.15); }
+.est-bdo-select:disabled { opacity:.46; cursor:not-allowed; }
+.est-bdo-select:focus-visible,.est-bdo-slip input:focus-visible,.est-bdo-slip select:focus-visible,.est-bdo-panel button:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+.est-bdo-bet-area { display:grid; grid-template-columns:minmax(0,1fr) minmax(260px,.75fr); gap:12px; margin-top:13px; }
+.est-bdo-slip,.est-bdo-receipt { min-width:0; padding:13px; border:1px solid rgba(194,223,216,.14); border-radius:11px; background:rgba(255,255,255,.025); }
+.est-bdo-slip-copy h3,.est-bdo-receipt h3 { margin:0 0 4px; color:var(--gold-2); font-family:var(--display); font-size:13px; }
+.est-bdo-slip-copy p { margin:4px 0; color:var(--muted); font-size:10px; line-height:1.5; }
+.est-bdo-bounds { color:var(--mint) !important; font-variant-numeric:tabular-nums; }
+.est-bdo-slip-fields { display:grid; grid-template-columns:minmax(130px,.7fr) minmax(160px,1fr) auto; gap:7px 10px; align-items:center; margin-top:10px; }
+.est-bdo-slip-fields label { color:var(--muted-2); font-size:9px; font-weight:750; }
+.est-bdo-slip-fields select,.est-bdo-slip-fields input { width:100%; min-width:0; min-height:37px; padding:7px 9px; border:1px solid rgba(194,223,216,.2); border-radius:7px; background:#0a1315; color:var(--text); font:11px var(--sans); }
+.est-bdo-slip-fields select { grid-column:2 / 4; }
+.est-bdo-slip-fields input { grid-column:2; }
+.est-bdo-slip-fields > label:nth-of-type(2) { grid-column:1; grid-row:3; }
+.est-bdo-quote { grid-column:1 / -1; margin:0; color:var(--gold-2); font-size:10px; font-variant-numeric:tabular-nums; }
+.est-bdo-slip-fields .btn { grid-column:1 / -1; justify-self:start; min-height:35px; }
+.est-bdo-confirmation { margin-top:11px; padding:11px; border:1px solid rgba(229,189,114,.32); border-radius:9px; background:rgba(229,189,114,.055); }
+.est-bdo-confirmation p { margin:0 0 7px; color:var(--text); font-size:11px; line-height:1.5; }
+.est-bdo-confirmation .est-bdo-confirmation-note { color:var(--muted-2); font-size:9px; }
+.est-bdo-confirmation-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:9px; }
+.est-bdo-confirmation-actions .btn { min-height:34px; font-size:10px; }
+.est-bdo-message { min-height:15px; margin:8px 0 0; color:var(--muted); font-size:10px; line-height:1.45; }
+.est-bdo-message[data-state="error"] { color:#f29592; }
+.est-bdo-message[data-state="success"] { color:var(--mint); }
+.est-bdo-receipt { border-color:rgba(82,224,174,.3); background:rgba(82,224,174,.045); }
+.est-bdo-receipt-body { display:grid; gap:6px; }
+.est-bdo-receipt-row { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; color:var(--muted); font-size:10px; line-height:1.4; }
+.est-bdo-receipt-row b { color:var(--text); text-align:right; }
+.est-bdo-receipt-row .positive { color:var(--mint); }
+.est-bdo-receipt-row .negative { color:#f29592; }
+.est-bdo-legal { margin:12px 0 0; color:var(--muted-2); font-size:9px; line-height:1.5; }
+@media (max-width:680px) {
+  .estadio-nav .est-bdo-nav-link { padding:5px 7px; font-size:9px; }
+  .est-bdo-header { flex-direction:column; gap:9px; }
+  .est-bdo-header-state { justify-content:flex-start; }
+  .est-bdo-bet-area { grid-template-columns:minmax(0,1fr); }
+  .est-bdo-slip-fields { grid-template-columns:minmax(0,1fr); }
+  .est-bdo-slip-fields label,.est-bdo-slip-fields select,.est-bdo-slip-fields input,.est-bdo-slip-fields > label:nth-of-type(2),.est-bdo-quote,.est-bdo-slip-fields .btn { grid-column:1; grid-row:auto; }
+  .est-bdo-slip-fields label:not(:first-child) { margin-top:3px; }
+  .est-bdo-slip-fields .btn { width:100%; }
+  .est-bdo-panel { padding:12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .est-bdo-panel *, .est-bdo-panel *::before, .est-bdo-panel *::after { scroll-behavior:auto !important; animation-duration:.01ms !important; transition-duration:.01ms !important; }
+}
+
+/* Fase 6: inauguración interactiva, narrada y sincronizada con candidatos reales. */
+.est-bdo-opening-launch { display:flex; align-items:center; justify-content:space-between; gap:14px; margin:12px 0; padding:11px 13px; border:1px solid rgba(229,189,114,.2); border-radius:10px; background:linear-gradient(100deg,rgba(229,189,114,.07),rgba(255,255,255,.02)); }
+.est-bdo-opening-launch-kicker { margin:0 0 3px; color:var(--gold-2); font-size:9px; font-weight:850; letter-spacing:.12em; text-transform:uppercase; }
+.est-bdo-opening-launch-copy { margin:0; color:var(--muted); font-size:10px; line-height:1.5; }
+.est-bdo-opening-launch .btn { flex:none; min-height:38px; }
+.est-bdo-opening-open { overflow:hidden !important; }
+.est-bdo-opening { position:fixed; inset:0; z-index:500; display:grid; place-items:center; padding:12px; }
+.est-bdo-opening[hidden] { display:none !important; }
+.est-bdo-opening [hidden] { display:none !important; }
+.est-bdo-opening-scrim { position:absolute; inset:0; background:rgba(0,5,7,.84); backdrop-filter:blur(9px); }
+.est-bdo-opening-dialog { position:relative; z-index:1; display:flex; flex-direction:column; width:min(1160px,100%); max-height:calc(100dvh - 24px); overflow:auto; border:1px solid rgba(229,189,114,.35); border-radius:16px; background:#071012; box-shadow:0 28px 100px rgba(0,0,0,.72),0 0 50px rgba(229,189,114,.08); color:var(--text); scrollbar-width:thin; scrollbar-color:rgba(82,224,174,.3) transparent; }
+.est-bdo-opening-header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:11px 16px; border-bottom:1px solid rgba(194,223,216,.1); }
+.est-bdo-opening-eyebrow { color:var(--gold-2); font-size:9px; font-weight:850; letter-spacing:.14em; text-transform:uppercase; }
+.est-bdo-opening-status { margin:4px 0 0; color:var(--muted-2); font-size:10px; }
+.est-bdo-opening-close,.est-bdo-opening-control,.est-bdo-opening-skip { min-height:42px; display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:0 12px; border:1px solid rgba(194,223,216,.18); border-radius:9px; background:rgba(255,255,255,.04); color:var(--text); font:750 11px var(--sans); cursor:pointer; }
+.est-bdo-opening-close { color:var(--muted); }
+.est-bdo-opening-close span { color:var(--gold-2); font-size:18px; }
+.est-bdo-opening-stage { position:relative; display:grid; place-items:center; min-height:clamp(390px,55vh,570px); overflow:hidden; isolation:isolate; background:#071012; text-align:center; }
+.est-bdo-opening-stage::after { position:absolute; inset:0; z-index:-1; content:""; background:linear-gradient(180deg,rgba(4,10,12,.42),rgba(4,10,12,.13) 38%,rgba(4,10,12,.77)),radial-gradient(ellipse at 50% 48%,rgba(229,189,114,.13),transparent 58%); }
+.est-bdo-opening-tunnel { position:absolute; inset:-4%; z-index:-2; background:url('/assets/estadio-tunnel.jpg') center 58% / cover no-repeat; filter:brightness(.56) saturate(.78); transform:scale(1.03); }
+.est-bdo-opening-stage[data-motion="full"] .est-bdo-opening-tunnel { animation:bdo-opening-dolly 13s cubic-bezier(.2,.5,.4,1) infinite alternate; }
+.est-bdo-opening-stage[data-scene^="reveal-"] { min-height:clamp(470px,60vh,600px); }
+.est-bdo-opening-light { position:absolute; z-index:-1; width:44vw; height:44vw; max-width:500px; max-height:500px; border-radius:50%; opacity:.38; filter:blur(75px); pointer-events:none; }
+.est-bdo-opening-light-a { top:5%; left:5%; background:rgba(229,189,114,.38); }
+.est-bdo-opening-light-b { right:3%; bottom:-12%; background:rgba(82,224,174,.23); }
+@keyframes bdo-opening-dolly { 0% { transform:scale(1.03) translateY(1%); } 100% { transform:scale(1.14) translateY(-1.5%); } }
+.est-bdo-opening-copy { position:absolute; top:9%; right:20px; left:20px; z-index:2; margin:auto; max-width:850px; text-shadow:0 3px 22px rgba(0,0,0,.75); }
+.est-bdo-opening-kicker { margin:0 0 9px; color:var(--mint); font-size:10px; font-weight:900; letter-spacing:.2em; text-transform:uppercase; }
+.est-bdo-opening-copy h2 { margin:0; color:#fff5da; font-family:var(--display); font-size:clamp(28px,5vw,58px); font-weight:900; letter-spacing:.015em; line-height:1.02; text-wrap:balance; }
+.est-bdo-opening-description { max-width:640px; margin:10px auto 0; color:rgba(242,246,237,.88); font-size:clamp(11px,1.5vw,14px); line-height:1.55; text-wrap:balance; }
+.est-bdo-opening-clubs { position:absolute; right:5%; bottom:14%; left:5%; z-index:2; display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:7px; max-width:920px; margin:auto; }
+.est-bdo-opening-club { min-width:0; display:grid; place-items:center; min-height:34px; padding:5px; border:1px solid color-mix(in srgb,var(--club-color) 64%,rgba(255,255,255,.18)); border-radius:8px; background:linear-gradient(135deg,color-mix(in srgb,var(--club-color) 29%,rgba(5,10,12,.9)),rgba(4,8,9,.86)); box-shadow:0 5px 18px rgba(0,0,0,.25); color:#fff; font-size:9px; font-weight:900; letter-spacing:.08em; }
+.est-bdo-opening-cards { position:absolute; right:4%; bottom:7%; left:4%; z-index:2; display:grid; grid-template-columns:minmax(0,1fr); width:min(830px,92%); gap:10px; margin:0 auto; }
+.est-bdo-opening-card { position:relative; min-width:0; min-height:255px; display:grid; grid-template-columns:150px minmax(0,1fr); align-items:stretch; gap:20px; overflow:hidden; padding:18px; border:1px solid rgba(255,255,255,.2); border-left:4px solid var(--club-color); border-radius:16px; background:linear-gradient(125deg,color-mix(in srgb,var(--club-color) 28%,rgba(5,10,12,.97)),rgba(4,8,10,.96) 42%,rgba(4,8,10,.94)); box-shadow:0 18px 48px rgba(0,0,0,.48),0 0 36px color-mix(in srgb,var(--club-color) 21%,transparent); text-align:left; animation:bdo-opening-card-rise .55s cubic-bezier(.18,.72,.26,1) both; }
+@keyframes bdo-opening-card-rise { from { opacity:0; transform:translateY(18px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+.est-bdo-opening-card-aside { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:10px; border:1px solid color-mix(in srgb,var(--club-color) 50%,rgba(255,255,255,.16)); border-radius:12px; background:linear-gradient(160deg,color-mix(in srgb,var(--club-color) 35%,rgba(5,10,12,.75)),rgba(2,7,9,.82)); text-align:center; }
+.est-bdo-opening-card-monogram { width:72px; height:72px; display:grid; place-items:center; border:2px solid color-mix(in srgb,var(--club-color) 76%,white); border-radius:50%; background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--club-color) 42%,white),color-mix(in srgb,var(--club-color) 65%,#071012)); box-shadow:0 0 23px color-mix(in srgb,var(--club-color) 38%,transparent); color:var(--club-ink); font:900 16px var(--display); letter-spacing:.06em; }
+.est-bdo-opening-card-number { color:#fff; font:900 29px var(--display); line-height:1; }
+.est-bdo-opening-card-roster { color:rgba(255,255,255,.62); font-size:8px; font-weight:850; letter-spacing:.12em; }
+.est-bdo-opening-card-content { min-width:0; display:flex; flex-direction:column; justify-content:center; gap:5px; }
+.est-bdo-opening-card-club { color:var(--club-color); font-size:9px; font-weight:900; letter-spacing:.14em; text-transform:uppercase; }
+.est-bdo-opening-card-player { max-width:100%; margin:0; overflow:hidden; color:#fff; font-family:var(--display); font-size:clamp(23px,3vw,38px); font-weight:900; line-height:1.05; text-overflow:ellipsis; white-space:nowrap; }
+.est-bdo-opening-card-role { margin:0; color:rgba(239,245,239,.72); font-size:10px; }
+.est-bdo-opening-card-signature { margin:2px 0; color:var(--gold-2); font-size:11px; font-weight:800; letter-spacing:.025em; }
+.est-bdo-opening-card-facts { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; margin:3px 0; }
+.est-bdo-opening-card-facts div { min-width:0; padding:6px 7px; border:1px solid rgba(255,255,255,.1); border-radius:7px; background:rgba(255,255,255,.045); }
+.est-bdo-opening-card-facts dt { color:rgba(239,245,239,.55); font-size:8px; }
+.est-bdo-opening-card-facts dd { margin:2px 0 0; color:#fff; font:850 15px var(--display); font-variant-numeric:tabular-nums; }
+.est-bdo-opening-card-skills { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.est-bdo-opening-card-skill { display:grid; grid-template-columns:auto minmax(35px,1fr) auto; align-items:center; gap:6px; color:rgba(239,245,239,.75); font-size:8px; }
+.est-bdo-opening-card-skill b { color:#fff; font-size:9px; font-variant-numeric:tabular-nums; }
+.est-bdo-opening-card-meter { height:5px; overflow:hidden; border-radius:99px; background:rgba(255,255,255,.12); }
+.est-bdo-opening-card-meter i { height:100%; display:block; border-radius:inherit; background:linear-gradient(90deg,var(--club-color),var(--gold-2)); }
+.est-bdo-opening-cta { position:absolute; right:0; bottom:9%; left:0; z-index:3; width:max-content; max-width:calc(100% - 28px); min-height:46px; margin:auto; padding:0 20px; border:1px solid rgba(229,189,114,.62); border-radius:999px; background:linear-gradient(110deg,#c89b4f,#f1d99e 52%,#b98437); box-shadow:0 8px 28px rgba(0,0,0,.4),0 0 30px rgba(229,189,114,.22); color:#17150f; font:850 12px var(--sans); cursor:pointer; }
+.est-bdo-opening-cta:hover { transform:translateY(-2px); filter:brightness(1.06); }
+.est-bdo-opening-cta:focus-visible { outline:3px solid #fff; outline-offset:4px; }
+.est-bdo-opening-corner { position:absolute; right:16px; bottom:11px; z-index:2; color:rgba(255,255,255,.64); font-size:8px; font-weight:850; letter-spacing:.18em; }
+.est-bdo-opening-corner i { color:var(--gold-2); font-style:normal; }
+.est-bdo-opening-stage.is-paused .est-bdo-opening-tunnel,.est-bdo-opening-stage.is-paused .est-bdo-opening-card { animation-play-state:paused !important; }
+.est-bdo-opening-caption-wrap { padding:11px 16px 8px; }
+.est-bdo-opening-caption { min-height:32px; display:grid; place-items:center; margin:0; color:var(--text); font-size:clamp(11px,1.35vw,14px); font-weight:650; line-height:1.5; text-align:center; text-wrap:balance; }
+.est-bdo-opening-progress-row { display:flex; align-items:center; gap:10px; margin-top:9px; }
+.est-bdo-opening-progress { flex:1; height:4px; overflow:hidden; border-radius:999px; background:rgba(255,255,255,.1); }
+.est-bdo-opening-progress span { width:0; height:100%; display:block; border-radius:inherit; background:linear-gradient(90deg,var(--mint),var(--gold-2)); transition:width .18s linear; }
+.est-bdo-opening-time { color:var(--muted-2); font-size:9px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.est-bdo-opening-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:0 16px 10px; }
+.est-bdo-opening-control:hover,.est-bdo-opening-close:hover,.est-bdo-opening-skip:hover { border-color:rgba(82,224,174,.45); background:rgba(82,224,174,.08); color:#fff; }
+.est-bdo-opening-control:focus-visible,.est-bdo-opening-close:focus-visible,.est-bdo-opening-skip:focus-visible,.est-bdo-opening-transcript summary:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+.est-bdo-opening-skip { margin-left:auto; border-color:rgba(229,189,114,.35); color:var(--gold-2); }
+.est-bdo-opening-transcript { padding:0 16px 13px; color:var(--muted); font-size:10px; line-height:1.6; }
+.est-bdo-opening-transcript summary { width:max-content; color:var(--gold-2); cursor:pointer; font-weight:800; }
+.est-bdo-opening-transcript p { max-width:900px; margin:7px 0 0; }
+.est-bdo-opening-audio { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+@media(max-width:760px) {
+  .est-bdo-opening-launch { align-items:flex-start; flex-direction:column; }
+  .est-bdo-opening-launch .btn { width:100%; }
+  .est-bdo-opening { padding:6px; }
+  .est-bdo-opening-dialog { max-height:calc(100dvh - 12px); border-radius:11px; }
+  .est-bdo-opening-header { padding:9px 11px; }
+  .est-bdo-opening-stage { min-height:clamp(430px,60vh,560px); }
+  .est-bdo-opening-copy { top:7%; right:12px; left:12px; }
+  .est-bdo-opening-copy h2 { font-size:clamp(25px,7vw,43px); }
+  .est-bdo-opening-clubs { right:4%; bottom:12%; left:4%; grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px; }
+  .est-bdo-opening-club { min-height:29px; font-size:8px; }
+  .est-bdo-opening-cards { right:4%; bottom:8%; left:4%; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+  .est-bdo-opening-stage[data-scene^="reveal-"] { min-height:clamp(450px,64vh,560px); }
+  .est-bdo-opening-cards { right:3%; bottom:4%; left:3%; width:94%; }
+  .est-bdo-opening-card { grid-template-columns:72px minmax(0,1fr); gap:10px; min-height:245px; padding:10px; }
+  .est-bdo-opening-card-aside { gap:8px; padding:6px; }
+  .est-bdo-opening-card-monogram { width:52px; height:52px; font-size:12px; }
+  .est-bdo-opening-card-number { font-size:24px; }
+  .est-bdo-opening-card-player { font-size:clamp(18px,5vw,27px); }
+  .est-bdo-opening-card-facts { grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px; }
+  .est-bdo-opening-card-facts div { padding:4px 6px; }
+  .est-bdo-opening-card-facts dd { font-size:13px; }
+  .est-bdo-opening-card-skills { grid-template-columns:minmax(0,1fr); gap:5px; }
+  .est-bdo-opening-caption-wrap { padding:9px 11px 7px; }
+  .est-bdo-opening-caption { min-height:42px; }
+  .est-bdo-opening-controls { gap:6px; padding:0 11px 9px; }
+  .est-bdo-opening-control,.est-bdo-opening-close,.est-bdo-opening-skip { min-height:44px; padding:0 9px; font-size:10px; }
+  .est-bdo-opening-skip { margin-left:0; }
+  .est-bdo-opening-transcript { padding:0 11px 11px; }
+}
+@media(max-height:700px) and (min-width:761px) {
+  .est-bdo-opening-stage { min-height:clamp(320px,47vh,440px); }
+  .est-bdo-opening-card { min-height:125px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .est-bdo-opening-stage[data-motion="full"] .est-bdo-opening-tunnel,
+  .est-bdo-opening-card,.est-bdo-opening-progress span { animation:none !important; transition:none !important; }
+}
+.est-bdo-opening-stage[data-motion="reduced"] .est-bdo-opening-tunnel,.est-bdo-opening-stage[data-motion="reduced"] .est-bdo-opening-card { animation:none !important; }
+
+
+/* Espacio exclusivo del evento Balón de Oro y aviso de cierre. */
+.estadio-body .est-bdo-dedicated-back { display:none; }
+.est-bdo-finalization { display:grid; grid-template-columns:48px minmax(0,1fr); align-items:center; gap:13px; margin:12px 0; padding:15px 17px; border:1px solid rgba(229,189,114,.3); border-radius:13px; background:linear-gradient(110deg,rgba(229,189,114,.11),rgba(82,224,174,.035) 65%,rgba(255,255,255,.02)); box-shadow:inset 3px 0 0 rgba(229,189,114,.45); }
+.est-bdo-finalization-mark { width:44px; height:44px; display:grid; place-items:center; border:1px solid rgba(229,189,114,.3); border-radius:12px; background:rgba(229,189,114,.08); font-size:21px; }
+.est-bdo-finalization-kicker { margin:0 0 3px; color:var(--gold-2); font-size:8px; font-weight:900; letter-spacing:.15em; text-transform:uppercase; }
+.est-bdo-finalization-copy h3 { margin:0 0 4px; color:var(--text); font:850 15px var(--display); }
+.est-bdo-finalization-copy p { margin:0; color:var(--muted); font-size:10px; line-height:1.55; }
+.est-bdo-finalization-copy strong { color:#fff1c9; font-size:12px; font-variant-numeric:tabular-nums; }
+.est-bdo-finalization-copy .est-bdo-finalization-date { display:block; margin-top:4px; color:var(--mint); font-size:10px; font-weight:750; text-transform:capitalize; }
+.estadio-body:not(.est-bdo-dedicated) #est-bdo-table-wrap,
+.estadio-body:not(.est-bdo-dedicated) #est-bdo-bet-area,
+.estadio-body:not(.est-bdo-dedicated) .est-bdo-legal,
+.estadio-body:not(.est-bdo-dedicated) #est-bdo-opening-start { display:none !important; }
+.estadio-body:not(.est-bdo-dedicated) #est-bdo-open-event { display:inline-flex; align-items:center; justify-content:center; text-decoration:none; }
+.est-bdo-dedicated .estadio-nav { gap:16px; }
+.est-bdo-dedicated .estadio-tag { display:none; }
+.est-bdo-dedicated .estadio-nav-right { display:flex; margin-left:auto; }
+.est-bdo-dedicated .estadio-nav-right > :not(.est-bdo-dedicated-back) { display:none !important; }
+.est-bdo-dedicated .estadio-nav .est-bdo-dedicated-back { display:inline-flex; align-items:center; justify-content:center; text-decoration:none; }
+.est-bdo-dedicated .estadio-shell { display:block; width:100%; max-width:1460px; min-height:calc(100vh - 60px); margin:0 auto; padding:clamp(16px,3vw,38px) clamp(12px,3vw,42px) 48px; }
+.est-bdo-dedicated .estadio-shell > :not(#balon-de-oro) { display:none !important; }
+.est-bdo-dedicated #balon-de-oro { display:block; min-width:0; padding:clamp(16px,3vw,34px); border-color:rgba(229,189,114,.22); border-radius:18px; background:radial-gradient(ellipse at 10% 0%,rgba(229,189,114,.075),transparent 38%),linear-gradient(155deg,rgba(16,28,31,.98),rgba(5,11,13,.98)); }
+.est-bdo-dedicated #est-bdo-title { font-size:clamp(23px,3vw,34px); }
+.est-bdo-dedicated .est-bdo-kicker { font-size:10px; }
+.est-bdo-dedicated .est-bdo-summary { max-width:none; font-size:12px; }
+.est-bdo-dedicated #est-bdo-open-event { display:none !important; }
+.est-bdo-dedicated .est-bdo-opening-launch { margin:17px 0; padding:14px 17px; }
+.est-bdo-dedicated .est-bdo-opening-launch-kicker { font-size:10px; }
+.est-bdo-dedicated .est-bdo-opening-launch-copy { font-size:11px; }
+.est-bdo-dedicated .est-bdo-table-wrap { max-height:70vh; }
+.est-bdo-dedicated .est-bdo-opening { z-index:600; }
+.est-bdo-opening-enable-audio { border-color:rgba(82,224,174,.35); color:var(--mint); }
+@media(max-width:760px) {
+  .est-bdo-opening-cards { right:3%; bottom:4%; left:3%; width:94%; grid-template-columns:minmax(0,1fr); gap:7px; }
+  .est-bdo-dedicated .estadio-nav { display:flex; height:56px; min-height:56px; padding:0 12px; }
+  .est-bdo-dedicated .estadio-nav-right { display:flex; grid-column:auto; grid-row:auto; margin-left:auto; }
+  .est-bdo-dedicated .estadio-shell { padding:13px 9px 28px; }
+  .est-bdo-dedicated #balon-de-oro { padding:13px; }
+  .est-bdo-finalization { grid-template-columns:38px minmax(0,1fr); gap:9px; padding:12px; }
+  .est-bdo-finalization-mark { width:36px; height:36px; font-size:17px; }
+  .est-bdo-finalization-copy h3 { font-size:13px; }
+  .est-bdo-finalization-copy p { font-size:9px; }
+}
+
+@media(max-height:700px) and (min-width:761px) {
+  .est-bdo-opening-stage[data-scene^="reveal-"] { min-height:470px; }
+  .est-bdo-opening-card { min-height:230px; }
+}
+
+/* Ceremonia final del Balón de Oro: datos oficiales + replay sin operaciones. */
+.estadio-body:not(.est-bdo-dedicated) #est-bdo-ceremony-panel,
+.estadio-body:not(.est-bdo-dedicated) #est-bdo-archive { display:none !important; }
+.est-bdo-ceremony-panel { display:flex; align-items:center; justify-content:space-between; gap:18px; margin:14px 0; padding:17px 20px; border:1px solid rgba(229,189,114,.34); border-radius:15px; background:radial-gradient(ellipse at 0 50%,rgba(229,189,114,.13),transparent 58%),linear-gradient(105deg,rgba(16,29,31,.97),rgba(6,14,16,.97)); box-shadow:0 15px 34px rgba(0,0,0,.16); }
+.est-bdo-ceremony-panel-copy { min-width:0; }
+.est-bdo-ceremony-kicker { margin:0 0 5px; color:#e8c47d; font-size:9px; font-weight:900; letter-spacing:.14em; text-transform:uppercase; }
+.est-bdo-ceremony-panel h3,.est-bdo-archive h3 { margin:0 0 5px; color:#fff3d6; font:850 18px var(--display); }
+.est-bdo-ceremony-panel p:not(.est-bdo-ceremony-kicker) { margin:0; color:var(--muted); font-size:11px; line-height:1.55; }
+.est-bdo-ceremony-panel .btn { flex:0 0 auto; min-height:44px; }
+.est-bdo-ceremony-panel .btn:disabled { cursor:not-allowed; opacity:.55; }
+.est-bdo-archive { display:block; margin:22px 0; padding:17px 19px; border:1px solid rgba(255,255,255,.09); border-radius:15px; background:rgba(6,13,15,.68); }
+.est-bdo-archive[hidden],.est-bdo-ceremony-panel[hidden] { display:none !important; }
+.est-bdo-archive-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:15px; margin-bottom:12px; }
+.est-bdo-archive-heading h3 { margin:0; }
+.est-bdo-archive-heading > p { margin:0; color:var(--muted); font-size:10px; }
+.est-bdo-archive-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:9px; }
+.est-bdo-archive-link { display:grid; gap:5px; min-height:88px; padding:12px 14px; border:1px solid rgba(255,255,255,.09); border-radius:11px; background:rgba(255,255,255,.025); color:var(--text); text-decoration:none; transition:border-color .18s,background .18s,transform .18s; }
+.est-bdo-archive-link:hover,.est-bdo-archive-link:focus-visible { border-color:rgba(229,189,114,.48); background:rgba(229,189,114,.06); transform:translateY(-1px); outline:2px solid transparent; }
+.est-bdo-archive-link[aria-current="page"] { border-color:rgba(82,224,174,.48); box-shadow:inset 3px 0 0 var(--mint); }
+.est-bdo-archive-month { color:#edce8d; font-size:12px; font-weight:850; text-transform:capitalize; }
+.est-bdo-archive-result { color:var(--muted); font-size:10px; line-height:1.45; }
+.est-bdo-archive-state { color:var(--mint); font-size:8px; font-weight:900; letter-spacing:.1em; text-transform:uppercase; }
+.est-bdo-archive-empty { grid-column:1/-1; margin:0; padding:12px; color:var(--muted); font-size:11px; }
+.est-bdo-ceremony-open { overflow:hidden !important; }
+.est-bdo-ceremony { position:fixed; z-index:650; inset:0; display:grid; place-items:center; padding:16px; background:rgba(1,5,6,.84); backdrop-filter:blur(8px); }
+.est-bdo-ceremony[hidden] { display:none !important; }
+.est-bdo-ceremony-scrim { position:absolute; inset:0; }
+.est-bdo-ceremony-dialog { position:relative; z-index:1; display:flex; flex-direction:column; width:min(1040px,100%); max-height:min(94vh,920px); overflow:auto; border:1px solid rgba(229,189,114,.28); border-radius:19px; background:linear-gradient(155deg,#122123,#081113 62%,#060c0e); box-shadow:0 35px 120px rgba(0,0,0,.65); color:var(--text); outline:none; }
+.est-bdo-ceremony-header { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 20px 11px; border-bottom:1px solid rgba(255,255,255,.07); }
+.est-bdo-ceremony-status { margin:4px 0 0; color:var(--mint); font-size:10px; font-weight:800; }
+.est-bdo-ceremony-stage { position:relative; isolation:isolate; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:410px; padding:35px clamp(15px,4vw,46px) 22px; overflow:hidden; background:radial-gradient(ellipse at 50% 0,rgba(229,189,114,.14),transparent 48%),linear-gradient(160deg,rgba(17,30,31,.9),rgba(5,11,13,.98)); text-align:center; }
+.est-bdo-ceremony-aura { position:absolute; z-index:-1; width:min(54vw,480px); aspect-ratio:1; border:1px solid rgba(229,189,114,.13); border-radius:50%; box-shadow:0 0 0 35px rgba(229,189,114,.025),0 0 0 75px rgba(82,224,174,.02),inset 0 0 60px rgba(229,189,114,.055); animation:bdo-ceremony-aura 8s ease-in-out infinite alternate; }
+.est-bdo-ceremony-copy { position:relative; z-index:2; max-width:740px; }
+.est-bdo-ceremony-copy .est-bdo-opening-kicker { color:#edce8d; }
+.est-bdo-ceremony-copy h2 { margin:6px 0 8px; color:#fff5df; font:900 clamp(28px,5.2vw,54px)/1.05 var(--display); text-wrap:balance; text-shadow:0 4px 34px rgba(229,189,114,.18); }
+.est-bdo-ceremony-copy > p:last-child { max-width:700px; margin:0 auto; color:#cad1cd; font-size:clamp(11px,1.5vw,14px); line-height:1.55; }
+.est-bdo-ceremony-podium { position:relative; z-index:2; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:end; width:min(820px,100%); gap:12px; margin:27px 0 0; padding:0; list-style:none; }
+.est-bdo-ceremony-card { min-width:0; min-height:116px; padding:15px 12px; border:1px solid rgba(255,255,255,.12); border-radius:13px; background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.025)); opacity:.68; transform:translateY(12px) scale(.98); transition:opacity .55s,transform .55s,border-color .55s,box-shadow .55s; }
+.est-bdo-ceremony-card[data-place="1"] { order:2; min-height:153px; border-color:rgba(229,189,114,.3); background:linear-gradient(145deg,rgba(229,189,114,.13),rgba(255,255,255,.025)); }
+.est-bdo-ceremony-card[data-place="2"] { order:1; }
+.est-bdo-ceremony-card[data-place="3"] { order:3; }
+.est-bdo-ceremony-card.is-revealed { opacity:1; transform:translateY(0) scale(1); }
+.est-bdo-ceremony-card.is-winner { border-color:rgba(255,219,133,.8); box-shadow:0 0 38px rgba(229,189,114,.18),inset 0 0 22px rgba(229,189,114,.06); }
+.est-bdo-ceremony-avatar { display:block; width:68px; height:68px; margin:0 auto 8px; border:2px solid rgba(229,189,114,.52); border-radius:50%; object-fit:cover; box-shadow:0 8px 22px rgba(0,0,0,.34); animation:bdo-avatar-reveal .6s cubic-bezier(.2,.8,.2,1) both; }
+.est-bdo-ceremony-card[data-place="1"] .est-bdo-ceremony-avatar { width:82px; height:82px; border-color:rgba(255,219,133,.9); }
+.est-bdo-ceremony-avatar[hidden],.est-bdo-ceremony-avatar-placeholder[hidden] { display:none !important; }
+.est-bdo-ceremony-avatar-placeholder { display:grid; place-items:center; width:68px; height:68px; margin:0 auto 8px; border:1px dashed rgba(229,189,114,.37); border-radius:50%; background:radial-gradient(circle,rgba(229,189,114,.1),rgba(255,255,255,.02)); color:rgba(255,239,204,.56); font:700 22px var(--display); }
+.est-bdo-ceremony-card[data-place="1"] .est-bdo-ceremony-avatar-placeholder { width:82px; height:82px; font-size:28px; }
+.est-bdo-ceremony-place { display:block; margin-bottom:8px; color:#e8c47d; font-size:9px; font-weight:950; letter-spacing:.13em; text-transform:uppercase; }
+.est-bdo-ceremony-player { display:block; overflow-wrap:anywhere; color:#fff4df; font:850 clamp(13px,2vw,20px)/1.2 var(--display); }
+.est-bdo-ceremony-club { display:block; margin-top:5px; color:#c8d0cb; font-size:10px; }
+.est-bdo-ceremony-score { display:block; margin-top:9px; color:var(--mint); font-size:11px; font-weight:900; }
+.est-bdo-ceremony-breakdown,.est-bdo-ceremony-payout { position:relative; z-index:2; width:min(820px,100%); margin:13px auto 0; padding:9px 12px; border-radius:9px; background:rgba(0,0,0,.23); color:#e1e8e4; font-size:10px; line-height:1.5; }
+.est-bdo-ceremony-payout { margin-top:7px; color:#c7d4cd; }
+.est-bdo-ceremony-stage > .est-bdo-opening-caption { position:relative; z-index:2; width:min(780px,100%); min-height:27px; margin:13px auto 0; color:#fff0cf; }
+.est-bdo-ceremony .est-bdo-opening-progress-row { padding:0 22px; }
+.est-bdo-ceremony-controls { padding:12px 20px 14px; }
+.est-bdo-ceremony-transcript { padding:0 20px 17px; }
+.est-bdo-ceremony-transcript p { color:#dce2de; }
+.est-bdo-ceremony-dialog audio { display:none; }
+@keyframes bdo-ceremony-aura { from { opacity:.55; transform:scale(.94) rotate(-4deg); } to { opacity:1; transform:scale(1.04) rotate(4deg); } }
+@keyframes bdo-avatar-reveal { from { opacity:0; transform:translateY(8px) scale(.86); } to { opacity:1; transform:translateY(0) scale(1); } }
+@media(max-width:680px) {
+  .est-bdo-ceremony-panel { align-items:stretch; flex-direction:column; gap:12px; padding:14px; }
+  .est-bdo-ceremony-panel .btn { width:100%; justify-content:center; }
+  .est-bdo-archive { padding:13px; }
+  .est-bdo-archive-heading { align-items:flex-start; flex-direction:column; gap:5px; }
+  .est-bdo-archive-list { grid-template-columns:minmax(0,1fr); }
+  .est-bdo-ceremony { align-items:stretch; padding:0; }
+  .est-bdo-ceremony-dialog { max-height:100vh; border:0; border-radius:0; }
+  .est-bdo-ceremony-header { padding:11px; }
+  .est-bdo-ceremony-stage { min-height:400px; padding:29px 12px 17px; }
+  .est-bdo-ceremony-podium { gap:6px; margin-top:22px; }
+  .est-bdo-ceremony-card { min-height:105px; padding:10px 6px; }
+  .est-bdo-ceremony-card[data-place="1"] { min-height:132px; }
+  .est-bdo-ceremony-avatar,.est-bdo-ceremony-avatar-placeholder { width:52px; height:52px; }
+  .est-bdo-ceremony-card[data-place="1"] .est-bdo-ceremony-avatar,.est-bdo-ceremony-card[data-place="1"] .est-bdo-ceremony-avatar-placeholder { width:62px; height:62px; }
+  .est-bdo-ceremony-place { font-size:7px; letter-spacing:.08em; }
+  .est-bdo-ceremony-player { font-size:12px; }
+  .est-bdo-ceremony-club { font-size:9px; }
+  .est-bdo-ceremony-breakdown,.est-bdo-ceremony-payout { font-size:9px; }
+  .est-bdo-ceremony-controls { justify-content:center; gap:5px; padding:9px 8px; }
+  .est-bdo-ceremony-controls .est-bdo-opening-control { min-height:44px; padding:0 7px; font-size:9px; }
+  .est-bdo-ceremony-controls .est-bdo-opening-control span { font-size:8px; }
+  .est-bdo-ceremony .est-bdo-opening-progress-row { padding:0 12px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .est-bdo-ceremony-aura,.est-bdo-ceremony-card,.est-bdo-ceremony-avatar { animation:none !important; transition:none !important; }
+}
+.est-bdo-ceremony-stage[data-motion="reduced"] .est-bdo-ceremony-aura,.est-bdo-ceremony-stage[data-motion="reduced"] .est-bdo-ceremony-card { animation:none !important; }

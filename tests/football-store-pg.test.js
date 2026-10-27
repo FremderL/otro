@@ -17,6 +17,8 @@ const fs = require('node:fs');
 const { PgFootballStore } = require('../lib/football-store-pg');
 const { FootballStore } = require('../lib/football-store');
 const { monthKey } = require('../lib/football-store-shared');
+const { generateTimeline } = require('../lib/football/match-engine');
+const { mulberry32 } = require('../lib/football/prng');
 
 // --- Pool simulado ---
 // `seed` trae filas por tabla (con `data` ya parseado, como devuelve node-pg un JSONB).
@@ -76,7 +78,10 @@ function makeSeedRows() {
     parlays: [], futures: [], audit: []
   };
   const cleanup = () => { try { file.close(); } catch (_) {} fs.rmSync(dir, { recursive: true, force: true }); };
-  return { rows, month, sampleMatchId: matches[0].id, matchCount: matches.length, betId: bet.id, cleanup };
+  return {
+    rows, month, sampleMatchId: matches[0].id, matchCount: matches.length, betId: bet.id,
+    candidateIds: league.ballonDor.candidates.map(candidate => candidate.id), cleanup
+  };
 }
 
 test('arranque: crea el esquema, carga y asegura la temporada (fresh)', async (t) => {
@@ -92,6 +97,7 @@ test('arranque: crea el esquema, carga y asegura la temporada (fresh)', async (t
   // Con la base vacía, ensureSeason genera la temporada en memoria.
   assert.equal(store.getCurrentSeasonMonth(), monthKey());
   assert.ok(store.getMatches(monthKey()).length > 0, 'partidos generados en memoria');
+  assert.equal(store.getLeague(monthKey()).ballonDor.candidates.length, 16, 'evento incluido en la liga generada');
 });
 
 test('saveNow escribe ligas y partidos en una transacción con unnest', async (t) => {
@@ -110,9 +116,60 @@ test('saveNow escribe ligas y partidos en una transacción con unnest', async (t
   // El data de la liga NO incrusta los partidos (viven en su tabla).
   const leagueData = JSON.parse(leagueInserts[leagueInserts.length - 1].params[2][0]);
   assert.deepEqual(leagueData.calendar.matches, [], 'la liga no duplica los partidos');
+  assert.equal(leagueData.ballonDor.status, 'scheduled', 'el contrato del premio vive en football_leagues.data');
+  assert.equal(leagueData.ballonDor.candidates.length, 16, 'los candidatos viajan en el snapshot de la liga');
   // Y sí trae una columna por partido con su id.
   const matchIds = matchInserts[matchInserts.length - 1].params[0];
   assert.ok(Array.isArray(matchIds) && matchIds.length === store.getMatches(monthKey()).length, 'una fila por partido');
+});
+
+test('transición del evento se persiste dentro del JSONB de la liga', async (t) => {
+  const pool = makeMockPool();
+  const store = new PgFootballStore('postgres://mock-host/mockdb', { pool });
+  t.after(() => store.close());
+  await store.ready;
+
+  const event = store.getBallonDor(monthKey());
+  const started = await store.transitionBallonDor(monthKey(), 'active', { at: event.createdAt + 10 });
+  assert.equal(started.ok, true);
+  assert.equal(store.getBallonDor(monthKey()).status, 'active');
+  const leagueInserts = pool.insertsTo('football_leagues');
+  const storedLeague = JSON.parse(leagueInserts[leagueInserts.length - 1].params[2][0]);
+  assert.equal(storedLeague.ballonDor.status, 'active');
+  assert.equal(storedLeague.ballonDor.startedAt, event.createdAt + 10);
+});
+
+test('asentar un partido escribe estadísticas del premio y resultado en el mismo snapshot PG', async t => {
+  const pool = makeMockPool();
+  const store = new PgFootballStore('postgres://mock-host/mockdb', { pool });
+  t.after(() => store.close());
+  await store.ready;
+
+  const month = monthKey();
+  const league = store.getLeague(month);
+  const match = store.getMatches(month)[0];
+  const home = league.config.find(club => club.id === match.homeId);
+  const away = league.config.find(club => club.id === match.awayId);
+  const simulation = generateTimeline(home, away, {
+    leagueAvg: league.ctx.leagueAvg, homeAdv: league.ctx.homeAdv, rho: league.ctx.rho
+  }, mulberry32(match.seed));
+  const settled = store.settleMatch(match.id, simulation.score, {
+    seasonMonth: month, now: league.ballonDor.createdAt + 100,
+    timeline: simulation.timeline, lineups: simulation.lineups
+  });
+  assert.equal(settled.ok, true);
+  await store.saveNow();
+
+  const leagueInsert = pool.insertsTo('football_leagues').at(-1);
+  const matchInsert = pool.insertsTo('football_matches').at(-1);
+  const storedLeague = JSON.parse(leagueInsert.params[2][0]);
+  const matchIndex = matchInsert.params[0].indexOf(match.id);
+  const storedMatch = JSON.parse(matchInsert.params[13][matchIndex]);
+  assert.deepEqual(storedLeague.ballonDor, league.ballonDor, 'los agregados y puntos se guardan en football_leagues.data');
+  assert.equal(storedMatch.status, 'settled');
+  assert.deepEqual(storedMatch.result, match.result);
+  assert.ok(pool.queries.some(query => query.txn && /^BEGIN/i.test(query.sql)));
+  assert.ok(pool.queries.some(query => query.txn && /^COMMIT/i.test(query.sql)));
 });
 
 test('rehidratación sin pérdidas: liga, partidos, jornadas y apuesta desde filas', async (t) => {
@@ -126,6 +183,8 @@ test('rehidratación sin pérdidas: liga, partidos, jornadas y apuesta desde fil
   assert.equal(store.getCurrentSeasonMonth(), seed.month, 'temporada actual desde la liga cargada');
   const league = store.getLeague(seed.month);
   assert.ok(league, 'liga rehidratada');
+  assert.deepEqual(league.ballonDor.candidates.map(candidate => candidate.id), seed.candidateIds, 'candidatos del premio rehidratados sin pérdida');
+  assert.equal(league.ballonDor.status, 'scheduled', 'estado del premio rehidratado');
   assert.equal(store.getMatches(seed.month).length, seed.matchCount, 'todos los partidos injertados en el calendario');
   const match = store.getMatch(seed.sampleMatchId, seed.month);
   assert.ok(match && match.id === seed.sampleMatchId, 'getMatch por id');
@@ -182,7 +241,7 @@ test('paridad de interfaz con FootballStore (todos los métodos públicos)', asy
 
   const expected = [
     'generateSeason', 'ensureSeason', 'closeSeason', 'computeCarryover', 'getLeague',
-    'getCurrentSeasonMonth', 'getMatches', 'getMatch', 'getStandings', 'settleMatch', 'rescheduleMatch',
+    'getCurrentSeasonMonth', 'getBallonDor', 'transitionBallonDor', 'finalizeBallonDor', 'getMatches', 'getMatch', 'getStandings', 'settleMatch', 'rescheduleMatch',
     'insertBet', 'markBetDebited', 'confirmBet', 'getBet', 'getBets', 'getOpenBetsForMatch',
     'countOpenBets', 'sumOpenStake', 'hasOpenBets', 'countOpenBetsByProfile', 'settleBet',
     'voidBet', 'removeBet', 'insertParlay', 'markParlayDebited', 'confirmParlay', 'getParlay',
