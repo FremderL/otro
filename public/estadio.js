@@ -14,6 +14,22 @@
   var PRESHOW_WINDOW_MS = 30 * 60 * 1000;
   var PROMOTION_ROTATION_MS = 15 * 1000;
   var SHOWCASE_ROTATION_MS = PROMOTION_ROTATION_MS;
+  var BALLON_DOR_OPENING_SECONDS = 45;
+  var BALLON_DOR_CEREMONY_CUE_BASE = '/assets/ballon-dor-ceremony/cues/';
+  var BALLON_DOR_CEREMONY_NAME_BASE = '/assets/ballon-dor-ceremony/names/';
+  var BALLON_DOR_OPENING_KEY = 'montecristo-bdo-opening-v2:';
+  var BALLON_DOR_CEREMONY_AUDIO_KEY = 'montecristo-bdo-ceremony-audio-v1';
+  var IS_BDO_DEDICATED_PAGE = String(location.pathname || '').replace(/\/+$/, '') === '/balon-de-oro';
+  var IS_BDO_DEMO_PREVIEW = false;
+  try { IS_BDO_DEMO_PREVIEW = IS_BDO_DEDICATED_PAGE && new URLSearchParams(location.search || '').get('demo') === '1'; }
+  catch (_) { IS_BDO_DEMO_PREVIEW = false; }
+  var BALLON_DOR_OPENING_SCRIPT = 'La Liga MonteCristo presenta una nueva carrera por el Balón de Oro. Dieciséis clubes. Dieciséis delanteros. Un solo ganador. Cada gol, cada asistencia y cada aparición suman. Las tarjetas restan; el rendimiento del equipo también puede inclinar la balanza. La regularidad, la disciplina y el trabajo colectivo también importan. El camino empieza hoy. En cada jornada, el fútbol escribe un capítulo. Tus predicciones se juegan solo con fichas virtuales y cierran al terminar la jornada veinte. Observa a los candidatos. Revisa sus estadísticas. Elige tu pronóstico. Al final de la temporada, las cifras coronarán a quien haya rendido mejor. Que comience la temporada MonteCristo.';
+  function requestedBallonDorSeasonMonth() {
+    try {
+      var month = new URLSearchParams(location.search || '').get('seasonMonth');
+      return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(month || '')) ? month : null;
+    } catch (_) { return null; }
+  }
   var HOUSE_PROMOTIONS = [
     { text: 'Póker, blackjack y más juegos: encuentra tu próxima mesa en MonteCristo.', href: '/', action: 'Explorar juegos', image: '/assets/poker-lounge.jpg' },
     { text: '¿Faltan rivales? Completa tu mesa de póker o blackjack con bots del servidor.', href: '/', action: 'Ver mesas', image: '/assets/blackjack-lounge.jpg' },
@@ -57,6 +73,23 @@
     if (!t) { t = (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)); localStorage.setItem('montecristo-device', t); }
     return t;
   }
+  function reportBallonDorAudio(track, outcome, seasonMonth) {
+    var month = String(seasonMonth || '');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || !window.fetch) return;
+    try {
+      var request = window.fetch('/api/estadio/telemetry/audio', {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        keepalive: true,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ track: track, outcome: outcome, seasonMonth: month })
+      });
+      if (request && typeof request.catch === 'function') request.catch(function () {});
+    } catch (_) {
+      // Métrica opcional: una falla de red nunca detiene la narración ni la escena.
+    }
+  }
 
   // ===== Formaciones: 11 slots normalizados (x desde la portería propia, y lateral) =====
   var FORMATIONS = {
@@ -85,7 +118,29 @@
     promotionsEnabled: false, promoSessionChecked: false, promoProfile: null, promoCsrfToken: null,
     promoWindowOpen: false, promoMatchId: null, promoPollId: null, promoRequestSeq: 0,
     currentMatchId: null, match: null, markets: {}, movement: {}, myBets: [],
+    ballonDorMarket: null, ballonDorLoading: true, ballonDorError: false, ballonDorRequestSeq: 0,
+    ballonDorRequestedSeasonMonth: requestedBallonDorSeasonMonth(),
+    ballonDorArchive: [], ballonDorArchiveLoading: true, ballonDorArchiveError: false, ballonDorArchiveRequestSeq: 0,
+    ballonDorPollingId: null, ballonDorSelection: '', ballonDorReview: null,
+    ballonDorCeremonyFocus: null, ballonDorCeremonyTimer: null, ballonDorCeremonyUnlockTimer: null,
+    ballonDorCeremonyDelayTimer: null, ballonDorCeremonyDelayKind: null, ballonDorCeremonyDelayDueAt: 0,
+    ballonDorCeremonyDelayDuration: 0, ballonDorCeremonyDelayRemaining: 0,
+    ballonDorCeremonyUnlockAt: 0, ballonDorCeremonyElapsed: 0, ballonDorCeremonyStartedAt: 0,
+    ballonDorCeremonySession: 0, ballonDorCeremonyPaused: false, ballonDorCeremonyComplete: false,
+    ballonDorCeremonyScene: null, ballonDorCeremonyRows: [], ballonDorCeremonyMonth: null,
+    ballonDorCeremonySequence: [], ballonDorCeremonyStepIndex: 0, ballonDorCeremonyFallbackMode: false,
+    ballonDorCeremonyRevealedRanks: Object.create(null), ballonDorCeremonyNarrationReported: false,
+    ballonDorCeremonyMusicReported: false,
+    ballonDorCeremonyMusicMuted: false, ballonDorCeremonyNarrationMuted: false, ballonDorCeremonyAudioBlocked: false,
+    ballonDorIdempotencyKey: null, ballonDorSubmitting: false, ballonDorReceipt: null,
+    ballonDorOpeningFocus: null, ballonDorOpeningTimer: null, ballonDorOpeningElapsed: 0,
+    ballonDorOpeningStartedAt: 0, ballonDorOpeningDuration: BALLON_DOR_OPENING_SECONDS,
+    ballonDorOpeningMode: 'audio', ballonDorOpeningPaused: false, ballonDorOpeningSession: 0,
+    ballonDorOpeningScene: null, ballonDorOpeningComplete: false, ballonDorOpeningMandatory: false,
+    ballonDorOpeningAudioBlocked: false, ballonDorOpeningAutoShown: Object.create(null),
+    ballonDorOpeningCandidates: [], ballonDorOpeningMonth: null, ballonDorOpeningMuted: false,
     betHistory: null, betHistoryFetchedAt: 0, betsUnseen: null, betsLoading: false, betsError: null,
+    betRanking: null, betRankingSource: 'total', betRankingSubscribed: false, ledgerView: 'history',
     betsOnlyMatch: false, betsRequestSeq: 0, ledgerFilter: 'all', ledgerTrigger: null,
     slip: null, muted: false, soundOn: localStorage.getItem('montecristo-notifications') !== 'off', musicOn: localStorage.getItem('montecristo-music') === 'on',
     players: [], authoritativePlayers: [], possessionTeam: 'home', ballCarrierId: null, playStopped: true,
@@ -112,7 +167,28 @@
       'est-markets', 'est-bet-slip', 'est-slip-pick', 'est-slip-clear', 'est-slip-odds', 'est-slip-implied',
       'est-stake', 'est-denoms', 'est-slip-range', 'est-place-bet', 'est-bet-msg', 'est-mybets',
       'est-mybets-count', 'est-bets-link-note', 'est-bets-link-dot',
-      'est-nav-badge', 'est-ledger', 'est-ledger-title', 'est-ledger-unseen', 'est-ledger-stats', 'est-ledger-chips',
+      'est-bdo-status', 'est-bdo-feed', 'est-bdo-summary', 'est-bdo-feedback', 'est-bdo-retry',
+      'est-bdo-finalization-message', 'est-bdo-finalization-date',
+      'est-bdo-ceremony-panel', 'est-bdo-ceremony-panel-status', 'est-bdo-ceremony-start',
+      'est-bdo-archive', 'est-bdo-archive-status', 'est-bdo-archive-list',
+      'est-bdo-ceremony', 'est-bdo-ceremony-dialog', 'est-bdo-ceremony-status', 'est-bdo-ceremony-stage',
+      'est-bdo-ceremony-kicker', 'est-bdo-ceremony-title', 'est-bdo-ceremony-description',
+      'est-bdo-ceremony-podium', 'est-bdo-ceremony-breakdown', 'est-bdo-ceremony-payout', 'est-bdo-ceremony-caption',
+      'est-bdo-ceremony-progress', 'est-bdo-ceremony-progress-bar', 'est-bdo-ceremony-time',
+      'est-bdo-ceremony-play', 'est-bdo-ceremony-music', 'est-bdo-ceremony-narration',
+      'est-bdo-ceremony-replay', 'est-bdo-ceremony-close', 'est-bdo-ceremony-music-audio',
+      'est-bdo-ceremony-narration-audio', 'est-bdo-ceremony-transcript-copy',
+      'est-bdo-table-wrap', 'est-bdo-candidates', 'est-bdo-bet-area', 'est-bdo-slip', 'est-bdo-bounds',
+      'est-bdo-selection', 'est-bdo-stake', 'est-bdo-quote', 'est-bdo-review', 'est-bdo-confirmation',
+      'est-bdo-confirmation-copy', 'est-bdo-confirm', 'est-bdo-edit', 'est-bdo-message',
+      'est-bdo-receipt', 'est-bdo-receipt-body', 'est-bdo-opening-start', 'est-bdo-opening', 'est-bdo-opening-dialog', 'est-bdo-opening-status',
+      'est-bdo-opening-stage', 'est-bdo-opening-kicker', 'est-bdo-opening-title', 'est-bdo-opening-description', 'est-bdo-opening-cta',
+      'est-bdo-opening-clubs', 'est-bdo-opening-cards', 'est-bdo-opening-caption',
+      'est-bdo-opening-progress', 'est-bdo-opening-progress-bar', 'est-bdo-opening-time', 'est-bdo-opening-play',
+      'est-bdo-opening-mute', 'est-bdo-opening-enable-audio', 'est-bdo-opening-skip', 'est-bdo-opening-close', 'est-bdo-opening-audio', 'est-bdo-opening-transcript-copy',
+      'est-nav-badge', 'est-ledger', 'est-ledger-title', 'est-ledger-sub', 'est-ledger-unseen', 'est-ledger-stats', 'est-ledger-chips',
+      'est-ledger-history-view', 'est-ledger-ranking-view', 'est-ledger-tab-history', 'est-ledger-tab-ranking', 'est-ledger-ranking-back',
+      'est-bet-ranking-live', 'est-bet-ranking-personal', 'est-bet-ranking-updated', 'est-bet-ranking-list',
       'est-ledger-list', 'est-ledger-only-match', 'est-ledger-refresh', 'est-ledger-close', 'est-ledger-back',
       'est-help',
       'est-help-close', 'est-tos', 'est-tos-accept', 'est-toast', 'est-canvas-wrap'].forEach(function (id) { el[id] = $(id); });
@@ -144,7 +220,7 @@
   }
 
   function maybePlayEntry() {
-    if (!shouldPlayEntry()) return;
+    if (IS_BDO_DEDICATED_PAGE || !shouldPlayEntry()) return;
     var overlay = $('est-enter');
     if (!overlay) return;
     try { sessionStorage.setItem(ENTER_FLAG, String(Date.now())); } catch (e) { /* sin storage */ }
@@ -184,7 +260,38 @@
     if (skip) skip.addEventListener('click', function (ev) { ev.stopPropagation(); finish(false); });
   }
 
+  function configureBallonDorPage() {
+    document.body.classList.toggle('est-bdo-dedicated', IS_BDO_DEDICATED_PAGE);
+    if (!IS_BDO_DEDICATED_PAGE) return;
+    var demoMonth = IS_BDO_DEMO_PREVIEW ? (requestedBallonDorSeasonMonth() || '2026-09') : null;
+    document.title = IS_BDO_DEMO_PREVIEW
+      ? 'Demo sintética · ' + demoMonth + ' · Balón de Oro MonteCristo'
+      : 'Balón de Oro MonteCristo — Evento mensual';
+    var description = document.querySelector('meta[name="description"]');
+    if (description) description.setAttribute('content', IS_BDO_DEMO_PREVIEW
+      ? 'Demo local sintética del Balón de Oro MonteCristo; los resultados son ficticios y no representan una edición real.'
+      : 'Espacio oficial del evento Balón de Oro MonteCristo: presentación de los 16 delanteros, estadísticas, predicciones virtuales y anuncio final.');
+    if (IS_BDO_DEMO_PREVIEW) {
+      ['est-bdo-demo-notice', 'est-bdo-opening-demo-notice', 'est-bdo-ceremony-demo-notice'].forEach(function (id) {
+        var notice = document.getElementById(id);
+        if (!notice) return;
+        notice.hidden = false;
+        var label = notice.querySelector('strong');
+        if (label) label.textContent = 'DEMO · EDICIÓN ' + demoMonth + ' · DATOS SINTÉTICOS.';
+      });
+    }
+    var skipLink = document.querySelector('.skip-link');
+    if (skipLink) skipLink.textContent = 'Ir al evento Balón de Oro';
+    var launchKicker = document.querySelector('.est-bdo-opening-launch-kicker');
+    if (launchKicker) launchKicker.textContent = IS_BDO_DEMO_PREVIEW
+      ? 'Demo sintética · inauguración de 45 segundos'
+      : 'Inauguración oficial · 45 segundos';
+    var launchCopy = document.querySelector('.est-bdo-opening-launch-copy');
+    if (launchCopy) launchCopy.textContent = 'En la primera visita se abre una presentación individual de los 16 candidatos. La fecha de llegada no importa: puedes conocer el evento aunque entres avanzado el ciclo.';
+  }
+
   function boot() {
+    configureBallonDorPage();
     maybePlayEntry();
     cacheEls();
     S.token = deviceToken();
@@ -192,6 +299,8 @@
     S.avatar = localStorage.getItem('montecristo-avatar') || 'fox';
     bindUI();
     initPitchCanvas();
+    loadBallonDorMarket(); // primera pintura por HTTP; funciona aunque Socket.IO no cargue
+    if (IS_BDO_DEDICATED_PAGE) loadBallonDorArchive();
     // Con FOOTBALL_ENABLED apagado el backend responde 404 fail-closed (diseño
     // intencional); el flag público de /healthz evita la petición — el
     // navegador loguea todo 404 de red en consola aunque el JS lo maneje.
@@ -202,13 +311,17 @@
         updatePromotionComposer();
         if (S.promotionsEnabled) refreshPromotionSession();
         if (health && health.football && health.football.enabled === false) return gateTosThenConnect();
-        return fetch('/api/estadio/state')
+        return fetch('/api/estadio/state?token=' + encodeURIComponent(S.token), { cache: 'no-store' })
           .then(function (r) { return r.json(); })
           .then(function (data) {
             if (!data || !data.ok) return;
             S.teams = data.teams || {};
             S.tosVersion = data.tosVersion || TOS_FALLBACK;
-            if (data.profile) { S.profile = data.profile; S.chips = data.profile.chips; updateChips(); }
+            if (data.profile) {
+              S.profile = data.profile; S.chips = data.profile.chips; updateChips();
+              if (data.profile.id) loadBetHistory({ force: true });
+              renderBallonDorMarket();
+            }
             renderLobby(data.lobby);
             gateTosThenConnect();
           })
@@ -309,16 +422,45 @@
   }
   function connect() {
     if (S.socket) return;
-    S.socket = io({ auth: { deviceToken: S.token } });
-    S.socket.on('connect', function () { setConn('connected'); subscribeLobby(); });
-    S.socket.on('disconnect', function () { setConn('error'); });
-    S.socket.on('connect_error', function () { setConn('error'); });
+    if (typeof window.io !== 'function') {
+      setConn('error');
+      startBallonDorPolling();
+      return;
+    }
+    try { S.socket = window.io({ auth: { deviceToken: S.token } }); }
+    catch (_) {
+      S.socket = null;
+      setConn('error');
+      startBallonDorPolling();
+      return;
+    }
+    S.socket.on('connect', function () {
+      setConn('connected');
+      stopBallonDorPolling();
+      subscribeLobby();
+      requestBallonDorMarket();
+      if (S.betRankingSubscribed && ledgerOpen() && S.ledgerView === 'ranking') S.socket.emit('bet_ranking_get');
+      renderBetRanking();
+    });
+    S.socket.on('disconnect', function () { setConn('error'); startBallonDorPolling(); renderBetRanking(); });
+    S.socket.on('connect_error', function () { setConn('error'); startBallonDorPolling(); });
     S.socket.on('football:lobby', function (lobby) { renderLobby(lobby); });
+    S.socket.on('football:ballon_dor_market', function (payload) {
+      S.ballonDorRequestSeq++;
+      setBallonDorFeed('socket', 'En vivo · Socket.IO');
+      var market = payload && Object.prototype.hasOwnProperty.call(payload, 'market') ? payload.market : payload;
+      applyBallonDorMarket(market || null);
+    });
     S.socket.on('football:tick', onTick);
     S.socket.on('football:event', onEvent);
     S.socket.on('football:commentary', onCommentary);
     S.socket.on('football:odds', onOdds);
     S.socket.on('football:settlement', onSettlement);
+    S.socket.on('bet_ranking_state', function (snapshot) {
+      if (!snapshot || !snapshot.ranking) return;
+      S.betRanking = snapshot;
+      if (ledgerOpen() && S.ledgerView === 'ranking') renderBetRanking();
+    });
     S.socket.on('football:status', onStatus);
     S.socket.on('football:rescheduled', onRescheduled);
     S.socket.on('account_chips_updated', function (data) {
@@ -337,6 +479,7 @@
       if (!res || !res.ok) return onSubError(res);
       S.teams = res.teams || S.teams;
       if (res.profile) { S.profile = res.profile; S.chips = res.profile.chips; updateChips(); }
+      renderBallonDorMarket();
       renderLobby(res.lobby);
       // Al entrar (también si el partido ya terminó) se trae el historial y pagos.
       loadBetHistory();
@@ -348,6 +491,1952 @@
     if (code === 'name_taken') { toast('Ese nombre ya está en uso. Cambia tu apodo en el casino.', 'lose'); return; }
     if (code === 'room_full') { toast('La sala está llena; intenta con otro partido.', 'lose'); return; }
     toast((res && res.error) || 'No se pudo entrar al Estadio.', 'lose');
+  }
+
+  // ===== Balón de Oro: lectura viva, fallback HTTP, predicción y recibo =====
+  var BALLON_DOR_MARKET = 'balon_de_oro';
+  var BALLON_DOR_POLL_MS = 15000;
+
+  function setBallonDorFeed(state, text) {
+    if (!el['est-bdo-feed']) return;
+    el['est-bdo-feed'].textContent = text;
+    el['est-bdo-feed'].dataset.state = state;
+  }
+
+  function setBallonDorMessage(text, state) {
+    if (!el['est-bdo-message']) return;
+    el['est-bdo-message'].textContent = text || '';
+    if (state) el['est-bdo-message'].dataset.state = state;
+    else delete el['est-bdo-message'].dataset.state;
+  }
+
+  function startBallonDorPolling() {
+    setBallonDorFeed('http', 'Respaldo HTTP · actualización cada 15 s');
+    if (S.ballonDorPollingId != null) return;
+    S.ballonDorPollingId = window.setInterval(loadBallonDorMarket, BALLON_DOR_POLL_MS);
+  }
+
+  function stopBallonDorPolling() {
+    if (S.ballonDorPollingId == null) return;
+    window.clearInterval(S.ballonDorPollingId);
+    S.ballonDorPollingId = null;
+  }
+
+  function loadBallonDorMarket() {
+    var seq = ++S.ballonDorRequestSeq;
+    if (!S.ballonDorMarket) S.ballonDorLoading = true;
+    renderBallonDorMarket();
+    var query = S.ballonDorRequestedSeasonMonth
+      ? '?seasonMonth=' + encodeURIComponent(S.ballonDorRequestedSeasonMonth) : '';
+    return fetch('/api/estadio/ballon-dor' + query, { cache: 'no-store' })
+      .then(function (response) {
+        return response.json().catch(function () { return null; }).then(function (data) {
+          return { ok: response.ok !== false, data: data };
+        });
+      })
+      .then(function (result) {
+        if (seq !== S.ballonDorRequestSeq) return null;
+        if (!result.ok || !result.data || !result.data.ok) throw new Error('mercado_no_disponible');
+        S.ballonDorError = false;
+        S.ballonDorLoading = false;
+        applyBallonDorMarket(result.data.market || null);
+        if (S.socket && S.socket.connected) setBallonDorFeed('socket', 'En vivo · Socket.IO');
+        else setBallonDorFeed('http', 'Respaldo HTTP · actualización cada 15 s');
+        return result.data.market || null;
+      })
+      .catch(function () {
+        if (seq !== S.ballonDorRequestSeq) return null;
+        S.ballonDorLoading = false;
+        S.ballonDorError = true;
+        setBallonDorFeed('error', 'Sin actualización del servidor');
+        if (!S.ballonDorMarket) {
+          setBallonDorFeedback('No pudimos cargar el mercado. Revisa tu conexión e inténtalo de nuevo.', 'error');
+        } else {
+          setBallonDorFeedback('No se pudo actualizar; se conserva la última información recibida.', 'error');
+        }
+        renderBallonDorMarket();
+        return null;
+      });
+  }
+
+  function requestBallonDorMarket() {
+    if (!S.socket || !S.socket.connected) return;
+    S.socket.emit('football:ballon_dor_market', {
+      seasonMonth: S.ballonDorRequestedSeasonMonth || undefined
+    }, function (result) {
+      if (result && result.ok) {
+        S.ballonDorRequestSeq++;
+        setBallonDorFeed('socket', 'En vivo · Socket.IO');
+        applyBallonDorMarket(result.market || null);
+      }
+    });
+  }
+
+  function applyBallonDorMarket(market) {
+    if (market && S.ballonDorRequestedSeasonMonth
+        && String(market.seasonMonth || '') !== S.ballonDorRequestedSeasonMonth) return;
+    var previous = S.ballonDorMarket;
+    if (market && previous) {
+      if (String(market.seasonMonth || '') < String(previous.seasonMonth || '')) return;
+      if (market.seasonMonth === previous.seasonMonth
+          && Number(market.updatedAt || 0) < Number(previous.updatedAt || 0)) return;
+    }
+    if (!market) {
+      S.ballonDorMarket = null;
+      S.ballonDorSelection = '';
+      S.ballonDorReview = null;
+      S.ballonDorIdempotencyKey = null;
+      S.ballonDorError = false;
+      S.ballonDorLoading = false;
+      renderBallonDorMarket();
+      return;
+    }
+    if (S.ballonDorReview && previous && previous.seasonMonth === market.seasonMonth) {
+      var priorQuote = (previous.candidates || []).find(function (candidate) {
+        return candidate.id === S.ballonDorReview.selection;
+      });
+      var nextQuote = (market.candidates || []).find(function (candidate) {
+        return candidate.id === S.ballonDorReview.selection;
+      });
+      if (!priorQuote || !nextQuote || Number(priorQuote.odds) !== Number(nextQuote.odds)
+          || market.status !== 'active') {
+        S.ballonDorReview = null;
+        S.ballonDorIdempotencyKey = null;
+        setBallonDorMessage('El mercado cambió mientras revisabas. Confirma de nuevo con la cuota vigente.', 'error');
+      }
+    }
+    S.ballonDorMarket = market;
+    S.ballonDorError = false;
+    S.ballonDorLoading = false;
+    if (S.ballonDorSelection && !(market.candidates || []).some(function (candidate) {
+      return candidate.id === S.ballonDorSelection;
+    })) S.ballonDorSelection = '';
+    renderBallonDorMarket();
+    if (!previous) renderBallonDorArchive();
+    maybeAutoOpenBallonDorOpening();
+    if (IS_BDO_DEDICATED_PAGE && market.status === 'settled'
+        && (!previous || previous.status !== 'settled' || (!previous.result && market.result))) loadBallonDorArchive();
+  }
+
+  function setBallonDorFeedback(text, state) {
+    var box = el['est-bdo-feedback'];
+    if (!box) return;
+    box.textContent = text || '';
+    if (state) box.dataset.state = state;
+    else delete box.dataset.state;
+  }
+
+  function ballonDorMonthLabel(seasonMonth) {
+    var match = /^(\d{4})-(\d{2})$/.exec(String(seasonMonth || ''));
+    if (!match) return String(seasonMonth || 'esta temporada');
+    try {
+      return new Date(Number(match[1]), Number(match[2]) - 1, 1).toLocaleDateString('es-MX', {
+        month: 'long', year: 'numeric', timeZone: 'UTC'
+      });
+    } catch (_) { return String(seasonMonth); }
+  }
+
+  function ballonDorOfficialRows(market) {
+    if (!market || market.status !== 'settled' || !market.result || !market.ceremony
+        || market.ceremony.verified !== true || market.ceremony.eventId !== market.eventId
+        || market.ceremony.seasonMonth !== market.seasonMonth
+        || Number(market.ceremony.finalizedAt) !== Number(market.result.finalizedAt)
+        || !Array.isArray(market.candidates) || market.candidates.length !== 16
+        || !Array.isArray(market.result.ranking) || market.result.ranking.length !== 16) return null;
+    var byId = new Map(market.candidates.map(function (candidate) { return [candidate.id, candidate]; }));
+    var ranking = market.result.ranking.slice().sort(function (a, b) { return Number(a.rank) - Number(b.rank); });
+    var seen = Object.create(null);
+    var rows = [];
+    for (var i = 0; i < ranking.length; i++) {
+      var row = ranking[i];
+      var candidate = row && byId.get(row.candidateId);
+      if (!candidate || seen[row.candidateId] || Number(row.rank) !== i + 1
+          || !Number.isSafeInteger(Number(row.score))
+          || Number(candidate.points && candidate.points.total) !== Number(row.score)) return null;
+      seen[row.candidateId] = true;
+      rows.push({ rank: i + 1, score: Number(row.score), candidate: candidate });
+    }
+    if (rows[0].candidate.id !== market.result.winnerCandidateId
+        || rows[0].score !== Number(market.result.winnerScore)) return null;
+    return rows;
+  }
+
+  function loadBallonDorArchive() {
+    if (!IS_BDO_DEDICATED_PAGE) return Promise.resolve(null);
+    var seq = ++S.ballonDorArchiveRequestSeq;
+    S.ballonDorArchiveLoading = true;
+    S.ballonDorArchiveError = false;
+    renderBallonDorArchive();
+    return fetch('/api/estadio/ballon-dor/archive', { cache: 'no-store' })
+      .then(function (response) {
+        return response.json().catch(function () { return null; }).then(function (data) {
+          return { ok: response.ok !== false, data: data };
+        });
+      })
+      .then(function (result) {
+        if (seq !== S.ballonDorArchiveRequestSeq) return null;
+        if (!result.ok || !result.data || !result.data.ok || !Array.isArray(result.data.cycles)) {
+          throw new Error('archive_unavailable');
+        }
+        S.ballonDorArchive = result.data.cycles;
+        S.ballonDorArchiveError = false;
+        S.ballonDorArchiveLoading = false;
+        renderBallonDorArchive();
+        return S.ballonDorArchive;
+      })
+      .catch(function () {
+        if (seq !== S.ballonDorArchiveRequestSeq) return null;
+        S.ballonDorArchiveError = true;
+        S.ballonDorArchiveLoading = false;
+        renderBallonDorArchive();
+        return null;
+      });
+  }
+
+  function renderBallonDorArchive() {
+    var nav = el['est-bdo-archive'];
+    var list = el['est-bdo-archive-list'];
+    var status = el['est-bdo-archive-status'];
+    if (!nav || !list || !status) return;
+    nav.hidden = !IS_BDO_DEDICATED_PAGE;
+    list.textContent = '';
+    if (S.ballonDorArchiveLoading) {
+      status.textContent = 'Consultando ediciones guardadas…';
+      return;
+    }
+    if (S.ballonDorArchiveError) {
+      status.textContent = 'No se pudo cargar el archivo. El resultado abierto sigue disponible.';
+      var retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'text-button';
+      retry.textContent = 'Reintentar';
+      retry.addEventListener('click', loadBallonDorArchive);
+      list.appendChild(retry);
+      return;
+    }
+    var cycles = Array.isArray(S.ballonDorArchive) ? S.ballonDorArchive : [];
+    status.textContent = cycles.length ? 'Cada enlace vuelve a leer la edición persistida; repetir no vuelve a liquidar.' : 'Todavía no hay ediciones guardadas.';
+    if (!cycles.length) {
+      var empty = document.createElement('p');
+      empty.className = 'est-bdo-archive-empty';
+      empty.textContent = 'Las ceremonias y resultados oficiales aparecerán aquí después del cierre de cada temporada.';
+      list.appendChild(empty);
+      return;
+    }
+    var currentMonth = S.ballonDorRequestedSeasonMonth || (S.ballonDorMarket && S.ballonDorMarket.seasonMonth);
+    cycles.forEach(function (cycle) {
+      if (!cycle || !/^\d{4}-(0[1-9]|1[0-2])$/.test(String(cycle.seasonMonth || ''))) return;
+      var link = document.createElement('a');
+      link.className = 'est-bdo-archive-link';
+      link.href = '/balon-de-oro?seasonMonth=' + encodeURIComponent(cycle.seasonMonth)
+        + (IS_BDO_DEMO_PREVIEW ? '&demo=1' : '');
+      if (cycle.seasonMonth === currentMonth) link.setAttribute('aria-current', 'page');
+      var month = document.createElement('span');
+      month.className = 'est-bdo-archive-month';
+      month.textContent = ballonDorMonthLabel(cycle.seasonMonth);
+      var result = document.createElement('span');
+      result.className = 'est-bdo-archive-result';
+      if (cycle.winner && cycle.status === 'settled') {
+        result.textContent = '🏆 ' + cycle.winner.playerName + ' · ' + cycle.winner.clubName + ' · ' + fmt(cycle.winner.score) + ' puntos';
+      } else if (cycle.status === 'cancelled') result.textContent = 'Edición cancelada · no se liquidó un ganador.';
+      else result.textContent = 'Edición ' + (cycle.status || 'sin estado') + ' · consulta la clasificación oficial.';
+      var state = document.createElement('span');
+      state.className = 'est-bdo-archive-state';
+      state.textContent = cycle.status === 'settled' && cycle.ceremony && cycle.ceremony.verified
+        ? 'Resultado verificado · repetir ceremonia' : 'Abrir edición';
+      link.appendChild(month);
+      link.appendChild(result);
+      link.appendChild(state);
+      list.appendChild(link);
+    });
+  }
+
+  function ceremonyEligibleAt(market) {
+    var finalizedAt = Number(market && market.result && market.result.finalizedAt) || 0;
+    var scheduledAt = Number(market && market.finalization && market.finalization.scheduledAt) || 0;
+    var announcementAt = Number(market && market.resultAnnouncementAt) || 0;
+    return Math.max(finalizedAt, scheduledAt, announcementAt);
+  }
+
+  function scheduleBallonDorCeremonyUnlock(market) {
+    var unlockAt = ceremonyEligibleAt(market);
+    var waitingForPublicAnnouncement = Boolean(market && market.status === 'settled'
+      && !market.result && unlockAt > Date.now());
+    var rows = ballonDorOfficialRows(market);
+    if (!waitingForPublicAnnouncement && !rows) {
+      if (S.ballonDorCeremonyUnlockTimer != null) window.clearTimeout(S.ballonDorCeremonyUnlockTimer);
+      S.ballonDorCeremonyUnlockTimer = null;
+      S.ballonDorCeremonyUnlockAt = 0;
+      return;
+    }
+    if (!Number.isFinite(unlockAt) || unlockAt <= Date.now()) {
+      if (S.ballonDorCeremonyUnlockTimer != null) window.clearTimeout(S.ballonDorCeremonyUnlockTimer);
+      S.ballonDorCeremonyUnlockTimer = null;
+      S.ballonDorCeremonyUnlockAt = unlockAt;
+      return;
+    }
+    if (S.ballonDorCeremonyUnlockAt === unlockAt && S.ballonDorCeremonyUnlockTimer != null) return;
+    if (S.ballonDorCeremonyUnlockTimer != null) window.clearTimeout(S.ballonDorCeremonyUnlockTimer);
+    S.ballonDorCeremonyUnlockAt = unlockAt;
+    S.ballonDorCeremonyUnlockTimer = window.setTimeout(function () {
+      S.ballonDorCeremonyUnlockTimer = null;
+      if (waitingForPublicAnnouncement) loadBallonDorMarket();
+      else renderBallonDorMarket();
+    }, Math.min(unlockAt - Date.now() + 25, 2147480000));
+  }
+
+  function renderBallonDorCeremonyPanel(market) {
+    var panel = el['est-bdo-ceremony-panel'];
+    var status = el['est-bdo-ceremony-panel-status'];
+    var button = el['est-bdo-ceremony-start'];
+    if (!panel || !status || !button) return;
+    var settled = Boolean(market && market.status === 'settled');
+    panel.hidden = !settled;
+    if (!settled) {
+      button.disabled = true;
+      scheduleBallonDorCeremonyUnlock(null);
+      return;
+    }
+    var rows = ballonDorOfficialRows(market);
+    var verified = Boolean(rows);
+    var eligibleAt = ceremonyEligibleAt(market);
+    var waitingForAnnouncement = !market.result && eligibleAt > Date.now();
+    var available = verified && eligibleAt > 0 && Date.now() >= eligibleAt;
+    button.disabled = !available;
+    button.textContent = S.ballonDorRequestedSeasonMonth ? 'Repetir ceremonia del archivo' : 'Ver ceremonia final';
+    if (waitingForAnnouncement) {
+      status.textContent = 'El cierre oficial ya está guardado. La identidad del podio se publicará en la ceremonia de las 10:00 p. m., después del último partido.';
+    } else if (!verified) {
+      status.textContent = 'No se puede validar el resultado persistido; la ceremonia queda bloqueada.';
+    } else if (!available) {
+      var date = formatBallonDorScheduleDate(eligibleAt, market.finalization?.timeZone || 'America/Mexico_City');
+      status.textContent = 'Resultado persistido y verificado. La ceremonia se habilita a las 10:00 p. m., después del último partido.' + (date ? ' Horario: ' + date + '.' : '');
+    } else if (market.ceremony && market.ceremony.settlementComplete) {
+      status.textContent = 'Resultado oficial verificado. Las predicciones acertadas ya se liquidaron en fichas virtuales; puedes reproducir el evento sin repetir pagos.';
+    } else {
+      var pending = Number(market.ceremony && market.ceremony.pendingPayoutCount) || 0;
+      status.textContent = 'Resultado oficial verificado. La conciliación de ' + pending + ' predicción(es) sigue pendiente; el replay no modifica la liquidación.';
+    }
+    scheduleBallonDorCeremonyUnlock(market);
+  }
+
+  function ballonDorCancelReason(reason) {
+    return ({
+      temporada_truncada: 'La temporada se truncó antes de poder cerrar el premio.',
+      apertura_no_realizada_dia_1: 'El ciclo no pudo abrirse el día 1.',
+      calendario_invalido: 'El calendario no cumplió las condiciones para abrir el mercado.',
+      temporada_no_cerrada_antes_reset: 'La temporada no se completó válidamente antes del reset mensual.',
+      desempate_no_resuelto_antes_reset: 'El desempate oficial no pudo resolverse antes del reset mensual.',
+      desempate_no_cabe_en_ventana_de_cierre: 'No quedó tiempo suficiente para resolver el desempate oficial.'
+    })[reason] || 'El ciclo se canceló (' + String(reason || 'motivo no disponible').replace(/[_<>]/g, ' ') + ').';
+  }
+
+  function currentBallonDorTicket() {
+    var market = S.ballonDorMarket;
+    var month = market && market.seasonMonth;
+    var entries = S.betHistory && Array.isArray(S.betHistory.entries) ? S.betHistory.entries : [];
+    var entry = entries.find(function (item) {
+      return item.kind === 'future' && item.market === BALLON_DOR_MARKET
+        && (!month || item.seasonMonth === month);
+    });
+    if (entry) return entry;
+    if (S.ballonDorReceipt && S.ballonDorReceipt.market === BALLON_DOR_MARKET
+        && (!month || S.ballonDorReceipt.seasonMonth === month)) return S.ballonDorReceipt;
+    return null;
+  }
+
+  function ballonDorStakeBounds() {
+    var chips = Math.max(0, Math.floor(Number(S.chips) || 0));
+    var max = Math.min(Math.floor(chips * STAKE_MAX_FRAC), STAKE_ABS_MAX);
+    var min = Math.min(Math.max(1, Math.floor(chips * STAKE_MIN_FRAC)), chips);
+    if (min > max) min = max;
+    return { min: Math.max(0, min), max: Math.max(0, max) };
+  }
+
+  function ballonDorQuote(candidate) {
+    if (!candidate || !Number.isFinite(Number(candidate.odds))) return null;
+    return Number(candidate.odds);
+  }
+
+  function ballonDorCandidateName(market, candidateId) {
+    var candidate = (market && market.candidates || []).find(function (item) { return item.id === candidateId; });
+    return candidate ? candidate.playerName + ' · ' + candidate.clubName : String(candidateId || 'candidato');
+  }
+
+  // El playerId es estable entre ediciones; el id del candidato incluye el mes y
+  // no debe utilizarse para direccionar un avatar reutilizable.
+  function ballonDorAvatarUrl(candidate) {
+    var playerId = String(candidate && candidate.playerId || '');
+    if (!/^[a-zA-Z0-9_-]{1,40}$/.test(playerId)) playerId = 'default';
+    return '/assets/ballon-dor-avatars/' + encodeURIComponent(playerId) + '.svg';
+  }
+
+  function ballonDorNameAudioUrl(candidate) {
+    var playerId = String(candidate && candidate.playerId || '');
+    if (!/^[a-zA-Z0-9_-]{1,40}$/.test(playerId)) return null;
+    return BALLON_DOR_CEREMONY_NAME_BASE + encodeURIComponent(playerId) + '.wav';
+  }
+
+  function formatBallonDorScheduleDate(timestamp, timeZone) {
+    try {
+      return new Intl.DateTimeFormat('es-MX', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: timeZone || 'America/Mexico_City'
+      }).format(new Date(timestamp));
+    } catch (_) { return ''; }
+  }
+
+  function renderBallonDorFinalization(market) {
+    var message = el['est-bdo-finalization-message'];
+    var date = el['est-bdo-finalization-date'];
+    if (!message || !date) return;
+    var schedule = market && market.finalization;
+    var at = schedule && Number(schedule.scheduledAt);
+    if (!Number.isFinite(at) || at <= 0) {
+      date.hidden = true;
+      date.textContent = '';
+      message.innerHTML = 'Después del último partido · <strong>10:00 p. m.</strong> · hora de Ciudad de México.';
+      return;
+    }
+    var afterMatch = schedule.afterMatch || {};
+    var afterText = afterMatch.desempate
+      ? 'después del partido de desempate oficial'
+      : (Number(afterMatch.jornada) === 30 ? 'después del último partido de J30' : 'después del último partido del ciclo');
+    var displayAt = market.status === 'settled'
+      ? (Number(market.resultAnnouncementAt) || Math.max(at, Number(schedule.actualAt) || 0)) : at;
+    var dateLabel = formatBallonDorScheduleDate(displayAt, schedule.timeZone || 'America/Mexico_City');
+    date.textContent = dateLabel ? 'Fecha prevista: ' + dateLabel + '.' : '';
+    date.hidden = !dateLabel;
+    date.dateTime = new Date(displayAt).toISOString();
+    if (market.status === 'cancelled') {
+      message.innerHTML = 'Horario previsto: <strong>10:00 p. m.</strong>, ' + afterText + ' (hora de Ciudad de México). Este ciclo fue cancelado y no tendrá ceremonia.';
+      return;
+    }
+    if (market.status === 'settled') {
+      var announcementAt = displayAt;
+      var announcedDate = formatBallonDorScheduleDate(announcementAt, schedule.timeZone || 'America/Mexico_City');
+      var actual = formatBallonDorScheduleDate(schedule.actualAt, schedule.timeZone || 'America/Mexico_City');
+      if (announcementAt > Date.now()) {
+        message.innerHTML = 'El resultado oficial quedó cerrado y resguardado. El anuncio público será a las <strong>10:00 p. m.</strong>, ' + afterText + ' (hora de Ciudad de México).';
+        date.textContent = (actual ? 'Cierre oficial completado: ' + actual + '. ' : '')
+          + (announcedDate ? 'Anuncio previsto: ' + announcedDate + '.' : '');
+      } else {
+        message.innerHTML = market.result
+          ? 'Resultado oficial publicado y ceremonia disponible. Horario de anuncio: <strong>10:00 p. m.</strong>, ' + afterText + ' (hora de Ciudad de México).'
+          : 'Cierre oficial completado; el resultado no está disponible para publicación. La ceremonia queda bloqueada.';
+        date.textContent = announcedDate ? 'Anuncio oficial: ' + announcedDate + '.' : '';
+      }
+      return;
+    }
+    var delayed = at < Date.now();
+    message.innerHTML = delayed
+      ? 'La hora prevista de <strong>10:00 p. m.</strong> ya pasó; el anuncio llegará al terminar el último partido, en hora de Ciudad de México.'
+      : 'El cierre y anuncio final será a las <strong>10:00 p. m.</strong>, ' + afterText + ' · hora de Ciudad de México.';
+  }
+
+  function ballonDorStatusMessage(market) {
+    var month = ballonDorMonthLabel(market.seasonMonth);
+    var after = market.oddsSnapshot && Number(market.oddsSnapshot.afterJornada);
+    var quoteDate = after > 0 ? 'Cuotas actualizadas tras J' + after + '.' : 'Cuotas iniciales del ciclo.';
+    if (market.status === 'scheduled') return 'Ciclo de ' + month + ' programado. El mercado abre el día 1 de ' + month + ' (hora de Ciudad de México).';
+    if (market.status === 'active') return 'Predicciones abiertas para ' + month + '. El mercado cierra automáticamente cuando se asienten los ocho partidos de J20. ' + quoteDate;
+    if (market.status === 'locked') return 'Mercado cerrado tras asentarse los ocho partidos de J20. No se aceptan nuevas predicciones; la liga continúa hasta J30.';
+    if (market.status === 'settled') {
+      if (!market.result && Number(market.resultAnnouncementAt) > Date.now()) {
+        return 'La liquidación oficial está cerrada y persistida. El podio se anunciará en la ceremonia de las 10:00 p. m., después del último partido.';
+      }
+      var winner = market.result && market.result.winnerCandidateId;
+      return 'Ciclo liquidado. Ganador: ' + (winner ? ballonDorCandidateName(market, winner) : 'resultado oficial pendiente de verificación') + '.';
+    }
+    if (market.status === 'cancelled') return 'Mercado cancelado: ' + ballonDorCancelReason(market.cancellationReason) + ' Los boletos se reembolsan por el stake exacto.';
+    return 'Estado del ciclo no disponible.';
+  }
+
+  function renderBallonDorMarket() {
+    var market = S.ballonDorMarket;
+    renderBallonDorOpeningButton();
+    renderBallonDorFinalization(market);
+    renderBallonDorCeremonyPanel(market);
+    if (!el['est-bdo-status']) return;
+    if (!market) {
+      el['est-bdo-status'].textContent = S.ballonDorLoading ? 'Cargando ciclo' : (S.ballonDorError ? 'Sin conexión' : 'Sin ciclo activo');
+      el['est-bdo-status'].dataset.state = S.ballonDorError ? 'cancelled' : 'scheduled';
+      if (!S.ballonDorError) {
+        setBallonDorFeedback(S.ballonDorLoading
+          ? 'Consultando el calendario y los 16 candidatos…'
+          : 'Todavía no hay un ciclo de Balón de Oro disponible.', S.ballonDorLoading ? '' : '');
+      }
+      if (el['est-bdo-table-wrap']) el['est-bdo-table-wrap'].hidden = true;
+      if (el['est-bdo-bet-area']) el['est-bdo-bet-area'].hidden = true;
+      if (el['est-bdo-retry']) el['est-bdo-retry'].hidden = !S.ballonDorError;
+      return;
+    }
+
+    var stateLabels = { scheduled: 'Programado', active: 'Predicciones abiertas', locked: 'Mercado cerrado', settled: 'Liquidado', cancelled: 'Cancelado' };
+    el['est-bdo-status'].textContent = stateLabels[market.status] || 'Estado no disponible';
+    el['est-bdo-status'].dataset.state = market.status || '';
+    el['est-bdo-summary'].textContent = ballonDorStatusMessage(market);
+    if (!S.ballonDorError) {
+      var progress = market.oddsSnapshot && Number(market.oddsSnapshot.afterJornada);
+      if (market.status === 'settled' && !market.result && Number(market.resultAnnouncementAt) > Date.now()) {
+        setBallonDorFeedback('La liquidación oficial está guardada. La tabla final y el podio se publicarán en la ceremonia de las 10:00 p. m.', '');
+      } else {
+        setBallonDorFeedback(progress > 0
+          ? 'Probabilidades y cuotas calculadas en el servidor con 2,000 simulaciones reproducibles; última actualización al completar J' + progress + '.'
+          : (market.status === 'active'
+            ? 'Cuotas y probabilidades del servidor · margen objetivo 10 % · cuota máxima 51.0.'
+            : 'El ciclo conserva un delantero ST existente por club; las estadísticas solo cuentan J1–J30.'), '');
+      }
+    }
+    if (el['est-bdo-retry']) el['est-bdo-retry'].hidden = !S.ballonDorError;
+    if (el['est-bdo-table-wrap']) el['est-bdo-table-wrap'].hidden = market.status === 'settled' && !market.result;
+
+    var candidates = (market.candidates || []).slice();
+    var marketIncomplete = candidates.length !== 16;
+    var officialRank = new Map();
+    if (market.result && Array.isArray(market.result.ranking)) {
+      market.result.ranking.forEach(function (row) { officialRank.set(row.candidateId, row.rank); });
+    }
+    candidates.sort(function (a, b) {
+      if (officialRank.size) return (officialRank.get(a.id) || 99) - (officialRank.get(b.id) || 99);
+      var ap = Number(a.points && a.points.total) || 0, bp = Number(b.points && b.points.total) || 0;
+      var as = a.stats || {}, bs = b.stats || {};
+      return bp - ap || (Number(bs.goals) || 0) - (Number(as.goals) || 0)
+        || (Number(bs.assists) || 0) - (Number(as.assists) || 0)
+        || ((Number(as.yellowCards) || 0) + 3 * (Number(as.redCards) || 0))
+          - ((Number(bs.yellowCards) || 0) + 3 * (Number(bs.redCards) || 0))
+        || String(a.clubId || '').localeCompare(String(b.clubId || ''))
+        || (Number(a.playerNumber) || 0) - (Number(b.playerNumber) || 0);
+    });
+
+    var select = el['est-bdo-selection'];
+    var selectedId = S.ballonDorSelection || (select && select.value) || '';
+    var termsAccepted = tosAccepted();
+    if (select) {
+      var options = '<option value="">Selecciona una fila o un candidato</option>';
+      candidates.forEach(function (candidate) {
+        options += '<option value="' + esc(candidate.id) + '">' + esc(candidate.playerName) + ' · ' + esc(candidate.clubName) + '</option>';
+      });
+      select.innerHTML = options;
+      if (candidates.some(function (candidate) { return candidate.id === selectedId; })) select.value = selectedId;
+      else { select.value = ''; S.ballonDorSelection = ''; }
+    }
+
+    var ticket = currentBallonDorTicket();
+    var canChoose = market.status === 'active' && !ticket && termsAccepted && candidates.length === 16
+      && !S.ballonDorReview && !S.ballonDorSubmitting;
+    var body = el['est-bdo-candidates'];
+    body.innerHTML = '';
+    if (!candidates.length) {
+      var emptyRow = document.createElement('tr');
+      emptyRow.innerHTML = '<td colspan="11">El servidor aún no ha publicado candidatos para este ciclo.</td>';
+      body.appendChild(emptyRow);
+    }
+    if (candidates.length !== 16) {
+      setBallonDorFeedback('El ciclo está incompleto: deben publicarse exactamente 16 candidatos. Las predicciones quedan deshabilitadas hasta que el servidor lo corrija.', 'error');
+    }
+    candidates.forEach(function (candidate, index) {
+      var stats = candidate.stats || {};
+      var odds = ballonDorQuote(candidate);
+      var implied = odds
+        ? (Number.isFinite(Number(candidate.impliedProbability)) && candidate.impliedProbability != null
+          ? (Number(candidate.impliedProbability) * 100).toFixed(2) + '%'
+          : ((1 / odds) * 100).toFixed(2) + '%')
+        : '—';
+      var color = candidate.clubColors && /^#[0-9a-f]{6}$/i.test(candidate.clubColors.primary || '')
+        ? candidate.clubColors.primary : '#7d8b88';
+      var buttonLabel = candidate.id === selectedId ? 'Elegido' : 'Elegir';
+      var action = canChoose && odds
+        ? '<button class="est-bdo-select" type="button" data-bdo-select="' + esc(candidate.id) + '" aria-label="Elegir a ' + esc(candidate.playerName) + ' de ' + esc(candidate.clubName) + '"' + (candidate.id === selectedId ? ' aria-pressed="true"' : '') + '>' + buttonLabel + '</button>'
+        : '<span aria-label="' + (ticket ? 'Ya hay un boleto este ciclo' : 'Predicciones cerradas') + '">—</span>';
+      var rank = officialRank.get(candidate.id) || index + 1;
+      var row = document.createElement('tr');
+      row.innerHTML = '<td>' + rank + '</td>' +
+        '<td><span class="est-bdo-candidate"><img class="est-bdo-candidate-avatar" src="' + esc(ballonDorAvatarUrl(candidate)) + '" alt="" aria-hidden="true" loading="lazy" decoding="async" width="40" height="40"><i class="est-bdo-candidate-dot" style="background:' + color + '"></i><span class="est-bdo-candidate-copy"><b>' + esc(candidate.playerName) + ' · #' + fmt(candidate.playerNumber) + '</b><small>' + esc(candidate.clubName) + '</small></span></span></td>' +
+        '<td class="est-bdo-points">' + fmt(candidate.points && candidate.points.total) + '</td>' +
+        '<td>' + fmt(stats.goals) + '</td><td>' + fmt(stats.assists) + '</td><td>' + fmt(stats.appearances) + '</td>' +
+        '<td>' + fmt(stats.yellowCards) + '</td><td>' + fmt(stats.redCards) + '</td>' +
+        '<td class="est-bdo-odds">' + (odds ? odds.toFixed(2) : '—') + '</td><td>' + implied + '</td><td>' + action + '</td>';
+      body.appendChild(row);
+      var button = row.querySelector('[data-bdo-select]');
+      if (button) button.addEventListener('click', function () { chooseBallonDorCandidate(candidate.id); });
+    });
+
+    var betArea = el['est-bdo-bet-area'];
+    if (betArea) betArea.hidden = !(market.status === 'active' || ticket);
+    renderBallonDorSlip(market, ticket);
+    renderBallonDorReceipt(market, ticket);
+    if (el['est-bdo-retry']) el['est-bdo-retry'].hidden = !(S.ballonDorError || marketIncomplete);
+  }
+
+  function formatBallonDorCeremonyBreakdown(candidate) {
+    var points = candidate && candidate.points || {};
+    var stats = candidate && candidate.stats || {};
+    return 'Desglose de puntos: goles ' + fmt(points.goals) + ' · asistencias ' + fmt(points.assists)
+      + ' · apariciones ' + fmt(points.appearances) + ' · disciplina ' + fmt((Number(points.yellowCards) || 0) + (Number(points.redCards) || 0))
+      + ' · bonus de club ' + fmt(points.teamBonus) + ' · total ' + fmt(points.total)
+      + '. Estadísticas: ' + fmt(stats.goals) + ' goles, ' + fmt(stats.assists) + ' asistencias, '
+      + fmt(stats.appearances) + ' apariciones, ' + fmt(stats.minutes) + ' minutos, '
+      + fmt(stats.yellowCards) + ' amarillas y ' + fmt(stats.redCards) + ' rojas.';
+  }
+
+  function ballonDorCeremonyPayoutText(market) {
+    var ceremony = market && market.ceremony;
+    if (!ceremony || ceremony.verified !== true) return 'Los pagos no se muestran hasta verificar el resultado oficial.';
+    if (!ceremony.settlementComplete) {
+      return 'Liquidación de predicciones en curso: ' + fmt(ceremony.settledPredictionCount) + ' de '
+        + fmt(ceremony.predictionCount) + ' boletos cerrados; ' + fmt(ceremony.pendingPayoutCount)
+        + ' acreditación(es) pendiente(s). La ceremonia no ejecuta pagos.';
+    }
+    if (!Number(ceremony.predictionCount)) return 'No hubo predicciones en esta edición; no se generaron pagos. Todas las fichas son virtuales.';
+    return 'Predicciones liquidadas: ' + fmt(ceremony.predictionCount) + ' · acertadas: '
+      + fmt(ceremony.winningPredictionCount) + ' · acreditado: ' + fmt(ceremony.paidVirtualChips)
+      + ' fichas virtuales. Repetir la ceremonia no vuelve a pagar.';
+  }
+
+  function renderBallonDorCeremonyPodium() {
+    var podium = el['est-bdo-ceremony-podium'];
+    if (!podium) return;
+    podium.textContent = '';
+    [1, 2, 3].forEach(function (rank) {
+      var card = document.createElement('li');
+      card.className = 'est-bdo-ceremony-card';
+      card.dataset.place = String(rank);
+      card.setAttribute('aria-label', ['Primer', 'Segundo', 'Tercer'][rank - 1] + ' lugar, por revelar');
+      var place = document.createElement('span');
+      place.className = 'est-bdo-ceremony-place';
+      place.textContent = ['1 · CAMPEÓN', '2 · PLATA', '3 · BRONCE'][rank - 1];
+      var avatar = document.createElement('img');
+      avatar.className = 'est-bdo-ceremony-avatar';
+      avatar.alt = '';
+      avatar.setAttribute('aria-hidden', 'true');
+      avatar.setAttribute('decoding', 'async');
+      avatar.setAttribute('width', '72');
+      avatar.setAttribute('height', '72');
+      avatar.hidden = true;
+      var silhouette = document.createElement('span');
+      silhouette.className = 'est-bdo-ceremony-avatar-placeholder';
+      silhouette.textContent = '?';
+      silhouette.setAttribute('aria-hidden', 'true');
+      var player = document.createElement('b');
+      player.className = 'est-bdo-ceremony-player';
+      player.textContent = 'Por revelar';
+      var club = document.createElement('span');
+      club.className = 'est-bdo-ceremony-club';
+      club.textContent = 'Club por revelar';
+      var score = document.createElement('span');
+      score.className = 'est-bdo-ceremony-score';
+      score.textContent = '— puntos';
+      card.appendChild(place);
+      card.appendChild(avatar);
+      card.appendChild(silhouette);
+      card.appendChild(player);
+      card.appendChild(club);
+      card.appendChild(score);
+      podium.appendChild(card);
+    });
+  }
+
+  function revealBallonDorCeremonyPlace(rank, reveal, winner) {
+    var podium = el['est-bdo-ceremony-podium'];
+    var row = S.ballonDorCeremonyRows[rank - 1];
+    if (!podium || !row) return;
+    var card = podium.querySelector('[data-place="' + rank + '"]');
+    if (!card) return;
+    var avatar = card.querySelector('.est-bdo-ceremony-avatar');
+    var silhouette = card.querySelector('.est-bdo-ceremony-avatar-placeholder');
+    var player = card.querySelector('.est-bdo-ceremony-player');
+    var club = card.querySelector('.est-bdo-ceremony-club');
+    var score = card.querySelector('.est-bdo-ceremony-score');
+    card.classList.toggle('is-revealed', Boolean(reveal));
+    card.classList.toggle('is-winner', Boolean(reveal && winner));
+    if (reveal) {
+      player.textContent = row.candidate.playerName || 'Delantero';
+      club.textContent = row.candidate.clubName || 'Club MonteCristo';
+      score.textContent = fmt(row.score) + ' puntos · ' + fmt(row.candidate.stats && row.candidate.stats.goals) + ' goles';
+      card.setAttribute('aria-label', ['Primer', 'Segundo', 'Tercer'][rank - 1] + ' lugar: '
+        + row.candidate.playerName + ', ' + row.candidate.clubName + ', ' + fmt(row.score) + ' puntos');
+      if (avatar) {
+        avatar.src = ballonDorAvatarUrl(row.candidate);
+        avatar.hidden = false;
+      }
+      if (silhouette) silhouette.hidden = true;
+    } else {
+      player.textContent = 'Por revelar';
+      club.textContent = 'Club por revelar';
+      score.textContent = '— puntos';
+      card.setAttribute('aria-label', ['Primer', 'Segundo', 'Tercer'][rank - 1] + ' lugar, por revelar');
+      if (avatar) {
+        avatar.hidden = true;
+        avatar.removeAttribute('src');
+      }
+      if (silhouette) silhouette.hidden = false;
+    }
+  }
+
+  function renderBallonDorCeremonyStep(step, revealName) {
+    var stage = el['est-bdo-ceremony-stage'];
+    if (!stage || !step || !S.ballonDorCeremonyRows.length || step.type === 'hold') return;
+    var rows = S.ballonDorCeremonyRows;
+    var winner = rows[0].candidate;
+    var scene = 'verification', kicker = 'RESULTADO OFICIAL · VERIFICADO';
+    var title = 'La temporada ya tiene podio.';
+    var description = 'La clasificación persistida y las estadísticas oficiales están cerradas. El replay es de solo lectura.';
+    var caption = 'El resultado oficial está verificado.';
+
+    if (step.type === 'name') {
+      var row = rows[step.rank - 1];
+      if (!row) return;
+      if (revealName) S.ballonDorCeremonyRevealedRanks[step.rank] = true;
+      if (step.rank === 3) {
+        scene = 'third-place';
+        kicker = 'EL PODIO · TERCER LUGAR';
+        title = revealName ? row.candidate.playerName + ' · ' + row.candidate.clubName : 'La constancia también deja huella.';
+        description = revealName ? 'Tercer lugar · ' + fmt(row.score) + ' puntos oficiales.' : 'El tercer lugar se revela al escuchar el nombre.';
+        caption = revealName
+          ? 'En tercer lugar: ' + row.candidate.playerName + ', de ' + row.candidate.clubName + '.'
+          : 'En tercer lugar.';
+      } else if (step.rank === 2) {
+        scene = 'second-place';
+        kicker = 'EL PODIO · SEGUNDO LUGAR';
+        title = revealName ? row.candidate.playerName + ' · ' + row.candidate.clubName : 'Una temporada brillante, hasta la última jornada.';
+        description = revealName ? 'Segundo lugar · ' + fmt(row.score) + ' puntos oficiales.' : 'El segundo lugar se revela al escuchar el nombre.';
+        caption = revealName
+          ? 'En segundo lugar: ' + row.candidate.playerName + ', de ' + row.candidate.clubName + '.'
+          : 'En segundo lugar.';
+      } else {
+        scene = 'winner-reveal';
+        kicker = 'Y EL BALÓN DE ORO MONTECRISTO ES PARA…';
+        title = revealName ? row.candidate.playerName + ' · ' + row.candidate.clubName : 'El Balón de Oro MonteCristo es para…';
+        description = revealName
+          ? fmt(row.score) + ' puntos oficiales. La temporada queda registrada para siempre.'
+          : 'La identidad del campeón se revela al escuchar su nombre.';
+        caption = revealName
+          ? '¡' + row.candidate.playerName + ', del ' + row.candidate.clubName + ', gana el Balón de Oro MonteCristo!'
+          : 'Y el Balón de Oro MonteCristo es para…';
+      }
+    } else if (step.key === 'third-place') {
+      scene = 'third-place';
+      kicker = 'EL PODIO · TERCER LUGAR';
+      title = 'La constancia también deja huella.';
+      description = 'Una gran campaña merece su lugar en el podio.';
+      caption = 'En tercer lugar.';
+    } else if (step.key === 'second-place') {
+      scene = 'second-place';
+      kicker = 'EL PODIO · SEGUNDO LUGAR';
+      title = 'Una temporada brillante, hasta la última jornada.';
+      description = 'El segundo puesto se confirma con las estadísticas oficiales.';
+      caption = 'En segundo lugar.';
+    } else if (step.key === 'finalists') {
+      scene = 'finalists';
+      kicker = 'TRES FINALISTAS · UNA CORONA';
+      title = 'La clasificación ya está escrita.';
+      description = 'El podio oficial no cambia al volver a reproducir la ceremonia.';
+      caption = 'Tercer y segundo lugar confirmados. Solo queda una persona.';
+    } else if (step.key === 'winner-intro') {
+      scene = 'winner-reveal';
+      kicker = 'EL MOMENTO FINAL';
+      title = 'Y el Balón de Oro MonteCristo es para…';
+      description = 'La identidad del ganador se revelará con su nombre.';
+      caption = 'Y el Balón de Oro MonteCristo es para…';
+    } else if (step.key === 'winner-congratulations') {
+      scene = 'final';
+      kicker = 'CAMPEÓN · RESULTADO OFICIAL';
+      title = winner.playerName + ' gana el Balón de Oro.';
+      description = winner.clubName + ' · ' + fmt(rows[0].score) + ' puntos · ' + ballonDorMonthLabel(S.ballonDorCeremonyMonth) + '.';
+      caption = 'Podio verificado. Las estadísticas y la liquidación permanecen sin cambios.';
+    }
+
+    S.ballonDorCeremonyScene = scene;
+    stage.dataset.scene = scene;
+    stage.dataset.motion = reduced.matches ? 'reduced' : 'full';
+    el['est-bdo-ceremony-kicker'].textContent = kicker;
+    el['est-bdo-ceremony-title'].textContent = title;
+    el['est-bdo-ceremony-description'].textContent = description;
+    el['est-bdo-ceremony-caption'].textContent = caption;
+    [1, 2, 3].forEach(function (rank) {
+      var revealed = Boolean(S.ballonDorCeremonyRevealedRanks[rank]);
+      revealBallonDorCeremonyPlace(rank, revealed, rank === 1);
+    });
+    el['est-bdo-ceremony-breakdown'].textContent = S.ballonDorCeremonyRevealedRanks[1]
+      ? formatBallonDorCeremonyBreakdown(winner)
+      : 'El desglose oficial aparecerá al revelarse el ganador.';
+    el['est-bdo-ceremony-payout'].textContent = ballonDorCeremonyPayoutText(S.ballonDorMarket);
+    updateBallonDorCeremonyTranscript();
+  }
+
+  function updateBallonDorCeremonyTranscript() {
+    var copy = el['est-bdo-ceremony-transcript-copy'];
+    if (!copy || !S.ballonDorCeremonyRows.length) return;
+    var rows = S.ballonDorCeremonyRows;
+    copy.textContent = 'Después de treinta jornadas, la clasificación oficial de ' + ballonDorMonthLabel(S.ballonDorCeremonyMonth)
+      + ' está cerrada y verificada. En tercer lugar: ' + rows[2].candidate.playerName + ', de ' + rows[2].candidate.clubName
+      + ', con ' + fmt(rows[2].score) + ' puntos. En segundo lugar: ' + rows[1].candidate.playerName + ', de '
+      + rows[1].candidate.clubName + ', con ' + fmt(rows[1].score) + ' puntos. El Balón de Oro MonteCristo es para '
+      + rows[0].candidate.playerName + ', de ' + rows[0].candidate.clubName + ', con ' + fmt(rows[0].score) + ' puntos. '
+      + formatBallonDorCeremonyBreakdown(rows[0].candidate) + ' ' + ballonDorCeremonyPayoutText(S.ballonDorMarket)
+      + ' Puedes repetir esta ceremonia desde el archivo; el resultado oficial no cambia y los pagos no se vuelven a ejecutar.';
+  }
+
+  function formatBallonDorCeremonyTime(seconds) {
+    var safe = Math.max(0, Math.floor(Number(seconds) || 0));
+    return Math.floor(safe / 60) + ':' + String(safe % 60).padStart(2, '0');
+  }
+
+  function clearBallonDorCeremonyTimer() {
+    if (S.ballonDorCeremonyTimer != null) {
+      window.clearInterval(S.ballonDorCeremonyTimer);
+      S.ballonDorCeremonyTimer = null;
+    }
+  }
+
+  function clearBallonDorCeremonyDelay(reset) {
+    if (S.ballonDorCeremonyDelayTimer != null) {
+      window.clearTimeout(S.ballonDorCeremonyDelayTimer);
+      S.ballonDorCeremonyDelayTimer = null;
+    }
+    if (reset) {
+      S.ballonDorCeremonyDelayKind = null;
+      S.ballonDorCeremonyDelayDueAt = 0;
+      S.ballonDorCeremonyDelayDuration = 0;
+      S.ballonDorCeremonyDelayRemaining = 0;
+    }
+  }
+
+  function updateBallonDorCeremonyControls() {
+    var paused = S.ballonDorCeremonyPaused || S.ballonDorCeremonyComplete;
+    var play = el['est-bdo-ceremony-play'];
+    if (play) {
+      play.innerHTML = paused ? '▶ <span>Reanudar</span>' : 'Ⅱ <span>Pausar</span>';
+      play.setAttribute('aria-label', paused ? 'Reanudar ceremonia final' : 'Pausar ceremonia final');
+    }
+    var music = el['est-bdo-ceremony-music'];
+    if (music) {
+      music.innerHTML = S.ballonDorCeremonyMusicMuted ? '♫ <span>Activar música</span>' : '♫ <span>Silenciar música</span>';
+      music.setAttribute('aria-label', S.ballonDorCeremonyMusicMuted ? 'Activar música' : 'Silenciar música');
+      music.setAttribute('aria-pressed', String(S.ballonDorCeremonyMusicMuted));
+    }
+    var narration = el['est-bdo-ceremony-narration'];
+    if (narration) {
+      narration.innerHTML = S.ballonDorCeremonyNarrationMuted ? '◖ <span>Activar narración</span>' : '◖ <span>Silenciar narración</span>';
+      narration.setAttribute('aria-label', S.ballonDorCeremonyNarrationMuted ? 'Activar narración' : 'Silenciar narración');
+      narration.setAttribute('aria-pressed', String(S.ballonDorCeremonyNarrationMuted));
+    }
+  }
+
+  function ceremonyStepProgressFraction() {
+    if (S.ballonDorCeremonyDelayKind && S.ballonDorCeremonyDelayDuration > 0) {
+      var delayLeft = Math.max(0, S.ballonDorCeremonyDelayDueAt - Date.now());
+      return clamp(1 - delayLeft / S.ballonDorCeremonyDelayDuration, 0, 1);
+    }
+    var audio = el['est-bdo-ceremony-narration-audio'];
+    var duration = Number(audio && audio.duration);
+    var current = Number(audio && audio.currentTime);
+    return Number.isFinite(duration) && duration > 0 && Number.isFinite(current)
+      ? clamp(current / duration, 0, 1) : 0;
+  }
+
+  function startBallonDorCeremonyClock(session) {
+    clearBallonDorCeremonyTimer();
+    S.ballonDorCeremonyStartedAt = Date.now() - S.ballonDorCeremonyElapsed * 1000;
+    S.ballonDorCeremonyTimer = window.setInterval(function () {
+      if (session !== S.ballonDorCeremonySession || S.ballonDorCeremonyPaused) return;
+      S.ballonDorCeremonyElapsed = Math.max(0, (Date.now() - S.ballonDorCeremonyStartedAt) / 1000);
+      var total = Math.max(1, S.ballonDorCeremonySequence.length);
+      var progress = Math.round((S.ballonDorCeremonyStepIndex + ceremonyStepProgressFraction()) / total * 100);
+      progress = clamp(progress, 0, 99);
+      el['est-bdo-ceremony-progress'].setAttribute('aria-valuenow', String(progress));
+      el['est-bdo-ceremony-progress-bar'].style.width = progress + '%';
+      el['est-bdo-ceremony-time'].textContent = formatBallonDorCeremonyTime(S.ballonDorCeremonyElapsed)
+        + ' · ' + Math.min(S.ballonDorCeremonyStepIndex + 1, total) + '/' + total;
+    }, 250);
+  }
+
+  function markBallonDorCeremonyNarrationStarted(session) {
+    if (session !== S.ballonDorCeremonySession || S.ballonDorCeremonyNarrationReported) return;
+    S.ballonDorCeremonyNarrationReported = true;
+    reportBallonDorAudio('ceremony_narration', 'started', S.ballonDorCeremonyMonth);
+  }
+
+  function scheduleBallonDorCeremonyDelay(session, durationMs, kind) {
+    clearBallonDorCeremonyDelay(true);
+    S.ballonDorCeremonyDelayKind = kind;
+    S.ballonDorCeremonyDelayDuration = Math.max(0, Number(durationMs) || 0);
+    S.ballonDorCeremonyDelayRemaining = S.ballonDorCeremonyDelayDuration;
+    S.ballonDorCeremonyDelayDueAt = Date.now() + S.ballonDorCeremonyDelayDuration;
+    S.ballonDorCeremonyDelayTimer = window.setTimeout(function () {
+      if (session !== S.ballonDorCeremonySession || S.ballonDorCeremonyPaused) return;
+      clearBallonDorCeremonyDelay(true);
+      S.ballonDorCeremonyStepIndex++;
+      playBallonDorCeremonyStep(session);
+    }, S.ballonDorCeremonyDelayDuration);
+  }
+
+  function playBallonDorCeremonyMusic(session) {
+    var audio = el['est-bdo-ceremony-music-audio'];
+    if (!audio || session !== S.ballonDorCeremonySession) return;
+    try {
+      audio.muted = S.ballonDorCeremonyMusicMuted;
+      audio.volume = 0.12;
+      audio.loop = true;
+      var played = audio.play();
+      if (played && typeof played.then === 'function') {
+        played.then(function () {
+          if (session !== S.ballonDorCeremonySession || S.ballonDorCeremonyMusicReported) return;
+          S.ballonDorCeremonyMusicReported = true;
+          reportBallonDorAudio('ceremony_music', 'started', S.ballonDorCeremonyMonth);
+        }, function () { ceremonyAudioFailed(session, 'ceremony_music', 'blocked'); });
+      } else if (!S.ballonDorCeremonyMusicReported) {
+        S.ballonDorCeremonyMusicReported = true;
+        reportBallonDorAudio('ceremony_music', 'started', S.ballonDorCeremonyMonth);
+      }
+    } catch (_) { ceremonyAudioFailed(session, 'ceremony_music', 'error'); }
+  }
+
+  function ballonDorCeremonySequence() {
+    return [
+      { type: 'cue', key: 'verification', fallbackMs: 2400 },
+      { type: 'cue', key: 'third-place', fallbackMs: 1500 },
+      { type: 'name', rank: 3, fallbackMs: 1700 },
+      { type: 'hold', durationMs: 900 },
+      { type: 'cue', key: 'second-place', fallbackMs: 1500 },
+      { type: 'name', rank: 2, fallbackMs: 1700 },
+      { type: 'hold', durationMs: 900 },
+      { type: 'cue', key: 'finalists', fallbackMs: 1800 },
+      { type: 'cue', key: 'winner-intro', fallbackMs: 2700 },
+      { type: 'hold', durationMs: 1100 },
+      { type: 'name', rank: 1, fallbackMs: 1800 },
+      { type: 'cue', key: 'winner-congratulations', fallbackMs: 2200 },
+      { type: 'hold', durationMs: 2200 }
+    ];
+  }
+
+  function advanceBallonDorCeremonyStep(session) {
+    if (session !== S.ballonDorCeremonySession || S.ballonDorCeremonyPaused) return;
+    clearBallonDorCeremonyDelay(true);
+    S.ballonDorCeremonyStepIndex++;
+    playBallonDorCeremonyStep(session);
+  }
+
+  function playBallonDorCeremonyStep(session) {
+    if (session !== S.ballonDorCeremonySession || S.ballonDorCeremonyPaused) return;
+    if (S.ballonDorCeremonyStepIndex >= S.ballonDorCeremonySequence.length) {
+      finishBallonDorCeremony();
+      return;
+    }
+    var stepIndex = S.ballonDorCeremonyStepIndex;
+    var step = S.ballonDorCeremonySequence[stepIndex];
+    var audio = el['est-bdo-ceremony-narration-audio'];
+    if (step.type === 'hold') {
+      scheduleBallonDorCeremonyDelay(session, step.durationMs, 'hold');
+      return;
+    }
+    renderBallonDorCeremonyStep(step, false);
+    if (S.ballonDorCeremonyFallbackMode) {
+      if (step.type === 'name') renderBallonDorCeremonyStep(step, true);
+      scheduleBallonDorCeremonyDelay(session, step.fallbackMs, 'fallback');
+      return;
+    }
+    var source = step.type === 'cue'
+      ? BALLON_DOR_CEREMONY_CUE_BASE + encodeURIComponent(step.key) + '.wav'
+      : ballonDorNameAudioUrl(S.ballonDorCeremonyRows[step.rank - 1].candidate);
+    if (!source || !audio) {
+      ceremonyAudioFailed(session, 'ceremony_narration', 'missing_clip');
+      return;
+    }
+    audio.onended = function () {
+      if (session !== S.ballonDorCeremonySession || stepIndex !== S.ballonDorCeremonyStepIndex || S.ballonDorCeremonyPaused) return;
+      audio.onended = null;
+      audio.onerror = null;
+      audio.onplay = null;
+      advanceBallonDorCeremonyStep(session);
+    };
+    audio.onerror = function () {
+      if (stepIndex !== S.ballonDorCeremonyStepIndex) return;
+      ceremonyAudioFailed(session, 'ceremony_narration', 'error');
+    };
+    audio.onplay = function () {
+      if (session !== S.ballonDorCeremonySession || stepIndex !== S.ballonDorCeremonyStepIndex || S.ballonDorCeremonyPaused) return;
+      markBallonDorCeremonyNarrationStarted(session);
+      if (step.type === 'name') renderBallonDorCeremonyStep(step, true);
+    };
+    try {
+      audio.muted = S.ballonDorCeremonyNarrationMuted;
+      audio.volume = 1;
+      audio.src = source;
+      audio.load();
+      var played = audio.play();
+      if (played && typeof played.then === 'function') {
+        played.then(function () {
+          if (session !== S.ballonDorCeremonySession || stepIndex !== S.ballonDorCeremonyStepIndex || S.ballonDorCeremonyPaused) return;
+          markBallonDorCeremonyNarrationStarted(session);
+          if (step.type === 'name') renderBallonDorCeremonyStep(step, true);
+        }, function () {
+          if (stepIndex === S.ballonDorCeremonyStepIndex) ceremonyAudioFailed(session, 'ceremony_narration', 'blocked');
+        });
+      } else {
+        markBallonDorCeremonyNarrationStarted(session);
+        if (step.type === 'name') renderBallonDorCeremonyStep(step, true);
+      }
+    } catch (_) { ceremonyAudioFailed(session, 'ceremony_narration', 'error'); }
+  }
+
+  function ceremonyAudioFailed(session, track, outcome) {
+    if (session !== S.ballonDorCeremonySession) return;
+    reportBallonDorAudio(track, outcome || 'blocked', S.ballonDorCeremonyMonth);
+    S.ballonDorCeremonyAudioBlocked = true;
+    var status = el['est-bdo-ceremony-status'];
+    if (track === 'ceremony_music') {
+      if (status) status.textContent = 'La música no está disponible; la narración y las escenas siguen sincronizadas.';
+      return;
+    }
+    if (S.ballonDorCeremonyFallbackMode) return;
+    S.ballonDorCeremonyFallbackMode = true;
+    if (status) status.textContent = 'Audio no disponible; la ceremonia continúa con subtítulos, nombres y avatares.';
+    var audio = el['est-bdo-ceremony-narration-audio'];
+    if (audio) {
+      audio.onended = null;
+      audio.onerror = null;
+      audio.onplay = null;
+      try { audio.pause(); } catch (_) { /* audio opcional */ }
+    }
+    var step = S.ballonDorCeremonySequence[S.ballonDorCeremonyStepIndex];
+    if (step && step.type === 'name') renderBallonDorCeremonyStep(step, true);
+    if (step) scheduleBallonDorCeremonyDelay(session, step.fallbackMs || 1800, 'fallback');
+  }
+
+  function finishBallonDorCeremony() {
+    clearBallonDorCeremonyTimer();
+    clearBallonDorCeremonyDelay(true);
+    S.ballonDorCeremonyComplete = true;
+    S.ballonDorCeremonyPaused = true;
+    S.ballonDorCeremonyStepIndex = S.ballonDorCeremonySequence.length;
+    var finalStep = { type: 'cue', key: 'winner-congratulations' };
+    renderBallonDorCeremonyStep(finalStep, false);
+    var elapsed = Math.max(0, (Date.now() - S.ballonDorCeremonyStartedAt) / 1000);
+    S.ballonDorCeremonyElapsed = elapsed;
+    el['est-bdo-ceremony-progress'].setAttribute('aria-valuenow', '100');
+    el['est-bdo-ceremony-progress-bar'].style.width = '100%';
+    el['est-bdo-ceremony-time'].textContent = formatBallonDorCeremonyTime(elapsed)
+      + ' · ' + S.ballonDorCeremonySequence.length + '/' + S.ballonDorCeremonySequence.length;
+    [el['est-bdo-ceremony-music-audio'], el['est-bdo-ceremony-narration-audio']].forEach(function (audio) {
+      if (!audio) return;
+      audio.onended = null;
+      audio.onerror = null;
+      audio.onplay = null;
+      try { audio.pause(); audio.currentTime = 0; } catch (_) { /* audio opcional */ }
+    });
+    updateBallonDorCeremonyControls();
+  }
+
+  function openBallonDorCeremony() {
+    var market = S.ballonDorMarket;
+    var rows = ballonDorOfficialRows(market);
+    if (!rows || Date.now() < ceremonyEligibleAt(market)) return;
+    var overlay = el['est-bdo-ceremony'];
+    if (!overlay) return;
+    S.ballonDorCeremonySession++;
+    S.ballonDorCeremonyFocus = document.activeElement;
+    S.ballonDorCeremonyRows = rows.slice(0, 3);
+    S.ballonDorCeremonyMonth = market.seasonMonth;
+    S.ballonDorCeremonyElapsed = 0;
+    S.ballonDorCeremonyScene = null;
+    S.ballonDorCeremonyComplete = false;
+    S.ballonDorCeremonyPaused = false;
+    S.ballonDorCeremonyAudioBlocked = false;
+    S.ballonDorCeremonyFallbackMode = false;
+    S.ballonDorCeremonyNarrationReported = false;
+    S.ballonDorCeremonyMusicReported = false;
+    S.ballonDorCeremonySequence = ballonDorCeremonySequence();
+    S.ballonDorCeremonyStepIndex = 0;
+    S.ballonDorCeremonyRevealedRanks = Object.create(null);
+    clearBallonDorCeremonyDelay(true);
+    try { S.ballonDorCeremonyMusicMuted = localStorage.getItem(BALLON_DOR_CEREMONY_AUDIO_KEY + ':music') === 'off'; } catch (_) {}
+    try { S.ballonDorCeremonyNarrationMuted = localStorage.getItem(BALLON_DOR_CEREMONY_AUDIO_KEY + ':narration') === 'off'; } catch (_) {}
+    renderBallonDorCeremonyPodium();
+    overlay.hidden = false;
+    overlay.setAttribute('aria-hidden', 'false');
+    overlay.dataset.seasonMonth = market.seasonMonth || '';
+    document.body.classList.add('est-bdo-ceremony-open');
+    el['est-bdo-ceremony-progress'].setAttribute('aria-valuenow', '0');
+    el['est-bdo-ceremony-progress-bar'].style.width = '0%';
+    el['est-bdo-ceremony-time'].textContent = '0:00 · 1/' + S.ballonDorCeremonySequence.length;
+    el['est-bdo-ceremony-status'].textContent = 'Resultado oficial verificado · ceremonia de solo lectura.';
+    [el['est-bdo-ceremony-music-audio'], el['est-bdo-ceremony-narration-audio']].forEach(function (audio) {
+      if (!audio) return;
+      audio.onended = null;
+      audio.onerror = null;
+      audio.onplay = null;
+      try { audio.pause(); audio.currentTime = 0; } catch (_) { /* audio opcional */ }
+    });
+    updateBallonDorCeremonyControls();
+    playBallonDorCeremonyMusic(S.ballonDorCeremonySession);
+    startBallonDorCeremonyClock(S.ballonDorCeremonySession);
+    playBallonDorCeremonyStep(S.ballonDorCeremonySession);
+    el['est-bdo-ceremony-dialog'].focus();
+  }
+
+  function closeBallonDorCeremony() {
+    var overlay = el['est-bdo-ceremony'];
+    if (!overlay || overlay.hidden) return;
+    S.ballonDorCeremonySession++;
+    clearBallonDorCeremonyTimer();
+    clearBallonDorCeremonyDelay(true);
+    [el['est-bdo-ceremony-music-audio'], el['est-bdo-ceremony-narration-audio']].forEach(function (audio) {
+      if (!audio) return;
+      audio.onended = null;
+      audio.onerror = null;
+      audio.onplay = null;
+      try { audio.pause(); audio.currentTime = 0; } catch (_) { /* audio opcional */ }
+    });
+    overlay.hidden = true;
+    overlay.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('est-bdo-ceremony-open');
+    var focus = S.ballonDorCeremonyFocus;
+    S.ballonDorCeremonyFocus = null;
+    if (focus && typeof focus.focus === 'function') focus.focus();
+    else if (el['est-bdo-ceremony-start']) el['est-bdo-ceremony-start'].focus();
+  }
+
+  function toggleBallonDorCeremonyPlayback() {
+    if (S.ballonDorCeremonyComplete) { openBallonDorCeremony(); return; }
+    if (!S.ballonDorCeremonyPaused) {
+      S.ballonDorCeremonyElapsed = Math.max(0, (Date.now() - S.ballonDorCeremonyStartedAt) / 1000);
+      S.ballonDorCeremonyPaused = true;
+      clearBallonDorCeremonyTimer();
+      if (S.ballonDorCeremonyDelayTimer != null) {
+        S.ballonDorCeremonyDelayRemaining = Math.max(0, S.ballonDorCeremonyDelayDueAt - Date.now());
+        window.clearTimeout(S.ballonDorCeremonyDelayTimer);
+        S.ballonDorCeremonyDelayTimer = null;
+        S.ballonDorCeremonyDelayDueAt = 0;
+      }
+      [el['est-bdo-ceremony-music-audio'], el['est-bdo-ceremony-narration-audio']].forEach(function (audio) {
+        try { audio.pause(); } catch (_) { /* audio opcional */ }
+      });
+      updateBallonDorCeremonyControls();
+      return;
+    }
+    S.ballonDorCeremonyPaused = false;
+    var session = S.ballonDorCeremonySession;
+    S.ballonDorCeremonyStartedAt = Date.now() - S.ballonDorCeremonyElapsed * 1000;
+    if (S.ballonDorCeremonyDelayKind) {
+      scheduleBallonDorCeremonyDelay(session, S.ballonDorCeremonyDelayRemaining, S.ballonDorCeremonyDelayKind);
+    } else {
+      if (!S.ballonDorCeremonyFallbackMode) {
+        var narrationAudio = el['est-bdo-ceremony-narration-audio'];
+        if (narrationAudio) {
+          var resumed = narrationAudio.play();
+          if (resumed && typeof resumed.then === 'function') {
+            resumed.then(function () {
+              markBallonDorCeremonyNarrationStarted(session);
+              var step = S.ballonDorCeremonySequence[S.ballonDorCeremonyStepIndex];
+              if (step && step.type === 'name') renderBallonDorCeremonyStep(step, true);
+            }, function () { ceremonyAudioFailed(session, 'ceremony_narration', 'blocked'); });
+          }
+        }
+      }
+      var musicAudio = el['est-bdo-ceremony-music-audio'];
+      if (musicAudio && musicAudio.paused) playBallonDorCeremonyMusic(session);
+    }
+    startBallonDorCeremonyClock(session);
+    updateBallonDorCeremonyControls();
+  }
+
+  function toggleBallonDorCeremonyMusic() {
+    S.ballonDorCeremonyMusicMuted = !S.ballonDorCeremonyMusicMuted;
+    var audio = el['est-bdo-ceremony-music-audio'];
+    if (audio) audio.muted = S.ballonDorCeremonyMusicMuted;
+    try { localStorage.setItem(BALLON_DOR_CEREMONY_AUDIO_KEY + ':music', S.ballonDorCeremonyMusicMuted ? 'off' : 'on'); } catch (_) {}
+    if (!S.ballonDorCeremonyMusicMuted && !S.ballonDorCeremonyPaused && audio && audio.paused) {
+      playBallonDorCeremonyMusic(S.ballonDorCeremonySession);
+    }
+    updateBallonDorCeremonyControls();
+  }
+
+  function toggleBallonDorCeremonyNarration() {
+    S.ballonDorCeremonyNarrationMuted = !S.ballonDorCeremonyNarrationMuted;
+    var audio = el['est-bdo-ceremony-narration-audio'];
+    if (audio) audio.muted = S.ballonDorCeremonyNarrationMuted;
+    try { localStorage.setItem(BALLON_DOR_CEREMONY_AUDIO_KEY + ':narration', S.ballonDorCeremonyNarrationMuted ? 'off' : 'on'); } catch (_) {}
+    updateBallonDorCeremonyControls();
+  }
+
+  function replayBallonDorCeremony() { openBallonDorCeremony(); }
+
+  function onBallonDorCeremonyKeydown(event) {
+    if (!el['est-bdo-ceremony'] || el['est-bdo-ceremony'].hidden) return;
+    if (event.key === 'Escape') { event.preventDefault(); closeBallonDorCeremony(); return; }
+    if (event.key !== 'Tab') return;
+    var focusable = Array.prototype.slice.call(el['est-bdo-ceremony-dialog'].querySelectorAll('button:not([disabled]),summary'));
+    if (!focusable.length) return;
+    var first = focusable[0], last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+
+  function hasCompletedBallonDorOpening(seasonMonth) {
+    if (!seasonMonth) return false;
+    if (S.ballonDorOpeningComplete && S.ballonDorOpeningMonth === seasonMonth) return true;
+    var key = BALLON_DOR_OPENING_KEY + seasonMonth;
+    try { if (localStorage.getItem(key) === 'completed') return true; } catch (_) {}
+    try { if (sessionStorage.getItem(key) === 'completed') return true; } catch (_) {}
+    return false;
+  }
+
+  function renderBallonDorOpeningButton() {
+    var button = el['est-bdo-opening-start'];
+    if (!button) return;
+    var market = S.ballonDorMarket;
+    var available = Boolean(market && Array.isArray(market.candidates) && market.candidates.length === 16);
+    var completed = available && hasCompletedBallonDorOpening(market.seasonMonth);
+    var open = Boolean(el['est-bdo-opening'] && !el['est-bdo-opening'].hidden);
+    button.hidden = !available || completed || open;
+    button.disabled = !available || completed || open;
+    if (button.hidden) return;
+    button.textContent = 'Ver inauguración';
+    button.setAttribute('aria-label', 'Ver la inauguración narrada del Balón de Oro');
+  }
+
+  function maybeAutoOpenBallonDorOpening() {
+    var market = S.ballonDorMarket;
+    if (!IS_BDO_DEDICATED_PAGE || !market || !Array.isArray(market.candidates)
+        || market.candidates.length !== 16 || S.ballonDorOpeningAutoShown[market.seasonMonth]) return;
+    if (hasCompletedBallonDorOpening(market.seasonMonth)) return;
+    S.ballonDorOpeningAutoShown[market.seasonMonth] = true;
+    openBallonDorOpening({ mandatory: true });
+  }
+
+  function renderBallonDorOpeningClubDots() {
+    var container = el['est-bdo-opening-clubs'];
+    if (!container) return;
+    container.textContent = '';
+    S.ballonDorOpeningCandidates.forEach(function (candidate) {
+      var color = candidate.clubColors && /^#[0-9a-f]{6}$/i.test(candidate.clubColors.primary || '')
+        ? candidate.clubColors.primary : '#7d8b88';
+      var badge = document.createElement('span');
+      badge.className = 'est-bdo-opening-club';
+      badge.style.setProperty('--club-color', color);
+      badge.textContent = candidate.clubShort || String(candidate.clubName || 'Club').slice(0, 3).toUpperCase();
+      badge.setAttribute('aria-label', candidate.clubName || 'Club candidato');
+      badge.title = candidate.clubName || 'Club candidato';
+      container.appendChild(badge);
+    });
+  }
+
+  function ballonDorPlayerSignature(candidate) {
+    var stats = candidate.stats || {};
+    var attributes = candidate.attributes || {};
+    var goals = Number(stats.goals) || 0;
+    var assists = Number(stats.assists) || 0;
+    var appearances = Number(stats.appearances) || 0;
+    var shooting = Number(attributes.shooting) || 0;
+    var pace = Number(attributes.pace) || 0;
+    if (goals >= 8) return 'El goleador que marca el pulso';
+    if (assists >= 5) return 'El socio que enciende el ataque';
+    if (appearances >= 20) return 'Presencia constante en la campaña';
+    if (shooting >= pace + 8) return 'Instinto de definición en el área';
+    if (pace >= shooting + 8) return 'Explosividad para romper líneas';
+    if (shooting >= 82 && pace >= 82) return 'Amenaza completa en cada avance';
+    return 'Técnica, lectura y ambición';
+  }
+
+  function renderBallonDorOpeningCards(candidateIndex) {
+    var container = el['est-bdo-opening-cards'];
+    if (!container) return;
+    container.textContent = '';
+    var candidate = S.ballonDorOpeningCandidates[candidateIndex];
+    if (!candidate) return;
+    var color = candidate.clubColors && /^#[0-9a-f]{6}$/i.test(candidate.clubColors.primary || '')
+      ? candidate.clubColors.primary : '#7d8b88';
+    var attributes = candidate.attributes || {};
+    var stats = candidate.stats || {};
+    var resultWithheld = Boolean(S.ballonDorMarket && S.ballonDorMarket.status === 'settled'
+      && !S.ballonDorMarket.result);
+    var indexLabel = String(candidateIndex + 1).padStart(2, '0');
+    var card = document.createElement('article');
+    card.className = 'est-bdo-opening-card';
+    card.dataset.candidateId = String(candidate.id || '');
+    card.dataset.candidateIndex = String(candidateIndex);
+    card.style.setProperty('--club-color', color);
+    card.style.setProperty('--club-ink', bestText(color));
+    card.setAttribute('aria-label', (candidate.playerName || 'Delantero') + ', ' + (candidate.clubName || 'club candidato'));
+
+    var aside = document.createElement('div');
+    aside.className = 'est-bdo-opening-card-aside';
+    var monogram = document.createElement('span');
+    monogram.className = 'est-bdo-opening-card-monogram';
+    monogram.textContent = candidate.clubShort || String(candidate.clubName || 'MC').slice(0, 3).toUpperCase();
+    monogram.setAttribute('aria-hidden', 'true');
+    var number = document.createElement('b');
+    number.className = 'est-bdo-opening-card-number';
+    number.textContent = '#' + fmt(candidate.playerNumber);
+    var roster = document.createElement('span');
+    roster.className = 'est-bdo-opening-card-roster';
+    roster.textContent = 'JUGADOR ' + indexLabel + ' / 16';
+    aside.appendChild(monogram);
+    aside.appendChild(number);
+    aside.appendChild(roster);
+
+    var content = document.createElement('div');
+    content.className = 'est-bdo-opening-card-content';
+    var club = document.createElement('span');
+    club.className = 'est-bdo-opening-card-club';
+    club.textContent = candidate.clubName || 'Club MonteCristo';
+    var player = document.createElement('h3');
+    player.className = 'est-bdo-opening-card-player';
+    player.textContent = candidate.playerName || 'Delantero';
+    var role = document.createElement('p');
+    role.className = 'est-bdo-opening-card-role';
+    role.textContent = (candidate.position || 'ST') + ' · Delantero centro';
+    var signature = document.createElement('p');
+    signature.className = 'est-bdo-opening-card-signature';
+    signature.textContent = resultWithheld
+      ? 'Las estadísticas oficiales se revelarán en la ceremonia.'
+      : ballonDorPlayerSignature(candidate);
+    content.appendChild(club);
+    content.appendChild(player);
+    content.appendChild(role);
+    content.appendChild(signature);
+
+    if (!resultWithheld) {
+      var facts = document.createElement('dl');
+      facts.className = 'est-bdo-opening-card-facts';
+      [
+        ['Goles', stats.goals], ['Asistencias', stats.assists],
+        ['Apariciones', stats.appearances], ['Puntos', candidate.points && candidate.points.total]
+      ].forEach(function (fact) {
+        var item = document.createElement('div');
+        var label = document.createElement('dt');
+        label.textContent = fact[0];
+        var value = document.createElement('dd');
+        value.textContent = fmt(fact[1]);
+        item.appendChild(label);
+        item.appendChild(value);
+        facts.appendChild(item);
+      });
+      content.appendChild(facts);
+    }
+
+    var skillSet = document.createElement('div');
+    skillSet.className = 'est-bdo-opening-card-skills';
+    [['Tiro', attributes.shooting], ['Ritmo', attributes.pace]].forEach(function (skill) {
+      var row = document.createElement('div');
+      row.className = 'est-bdo-opening-card-skill';
+      var label = document.createElement('span');
+      label.textContent = skill[0];
+      var meter = document.createElement('span');
+      meter.className = 'est-bdo-opening-card-meter';
+      meter.setAttribute('role', 'meter');
+      meter.setAttribute('aria-label', skill[0]);
+      meter.setAttribute('aria-valuemin', '0');
+      meter.setAttribute('aria-valuemax', '100');
+      meter.setAttribute('aria-valuenow', String(clamp(Number(skill[1]) || 0, 0, 100)));
+      var fill = document.createElement('i');
+      fill.style.width = clamp(Number(skill[1]) || 0, 0, 100) + '%';
+      meter.appendChild(fill);
+      var value = document.createElement('b');
+      value.textContent = fmt(skill[1]);
+      row.appendChild(label);
+      row.appendChild(meter);
+      row.appendChild(value);
+      skillSet.appendChild(row);
+    });
+    content.appendChild(skillSet);
+    card.appendChild(aside);
+    card.appendChild(content);
+    container.appendChild(card);
+    container.setAttribute('aria-label', 'Presentación individual, jugador ' + (candidateIndex + 1) + ' de 16');
+  }
+
+  function renderBallonDorOpeningScene(seconds) {
+    var stage = el['est-bdo-opening-stage'];
+    if (!stage) return;
+    var scene, playerIndex = -1, kicker, title, description, caption;
+    var month = ballonDorMonthLabel(S.ballonDorOpeningMonth);
+    if (seconds < 4) {
+      scene = 'opening';
+      kicker = 'INICIO DE TEMPORADA · ' + month;
+      title = 'Una carrera. Una corona.';
+      description = 'La Liga MonteCristo presenta el premio individual más esperado de la temporada.';
+      caption = 'La Liga MonteCristo presenta una nueva carrera por el Balón de Oro.';
+    } else if (seconds < 8) {
+      scene = 'lineup';
+      kicker = '16 CLUBES · 16 DELANTEROS';
+      title = 'Un representante por club';
+      description = 'La inauguración presenta a cada candidato del ciclo, uno por uno.';
+      caption = 'Dieciséis clubes. Dieciséis delanteros. Un solo ganador.';
+    } else if (seconds < 40) {
+      playerIndex = Math.min(15, Math.floor((seconds - 8) / 2));
+      var candidate = S.ballonDorOpeningCandidates[playerIndex] || {};
+      scene = 'reveal-' + (playerIndex + 1);
+      kicker = 'PRESENTACIÓN ' + String(playerIndex + 1).padStart(2, '0') + ' DE 16 · ' + (candidate.clubName || 'MONTECRISTO');
+      title = candidate.playerName || 'Delantero';
+      description = (candidate.clubName || 'Su club') + ' presenta a su delantero centro para el ciclo ' + month + '.';
+      caption = 'Conoce a ' + (candidate.playerName || 'este candidato') + ', de ' + (candidate.clubName || 'su club') + '. Sus estadísticas seguirán creciendo en la cancha.';
+    } else {
+      scene = 'final';
+      kicker = 'BALÓN DE ORO MONTECRISTO';
+      var status = S.ballonDorMarket && S.ballonDorMarket.status;
+      if (status === 'active') {
+        title = 'Observa. Elige. Vive la temporada.';
+        description = 'Predicciones con fichas virtuales · mercado hasta J20 · anuncio final al cierre del ciclo.';
+        caption = 'Revisa las estadísticas de cada candidato, elige tu pronóstico y acompaña la carrera hasta el anuncio final.';
+        el['est-bdo-opening-cta'].textContent = 'Ver candidatos y hacer mi predicción ›';
+      } else if (status === 'locked') {
+        title = 'La temporada sigue en juego.';
+        description = 'El mercado está cerrado; la liga continúa hacia el resultado oficial.';
+        caption = 'Sigue las estadísticas de los candidatos hasta que se defina el Balón de Oro.';
+        el['est-bdo-opening-cta'].textContent = 'Ver candidatos y clasificación ›';
+      } else if (status === 'settled' && S.ballonDorMarket && !S.ballonDorMarket.result
+          && Number(S.ballonDorMarket.resultAnnouncementAt) > Date.now()) {
+        title = 'El podio se prepara.';
+        description = 'La liquidación está guardada; la ceremonia revelará el resultado después del último partido, a las 10:00 p. m.';
+        caption = 'La clasificación oficial se anunciará a las 10:00 p. m., hora de Ciudad de México. La inauguración se presenta una sola vez por ciclo.';
+        el['est-bdo-opening-cta'].textContent = 'Ver horario del anuncio ›';
+      } else if (status === 'settled') {
+        title = 'El resultado ya es oficial.';
+        description = 'Consulta la clasificación final de los 16 candidatos del ciclo.';
+        caption = 'El Balón de Oro está decidido. Revisa el resultado oficial y las estadísticas de la temporada.';
+        el['est-bdo-opening-cta'].textContent = 'Ver resultado oficial ›';
+      } else if (status === 'cancelled') {
+        title = 'Ciclo cancelado.';
+        description = 'Esta edición no admite predicciones; puedes consultar los candidatos publicados.';
+        caption = 'La lista oficial de candidatos permanece disponible, aunque este ciclo no tendrá liquidación.';
+        el['est-bdo-opening-cta'].textContent = 'Ver candidatos del ciclo ›';
+      } else {
+        title = 'Observa. Elige. Vive la temporada.';
+        description = 'Conoce a los 16 delanteros y sigue su campaña en la Liga MonteCristo.';
+        caption = 'Revisa las estadísticas de cada candidato y acompaña la carrera hasta el anuncio final.';
+        el['est-bdo-opening-cta'].textContent = 'Ver candidatos ›';
+      }
+    }
+    if (S.ballonDorOpeningScene === scene) return;
+    S.ballonDorOpeningScene = scene;
+    stage.dataset.scene = scene;
+    stage.dataset.motion = reduced.matches ? 'reduced' : 'full';
+    el['est-bdo-opening-kicker'].textContent = kicker;
+    el['est-bdo-opening-title'].textContent = title;
+    el['est-bdo-opening-description'].textContent = description;
+    el['est-bdo-opening-caption'].textContent = caption;
+    el['est-bdo-opening-clubs'].hidden = scene !== 'lineup';
+    el['est-bdo-opening-cards'].hidden = playerIndex < 0;
+    el['est-bdo-opening-cta'].hidden = scene !== 'final';
+    if (scene === 'lineup') renderBallonDorOpeningClubDots();
+    if (playerIndex >= 0) renderBallonDorOpeningCards(playerIndex);
+    updateBallonDorOpeningControls();
+  }
+
+  function formatBallonDorOpeningTime(seconds) {
+    var safe = Math.max(0, Math.floor(Number(seconds) || 0));
+    return Math.floor(safe / 60) + ':' + String(safe % 60).padStart(2, '0');
+  }
+
+  function clearBallonDorOpeningTimer() {
+    if (S.ballonDorOpeningTimer != null) {
+      window.clearInterval(S.ballonDorOpeningTimer);
+      S.ballonDorOpeningTimer = null;
+    }
+  }
+
+  function updateBallonDorOpeningControls() {
+    var locked = S.ballonDorOpeningMandatory && !S.ballonDorOpeningComplete;
+    var play = el['est-bdo-opening-play'];
+    if (play) {
+      play.hidden = S.ballonDorOpeningComplete;
+      var shouldResume = S.ballonDorOpeningPaused;
+      play.textContent = shouldResume ? '▶ Reanudar' : 'Ⅱ Pausar';
+      play.setAttribute('aria-label', shouldResume ? 'Reanudar inauguración' : 'Pausar inauguración');
+    }
+    var enableAudio = el['est-bdo-opening-enable-audio'];
+    if (enableAudio) enableAudio.hidden = !S.ballonDorOpeningAudioBlocked || S.ballonDorOpeningComplete;
+    var close = el['est-bdo-opening-close'];
+    if (close) close.hidden = locked;
+    var skip = el['est-bdo-opening-skip'];
+    if (skip) skip.hidden = locked || S.ballonDorOpeningComplete;
+    var cta = el['est-bdo-opening-cta'];
+    if (cta) cta.disabled = locked;
+    var mute = el['est-bdo-opening-mute'];
+    if (mute) {
+      mute.textContent = S.ballonDorOpeningMuted ? '◖ Activar sonido' : '◖ Silenciar';
+      mute.setAttribute('aria-label', S.ballonDorOpeningMuted ? 'Activar sonido de la narración' : 'Silenciar narración');
+      mute.setAttribute('aria-pressed', String(S.ballonDorOpeningMuted));
+    }
+  }
+
+  function finishBallonDorOpening() {
+    clearBallonDorOpeningTimer();
+    S.ballonDorOpeningElapsed = BALLON_DOR_OPENING_SECONDS;
+    S.ballonDorOpeningComplete = true;
+    S.ballonDorOpeningPaused = true;
+    S.ballonDorOpeningMandatory = false;
+    if (el['est-bdo-opening']) el['est-bdo-opening'].classList.remove('is-mandatory');
+    var completionKey = BALLON_DOR_OPENING_KEY + S.ballonDorOpeningMonth;
+    try { localStorage.setItem(completionKey, 'completed'); }
+    catch (_) {
+      try { sessionStorage.setItem(completionKey, 'completed'); }
+      catch (_) { /* el estado de la sesión sigue bloqueando repeticiones */ }
+    }
+    renderBallonDorOpeningButton();
+    renderBallonDorOpeningScene(BALLON_DOR_OPENING_SECONDS);
+    el['est-bdo-opening-progress'].setAttribute('aria-valuenow', '100');
+    el['est-bdo-opening-progress-bar'].style.width = '100%';
+    el['est-bdo-opening-time'].textContent = '0:45 / 0:45';
+    el['est-bdo-opening-status'].textContent = 'Inauguración completada · no se repite durante este ciclo.';
+    updateBallonDorOpeningControls();
+  }
+
+  function updateBallonDorOpeningFrame(elapsed, duration) {
+    if (!el['est-bdo-opening'] || el['est-bdo-opening'].hidden || S.ballonDorOpeningPaused) return;
+    var total = Number(duration);
+    if (!Number.isFinite(total) || total <= 0) total = BALLON_DOR_OPENING_SECONDS;
+    var current = Math.max(0, Number(elapsed) || 0);
+    var progress = clamp(current / total, 0, 1);
+    S.ballonDorOpeningElapsed = progress * BALLON_DOR_OPENING_SECONDS;
+    renderBallonDorOpeningScene(S.ballonDorOpeningElapsed);
+    var percent = Math.round(progress * 100);
+    el['est-bdo-opening-progress'].setAttribute('aria-valuenow', String(percent));
+    el['est-bdo-opening-progress-bar'].style.width = percent + '%';
+    el['est-bdo-opening-time'].textContent = formatBallonDorOpeningTime(current) + ' / ' + formatBallonDorOpeningTime(total);
+    if (progress >= 1) finishBallonDorOpening();
+  }
+
+  function onBallonDorOpeningTimeUpdate() {
+    if (S.ballonDorOpeningMode !== 'audio' || S.ballonDorOpeningPaused) return;
+    var audio = el['est-bdo-opening-audio'];
+    updateBallonDorOpeningFrame(audio.currentTime, audio.duration);
+  }
+
+  function startBallonDorOpeningFallback(session, statusText, audioBlocked) {
+    if (session !== S.ballonDorOpeningSession || !el['est-bdo-opening'] || el['est-bdo-opening'].hidden) return;
+    if (audioBlocked !== false) reportBallonDorAudio('opening_narration', 'blocked', S.ballonDorOpeningMonth);
+    var audio = el['est-bdo-opening-audio'];
+    try { audio.pause(); } catch (_) { /* el navegador puede no exponer media */ }
+    S.ballonDorOpeningMode = 'visual';
+    S.ballonDorOpeningAudioBlocked = audioBlocked !== false;
+    S.ballonDorOpeningDuration = BALLON_DOR_OPENING_SECONDS;
+    S.ballonDorOpeningPaused = false;
+    S.ballonDorOpeningStartedAt = Date.now() - S.ballonDorOpeningElapsed * 1000;
+    el['est-bdo-opening-stage'].classList.remove('is-paused');
+    el['est-bdo-opening-status'].textContent = statusText || 'Narración no disponible · escenas y guion en pantalla.';
+    clearBallonDorOpeningTimer();
+    S.ballonDorOpeningTimer = window.setInterval(function () {
+      if (S.ballonDorOpeningPaused) return;
+      var elapsed = Math.max(0, (Date.now() - S.ballonDorOpeningStartedAt) / 1000);
+      updateBallonDorOpeningFrame(elapsed, BALLON_DOR_OPENING_SECONDS);
+    }, 100);
+    updateBallonDorOpeningFrame(S.ballonDorOpeningElapsed, BALLON_DOR_OPENING_SECONDS);
+    updateBallonDorOpeningControls();
+  }
+
+  function playBallonDorOpeningAudio(session) {
+    var audio = el['est-bdo-opening-audio'];
+    clearBallonDorOpeningTimer();
+    S.ballonDorOpeningMode = 'audio';
+    S.ballonDorOpeningAudioBlocked = false;
+    S.ballonDorOpeningPaused = false;
+    el['est-bdo-opening-stage'].classList.remove('is-paused');
+    el['est-bdo-opening-status'].textContent = 'Reproduciendo narración · español de México.';
+    updateBallonDorOpeningControls();
+    try {
+      var playback = audio.play();
+      if (playback && typeof playback.then === 'function') {
+        playback.then(function () {
+          if (session !== S.ballonDorOpeningSession || el['est-bdo-opening'].hidden) return;
+          reportBallonDorAudio('opening_narration', 'started', S.ballonDorOpeningMonth);
+          onBallonDorOpeningTimeUpdate();
+        }, function () {
+          startBallonDorOpeningFallback(session,
+            'Audio no disponible automáticamente · activa la narración si la quieres escuchar. La presentación continúa con texto.', true);
+        });
+      } else {
+        reportBallonDorAudio('opening_narration', 'started', S.ballonDorOpeningMonth);
+      }
+    } catch (_) {
+      startBallonDorOpeningFallback(session,
+        'Audio no disponible automáticamente · activa la narración si la quieres escuchar. La presentación continúa con texto.', true);
+    }
+  }
+
+  function openBallonDorOpening(options) {
+    var market = S.ballonDorMarket;
+    if (!market || !Array.isArray(market.candidates) || market.candidates.length !== 16) return;
+    var overlay = el['est-bdo-opening'];
+    var audio = el['est-bdo-opening-audio'];
+    if (!overlay || !audio || !overlay.hidden || hasCompletedBallonDorOpening(market.seasonMonth)) return;
+    var settings = options || {};
+    S.ballonDorOpeningSession++;
+    S.ballonDorOpeningFocus = document.activeElement;
+    S.ballonDorOpeningCandidates = market.candidates.slice();
+    S.ballonDorOpeningMonth = market.seasonMonth;
+    S.ballonDorOpeningElapsed = 0;
+    S.ballonDorOpeningDuration = BALLON_DOR_OPENING_SECONDS;
+    S.ballonDorOpeningScene = null;
+    S.ballonDorOpeningComplete = false;
+    S.ballonDorOpeningMandatory = Boolean(settings.mandatory);
+    S.ballonDorOpeningAudioBlocked = false;
+    S.ballonDorOpeningPaused = false;
+    S.ballonDorOpeningMode = 'audio';
+    S.ballonDorOpeningAutoShown[market.seasonMonth] = true;
+    clearBallonDorOpeningTimer();
+    overlay.hidden = false;
+    overlay.setAttribute('aria-hidden', 'false');
+    overlay.dataset.seasonMonth = market.seasonMonth || '';
+    overlay.classList.toggle('is-mandatory', S.ballonDorOpeningMandatory);
+    document.body.classList.add('est-bdo-opening-open');
+    try {
+      var key = BALLON_DOR_OPENING_KEY + market.seasonMonth;
+      if (localStorage.getItem(key) !== 'completed') localStorage.setItem(key, 'started');
+    } catch (_) { /* la presentación funciona aunque no se pueda persistir */ }
+    renderBallonDorOpeningButton();
+    audio.muted = S.ballonDorOpeningMuted;
+    try { audio.currentTime = 0; } catch (_) { /* metadata aún no cargada */ }
+    renderBallonDorOpeningScene(0);
+    el['est-bdo-opening-progress'].setAttribute('aria-valuenow', '0');
+    el['est-bdo-opening-progress-bar'].style.width = '0%';
+    el['est-bdo-opening-time'].textContent = '0:00 / 0:45';
+    el['est-bdo-opening-transcript-copy'].textContent = BALLON_DOR_OPENING_SCRIPT;
+    updateBallonDorOpeningControls();
+    playBallonDorOpeningAudio(S.ballonDorOpeningSession);
+    if (S.ballonDorOpeningMandatory) el['est-bdo-opening-play'].focus();
+    else el['est-bdo-opening-close'].focus();
+  }
+
+  function activateBallonDorOpeningAudio() {
+    if (!S.ballonDorOpeningAudioBlocked || S.ballonDorOpeningComplete) return;
+    var audio = el['est-bdo-opening-audio'];
+    if (!S.ballonDorOpeningPaused) {
+      S.ballonDorOpeningElapsed = Math.min(BALLON_DOR_OPENING_SECONDS,
+        Math.max(0, (Date.now() - S.ballonDorOpeningStartedAt) / 1000));
+    }
+    var duration = Number(audio.duration);
+    var progress = clamp(S.ballonDorOpeningElapsed / BALLON_DOR_OPENING_SECONDS, 0, 1);
+    try { audio.currentTime = Number.isFinite(duration) && duration > 0 ? duration * progress : BALLON_DOR_OPENING_SECONDS * progress; }
+    catch (_) { /* el navegador puede no permitir seek antes de cargar metadata */ }
+    S.ballonDorOpeningPaused = false;
+    playBallonDorOpeningAudio(S.ballonDorOpeningSession);
+  }
+
+  function toggleBallonDorOpeningPlayback() {
+    if (S.ballonDorOpeningComplete) return;
+    var audio = el['est-bdo-opening-audio'];
+    if (!S.ballonDorOpeningPaused) {
+      if (S.ballonDorOpeningMode === 'audio') {
+        try { audio.pause(); } catch (_) { /* audio opcional */ }
+        S.ballonDorOpeningElapsed = Number.isFinite(audio.duration) && audio.duration > 0
+          ? clamp(audio.currentTime / audio.duration, 0, 1) * BALLON_DOR_OPENING_SECONDS
+          : S.ballonDorOpeningElapsed;
+      } else {
+        S.ballonDorOpeningElapsed = Math.min(BALLON_DOR_OPENING_SECONDS,
+          Math.max(0, (Date.now() - S.ballonDorOpeningStartedAt) / 1000));
+        clearBallonDorOpeningTimer();
+      }
+      S.ballonDorOpeningPaused = true;
+      el['est-bdo-opening-stage'].classList.add('is-paused');
+      el['est-bdo-opening-status'].textContent = 'Inauguración en pausa.';
+    } else {
+      S.ballonDorOpeningPaused = false;
+      if (S.ballonDorOpeningMode === 'audio') playBallonDorOpeningAudio(S.ballonDorOpeningSession);
+      else startBallonDorOpeningFallback(S.ballonDorOpeningSession,
+        'Audio no disponible · escenas y guion en pantalla. Activa la narración si la quieres escuchar.', true);
+    }
+    updateBallonDorOpeningControls();
+  }
+
+  function muteBallonDorOpening() {
+    S.ballonDorOpeningMuted = !S.ballonDorOpeningMuted;
+    el['est-bdo-opening-audio'].muted = S.ballonDorOpeningMuted;
+    updateBallonDorOpeningControls();
+  }
+
+  function closeBallonDorOpening() {
+    var overlay = el['est-bdo-opening'];
+    if (!overlay || overlay.hidden || (S.ballonDorOpeningMandatory && !S.ballonDorOpeningComplete)) return;
+    S.ballonDorOpeningSession++;
+    clearBallonDorOpeningTimer();
+    try {
+      el['est-bdo-opening-audio'].pause();
+      el['est-bdo-opening-audio'].currentTime = 0;
+    } catch (_) { /* audio opcional */ }
+    overlay.hidden = true;
+    overlay.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('est-bdo-opening-open');
+    el['est-bdo-opening-stage'].classList.remove('is-paused');
+    S.ballonDorOpeningScene = null;
+    S.ballonDorOpeningPaused = false;
+    S.ballonDorOpeningMandatory = false;
+    S.ballonDorOpeningAudioBlocked = false;
+    overlay.classList.remove('is-mandatory');
+    renderBallonDorOpeningButton();
+    var focus = S.ballonDorOpeningFocus;
+    S.ballonDorOpeningFocus = null;
+    if (focus && focus.isConnected && typeof focus.focus === 'function') focus.focus();
+    else if (el['est-bdo-opening-start'] && !el['est-bdo-opening-start'].hidden) el['est-bdo-opening-start'].focus();
+  }
+
+  function onBallonDorOpeningKeydown(event) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!(S.ballonDorOpeningMandatory && !S.ballonDorOpeningComplete)) closeBallonDorOpening();
+      return;
+    }
+    if (event.key === 'Tab') {
+      var focusable = Array.prototype.slice.call(el['est-bdo-opening'].querySelectorAll('button:not([disabled]):not([hidden]), summary'));
+      if (focusable.length) {
+        var first = focusable[0], last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    }
+    event.stopPropagation();
+  }
+
+  function chooseBallonDorCandidate(candidateId) {
+    S.ballonDorSelection = candidateId;
+    S.ballonDorReview = null;
+    S.ballonDorIdempotencyKey = null;
+    S.ballonDorReceipt = null;
+    setBallonDorMessage('', '');
+    renderBallonDorMarket();
+    if (el['est-bdo-selection']) el['est-bdo-selection'].value = candidateId;
+    if (el['est-bdo-stake']) el['est-bdo-stake'].focus();
+  }
+
+  function renderBallonDorSlip(market, ticket) {
+    var slip = el['est-bdo-slip'];
+    if (!slip) return;
+    var active = market.status === 'active' && !ticket;
+    slip.hidden = !active;
+    if (!active) return;
+    var candidate = (market.candidates || []).find(function (item) { return item.id === S.ballonDorSelection; });
+    var quote = ballonDorQuote(candidate);
+    var hasProfile = Boolean(S.profile && S.profile.id);
+    var termsAccepted = tosAccepted();
+    var bounds = ballonDorStakeBounds();
+    el['est-bdo-bounds'].textContent = hasProfile
+      ? 'Saldo: ' + fmt(S.chips) + ' · Mínimo: ' + fmt(bounds.min) + ' · Máximo: ' + fmt(bounds.max) + ' fichas (máx. absoluto 25,000).'
+      : 'Saldo no disponible. Entra al Estadio para asociar tu perfil; la consulta del mercado sigue disponible por HTTP.';
+    el['est-bdo-stake'].min = bounds.min || 1;
+    el['est-bdo-stake'].max = bounds.max || 1;
+    el['est-bdo-stake'].disabled = !hasProfile || !termsAccepted || !quote || bounds.max <= 0 || Boolean(S.ballonDorReview || S.ballonDorSubmitting);
+    el['est-bdo-selection'].disabled = !hasProfile || !termsAccepted || !candidatesAreSelectable(market)
+      || Boolean(S.ballonDorReview || S.ballonDorSubmitting);
+    el['est-bdo-selection'].value = S.ballonDorSelection || '';
+    el['est-bdo-quote'].textContent = candidate && quote
+      ? 'Cuota vigente: ' + quote.toFixed(2) + ' · Probabilidad implícita: ' + pct(candidate.impliedProbability || (1 / quote)) +
+        ' · Pago potencial al stake actual: ' + fmt(Math.min(500000, Math.floor((Number(el['est-bdo-stake'].value) || 0) * quote))) + ' fichas.'
+      : 'Elige un candidato con cuota publicada para preparar tu predicción.';
+    var stake = Math.floor(Number(el['est-bdo-stake'].value) || 0);
+    var canReview = hasProfile && termsAccepted && Boolean(candidate && quote) && stake >= bounds.min && stake <= bounds.max
+      && !S.ballonDorSubmitting && !S.ballonDorReview;
+    el['est-bdo-review'].disabled = !canReview;
+    if (!hasProfile) setBallonDorMessage('Para apostar necesitas un perfil de Estadio. Conéctate al menos una vez; la tabla pública sigue disponible.', '');
+    else if (!termsAccepted) setBallonDorMessage('Acepta los Términos de Uso vigentes para habilitar las predicciones.', '');
+    else if (ticket) setBallonDorMessage('Ya tienes un boleto en este ciclo; no puedes cambiarlo ni hacer cash-out.', '');
+    if (S.ballonDorReview) {
+      el['est-bdo-confirmation'].hidden = false;
+      el['est-bdo-confirmation-copy'].textContent = 'Predicción: ' + ballonDorCandidateName(market, S.ballonDorReview.selection)
+        + '. Stake: ' + fmt(S.ballonDorReview.stake) + ' fichas. Cuota revisada: ' + Number(S.ballonDorReview.odds).toFixed(2)
+        + '. Pago potencial estimado: ' + fmt(S.ballonDorReview.potentialPayout) + ' fichas.';
+      el['est-bdo-confirm'].disabled = Boolean(S.ballonDorSubmitting);
+      el['est-bdo-confirm'].textContent = S.ballonDorSubmitting ? 'Enviando…' : 'Confirmar y descontar';
+      el['est-bdo-review'].hidden = true;
+    } else {
+      el['est-bdo-confirmation'].hidden = true;
+      el['est-bdo-confirm'].disabled = false;
+      el['est-bdo-confirm'].textContent = 'Confirmar y descontar';
+      el['est-bdo-review'].hidden = false;
+      el['est-bdo-review'].textContent = S.ballonDorIdempotencyKey ? 'Revisar y reintentar' : 'Revisar predicción';
+    }
+  }
+
+  function candidatesAreSelectable(market) {
+    return market.status === 'active' && Array.isArray(market.candidates) && market.candidates.length === 16
+      && !(currentBallonDorTicket());
+  }
+
+  function renderBallonDorReceipt(market, ticket) {
+    var box = el['est-bdo-receipt'];
+    if (!box) return;
+    box.hidden = !ticket;
+    if (!ticket) return;
+    var name = ballonDorCandidateName(market, ticket.selection);
+    var statusLabels = {
+      pending: 'Confirmación pendiente de persistencia', open: 'Activa · cuota congelada',
+      won: 'Ganada · premio acreditado', lost: 'No acertada', void: 'Anulada · stake reembolsado'
+    };
+    var payout = Math.max(0, Number(ticket.payout) || 0);
+    var status = statusLabels[ticket.status] || 'Estado: ' + String(ticket.status || 'no disponible');
+    var payoutLine = ticket.status === 'void'
+      ? 'Reembolso exacto: ' + fmt(payout) + ' fichas.'
+      : ticket.status === 'won'
+        ? 'Pago acreditado: ' + fmt(payout) + ' fichas (neto ' + fmt(payout - Number(ticket.stake || 0)) + ').'
+        : ticket.status === 'lost' ? 'Pago: 0 fichas.'
+          : 'Pago potencial: ' + fmt(ticket.potentialPayout) + ' fichas.';
+    el['est-bdo-receipt-body'].innerHTML =
+      '<div class="est-bdo-receipt-row"><span>Selección</span><b>' + esc(name) + '</b></div>' +
+      '<div class="est-bdo-receipt-row"><span>Stake</span><b>' + fmt(ticket.stake) + ' fichas</b></div>' +
+      '<div class="est-bdo-receipt-row"><span>Cuota congelada</span><b>' + Number(ticket.odds || 1).toFixed(2) + '</b></div>' +
+      '<div class="est-bdo-receipt-row"><span>Estado</span><b>' + esc(status) + '</b></div>' +
+      '<div class="est-bdo-receipt-row"><span>Liquidación</span><b>' + esc(payoutLine) + '</b></div>' +
+      '<div class="est-bdo-receipt-row"><span>Temporada</span><b>' + esc(ticket.seasonMonth || market.seasonMonth) + '</b></div>';
+  }
+
+  function bdoErrorText(code) {
+    return ({
+      no_identity: 'No se encontró tu perfil. Vuelve a entrar al Estadio e inténtalo otra vez.',
+      tos_required: 'Acepta los Términos de Uso vigentes antes de confirmar.',
+      temporada_no_actual: 'Tu perfil aún no está sincronizado con este mes. Espera un momento y reintenta.',
+      evento_no_disponible: 'No hay un ciclo disponible para recibir esta predicción.',
+      mercado_cerrado: 'Mercado cerrado: las predicciones terminan al asentarse los ocho partidos de J20.',
+      seleccion_invalida: 'Ese candidato no pertenece al ciclo actual.',
+      cuota_no_disponible: 'La cuota de esa selección todavía no está disponible.',
+      boleto_ya_colocado: 'Ya colocaste un boleto en este ciclo. No se puede cambiar ni retirar.',
+      boleto_anulado: 'El intento anterior fue anulado; actualiza tu historial antes de volver a intentarlo.',
+      stake_bajo_minimo: 'El monto está por debajo del mínimo común (10 % de tu saldo, ajustado para saldos bajos).',
+      stake_sobre_maximo: 'El monto supera el máximo común (50 % de tu saldo o 25,000 fichas).',
+      saldo_insuficiente: 'El saldo cambió y ya no alcanza para ese stake. Revisa el monto.',
+      rate_limit: 'Demasiados intentos seguidos. Espera un momento y reintenta.',
+      idempotency_key_invalida: 'No pudimos validar la clave del intento. Revisa de nuevo la predicción.',
+      persistencia_pendiente: 'La confirmación está pendiente de guardado. Puedes reintentar sin un segundo débito.',
+      origin_denied: 'La solicitud no pasó la validación de origen. Recarga el Estadio.',
+      network_error: 'No llegó una respuesta del servidor. Reintenta con el mismo boleto; la clave idempotente evita un segundo débito.',
+      market_unavailable: 'El mercado no está disponible ahora. Actualiza el Estadio antes de volver a intentar.',
+      internal: 'Ocurrió un error del servidor. Tu saldo se conserva; consulta el historial antes de reintentar.'
+    })[code] || 'No se pudo confirmar la predicción (' + String(code || 'error') + ').';
+  }
+
+  function newBallonDorIdempotencyKey() {
+    try { return 'bdo-' + crypto.randomUUID(); }
+    catch (_) { return 'bdo-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 14); }
+  }
+
+  function reviewBallonDorBet() {
+    if (S.ballonDorSubmitting || !S.ballonDorMarket || S.ballonDorMarket.status !== 'active') return;
+    if (!Array.isArray(S.ballonDorMarket.candidates) || S.ballonDorMarket.candidates.length !== 16) {
+      setBallonDorMessage('El ciclo no está completo: se requieren 16 candidatos publicados por el servidor.', 'error');
+      return;
+    }
+    var candidate = (S.ballonDorMarket.candidates || []).find(function (item) { return item.id === S.ballonDorSelection; });
+    var quote = ballonDorQuote(candidate);
+    var bounds = ballonDorStakeBounds();
+    var stake = Math.floor(Number(el['est-bdo-stake'].value) || 0);
+    if (!tosAccepted()) { setBallonDorMessage('Acepta los Términos de Uso vigentes antes de apostar.', 'error'); return; }
+    if (!S.profile || !S.profile.id) { setBallonDorMessage('Entra al Estadio para asociar un perfil antes de apostar.', 'error'); return; }
+    if (!candidate || !quote) { setBallonDorMessage('Selecciona un candidato con cuota disponible.', 'error'); return; }
+    if (stake < bounds.min || stake > bounds.max) {
+      setBallonDorMessage('Monto fuera del rango permitido: ' + fmt(bounds.min) + '–' + fmt(bounds.max) + ' fichas.', 'error');
+      el['est-bdo-stake'].focus();
+      return;
+    }
+    if (currentBallonDorTicket()) { setBallonDorMessage('Ya existe un boleto para este perfil y ciclo.', 'error'); renderBallonDorMarket(); return; }
+    if (!S.ballonDorIdempotencyKey) S.ballonDorIdempotencyKey = newBallonDorIdempotencyKey();
+    S.ballonDorReview = {
+      selection: candidate.id, stake: stake, odds: quote,
+      potentialPayout: Math.min(500000, Math.floor(stake * quote))
+    };
+    setBallonDorMessage('', '');
+    renderBallonDorMarket();
+    el['est-bdo-confirm'].focus();
+  }
+
+  function confirmBallonDorBet() {
+    if (!S.ballonDorReview || S.ballonDorSubmitting) return;
+    if (!tosAccepted()) { setBallonDorMessage('Acepta los Términos de Uso vigentes antes de confirmar.', 'error'); return; }
+    var market = S.ballonDorMarket;
+    if (!market || market.status !== 'active') {
+      setBallonDorMessage('Mercado cerrado. Actualizamos el estado antes de intentar otra vez.', 'error');
+      S.ballonDorReview = null;
+      loadBallonDorMarket();
+      return;
+    }
+    var current = (market.candidates || []).find(function (candidate) { return candidate.id === S.ballonDorReview.selection; });
+    var quote = ballonDorQuote(current);
+    if (!quote || quote !== Number(S.ballonDorReview.odds)) {
+      S.ballonDorReview = null;
+      S.ballonDorIdempotencyKey = null;
+      setBallonDorMessage('La cuota cambió. Revisa de nuevo antes de confirmar.', 'error');
+      renderBallonDorMarket();
+      return;
+    }
+    var payload = {
+      selection: S.ballonDorReview.selection,
+      stake: S.ballonDorReview.stake,
+      idempotencyKey: S.ballonDorIdempotencyKey || newBallonDorIdempotencyKey()
+    };
+    S.ballonDorIdempotencyKey = payload.idempotencyKey;
+    S.ballonDorSubmitting = true;
+    renderBallonDorMarket();
+    setBallonDorMessage('Enviando la predicción con la cuota del servidor…', '');
+
+    var complete = false;
+    var timeout = window.setTimeout(function () {
+      if (complete) return;
+      complete = true;
+      S.ballonDorSubmitting = false;
+      setBallonDorMessage('No llegó la confirmación a tiempo. Reintenta con la misma clave idempotente; no se duplicará el débito.', 'error');
+      renderBallonDorMarket();
+    }, 10000);
+    function finish(result) {
+      if (complete) return;
+      complete = true;
+      window.clearTimeout(timeout);
+      S.ballonDorSubmitting = false;
+      if (!result || !result.ok || !result.future) {
+        if (result && result.code === 'tos_required') {
+          S.ballonDorReview = null;
+          S.ballonDorIdempotencyKey = null;
+          el['est-tos'].hidden = false;
+        }
+        setBallonDorMessage(bdoErrorText(result && result.code), 'error');
+        if (result && ['mercado_cerrado', 'boleto_ya_colocado', 'persistencia_pendiente'].indexOf(result.code) >= 0) {
+          loadBallonDorMarket();
+          loadBetHistory({ force: true });
+        }
+        renderBallonDorMarket();
+        return;
+      }
+      S.chips = Number(result.chips != null ? result.chips : (S.chips - payload.stake));
+      if (!Number.isFinite(S.chips)) S.chips = 0;
+      updateChips();
+      S.ballonDorReceipt = result.future;
+      S.ballonDorReview = null;
+      S.ballonDorIdempotencyKey = null;
+      S.ballonDorSelection = result.future.selection || payload.selection;
+      setBallonDorMessage(result.replayed
+        ? 'Reintento reconocido: se recuperó tu boleto original sin volver a descontar fichas.'
+        : 'Predicción confirmada. La cuota y el stake quedaron congelados en el recibo.', 'success');
+      renderBallonDorMarket();
+      loadBetHistory({ force: true });
+      if (!result.replayed) bell('bet');
+    }
+
+    if (S.socket && S.socket.connected) {
+      try {
+        S.socket.emit('football:ballon_dor_bet', payload, finish);
+      } catch (_) { finish({ ok: false, code: 'network_error' }); }
+      return;
+    }
+    fetch('/api/estadio/ballon-dor/bet', {
+      method: 'POST',
+      cache: 'no-store',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': payload.idempotencyKey },
+      body: JSON.stringify({ token: S.token, selection: payload.selection, stake: payload.stake, idempotencyKey: payload.idempotencyKey, tos: S.tosVersion })
+    }).then(function (response) {
+      return response.json().catch(function () { return null; }).then(function (data) {
+        return { ok: response.ok, data: data };
+      });
+    }).then(function (response) { finish(response.data); })
+      .catch(function () { finish({ ok: false, code: 'network_error' }); });
+  }
+
+  function editBallonDorBet() {
+    if (S.ballonDorSubmitting) return;
+    S.ballonDorReview = null;
+    S.ballonDorIdempotencyKey = null;
+    setBallonDorMessage('', '');
+    renderBallonDorMarket();
+    if (el['est-bdo-selection']) el['est-bdo-selection'].focus();
   }
 
   function selectMatch(matchId) {
@@ -1743,6 +3832,99 @@
   var BETS_SEEN_KEY = 'mc-estadio-bets-seen';
   var LEDGER_HASH = '#apuestas';
   var LEDGER_STALE_MS = 20000;   // al abrir, si el historial es más viejo, se refresca
+  var BET_RANKING_AVATARS = { fox: '🦊', tiger: '🐯', panda: '🐼', owl: '🦉', alien: '👽', robot: '🤖', crown: '👑', diamond: '💎' };
+
+  function setBetRankingSubscription(active) {
+    S.betRankingSubscribed = Boolean(active);
+    if (!S.socket || !S.socket.connected) return;
+    S.socket.emit(active ? 'bet_ranking_get' : 'bet_ranking_unsubscribe');
+  }
+
+  function setLedgerView(view) {
+    S.ledgerView = view === 'ranking' ? 'ranking' : 'history';
+    var ranking = S.ledgerView === 'ranking';
+    if (el['est-ledger-history-view']) el['est-ledger-history-view'].hidden = ranking;
+    if (el['est-ledger-ranking-view']) el['est-ledger-ranking-view'].hidden = !ranking;
+    if (el['est-ledger-tab-history']) el['est-ledger-tab-history'].setAttribute('aria-pressed', String(!ranking));
+    if (el['est-ledger-tab-ranking']) el['est-ledger-tab-ranking'].setAttribute('aria-pressed', String(ranking));
+    if (el['est-ledger-title']) el['est-ledger-title'].textContent = ranking ? 'Ranking global de apuestas' : 'Historial de apuestas y pagos';
+    if (el['est-ledger-sub']) el['est-ledger-sub'].textContent = ranking
+      ? 'Tu espacio personal en vivo: volumen acumulado del Casino y el Estadio, medido en fichas virtuales.'
+      : 'Todas tus apuestas del Estadio, cómo terminó cada partido y lo que se acreditó a tu saldo.';
+    setBetRankingSubscription(ranking);
+    if (ranking) renderBetRanking();
+  }
+
+  function renderBetRanking() {
+    var list = el['est-bet-ranking-list'];
+    var personal = el['est-bet-ranking-personal'];
+    if (!list || !personal) return;
+    var snapshot = S.betRanking;
+    var source = ['total', 'casino', 'stadium'].indexOf(S.betRankingSource) >= 0 ? S.betRankingSource : 'total';
+    var labels = { total: 'Total', casino: 'Casino', stadium: 'Estadio' };
+    var fields = {
+      total: { rank: 'totalRank', amount: 'totalWagered' },
+      casino: { rank: 'casinoRank', amount: 'casinoWagered' },
+      stadium: { rank: 'stadiumRank', amount: 'stadiumWagered' }
+    };
+    Array.prototype.forEach.call(document.querySelectorAll('[data-bet-ranking-source]'), function (button) {
+      var selected = button.getAttribute('data-bet-ranking-source') === source;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+    var connected = Boolean(S.socket && S.socket.connected);
+    if (el['est-bet-ranking-live']) {
+      el['est-bet-ranking-live'].textContent = connected ? '● EN VIVO' : '○ Reconectando…';
+      el['est-bet-ranking-live'].classList.toggle('disconnected', !connected);
+    }
+    if (!snapshot) {
+      personal.innerHTML = '<div class="est-bet-ranking-empty">' + (connected ? 'Conectando con el ranking…' : 'Sin conexión. Se actualizará al reconectar.') + '</div>';
+      list.innerHTML = '<div class="est-bet-ranking-empty">' + (connected ? 'Solicitando la clasificación combinada…' : 'El ranking requiere conexión.') + '</div>';
+      return;
+    }
+    var me = snapshot.me;
+    var metric = fields[source];
+    if (me) {
+      var rank = me[metric.rank];
+      var sourceParticipants = snapshot.participantsBySource && snapshot.participantsBySource[source] != null
+        ? snapshot.participantsBySource[source] : (snapshot.participants || 0);
+      var stadiumDecisions = Number(me.stadiumDecisions) || 0;
+      var stadiumWins = Number(me.stadiumWins) || 0;
+      var stadiumLosses = Number(me.stadiumLosses) || 0;
+      var stadiumHitRate = me.stadiumHitRate == null ? '—' : fmt(me.stadiumHitRate) + '%';
+      var stadiumNet = Math.trunc(Number(me.stadiumNet) || 0);
+      var stadiumNetLabel = (stadiumNet > 0 ? '+' : stadiumNet < 0 ? '−' : '') + '◆ ' + fmt(Math.abs(stadiumNet));
+      var stadiumNetTone = stadiumNet > 0 ? 'positive' : stadiumNet < 0 ? 'negative' : 'neutral';
+      personal.innerHTML = '<div class="est-bet-ranking-me-place"><small>TU PUESTO · ' + labels[source].toUpperCase() + '</small><b>' + (rank ? '#' + fmt(rank) : '—') + '</b><span>' + (rank ? 'de ' + fmt(sourceParticipants) + ' jugadores' : 'Aún sin apuestas en este ranking') + '</span></div>' +
+        '<div class="est-bet-ranking-me-total"><small>VOLUMEN ACUMULADO</small><b>◆ ' + fmt(me.totalWagered) + '</b><span>Casino + Estadio</span></div>' +
+        '<div class="est-bet-ranking-me-source"><small>CASINO</small><b>◆ ' + fmt(me.casinoWagered) + '</b><span>Fichas apostadas</span></div>' +
+        '<div class="est-bet-ranking-me-source"><small>ESTADIO</small><b>◆ ' + fmt(me.stadiumWagered) + '</b><span>' + fmt(me.stadiumBets || 0) + ' apuestas</span></div>' +
+        '<div class="est-bet-ranking-me-source est-bet-ranking-me-performance"><small>ACIERTOS · ESTADIO</small><b>' + stadiumHitRate + '</b><span>' + (stadiumDecisions ? fmt(stadiumWins) + ' ganadas · ' + fmt(stadiumLosses) + ' perdidas' : 'Sin resultados definitivos') + '</span></div>' +
+        '<div class="est-bet-ranking-me-source est-bet-ranking-me-performance"><small>NETO · ESTADIO</small><b class="est-bet-ranking-net ' + stadiumNetTone + '">' + stadiumNetLabel + '</b><span>Balance de ' + fmt(me.stadiumSettledBets || 0) + ' apuestas liquidadas</span></div>';
+    } else {
+      personal.innerHTML = '<div class="est-bet-ranking-empty">No pudimos asociar esta conexión con un perfil del ranking.</div>';
+    }
+    if (el['est-bet-ranking-updated']) {
+      var time = snapshot.updatedAt ? new Date(snapshot.updatedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '';
+      el['est-bet-ranking-updated'].textContent = fmt(snapshot.totalWagered || 0) + ' fichas apostadas en ' + fmt(snapshot.participants || 0) + ' jugadores' + (time ? ' · actualizado ' + time : '') + '. Fichas 100% virtuales.';
+    }
+    var entries = snapshot.ranking[source] || [];
+    if (!entries.length) {
+      list.innerHTML = '<div class="est-bet-ranking-empty">Todavía no hay apuestas registradas en ' + labels[source] + '.</div>';
+      return;
+    }
+    var medals = ['🥇', '🥈', '🥉'];
+    list.innerHTML = entries.map(function (entry) {
+      var own = Boolean(me && me.name === entry.name);
+      return '<div class="est-bet-ranking-row ' + (entry.place === 1 ? 'leader ' : '') + (own ? 'self' : '') + '" role="row">' +
+        '<span class="est-bet-ranking-place" role="cell">' + (medals[entry.place - 1] || '#' + fmt(entry.place)) + '</span>' +
+        '<span class="est-bet-ranking-player" role="cell"><i>' + (BET_RANKING_AVATARS[entry.avatar] || '🦊') + '</i><b>' + esc(entry.name) + '</b></span>' +
+        '<span class="est-bet-ranking-value primary" role="cell">◆ ' + fmt(entry.totalWagered) + '</span>' +
+        '<span class="est-bet-ranking-value" role="cell">◆ ' + fmt(entry.casinoWagered) + '</span>' +
+        '<span class="est-bet-ranking-value" role="cell">◆ ' + fmt(entry.stadiumWagered) + '</span>' +
+        '</div>';
+    }).join('');
+  }
 
   function betsSeenId() { return 'p:' + ((S.profile && S.profile.id) || S.token || 'anon'); }
   function betsSeenAt() {
@@ -1770,6 +3952,7 @@
     root.hidden = false;
     if (document.body.classList) document.body.classList.add('est-ledger-open');
     try { if (location.hash !== LEDGER_HASH) history.replaceState(null, '', LEDGER_HASH); } catch (e) { /* sin history */ }
+    setLedgerView('history');
     renderLedger();
     renderLedgerBadges();
     // Si el historial es viejo se pide fresco al abrir (el jugador viene a ver
@@ -1787,6 +3970,7 @@
   function closeLedger() {
     var root = el['est-ledger'];
     if (!root || root.hidden) return;
+    setBetRankingSubscription(false);
     root.hidden = true;
     if (document.body.classList) document.body.classList.remove('est-ledger-open');
     try { if (location.hash === LEDGER_HASH) history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* sin history */ }
@@ -1835,6 +4019,7 @@
         if (!data || !data.ok || !data.history) {
           S.betsError = 'load';
           if (ledgerOpen()) renderLedger();
+          renderBallonDorMarket();
           return null;
         }
         S.betHistory = data.history;
@@ -1851,6 +4036,7 @@
         }
         renderLedgerBadges();
         if (ledgerOpen()) renderLedger();
+        renderBallonDorMarket();
         return data.history;
       })
       .catch(function () {
@@ -1858,6 +4044,7 @@
         S.betsLoading = false;
         S.betsError = 'load';
         if (ledgerOpen()) renderLedger();
+        renderBallonDorMarket();
         return null;
       });
   }
@@ -1974,9 +4161,11 @@
     var s = summary || {};
     var staked = Number(s.staked) || 0, returned = Number(s.returned) || 0, net = Number(s.net) || 0;
     var byStatus = s.byStatus || {};
-    var settled = Number(byStatus.won || 0) + Number(byStatus.lost || 0) + Number(byStatus.void || 0) + Number(byStatus.cashed || 0);
-    var hits = Number(byStatus.won || 0) + Number(byStatus.cashed || 0);
-    var hitRate = settled ? Math.round(hits / settled * 100) : 0;
+    var won = Number(byStatus.won || 0), lost = Number(byStatus.lost || 0);
+    var settled = won + lost + Number(byStatus.void || 0) + Number(byStatus.cashed || 0);
+    var hits = won + Number(byStatus.cashed || 0);
+    var decisions = won + lost;
+    var hitRate = decisions ? Math.round(won / decisions * 100) : null;
     function card(label, value, note, tone, extra) {
       return '<div class="est-ledger-stat' + (tone ? ' ' + tone : '') + '">' +
         '<span class="est-ledger-stat-label">' + esc(label) + '</span>' +
@@ -1988,7 +4177,7 @@
     box.innerHTML =
       card('Apostado', fmt(staked), settled + (settled === 1 ? ' apuesta resuelta' : ' apuestas resueltas'), '') +
       card('Cobrado', fmt(returned), hits + (hits === 1 ? ' con pago' : ' con pago'), 'up') +
-      card('Neto', (net > 0 ? '+' : net < 0 ? '−' : '') + fmt(Math.abs(net)), settled ? hitRate + ' % de acierto' : 'sin apuestas resueltas', net > 0 ? 'up' : net < 0 ? 'down' : '') +
+      card('Neto', (net > 0 ? '+' : net < 0 ? '−' : '') + fmt(Math.abs(net)), decisions ? hitRate + ' % de acierto' : 'sin decisiones definitivas', net > 0 ? 'up' : net < 0 ? 'down' : '') +
       card('En juego', fmt(Number(s.openStake) || 0), (Number(s.open) || 0) + ((Number(s.open) || 0) === 1 ? ' apuesta abierta' : ' apuestas abiertas'), 'pending',
         Number(s.open) ? 'paga hasta ' + fmt(Number(s.openPotentialPayout) || 0) : '');
   }
@@ -2203,15 +4392,34 @@
   function onSettlement(data) {
     if (!data) return;
     var won = data.status === 'won';
+    if (S.ballonDorReceipt && S.ballonDorReceipt.id === data.betId) {
+      S.ballonDorReceipt.status = data.status;
+      S.ballonDorReceipt.payout = Number(data.payout) || 0;
+      S.ballonDorReceipt.settledAt = Date.now();
+      S.ballonDorReceipt.reason = data.reason || null;
+    }
+    if (S.betHistory && Array.isArray(S.betHistory.entries)) {
+      S.betHistory.entries.forEach(function (entry) {
+        if (entry.kind === 'future' && entry.id === data.betId) {
+          entry.status = data.status;
+          entry.payout = Number(data.payout) || 0;
+          entry.settledAt = Date.now();
+        }
+      });
+    }
     S.myBets = S.myBets.filter(function (b) { return b.id !== data.betId; });
     renderMyBets();
     if (won) { S.chips += Number(data.payout || 0); toast('¡Apuesta ganada! +' + fmt(data.payout) + ' fichas.', 'win'); bell('win'); }
     else if (data.status === 'lost') { toast('Apuesta perdida' + (data.reason ? ': ' + data.reason : '') + '.', 'lose'); }
-    else { toast('Apuesta ' + (data.status === 'void' ? 'anulada (reembolso)' : data.status) + '.', ''); }
+    else {
+      if (data.status === 'void' && Number(data.payout) > 0) S.chips += Number(data.payout);
+      toast('Apuesta ' + (data.status === 'void' ? 'anulada (reembolso)' : data.status) + '.', '');
+    }
     updateChips();
-    // El historial se refresca aquí para que el pago quede registrado aunque el
-    // jugador cierre la pestaña justo después de ver el aviso.
-    loadBetHistory();
+    // El historial refresca el saldo autoritativo y muestra la liquidación BDO.
+    loadBetHistory({ force: true });
+    loadBallonDorMarket();
+    renderBallonDorMarket();
     // Refresca saldo autoritario del servidor en la siguiente pintura de lobby.
   }
   function updateChips() { el['est-chips'].textContent = fmt(S.chips) + ' fichas'; }
@@ -2576,7 +4784,9 @@
   // ===== UI: enlaces, atajos, TOS =====
   function bindUI() {
     el['est-tos-accept'].addEventListener('click', function () {
-      localStorage.setItem(TOS_KEY, S.tosVersion); el['est-tos'].hidden = true; connect();
+      localStorage.setItem(TOS_KEY, S.tosVersion); el['est-tos'].hidden = true;
+      renderBallonDorMarket();
+      connect();
     });
     el['est-promo-refresh'].addEventListener('click', refreshPromotionSession);
     el['est-promo-form'].addEventListener('submit', submitPromotion);
@@ -2593,12 +4803,91 @@
     });
     el['est-slip-clear'].addEventListener('click', closeSlip);
     el['est-place-bet'].addEventListener('click', placeBet);
+    el['est-bdo-retry'].addEventListener('click', loadBallonDorMarket);
+    el['est-bdo-selection'].addEventListener('change', function () {
+      S.ballonDorSelection = el['est-bdo-selection'].value || '';
+      S.ballonDorReview = null;
+      S.ballonDorIdempotencyKey = null;
+      setBallonDorMessage('', '');
+      renderBallonDorMarket();
+    });
+    el['est-bdo-stake'].addEventListener('input', function () {
+      if (!S.ballonDorReview) renderBallonDorMarket();
+    });
+    el['est-bdo-review'].addEventListener('click', reviewBallonDorBet);
+    el['est-bdo-confirm'].addEventListener('click', confirmBallonDorBet);
+    el['est-bdo-edit'].addEventListener('click', editBallonDorBet);
+    el['est-bdo-opening-start'].addEventListener('click', function () {
+      openBallonDorOpening({ mandatory: true });
+    });
+    el['est-bdo-ceremony-start'].addEventListener('click', openBallonDorCeremony);
+    el['est-bdo-ceremony-play'].addEventListener('click', toggleBallonDorCeremonyPlayback);
+    el['est-bdo-ceremony-music'].addEventListener('click', toggleBallonDorCeremonyMusic);
+    el['est-bdo-ceremony-narration'].addEventListener('click', toggleBallonDorCeremonyNarration);
+    el['est-bdo-ceremony-replay'].addEventListener('click', replayBallonDorCeremony);
+    el['est-bdo-ceremony-close'].addEventListener('click', closeBallonDorCeremony);
+    el['est-bdo-ceremony'].addEventListener('keydown', onBallonDorCeremonyKeydown);
+    el['est-bdo-ceremony'].addEventListener('click', function (event) {
+      if (event.target.classList.contains('est-bdo-ceremony-scrim')) closeBallonDorCeremony();
+    });
+    el['est-bdo-opening-play'].addEventListener('click', toggleBallonDorOpeningPlayback);
+    el['est-bdo-opening-enable-audio'].addEventListener('click', activateBallonDorOpeningAudio);
+    el['est-bdo-opening-mute'].addEventListener('click', muteBallonDorOpening);
+    el['est-bdo-opening-skip'].addEventListener('click', closeBallonDorOpening);
+    el['est-bdo-opening-close'].addEventListener('click', closeBallonDorOpening);
+    el['est-bdo-opening-cta'].addEventListener('click', function () {
+      var market = S.ballonDorMarket;
+      var target = market && market.status === 'active'
+        ? el['est-bdo-bet-area']
+        : (market && market.status === 'settled' && !market.result
+          ? el['est-bdo-finalization'] : el['est-bdo-table-wrap']);
+      if (!target || target.hidden) target = el['est-bdo-table-wrap'];
+      closeBallonDorOpening();
+      if (target && typeof target.scrollIntoView === 'function') {
+        try { target.scrollIntoView({ behavior: reduced.matches ? 'auto' : 'smooth', block: 'center' }); }
+        catch (_) { target.scrollIntoView(); }
+      }
+    });
+    el['est-bdo-opening'].addEventListener('keydown', onBallonDorOpeningKeydown);
+    el['est-bdo-opening'].addEventListener('click', function (event) {
+      if (event.target.classList.contains('est-bdo-opening-scrim')) closeBallonDorOpening();
+    });
+    el['est-bdo-opening-audio'].addEventListener('timeupdate', onBallonDorOpeningTimeUpdate);
+    el['est-bdo-opening-audio'].addEventListener('durationchange', onBallonDorOpeningTimeUpdate);
+    el['est-bdo-opening-audio'].addEventListener('ended', function () {
+      reportBallonDorAudio('opening_narration', 'completed', S.ballonDorOpeningMonth);
+      finishBallonDorOpening();
+    });
+    el['est-bdo-opening-audio'].addEventListener('error', function () {
+      reportBallonDorAudio('opening_narration', 'error', S.ballonDorOpeningMonth);
+      startBallonDorOpeningFallback(S.ballonDorOpeningSession, 'Audio no disponible · las escenas y el guion siguen disponibles.');
+    });
+    ['music', 'narration'].forEach(function (kind) {
+      var audio = el['est-bdo-ceremony-' + kind + '-audio'];
+      var track = kind === 'music' ? 'ceremony_music' : 'ceremony_narration';
+      if (!audio) return;
+      audio.addEventListener('ended', function () {
+        reportBallonDorAudio(track, 'completed', S.ballonDorCeremonyMonth);
+      });
+      audio.addEventListener('error', function () {
+        ceremonyAudioFailed(S.ballonDorCeremonySession, track, 'error');
+      });
+    });
     // Historial y pagos: vista propia (diálogo a pantalla completa).
     var ledgerNav = $('est-ledger-open-nav'), ledgerPanel = $('est-ledger-open');
     if (ledgerNav) ledgerNav.addEventListener('click', function (e) { openLedger(e.currentTarget); });
     if (ledgerPanel) ledgerPanel.addEventListener('click', function (e) { openLedger(e.currentTarget); });
     if (el['est-ledger-close']) el['est-ledger-close'].addEventListener('click', closeLedger);
     if (el['est-ledger-back']) el['est-ledger-back'].addEventListener('click', closeLedger);
+    if (el['est-ledger-ranking-back']) el['est-ledger-ranking-back'].addEventListener('click', closeLedger);
+    if (el['est-ledger-tab-history']) el['est-ledger-tab-history'].addEventListener('click', function () { setLedgerView('history'); });
+    if (el['est-ledger-tab-ranking']) el['est-ledger-tab-ranking'].addEventListener('click', function () { setLedgerView('ranking'); });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-bet-ranking-source]'), function (button) {
+      button.addEventListener('click', function () {
+        S.betRankingSource = button.getAttribute('data-bet-ranking-source') || 'total';
+        renderBetRanking();
+      });
+    });
     if (el['est-ledger-refresh']) el['est-ledger-refresh'].addEventListener('click', function () {
       loadBetHistory({ force: true }).then(function () { toast('Historial y pagos actualizados.', ''); });
     });

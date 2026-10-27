@@ -14,6 +14,7 @@ const fs = require('node:fs');
 const { FootballStore } = require('../lib/football-store');
 const { ProfileStore } = require('../lib/profile-store');
 const { createBettingService } = require('../lib/football/betting');
+const { BallonDorMarketService } = require('../lib/football/ballon-dor-market');
 const { registerFootballSockets, publicBet, matchRoom, LOBBY_ROOM, profileRoom } = require('../lib/football/sockets');
 const { monthKey } = require('../lib/football-store-shared');
 const { CLUB_BY_ID } = require('../lib/football/teams');
@@ -109,8 +110,11 @@ function setup(opts = {}) {
     const m = store.getMatches(month).find(x => x.status === 'scheduled');
     return m ? m.scheduledKickoffAt : Date.now();
   });
+  const betPlacements = [];
   const sockets = registerFootballSockets(io.io, {
     betting, engine, store, profiles,
+    ballonDorMarket: opts.ballonDorMarket || null,
+    onBetPlaced: details => { betPlacements.push(details); opts.onBetPlaced?.(details); },
     config: opts.config || { matchCapacity: opts.matchCap || 40, lobbyCapacity: 200 },
     log: () => {}, now: typeof nowVal === 'function' ? nowVal : () => nowVal,
     nameIssue, verifyTosAcceptance,
@@ -119,7 +123,7 @@ function setup(opts = {}) {
 
   const scheduled = store.getMatches(month).find(m => m.status === 'scheduled');
   const cleanup = () => { try { sockets.stop(); } catch (_) {} try { store.close(); } catch (_) {} try { profiles.saveNow(); } catch (_) {} fs.rmSync(dir, { recursive: true, force: true }); };
-  return { dir, store, profiles, betting, engine, io, sockets, spy, scheduled, month, nameIssue, cleanup };
+  return { dir, store, profiles, betting, engine, io, sockets, spy, betPlacements, scheduled, month, nameIssue, cleanup };
 }
 
 function subscribe(ctx, socket, payload = {}) {
@@ -362,6 +366,14 @@ test('bet suscrito: debita, guarda y devuelve publicBet sin fugas', async (t) =>
   assert.equal(pb.market, '1x2');
   assert.equal(pb.stake, 100);
   assert.ok(pb.odds >= 1.05);
+  assert.deepEqual(ctx.betPlacements, [{ profileId: sub.profile.id, kind: 'bet', stake: 100 }]);
+
+  const replay = await new Promise(resolve => s._fire('football:bet', {
+    matchId: ctx.scheduled.id, market: '1x2', selection: 'home', stake: 100
+  }, resolve));
+  assert.equal(replay.ok, true);
+  assert.equal(replay.replayed, true);
+  assert.equal(ctx.betPlacements.length, 1, 'un reintento no vuelve a difundir volumen');
 });
 
 test('publicBet() proyecta solo campos públicos', () => {
@@ -452,6 +464,30 @@ test('status del motor: avisa a la sala del partido Y refresca el lobby', (t) =>
   ctx.engine.emit('football:status', { matchId: ctx.scheduled.id, code: 'match_started', minute: 0 });
   assert.ok(ctx.io.lastTo(matchRoom(ctx.scheduled.id), 'football:status'), 'status al partido');
   assert.ok(ctx.io.lastTo(LOBBY_ROOM, 'football:lobby'), 'lobby refrescado');
+});
+
+test('cada full_time difunde al lobby el mercado BDO recalculado para la temporada del partido asentado', (t) => {
+  const requestedMonths = [];
+  const ballonDorMarket = {
+    getMarket(seasonMonth) {
+      requestedMonths.push(seasonMonth);
+      return { market: 'balon_de_oro', seasonMonth, status: 'active', updatedAt: requestedMonths.length };
+    }
+  };
+  const ctx = setup({ ballonDorMarket });
+  t.after(ctx.cleanup);
+  const matches = ctx.store.getMatches(ctx.month).filter(match => match.status === 'scheduled').slice(0, 2);
+  assert.equal(matches.length, 2);
+
+  matches.forEach(match => ctx.engine.emit('football:status', {
+    matchId: match.id, code: 'full_time', minute: 90
+  }));
+
+  const updates = ctx.io.emittedTo(LOBBY_ROOM, 'football:ballon_dor_market');
+  assert.equal(updates.length, 2, 'cada partido asentado publica una actualización del mercado');
+  assert.deepEqual(requestedMonths, matches.map(match => match.seasonMonth));
+  assert.deepEqual(updates.map(update => update.payload.market.seasonMonth), requestedMonths);
+  assert.deepEqual(updates.map(update => update.payload.market.updatedAt), [1, 2]);
 });
 
 test('reprogramación del motor: difunde football:rescheduled y status con nuevo kickoff y actualiza el lobby', (t) => {
@@ -584,4 +620,58 @@ test('relato: dos eventos iguales seguidos no repiten la misma plantilla (memori
   // Con memoria anti-repetición, si hay dos líneas de narrador no deben ser idénticas.
   if (narr.length >= 2) assert.notEqual(narr[0], narr[narr.length - 1], 'la memoria evita la repetición inmediata');
   assert.ok(narr.length >= 1, 'shot_on_target produce relato');
+});
+
+test('socket BDO usa identidad suscrita, devuelve mercado público y descarta cuota/jornada del cliente', async (t) => {
+  let actualMarket;
+  const marketService = { getMarket: month => actualMarket.getMarket(month) };
+  const ctx = setup({ ballonDorMarket: marketService });
+  t.after(ctx.cleanup);
+  ctx.store.generateSeason('2026-09');
+  ctx.store.seasons.current = ctx.month;
+  actualMarket = new BallonDorMarketService({ store: ctx.store });
+  const socket = ctx.io.connect();
+  const subscribed = subscribe(ctx, socket, { scope: 'lobby', name: 'BDO socket' });
+  assert.equal(subscribed.ok, true);
+  const marketReply = socket._fire('football:ballon_dor_market', {});
+  assert.equal(marketReply.ok, true);
+  assert.equal(marketReply.market.seasonMonth, ctx.month);
+  const archivedReply = socket._fire('football:ballon_dor_market', { seasonMonth: '2026-09' });
+  assert.equal(archivedReply.ok, true);
+  assert.equal(archivedReply.market.seasonMonth, '2026-09');
+  const invalidArchive = socket._fire('football:ballon_dor_market', { seasonMonth: 'not-a-month' });
+  assert.equal(invalidArchive.ok, false);
+  assert.equal(invalidArchive.code, 'season_month_invalid');
+
+  ctx.sockets.broadcastBallonDorMarket(ctx.month);
+  const broadcast = ctx.io.emittedTo(LOBBY_ROOM, 'football:ballon_dor_market');
+  assert.equal(broadcast.length, 1);
+  const mediaWire = JSON.stringify({ marketReply, archivedReply, broadcast });
+  assert.doesNotMatch(mediaWire, /\.(?:mp3|wav|ogg|mp4|webm)(?:["\s]|$)|data:(?:audio|video)/i,
+    'ni la respuesta del mercado ni su difusión Socket.IO contienen audio o video');
+  assert.deepEqual(Object.keys(marketReply.market).filter(key => /audio|video|media/i.test(key)), []);
+
+  const received = [];
+  ctx.betting.placeBallonDorBet = async args => {
+    received.push(args);
+    return {
+      ok: true,
+      future: {
+        id: 'bdo_test', market: 'balon_de_oro', selection: args.selection,
+        stake: args.stake, odds: 3.25, potentialPayout: 325, status: 'open',
+        payout: null, placedAt: 1, seasonMonth: ctx.month, profileId: 'no-publicar'
+      }
+    };
+  };
+  const reply = await new Promise(resolve => socket._fire('football:ballon_dor_bet', {
+    selection: 'candidate-test', stake: 100, idemKey: 'socket-bdo-key-001', odds: 1.01, jornada: 30
+  }, resolve));
+  assert.equal(reply.ok, true);
+  assert.equal(reply.future.odds, 3.25);
+  assert.ok(!('profileId' in reply.future));
+  assert.deepEqual(received[0], {
+    profile: ctx.profiles.getProfile(subscribed.profile.id),
+    selection: 'candidate-test', stake: 100, idempotencyKey: 'socket-bdo-key-001'
+  });
+  assert.equal(ctx.betPlacements.at(-1).kind, 'future');
 });

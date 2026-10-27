@@ -35,6 +35,8 @@
     <div class="estadio-nav-right">
       <span id="est-connection" class="connection-badge connecting"><i></i><span>Conectando</span></span>
       <span id="est-chips" class="est-chips" title="Tus fichas virtuales">— fichas</span>
+      <a id="est-bdo-nav-link" class="btn btn-ghost btn-small est-bdo-nav-link" href="/balon-de-oro" aria-label="Abrir el evento Balón de Oro MonteCristo" title="Balón de Oro MonteCristo">🏆 <span>Balón de Oro</span></a>
+      <a id="est-bdo-dedicated-back" class="btn btn-ghost btn-small est-bdo-dedicated-back" href="/estadio">← Volver al Estadio</a>
       <button id="est-ledger-open-nav" class="est-nav-ledger" type="button" aria-haspopup="dialog" aria-controls="est-ledger" aria-label="Ver historial de apuestas y pagos" title="Historial de apuestas y pagos">
         <span class="est-nav-ledger-icon" aria-hidden="true">🧾</span>
         <span class="est-nav-ledger-text">Mis apuestas</span>
@@ -198,7 +200,7 @@
               <span id="est-studio-preview-size" class="est-studio-preview-meta">Publicación: ancho completo · alto dinámico (mín. 140 px; móvil 150 px)</span>
             </div>
             <div id="est-studio-card-preview" class="est-preshow-promo est-studio-preview-card" data-text-position="bottom" data-text-size="medium" data-text-align="left">
-              <img id="est-studio-preview-img" class="est-promo-image" src="/assets/casino-hero.jpg" alt="Vista previa del anuncio">
+              <img id="est-studio-preview-img" class="est-promo-image" src="/assets/casino-hero.jpg" alt="Vista previa del anuncio" width="1821" height="864" loading="lazy" decoding="async">
               <div class="est-promo-content">
                 <span id="est-studio-preview-label" class="est-promo-label">Patrocinador</span>
                 <p id="est-studio-preview-text">Escribe el mensaje publicitario para ver tu anuncio aquí...</p>
@@ -222,23 +224,23 @@
               <span class="est-field-mini-title">Fondos temáticos de MonteCristo:</span>
               <div class="est-preset-thumbnails" id="est-preset-thumbnails">
                 <button type="button" class="est-preset-btn active" data-preset="/assets/casino-hero.jpg" title="Casino MonteCristo">
-                  <img src="/assets/casino-hero.jpg" alt="Casino">
+                  <img src="/assets/casino-hero.jpg" alt="Casino" width="1821" height="864" loading="lazy" decoding="async">
                   <span>Casino</span>
                 </button>
                 <button type="button" class="est-preset-btn" data-preset="/assets/estadio-tunnel.jpg" title="Túnel Estadio">
-                  <img src="/assets/estadio-tunnel.jpg" alt="Estadio">
+                  <img src="/assets/estadio-tunnel.jpg" alt="Estadio" width="1376" height="768" loading="lazy" decoding="async">
                   <span>Estadio</span>
                 </button>
                 <button type="button" class="est-preset-btn" data-preset="/assets/poker-lounge.jpg" title="Salón de Póker">
-                  <img src="/assets/poker-lounge.jpg" alt="Póker">
+                  <img src="/assets/poker-lounge.jpg" alt="Póker" width="1536" height="1024" loading="lazy" decoding="async">
                   <span>Póker</span>
                 </button>
                 <button type="button" class="est-preset-btn" data-preset="/assets/blackjack-lounge.jpg" title="Blackjack Lounge">
-                  <img src="/assets/blackjack-lounge.jpg" alt="Blackjack">
+                  <img src="/assets/blackjack-lounge.jpg" alt="Blackjack" width="1659" height="948" loading="lazy" decoding="async">
                   <span>Blackjack</span>
                 </button>
                 <button type="button" class="est-preset-btn" data-preset="/assets/roulette-lounge.jpg" title="Ruleta Royale">
-                  <img src="/assets/roulette-lounge.jpg" alt="Ruleta">
+                  <img src="/assets/roulette-lounge.jpg" alt="Ruleta" width="1408" height="768" loading="lazy" decoding="async">
                   <span>Ruleta</span>
                 </button>
               </div>
@@ -342,7 +344,190 @@
         </details>
       </section>
     </aside>
+
+    <section id="balon-de-oro" class="est-panel est-bdo-panel" aria-labelledby="est-bdo-title">
+      <header class="est-bdo-header">
+        <div>
+          <p class="est-bdo-kicker">Premio mensual · predicciones con fichas virtuales</p>
+          <h2 id="est-bdo-title" class="est-bdo-title">🏆 Balón de Oro MonteCristo</h2>
+        </div>
+        <div class="est-bdo-header-state">
+          <span id="est-bdo-status" class="est-bdo-status" role="status" aria-live="polite">Consultando el ciclo…</span>
+          <span id="est-bdo-feed" class="est-bdo-feed" role="status">Conectando al mercado</span>
+        </div>
+      </header>
+      <p id="est-bdo-demo-notice" class="est-bdo-demo-notice" role="note" hidden><strong>DEMO · DATOS SINTÉTICOS.</strong> Edición ficticia para revisar la experiencia; no es un resultado real ni activa producción.</p>
+      <p id="est-bdo-summary" class="est-bdo-summary">Cada club presenta a un delantero ST existente. El ganador se determina con las estadísticas oficiales de J1–J30.</p>
+      <aside id="est-bdo-finalization" class="est-bdo-finalization" aria-labelledby="est-bdo-finalization-title">
+        <span class="est-bdo-finalization-mark" aria-hidden="true">🏆</span>
+        <div class="est-bdo-finalization-copy">
+          <p class="est-bdo-finalization-kicker">Aviso · cierre del evento</p>
+          <h3 id="est-bdo-finalization-title">Anuncio final del Balón de Oro</h3>
+          <p id="est-bdo-finalization-message" aria-live="polite">Después del último partido · <strong>10:00 p. m.</strong> · hora de Ciudad de México.</p>
+          <time id="est-bdo-finalization-date" class="est-bdo-finalization-date" hidden></time>
+        </div>
+      </aside>
+      <section id="est-bdo-ceremony-panel" class="est-bdo-ceremony-panel" aria-labelledby="est-bdo-ceremony-panel-title" hidden>
+        <div class="est-bdo-ceremony-panel-copy">
+          <p class="est-bdo-ceremony-kicker">Resultado oficial · lectura verificada</p>
+          <h3 id="est-bdo-ceremony-panel-title">La ceremonia final del ciclo</h3>
+          <p id="est-bdo-ceremony-panel-status" role="status" aria-live="polite">Esperando el resultado oficial persistido.</p>
+        </div>
+        <button id="est-bdo-ceremony-start" class="btn btn-primary" type="button" disabled>Ver ceremonia final</button>
+      </section>
+      <nav id="est-bdo-archive" class="est-bdo-archive" aria-label="Archivo de ediciones del Balón de Oro" hidden>
+        <div class="est-bdo-archive-heading">
+          <div><p class="est-bdo-ceremony-kicker">Memoria de la liga</p><h3>Archivo de ceremonias</h3></div>
+          <p id="est-bdo-archive-status" role="status" aria-live="polite">Consultando ediciones guardadas…</p>
+        </div>
+        <div id="est-bdo-archive-list" class="est-bdo-archive-list"></div>
+      </nav>
+      <div class="est-bdo-opening-launch">
+        <div>
+          <p class="est-bdo-opening-launch-kicker">Un espacio dedicado al evento</p>
+          <p class="est-bdo-opening-launch-copy">Entra a la página del Balón de Oro. En tu primera visita se presentarán, una sola vez por ciclo, los 16 jugadores aunque llegues más tarde.</p>
+        </div>
+        <a id="est-bdo-open-event" class="btn btn-primary" href="/balon-de-oro">Entrar al evento ›</a>
+        <button id="est-bdo-opening-start" class="btn btn-primary" type="button" hidden disabled>Ver inauguración</button>
+      </div>
+      <div id="est-bdo-feedback" class="est-bdo-feedback" role="status" aria-live="polite">Cargando candidatos y cuotas…</div>
+      <button id="est-bdo-retry" class="est-ledger-retry" type="button" hidden>Reintentar conexión</button>
+
+      <div id="est-bdo-table-wrap" class="est-bdo-table-wrap" hidden>
+        <table id="est-bdo-table" class="est-bdo-table">
+          <caption>Clasificación provisional o final de los 16 candidatos del ciclo actual. Las cuotas se calculan en el servidor.</caption>
+          <thead>
+            <tr>
+              <th scope="col">#</th><th scope="col">Candidato · club</th><th scope="col">Puntos</th>
+              <th scope="col">Goles</th><th scope="col">Asist.</th><th scope="col">Apar.</th>
+              <th scope="col">Amarillas</th><th scope="col">Rojas</th><th scope="col">Cuota</th>
+              <th scope="col">Prob. implícita</th><th scope="col">Selección</th>
+            </tr>
+          </thead>
+          <tbody id="est-bdo-candidates"></tbody>
+        </table>
+      </div>
+
+      <div id="est-bdo-bet-area" class="est-bdo-bet-area" hidden>
+        <section id="est-bdo-slip" class="est-bdo-slip" aria-labelledby="est-bdo-slip-title">
+          <div class="est-bdo-slip-copy">
+            <h3 id="est-bdo-slip-title">Tu predicción</h3>
+            <p id="est-bdo-bet-help">Un boleto por perfil y ciclo. No se puede cambiar ni retirar por cash-out después de confirmar.</p>
+            <p id="est-bdo-bounds" class="est-bdo-bounds">Saldo: — · Mínimo: — · Máximo: — fichas</p>
+          </div>
+          <div class="est-bdo-slip-fields">
+            <label for="est-bdo-selection">Candidato elegido</label>
+            <select id="est-bdo-selection" name="selection">
+              <option value="">Selecciona una fila o un candidato</option>
+            </select>
+            <label for="est-bdo-stake">Monto a predecir (fichas virtuales)</label>
+            <input id="est-bdo-stake" type="number" min="0" step="1" inputmode="numeric" autocomplete="off" placeholder="Ej. 100">
+            <p id="est-bdo-quote" class="est-bdo-quote">Cuota: — · Pago potencial: —</p>
+            <button id="est-bdo-review" class="btn btn-primary" type="button">Revisar predicción</button>
+          </div>
+          <div id="est-bdo-confirmation" class="est-bdo-confirmation" role="region" aria-live="polite" hidden>
+            <p id="est-bdo-confirmation-copy"></p>
+            <p class="est-bdo-confirmation-note">La cuota indicada es la vigente para esta revisión. El servidor confirmará y congelará la cuota al aceptar el boleto; revisa el recibo.</p>
+            <div class="est-bdo-confirmation-actions">
+              <button id="est-bdo-confirm" class="btn btn-primary" type="button">Confirmar y descontar</button>
+              <button id="est-bdo-edit" class="btn btn-ghost" type="button">Editar predicción</button>
+            </div>
+          </div>
+          <p id="est-bdo-message" class="est-bdo-message" role="status" aria-live="polite"></p>
+        </section>
+        <section id="est-bdo-receipt" class="est-bdo-receipt" aria-labelledby="est-bdo-receipt-title" hidden>
+          <h3 id="est-bdo-receipt-title">Recibo de tu predicción</h3>
+          <div id="est-bdo-receipt-body" class="est-bdo-receipt-body"></div>
+        </section>
+      </div>
+      <p class="est-bdo-legal">Fichas 100 % virtuales, sin valor monetario. Las predicciones cierran al asentarse los ocho partidos de J20; la liquidación ocurre tras J30 y el desempate oficial, si hace falta.</p>
+    </section>
   </main>
+
+  <div id="est-bdo-opening" class="est-bdo-opening" hidden aria-hidden="true">
+    <div class="est-bdo-opening-scrim" data-bdo-opening-close></div>
+    <section class="est-bdo-opening-dialog" role="dialog" aria-modal="true" aria-labelledby="est-bdo-opening-title" aria-describedby="est-bdo-opening-caption" tabindex="-1">
+      <header class="est-bdo-opening-header">
+        <div>
+          <span class="est-bdo-opening-eyebrow">Estadio MonteCristo · presentación del ciclo</span>
+          <p id="est-bdo-opening-status" class="est-bdo-opening-status" role="status" aria-live="polite">Narración lista</p>
+        </div>
+        <button id="est-bdo-opening-close" class="est-bdo-opening-close" type="button" aria-label="Cerrar inauguración">Cerrar <span aria-hidden="true">×</span></button>
+      </header>
+      <p id="est-bdo-opening-demo-notice" class="est-bdo-demo-notice est-bdo-demo-notice-modal" role="note" hidden><strong>DEMO · DATOS SINTÉTICOS.</strong> Presentación ficticia para revisión; no corresponde a una edición real.</p>
+      <div id="est-bdo-opening-stage" class="est-bdo-opening-stage" data-scene="opening" data-motion="full">
+        <div class="est-bdo-opening-tunnel" aria-hidden="true"></div>
+        <div class="est-bdo-opening-light est-bdo-opening-light-a" aria-hidden="true"></div>
+        <div class="est-bdo-opening-light est-bdo-opening-light-b" aria-hidden="true"></div>
+        <div class="est-bdo-opening-copy">
+          <p id="est-bdo-opening-kicker" class="est-bdo-opening-kicker">Nueva temporada · Balón de Oro</p>
+          <h2 id="est-bdo-opening-title">Una carrera. Una corona.</h2>
+          <p id="est-bdo-opening-description">Dieciséis clubes presentan a su delantero. El rendimiento decidirá al ganador.</p>
+        </div>
+        <div id="est-bdo-opening-clubs" class="est-bdo-opening-clubs" role="group" aria-label="Los 16 clubes candidatos" hidden></div>
+        <div id="est-bdo-opening-cards" class="est-bdo-opening-cards" role="group" aria-label="Presentación individual de los 16 candidatos" hidden></div>
+        <button id="est-bdo-opening-cta" class="est-bdo-opening-cta" type="button" hidden>Ver candidatos y hacer mi predicción ›</button>
+        <div class="est-bdo-opening-corner" aria-hidden="true">MONTECRISTO <i>·</i> BDO</div>
+      </div>
+      <div class="est-bdo-opening-caption-wrap">
+        <p id="est-bdo-opening-caption" class="est-bdo-opening-caption" role="status" aria-live="polite">La Liga MonteCristo presenta una nueva carrera por el Balón de Oro.</p>
+        <div class="est-bdo-opening-progress-row">
+          <div id="est-bdo-opening-progress" class="est-bdo-opening-progress" role="progressbar" aria-label="Progreso de la inauguración" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="est-bdo-opening-progress-bar"></span></div>
+          <span id="est-bdo-opening-time" class="est-bdo-opening-time">0:00 / 0:45</span>
+        </div>
+      </div>
+      <div class="est-bdo-opening-controls" role="group" aria-label="Controles de la inauguración">
+        <button id="est-bdo-opening-play" type="button" class="est-bdo-opening-control" aria-label="Pausar inauguración">Ⅱ <span>Pausar</span></button>
+        <button id="est-bdo-opening-enable-audio" type="button" class="est-bdo-opening-control" hidden>♫ <span>Activar narración</span></button>
+        <button id="est-bdo-opening-mute" type="button" class="est-bdo-opening-control" aria-label="Silenciar narración" aria-pressed="false">◖ <span>Silenciar</span></button>
+        <button id="est-bdo-opening-skip" type="button" class="est-bdo-opening-skip">Omitir inauguración ›</button>
+      </div>
+      <details class="est-bdo-opening-transcript">
+        <summary>Ver guion completo</summary>
+        <p id="est-bdo-opening-transcript-copy">La Liga MonteCristo presenta una nueva carrera por el Balón de Oro. Dieciséis clubes. Dieciséis delanteros. Un solo ganador. Cada gol, cada asistencia y cada aparición suman. Las tarjetas restan; el rendimiento del equipo también puede inclinar la balanza. La regularidad, la disciplina y el trabajo colectivo también importan. El camino empieza hoy. En cada jornada, el fútbol escribe un capítulo. Tus predicciones se juegan solo con fichas virtuales y cierran al terminar la jornada veinte. Observa a los candidatos. Revisa sus estadísticas. Elige tu pronóstico. Al final de la temporada, las cifras coronarán a quien haya rendido mejor. Que comience la temporada MonteCristo.</p>
+      </details>
+      <audio id="est-bdo-opening-audio" src="/assets/ballon-dor-opening-es-mx.mp3" preload="none" aria-label="Narración femenina en español de México para la inauguración"></audio>
+    </section>
+  </div>
+
+  <div id="est-bdo-ceremony" class="est-bdo-ceremony" hidden aria-hidden="true">
+    <div class="est-bdo-ceremony-scrim" data-bdo-ceremony-close></div>
+    <section id="est-bdo-ceremony-dialog" class="est-bdo-ceremony-dialog" role="dialog" aria-modal="true" aria-labelledby="est-bdo-ceremony-title" aria-describedby="est-bdo-ceremony-caption" tabindex="-1">
+      <header class="est-bdo-ceremony-header">
+        <div><span class="est-bdo-opening-eyebrow">Estadio MonteCristo · ceremonia final</span><p id="est-bdo-ceremony-status" class="est-bdo-ceremony-status" role="status" aria-live="polite">Resultado oficial verificado</p></div>
+        <button id="est-bdo-ceremony-close" class="est-bdo-opening-close" type="button" aria-label="Cerrar ceremonia final">Cerrar <span aria-hidden="true">×</span></button>
+      </header>
+      <p id="est-bdo-ceremony-demo-notice" class="est-bdo-demo-notice est-bdo-demo-notice-modal" role="note" hidden><strong>DEMO · DATOS SINTÉTICOS.</strong> Resultado ficticio para revisión; no es real ni habilita producción.</p>
+      <div id="est-bdo-ceremony-stage" class="est-bdo-ceremony-stage" data-scene="verification" data-motion="full">
+        <div class="est-bdo-ceremony-aura" aria-hidden="true"></div>
+        <div class="est-bdo-ceremony-copy">
+          <p id="est-bdo-ceremony-kicker" class="est-bdo-opening-kicker">RESULTADO OFICIAL · VERIFICADO</p>
+          <h2 id="est-bdo-ceremony-title">La temporada ya tiene podio.</h2>
+          <p id="est-bdo-ceremony-description">El resultado persistido y las estadísticas oficiales no cambian al repetir esta ceremonia.</p>
+        </div>
+        <ol id="est-bdo-ceremony-podium" class="est-bdo-ceremony-podium" aria-label="Podio final de la temporada"></ol>
+        <p id="est-bdo-ceremony-breakdown" class="est-bdo-ceremony-breakdown"></p>
+        <p id="est-bdo-ceremony-payout" class="est-bdo-ceremony-payout"></p>
+        <p id="est-bdo-ceremony-caption" class="est-bdo-opening-caption" role="status" aria-live="polite">La clasificación oficial está cerrada y verificada.</p>
+      </div>
+      <div class="est-bdo-opening-progress-row">
+        <div id="est-bdo-ceremony-progress" class="est-bdo-opening-progress" role="progressbar" aria-label="Progreso de la ceremonia final" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="est-bdo-ceremony-progress-bar"></span></div>
+        <span id="est-bdo-ceremony-time" class="est-bdo-opening-time">0:00 · 1/13</span>
+      </div>
+      <div class="est-bdo-opening-controls est-bdo-ceremony-controls" role="group" aria-label="Controles de la ceremonia final">
+        <button id="est-bdo-ceremony-play" type="button" class="est-bdo-opening-control" aria-label="Pausar ceremonia final">Ⅱ <span>Pausar</span></button>
+        <button id="est-bdo-ceremony-music" type="button" class="est-bdo-opening-control" aria-label="Silenciar música" aria-pressed="false">♫ <span>Silenciar música</span></button>
+        <button id="est-bdo-ceremony-narration" type="button" class="est-bdo-opening-control" aria-label="Silenciar narración" aria-pressed="false">◖ <span>Silenciar narración</span></button>
+        <button id="est-bdo-ceremony-replay" type="button" class="est-bdo-opening-control" aria-label="Repetir ceremonia final">↻ <span>Repetir</span></button>
+      </div>
+      <details class="est-bdo-opening-transcript est-bdo-ceremony-transcript">
+        <summary>Leer el guion y el resultado de la ceremonia</summary>
+        <p id="est-bdo-ceremony-transcript-copy">Después de treinta jornadas, la clasificación oficial está cerrada y verificada. Hoy celebramos a los tres delanteros que marcaron esta temporada. El tercer puesto reconoce una campaña de constancia, goles y trabajo colectivo. En segundo lugar, un rendimiento brillante hasta la última jornada. Y ahora, la corona: el Balón de Oro MonteCristo es para el jugador que encabezó la clasificación. La tabla final, las estadísticas y el desglose están a la vista. Las predicciones ganadoras se liquidaron en fichas virtuales. Puedes volver a vivir esta ceremonia desde el archivo; el resultado oficial no cambia.</p>
+      </details>
+      <audio id="est-bdo-ceremony-music-audio" src="/assets/ballon-dor-ceremony-theme.wav" preload="none" loop aria-label="Música instrumental discreta de la ceremonia final"></audio>
+      <audio id="est-bdo-ceremony-narration-audio" preload="none" aria-label="Narración en español de México; clips sincronizados con cada nombre"></audio>
+    </section>
+  </div>
 
   <!-- Guía de atajos -->
   <!-- Historial de apuestas y pagos: vista propia a pantalla completa.
@@ -356,7 +541,7 @@
         <div class="est-ledger-head-copy">
           <span class="est-ledger-kicker">Estadio MonteCristo · fichas virtuales</span>
           <h1 id="est-ledger-title" class="est-ledger-title" tabindex="-1">Historial de apuestas y pagos</h1>
-          <p class="est-ledger-sub">Todas tus apuestas del Estadio, cómo terminó cada partido y lo que se acreditó a tu saldo.</p>
+          <p id="est-ledger-sub" class="est-ledger-sub">Todas tus apuestas del Estadio, cómo terminó cada partido y lo que se acreditó a tu saldo.</p>
         </div>
         <div class="est-ledger-head-actions">
           <span class="est-ledger-chips-now"><small>Saldo actual</small><b id="est-ledger-chips">— fichas</b></span>
@@ -365,31 +550,57 @@
         </div>
       </header>
 
-      <div id="est-ledger-unseen" class="est-ledger-unseen" role="status" aria-live="polite" hidden></div>
+      <nav class="est-ledger-views" aria-label="Mi espacio de apuestas">
+        <button id="est-ledger-tab-history" class="est-ledger-view-button active" type="button" aria-controls="est-ledger-history-view" aria-pressed="true">🧾 Mi historial</button>
+        <button id="est-ledger-tab-ranking" class="est-ledger-view-button" type="button" aria-controls="est-ledger-ranking-view" aria-pressed="false">🏆 Ranking global <span class="est-ranking-live-badge">EN VIVO</span></button>
+      </nav>
 
-      <section id="est-ledger-stats" class="est-ledger-stats" aria-label="Resumen de apuestas y pagos"></section>
+      <div id="est-ledger-history-view" class="est-ledger-history-view">
+        <div id="est-ledger-unseen" class="est-ledger-unseen" role="status" aria-live="polite" hidden></div>
 
-      <div class="est-ledger-toolbar">
-        <div class="est-ledger-chips" role="group" aria-label="Filtrar por estado de la apuesta">
-          <button class="est-ledger-chip" type="button" data-ledger-filter="all" aria-pressed="true">Todas</button>
-          <button class="est-ledger-chip" type="button" data-ledger-filter="open" aria-pressed="false">Abiertas</button>
-          <button class="est-ledger-chip" type="button" data-ledger-filter="won" aria-pressed="false">Ganadas</button>
-          <button class="est-ledger-chip" type="button" data-ledger-filter="lost" aria-pressed="false">Perdidas</button>
-          <button class="est-ledger-chip" type="button" data-ledger-filter="void" aria-pressed="false">Anuladas</button>
+        <section id="est-ledger-stats" class="est-ledger-stats" aria-label="Resumen de apuestas y pagos"></section>
+
+        <div class="est-ledger-toolbar">
+          <div class="est-ledger-chips" role="group" aria-label="Filtrar por estado de la apuesta">
+            <button class="est-ledger-chip" type="button" data-ledger-filter="all" aria-pressed="true">Todas</button>
+            <button class="est-ledger-chip" type="button" data-ledger-filter="open" aria-pressed="false">Abiertas</button>
+            <button class="est-ledger-chip" type="button" data-ledger-filter="won" aria-pressed="false">Ganadas</button>
+            <button class="est-ledger-chip" type="button" data-ledger-filter="lost" aria-pressed="false">Perdidas</button>
+            <button class="est-ledger-chip" type="button" data-ledger-filter="void" aria-pressed="false">Anuladas</button>
+          </div>
+          <div class="est-ledger-tools">
+            <button id="est-ledger-only-match" class="est-ledger-chip est-ledger-chip-tool" type="button" aria-pressed="false" hidden>Solo este partido</button>
+          </div>
         </div>
-        <div class="est-ledger-tools">
-          <button id="est-ledger-only-match" class="est-ledger-chip est-ledger-chip-tool" type="button" aria-pressed="false" hidden>Solo este partido</button>
+
+        <div id="est-ledger-list" class="est-ledger-list" aria-live="polite">
+          <p class="est-ledger-empty">Cargando historial…</p>
         </div>
+
+        <footer class="est-ledger-foot">
+          <p>Los pagos se acreditan automáticamente al liquidarse el partido, aunque no estés conectado. Todas las fichas son virtuales y no tienen valor real.</p>
+          <button id="est-ledger-back" class="est-ledger-back" type="button">← Volver al Estadio</button>
+        </footer>
       </div>
 
-      <div id="est-ledger-list" class="est-ledger-list" aria-live="polite">
-        <p class="est-ledger-empty">Cargando historial…</p>
-      </div>
-
-      <footer class="est-ledger-foot">
-        <p>Los pagos se acreditan automáticamente al liquidarse el partido, aunque no estés conectado. Todas las fichas son virtuales y no tienen valor real.</p>
-        <button id="est-ledger-back" class="est-ledger-back" type="button">← Volver al Estadio</button>
-      </footer>
+      <section id="est-ledger-ranking-view" class="est-ledger-ranking-view" aria-label="Ranking en vivo de Casino y Estadio" hidden>
+        <div class="est-bet-ranking-heading"><div><span>CASINO + ESTADIO · APUESTAS COMBINADAS</span><p>Clasificación por volumen acumulado de fichas virtuales apostadas. Tu resumen incluye además aciertos y balance neto del Estadio.</p></div><b id="est-bet-ranking-live" class="est-bet-ranking-live">○ Conectando…</b></div>
+        <div id="est-bet-ranking-personal" class="est-bet-ranking-personal" role="status" aria-live="polite"></div>
+        <div class="est-bet-ranking-toolbar">
+          <div class="est-bet-ranking-filters" role="group" aria-label="Elegir clasificación">
+            <button class="est-bet-ranking-filter active" type="button" data-bet-ranking-source="total" aria-pressed="true">Total</button>
+            <button class="est-bet-ranking-filter" type="button" data-bet-ranking-source="casino" aria-pressed="false">Casino</button>
+            <button class="est-bet-ranking-filter" type="button" data-bet-ranking-source="stadium" aria-pressed="false">Estadio</button>
+          </div>
+          <small id="est-bet-ranking-updated" class="est-bet-ranking-updated">Las fichas son 100% virtuales.</small>
+        </div>
+        <div class="est-bet-ranking-table" role="table" aria-label="Ranking combinado de apuestas">
+          <div class="est-bet-ranking-table-head" role="row"><span role="columnheader">PUESTO</span><span role="columnheader">JUGADOR</span><span role="columnheader">TOTAL</span><span role="columnheader">CASINO</span><span role="columnheader">ESTADIO</span></div>
+          <div id="est-bet-ranking-list" class="est-bet-ranking-list" role="rowgroup" aria-live="polite"><div class="est-bet-ranking-empty">Abre el ranking con conexión para consultar los datos en vivo.</div></div>
+        </div>
+        <p class="est-bet-ranking-note">El ranking se ordena por volumen, no por ganancias. El acierto personal cuenta solo ganadas ÷ (ganadas + perdidas); excluye anuladas y cashouts. El neto es lo devuelto menos lo apostado en apuestas liquidadas. Fichas virtuales, sin valor monetario.</p>
+        <button id="est-ledger-ranking-back" class="est-ledger-back" type="button">← Volver al Estadio</button>
+      </section>
     </div>
   </div>
 

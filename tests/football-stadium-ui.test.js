@@ -32,6 +32,62 @@ function player(id, teamId, number, active = true) {
 
 function market(key, price) { return { key, price, implied: 1 / price }; }
 
+function ballonDorMarket(overrides = {}) {
+  const playerIds = ['frr_09', 'sol_17', 'vrd_09', 'klv_17', 'hlc_09', 'irn_09', 'nvl_09', 'est_17', 'prg_09', 'amb_17', 'crv_09', 'alm_17', 'tlb_17', 'vng_17', 'vtr_17', 'vlm_17'];
+  const candidates = Array.from({ length: 16 }, (_, index) => ({
+    id: `bdo-club-${index + 1}`,
+    playerId: playerIds[index],
+    clubId: `club-${index + 1}`,
+    clubName: `Club ${index + 1}`,
+    clubShort: `CL${index + 1}`,
+    clubColors: { primary: index === 0 ? '#52e0ae' : '#223344' },
+    playerName: `Delantero ${index + 1}`,
+    playerNumber: index + 9,
+    attributes: { shooting: 70 + index, pace: 65 + index },
+    stats: { goals: index, assists: index % 3, appearances: index + 1, yellowCards: index % 2, redCards: 0 },
+    points: { total: 30 - index, teamBonus: 0 },
+    probability: 1 / 16,
+    impliedProbability: 1 / (2 + index / 10),
+    odds: index === 0 ? 2.5 : Number((2 + index / 10).toFixed(2))
+  }));
+  return {
+    market: 'balon_de_oro', eventId: 'bdo-2026-10', seasonMonth: '2026-10', status: 'active',
+    updatedAt: 100, opensOnDay: 1, closesAfterJornada: 20,
+    oddsSnapshot: { afterJornada: 0, updatedAt: 100, simulations: 2000, overround: 1.1 },
+    finalization: {
+      scheduledAt: Date.UTC(2026, 9, 31, 4), timeZone: 'America/Mexico_City', hour: 22, minute: 0,
+      afterMatch: { id: 'bdo-final-match', jornada: 30, desempate: false, kickoffAt: Date.UTC(2026, 9, 30, 3, 30) },
+      actualAt: null
+    },
+    candidates, result: null, cancellationReason: null,
+    ...overrides
+  };
+}
+
+function settledBallonDorMarket(overrides = {}) {
+  const market = ballonDorMarket({
+    status: 'settled',
+    finalization: {
+      scheduledAt: 100, timeZone: 'America/Mexico_City', hour: 22, minute: 0,
+      afterMatch: { id: 'final', jornada: 30, desempate: false, kickoffAt: 50 }, actualAt: 100
+    },
+    ...overrides
+  });
+  const ranking = market.candidates.map((candidate, index) => ({
+    candidateId: candidate.id, rank: index + 1, score: candidate.points.total
+  }));
+  market.result = {
+    winnerCandidateId: ranking[0].candidateId, winnerScore: ranking[0].score,
+    finalizedAt: 100, ranking
+  };
+  market.ceremony = {
+    verified: true, eventId: market.eventId, seasonMonth: market.seasonMonth, finalizedAt: 100,
+    predictionCount: 3, settledPredictionCount: 3, winningPredictionCount: 1,
+    paidWinningPredictionCount: 1, paidVirtualChips: 250, pendingPayoutCount: 0, settlementComplete: true
+  };
+  return market;
+}
+
 function createHarness(options = {}) {
   let nowMs = options.now == null ? Date.now() : options.now;
   let perfNow = 1000;
@@ -75,18 +131,49 @@ function createHarness(options = {}) {
   };
   const handlers = {};
   const requests = [];
+  const audioTelemetryAttempts = [];
+  const socketEmitted = [];
+  const ballonDorSocketAttempts = [];
+  const ballonDorHttpAttempts = [];
+  let ballonDorMarketGets = 0;
+  let currentBallonDorMarket = options.ballonDorMarket || null;
+  let betHistory = options.betHistory || null;
   let submittedPromotion = null;
   const activePromotions = Array.isArray(options.activePromotions)
     ? options.activePromotions
     : (options.activePromotion ? [options.activePromotion] : []);
   const socket = {
+    connected: options.socketConnected !== false,
     on(event, handler) { handlers[event] = handler; },
     emit(event, payload, ack) {
+      socketEmitted.push({ event, payload });
+      if (event === 'football:ballon_dor_market') {
+        if (typeof ack === 'function') ack({ ok: true, market: currentBallonDorMarket });
+        return;
+      }
+      if (event === 'football:ballon_dor_bet') {
+        ballonDorSocketAttempts.push({ payload: { ...payload } });
+        const outcome = typeof options.onBallonDorSocketBet === 'function'
+          ? options.onBallonDorSocketBet(payload, ballonDorSocketAttempts.length)
+          : {
+            ok: true,
+            chips: 1000 - Number(payload.stake || 0),
+            replayed: false,
+            future: {
+              id: 'future-ui-1', seasonMonth: currentBallonDorMarket && currentBallonDorMarket.seasonMonth || '2026-10',
+              market: 'balon_de_oro', selection: payload.selection, stake: Number(payload.stake),
+              odds: 2.5, potentialPayout: Math.floor(Number(payload.stake) * 2.5),
+              status: 'open', payout: null, placedAt: nowMs
+            }
+          };
+        Promise.resolve(outcome).then(result => { if (typeof ack === 'function') ack(result); });
+        return;
+      }
       if (event !== 'football:subscribe') return;
       if (payload.scope === 'lobby') {
-        ack({ ok: true, teams, profile: { chips: 1000 }, lobby });
+        ack({ ok: true, teams, profile: { id: 'alice', chips: 1000 }, lobby });
       } else {
-        ack({ ok: true, teams, profile: { chips: 1000 }, matchState });
+        ack({ ok: true, teams, profile: { id: 'alice', chips: 1000 }, matchState });
       }
     }
   };
@@ -103,7 +190,7 @@ function createHarness(options = {}) {
     set() { return true; }
   });
   const dom = new JSDOM(HTML, {
-    url: 'http://localhost:3000/estadio',
+    url: 'http://localhost:3000' + (options.path || '/estadio'),
     runScripts: 'outside-only',
     pretendToBeVisual: true
   });
@@ -116,7 +203,49 @@ function createHarness(options = {}) {
   const style = window.document.createElement('style');
   style.textContent = STYLES;
   window.document.head.appendChild(style);
-  window.localStorage.setItem('montecristo-tos', '2026-09-28');
+  window.localStorage.setItem('montecristo-tos', options.localTosVersion || '2026-09-28');
+  if (options.openingCompleted && currentBallonDorMarket) {
+    window.localStorage.setItem('montecristo-bdo-opening-v2:' + currentBallonDorMarket.seasonMonth, 'completed');
+  }
+  let openingAudioTime = 0, openingAudioPaused = true, openingAudioMuted = false, openingAudioPlayCount = 0;
+  const openingAudio = window.document.getElementById('est-bdo-opening-audio');
+  Object.defineProperties(openingAudio, {
+    currentTime: { configurable: true, get: () => openingAudioTime, set: value => { openingAudioTime = Number(value) || 0; } },
+    duration: { configurable: true, get: () => 45 },
+    paused: { configurable: true, get: () => openingAudioPaused },
+    muted: { configurable: true, get: () => openingAudioMuted, set: value => { openingAudioMuted = Boolean(value); } }
+  });
+  openingAudio.play = () => {
+    openingAudioPlayCount++;
+    if (options.openingAudioFails) return Promise.reject(new Error('audio unavailable'));
+    openingAudioPaused = false;
+    return Promise.resolve();
+  };
+  openingAudio.pause = () => { openingAudioPaused = true; };
+  const ceremonyAudioCounts = { music: 0, narration: 0 };
+  const ceremonyAudioSrcHistory = { music: [], narration: [] };
+  const ceremonyAudioState = {};
+  ['music', 'narration'].forEach(kind => {
+    const state = { currentTime: 0, duration: 45, paused: true, muted: false };
+    const audio = window.document.getElementById('est-bdo-ceremony-' + kind + '-audio');
+    ceremonyAudioState[kind] = { state, audio };
+    Object.defineProperties(audio, {
+      currentTime: { configurable: true, get: () => state.currentTime, set: value => { state.currentTime = Number(value) || 0; } },
+      duration: { configurable: true, get: () => state.duration },
+      paused: { configurable: true, get: () => state.paused },
+      muted: { configurable: true, get: () => state.muted, set: value => { state.muted = Boolean(value); } }
+    });
+    audio.load = () => {};
+    audio.play = () => {
+      ceremonyAudioCounts[kind]++;
+      ceremonyAudioSrcHistory[kind].push(audio.getAttribute('src') || 'static');
+      if (options.ceremonyAudioFails) return Promise.reject(new Error('audio unavailable'));
+      state.paused = false;
+      audio.dispatchEvent(new window.Event('play'));
+      return Promise.resolve();
+    };
+    audio.pause = () => { state.paused = true; };
+  });
   const reducedMotion = options.reducedMotion !== undefined ? Boolean(options.reducedMotion) : true;
   window.matchMedia = () => ({ matches: reducedMotion, addListener() {}, addEventListener() {} });
   window.HTMLCanvasElement.prototype.getContext = () => canvasContext;
@@ -137,6 +266,10 @@ function createHarness(options = {}) {
   window.fetch = async (url, requestOptions = {}) => {
     const target = String(url);
     requests.push({ url: target, options: requestOptions });
+    if (target === '/api/estadio/telemetry/audio' && requestOptions.method === 'POST') {
+      audioTelemetryAttempts.push({ body: JSON.parse(requestOptions.body || '{}'), options: requestOptions });
+      return { ok: true, status: 202, json: async () => ({ ok: true }) };
+    }
     if (target.startsWith('/assets/')) {
       return { ok: true, blob: async () => new window.Blob([Uint8Array.from([1, 2, 3, 4])], { type: 'image/jpeg' }) };
     }
@@ -153,8 +286,49 @@ function createHarness(options = {}) {
       submittedPromotion = JSON.parse(requestOptions.body);
       return { ok: true, status: 201, json: async () => ({ ok: true, promotion: { status: 'pending' } }) };
     }
+    if (target === '/api/estadio/ballon-dor/archive') {
+      const defaultCycle = currentBallonDorMarket ? [{
+        eventId: currentBallonDorMarket.eventId,
+        seasonMonth: currentBallonDorMarket.seasonMonth,
+        status: currentBallonDorMarket.status,
+        finalizedAt: currentBallonDorMarket.result && currentBallonDorMarket.result.finalizedAt,
+        winner: currentBallonDorMarket.result && currentBallonDorMarket.candidates.find(candidate => candidate.id === currentBallonDorMarket.result.winnerCandidateId)
+          ? { playerName: currentBallonDorMarket.candidates[0].playerName, clubName: currentBallonDorMarket.candidates[0].clubName, score: currentBallonDorMarket.result.winnerScore }
+          : null,
+        ceremony: currentBallonDorMarket.ceremony || null
+      }] : [];
+      const cycles = options.ballonDorArchive || defaultCycle;
+      return { ok: true, json: async () => ({ ok: true, cycles }) };
+    }
+    if (target === '/api/estadio/ballon-dor' || target.startsWith('/api/estadio/ballon-dor?')) {
+      ballonDorMarketGets++;
+      const fail = typeof options.failBallonDorFetch === 'function'
+        ? Boolean(options.failBallonDorFetch(ballonDorMarketGets))
+        : Boolean(options.failBallonDorFetch);
+      return {
+        ok: !fail,
+        json: async () => fail ? { ok: false, error: 'unavailable' } : { ok: true, market: currentBallonDorMarket }
+      };
+    }
+    if (target === '/api/estadio/ballon-dor/bet' && requestOptions.method === 'POST') {
+      const body = JSON.parse(requestOptions.body || '{}');
+      ballonDorHttpAttempts.push({ body, headers: requestOptions.headers || {} });
+      const outcome = typeof options.onBallonDorHttpBet === 'function'
+        ? await options.onBallonDorHttpBet(body, ballonDorHttpAttempts.length)
+        : {
+          ok: true, chips: 1000 - Number(body.stake || 0), replayed: false,
+          future: {
+            id: 'future-http-ui-1', seasonMonth: currentBallonDorMarket && currentBallonDorMarket.seasonMonth || '2026-10',
+            market: 'balon_de_oro', selection: body.selection, stake: Number(body.stake),
+            odds: 2.5, potentialPayout: Math.floor(Number(body.stake) * 2.5),
+            status: 'open', payout: null, placedAt: nowMs
+          }
+        };
+      return { ok: outcome.status ? outcome.status < 400 : outcome.ok !== false, status: outcome.status || 200, json: async () => outcome };
+    }
     if (target.startsWith('/api/estadio/my-bets')) {
-      return { ok: true, json: async () => ({ ok: true, history: options.betHistory || null, profile: { id: 'alice', chips: 1000 } }) };
+      const history = typeof betHistory === 'function' ? betHistory() : betHistory;
+      return { ok: true, json: async () => ({ ok: true, history: history || null, profile: { id: 'alice', chips: 1000 } }) };
     }
     if (target.endsWith('/mine')) {
       return { ok: true, json: async () => ({ promotion: null }) };
@@ -167,21 +341,39 @@ function createHarness(options = {}) {
     }
     return {
       ok: true,
-      json: async () => ({ ok: true, teams, tosVersion: '2026-09-28', lobby, profile: { chips: 1000 } })
+      json: async () => ({ ok: true, teams, tosVersion: '2026-09-28', lobby, profile: { id: 'alice', chips: 1000 } })
     };
   };
-  window.io = () => socket;
+  window.io = options.socketMissing ? undefined : () => socket;
   window.eval(CLIENT);
   window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
 
   return {
-    dom, window, socket, handlers, match, matchState, players, drawnText, requests, ballTrace,
+    dom, window, socket, handlers, match, matchState, players, drawnText, requests, ballTrace, socketEmitted,
+    audioTelemetryAttempts, ballonDorSocketAttempts, ballonDorHttpAttempts,
+    get openingAudioPlayCount() { return openingAudioPlayCount; },
+    get ceremonyAudioCounts() { return { ...ceremonyAudioCounts }; },
+    get ceremonyAudioSrcHistory() { return { music: ceremonyAudioSrcHistory.music.slice(), narration: ceremonyAudioSrcHistory.narration.slice() }; },
+    async finishCeremonyClip() {
+      const item = ceremonyAudioState.narration;
+      item.state.currentTime = item.state.duration;
+      item.state.paused = true;
+      item.audio.dispatchEvent(new window.Event('ended'));
+      await this.flush();
+    },
+    advanceOpeningAudio(seconds) {
+      openingAudioTime = Number(seconds) || 0;
+      openingAudio.dispatchEvent(new window.Event('timeupdate'));
+    },
     get submittedPromotion() { return submittedPromotion; },
+    setBallonDorMarket(nextMarket) { currentBallonDorMarket = nextMarket; },
+    setBetHistory(nextHistory) { betHistory = nextHistory; },
+    async flush() { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); },
     advanceTime(ms) {
       nowMs += ms;
       perfNow += ms;
-      intervals.filter(interval => interval.delay === 1000 || (interval.delay === 15000 && ms >= interval.delay))
-        .forEach(interval => interval.callback());
+      intervals.filter(interval => interval.delay === 1000 || (interval.delay === 15000 && ms >= interval.delay)
+        || (interval.delay === 250 && ms >= interval.delay) || (interval.delay === 100 && ms >= interval.delay)).forEach(interval => interval.callback());
       const due = timeouts.filter(t => t.at <= perfNow);
       for (const t of due) {
         const idx = timeouts.indexOf(t);
@@ -225,6 +417,89 @@ test('las galerías de anuncios del Estadio y de administración solo apuntan a 
   adminDom.window.close();
 });
 
+test('avatares persistentes, cues y nombres grabados del Balón de Oro usan assets locales acotados', () => {
+  const publicDir = path.join(__dirname, '..', 'public');
+  const dom = new JSDOM(HTML);
+  const { document } = dom.window;
+  const thumbnails = [...document.querySelectorAll('#est-preset-thumbnails img')];
+  assert.equal(thumbnails.length, 5, 'el estudio conserva cinco fondos reutilizables');
+  const preview = document.getElementById('est-studio-preview-img');
+  for (const image of [...thumbnails, preview]) {
+    assert.equal(image.getAttribute('loading'), 'lazy', `${image.id || image.alt} se carga cuando se aproxima al viewport`);
+    assert.equal(image.getAttribute('decoding'), 'async');
+    assert.ok(Number(image.getAttribute('width')) > 0 && Number(image.getAttribute('height')) > 0,
+      'las dimensiones reservan espacio antes de decodificar');
+    const imagePath = image.getAttribute('src').replace(/^\//, '');
+    assert.ok(fs.existsSync(path.join(publicDir, imagePath)), `${imagePath} existe en public/`);
+  }
+
+  const opening = document.getElementById('est-bdo-opening-audio');
+  assert.equal(opening.getAttribute('preload'), 'none');
+  assert.match(opening.getAttribute('src'), /^\/assets\/[^/]+\.mp3$/);
+  assert.ok(fs.existsSync(path.join(publicDir, opening.getAttribute('src').replace(/^\//, ''))));
+  const music = document.getElementById('est-bdo-ceremony-music-audio');
+  assert.equal(music.getAttribute('preload'), 'none');
+  assert.equal(music.getAttribute('src'), '/assets/ballon-dor-ceremony-theme.wav');
+  assert.equal(music.hasAttribute('loop'), true, 'el fondo discreto acompaña clips de duración variable');
+  const scoreBytes = fs.statSync(path.join(publicDir, 'assets', 'ballon-dor-ceremony-theme.wav')).size;
+  assert.ok(scoreBytes > 0 && scoreBytes <= 2_100_000, 'el tema local sigue siendo una pista ligera');
+  const narration = document.getElementById('est-bdo-ceremony-narration-audio');
+  assert.equal(narration.getAttribute('preload'), 'none');
+  assert.equal(narration.hasAttribute('src'), false, 'cada cue y cada nombre se seleccionan por ID estable');
+
+  const cueIds = ['verification', 'third-place', 'second-place', 'finalists', 'winner-intro', 'winner-congratulations'];
+  for (const cue of cueIds) {
+    const cuePath = path.join(publicDir, 'assets', 'ballon-dor-ceremony', 'cues', cue + '.wav');
+    assert.ok(fs.existsSync(cuePath), `${cue} tiene locución es-MX propia`);
+  }
+  const playerIds = ['frr_09', 'sol_17', 'vrd_09', 'klv_17', 'hlc_09', 'irn_09', 'nvl_09', 'est_17', 'prg_09', 'amb_17', 'crv_09', 'alm_17', 'tlb_17', 'vng_17', 'vtr_17', 'vlm_17'];
+  assert.equal(playerIds.length, 16, 'se conserva el candidato ST existente de cada club');
+  const uniqueAvatarArt = new Set();
+  for (const playerId of playerIds) {
+    assert.ok(fs.existsSync(path.join(publicDir, 'assets', 'ballon-dor-ceremony', 'names', playerId + '.wav')),
+      `${playerId} tiene clip de nombre`);
+    const avatarPath = path.join(publicDir, 'assets', 'ballon-dor-avatars', playerId + '.svg');
+    assert.ok(fs.existsSync(avatarPath), `${playerId} tiene un avatar único reutilizable`);
+    const avatarArt = fs.readFileSync(avatarPath, 'utf8');
+    assert.match(avatarArt, /^<svg\b/);
+    uniqueAvatarArt.add(avatarArt);
+  }
+  assert.equal(uniqueAvatarArt.size, 16, 'cada playerId usa una ilustración distinta');
+  assert.ok(fs.existsSync(path.join(publicDir, 'assets', 'ballon-dor-avatars', 'default.svg')));
+  dom.window.close();
+});
+
+test('el CSS del evento conserva layouts móviles, movimiento reducido y sintaxis balanceada', () => {
+  assert.match(STYLES, /@media\(max-width:760px\)[\s\S]*?\.est-bdo-opening-dialog/);
+  assert.match(STYLES, /@media\(max-width:680px\)[\s\S]*?\.est-bdo-ceremony-panel/);
+  assert.match(STYLES, /@media\(prefers-reduced-motion:\s*reduce\)[\s\S]*?animation:none !important/);
+  assert.match(STYLES, /\.est-bdo-opening-stage\[data-motion="reduced"\][^}]*animation:none !important/);
+
+  let depth = 0;
+  let quote = '';
+  let comment = false;
+  for (let index = 0; index < STYLES.length; index++) {
+    const char = STYLES[index], next = STYLES[index + 1];
+    if (comment) {
+      if (char === '*' && next === '/') { comment = false; index++; }
+      continue;
+    }
+    if (quote) {
+      if (char === '\\') index++;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '/' && next === '*') { comment = true; index++; continue; }
+    if (char === '"' || char === "'") { quote = char; continue; }
+    if (char === '{') depth++;
+    if (char === '}') depth--;
+    assert.ok(depth >= 0, 'las llaves CSS no se cierran antes de abrir');
+  }
+  assert.equal(depth, 0);
+  assert.equal(comment, false);
+  assert.equal(quote, '');
+});
+
 test('el editor administrativo enseña el fondo elegido y lo guarda en la campaña publicada', async t => {
   const dom = new JSDOM(ADMIN_HTML, {
     url: 'http://localhost:3000/admin',
@@ -264,7 +539,15 @@ test('el editor administrativo enseña el fondo elegido y lo guarda en la campa�
   window.document.getElementById('promo-create-profile').value = 'montecristo_oficial';
   window.document.getElementById('promo-create-text').value = 'Una campaña de prueba';
   window.document.getElementById('promo-create-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
-  await new Promise(resolve => setTimeout(resolve, 35));
+  await new Promise((resolve, reject) => {
+    const deadline = Date.now() + 1000;
+    const waitForUpload = () => {
+      if (posts.length === 1) return resolve();
+      if (Date.now() >= deadline) return reject(new Error('La creatividad no terminó de cargarse a tiempo.'));
+      setTimeout(waitForUpload, 10);
+    };
+    waitForUpload();
+  });
 
   assert.equal(posts.length, 1, 'se publicó la campaña');
   assert.equal(posts[0].text, 'Una campaña de prueba');
@@ -1059,4 +1342,670 @@ test('QA de usuario: reconexión a mitad de juego, expulsión del portador y lim
   const marketButtons = Array.from(window.document.querySelectorAll('#est-markets .est-sel'));
   assert.ok(marketButtons.every(b => b.disabled), 'los mercados permanecen bloqueados en tick con juego detenido');
   assert.match(window.document.getElementById('est-clock').textContent, /30' Balón parado/);
+});
+
+async function createBallonDorHarness(options = {}) {
+  const h = createHarness({ ...options, ballonDorMarket: options.ballonDorMarket || ballonDorMarket() });
+  await h.flush();
+  return h;
+}
+
+function chooseBallonDorCandidate(h, candidateId = 'bdo-club-1', stake = 100) {
+  const { document } = h.window;
+  const button = document.querySelector('[data-bdo-select="' + candidateId + '"]');
+  assert.ok(button, 'el candidato tiene un control de selección visible');
+  button.click();
+  const input = document.getElementById('est-bdo-stake');
+  input.value = String(stake);
+  input.dispatchEvent(new h.window.Event('input', { bubbles: true }));
+  return input;
+}
+
+function acceptedBallonDorResult(payload, overrides = {}) {
+  return {
+    ok: true,
+    chips: 1000 - Number(payload.stake),
+    replayed: false,
+    future: {
+      id: 'future-ui-accepted', seasonMonth: '2026-10', market: 'balon_de_oro',
+      selection: payload.selection, stake: Number(payload.stake), odds: 2.5,
+      potentialPayout: Math.floor(Number(payload.stake) * 2.5), status: 'open', payout: null,
+      placedAt: 1,
+      ...overrides
+    }
+  };
+}
+
+test('las columnas laterales fluyen con el documento y no se pegan encima del contenido al desplazarse', t => {
+  const h = createHarness();
+  t.after(h.close);
+  const { window } = h;
+  ['.est-col-left', '.est-col-right'].forEach(selector => {
+    const column = window.document.querySelector(selector);
+    const style = window.getComputedStyle(column);
+    assert.equal(style.position, 'static', selector + ' no se fija al viewport');
+    assert.equal(style.maxHeight, 'none', selector + ' crece con sus paneles');
+    assert.equal(style.overflowY, 'visible', selector + ' no crea una columna flotante con scroll propio');
+  });
+});
+
+test('el Estadio deja un acceso breve y el Balón de Oro tiene un espacio exclusivo con horario de cierre', async t => {
+  const h = await createBallonDorHarness();
+  t.after(h.close);
+  const { document } = h.window;
+  assert.equal(document.body.classList.contains('est-bdo-dedicated'), false);
+  assert.equal(document.getElementById('est-bdo-open-event').getAttribute('href'), '/balon-de-oro');
+  assert.match(document.getElementById('est-bdo-open-event').textContent, /Entrar al evento/);
+  assert.equal(h.window.getComputedStyle(document.getElementById('est-bdo-table-wrap')).display, 'none',
+    'el Estadio general solo muestra la puerta, no el panel completo del evento');
+  assert.equal(h.window.getComputedStyle(document.getElementById('est-bdo-bet-area')).display, 'none');
+  const notice = document.getElementById('est-bdo-finalization-message');
+  assert.match(notice.textContent, /10:00 p\. m\./);
+  assert.match(notice.textContent, /último partido/);
+  assert.match(document.getElementById('est-bdo-finalization-date').textContent, /2026/);
+  assert.equal(document.getElementById('est-bdo-opening').hidden, true,
+    'la inauguración automática solo aparece dentro del espacio dedicado');
+});
+
+test('la página del evento presenta automáticamente y una sola vez a los 16 jugadores aunque se entre tarde', async t => {
+  const h = await createBallonDorHarness({ path: '/balon-de-oro?demo=1', now: Date.UTC(2026, 9, 22, 18), reducedMotion: false });
+  t.after(h.close);
+  const { document, localStorage } = h.window;
+  const overlay = document.getElementById('est-bdo-opening');
+  const stage = document.getElementById('est-bdo-opening-stage');
+  const start = document.getElementById('est-bdo-opening-start');
+  assert.equal(document.body.classList.contains('est-bdo-dedicated'), true);
+  assert.equal(document.title, 'Demo sintética · 2026-09 · Balón de Oro MonteCristo');
+  assert.match(document.getElementById('est-bdo-demo-notice').querySelector('strong').textContent, /EDICIÓN 2026-09/);
+  const archivedDemoLink = document.querySelector('#est-bdo-archive-list a');
+  assert.ok(archivedDemoLink, 'la demo conserva el acceso al archivo sintético');
+  assert.match(archivedDemoLink.getAttribute('href'), /[?&]demo=1$/,
+    'los enlaces de archivo mantienen visible la etiqueta de demo');
+  for (const id of ['est-bdo-demo-notice', 'est-bdo-opening-demo-notice', 'est-bdo-ceremony-demo-notice']) {
+    assert.equal(document.getElementById(id).hidden, false, id + ' etiqueta el resultado sintético en cada vista');
+  }
+  assert.match(document.getElementById('est-bdo-demo-notice').textContent, /no es un resultado real/);
+  assert.equal(h.window.getComputedStyle(document.querySelector('.est-col-left')).display, 'none');
+  assert.equal(h.window.getComputedStyle(document.getElementById('balon-de-oro')).display, 'block');
+  assert.equal(overlay.hidden, false, 'el primer acceso abre la inauguración por sí solo');
+  assert.equal(h.openingAudioPlayCount, 1);
+  assert.equal(localStorage.getItem('montecristo-bdo-opening-v2:2026-10'), 'started');
+  assert.equal(document.getElementById('est-bdo-opening-close').hidden, true);
+  assert.equal(document.getElementById('est-bdo-opening-skip').hidden, true);
+  assert.equal(h.window.getComputedStyle(document.getElementById('est-bdo-opening-close')).display, 'none');
+  assert.equal(h.window.getComputedStyle(document.getElementById('est-bdo-opening-cards')).display, 'none');
+
+  // Ni cerrar, omitir o pulsar Escape permite salir antes de ver la presentación inicial.
+  document.getElementById('est-bdo-opening-skip').click();
+  document.getElementById('est-bdo-opening-close').click();
+  document.querySelector('.est-bdo-opening-dialog').dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(overlay.hidden, false);
+
+  const candidateIds = [];
+  for (let index = 0; index < 16; index++) {
+    h.advanceOpeningAudio(8 + index * 2 + 0.1);
+    const cards = document.querySelectorAll('#est-bdo-opening-cards .est-bdo-opening-card');
+    assert.equal(cards.length, 1, 'se enfoca un solo jugador en cada revelación');
+    assert.equal(h.window.getComputedStyle(document.getElementById('est-bdo-opening-cards')).display, 'grid');
+    const card = cards[0];
+    assert.equal(card.dataset.candidateId, 'bdo-club-' + (index + 1));
+    assert.match(card.textContent, /Delantero/);
+    assert.match(card.textContent, /Goles/);
+    assert.match(card.textContent, /Asistencias/);
+    assert.match(card.textContent, /Apariciones/);
+    assert.match(card.textContent, /Puntos/);
+    assert.match(card.textContent, /Tiro/);
+    assert.match(card.textContent, /Ritmo/);
+    assert.match(stage.dataset.scene, new RegExp('^reveal-' + (index + 1) + '$'));
+    if (index === 0) {
+      assert.equal(card.querySelector('.est-bdo-opening-card-monogram').textContent, 'CL1');
+      assert.equal(card.querySelector('.est-bdo-opening-card-number').textContent, '#9');
+      assert.equal(card.querySelector('[aria-label="Tiro"]').getAttribute('aria-valuenow'), '70');
+    }
+    candidateIds.push(card.dataset.candidateId);
+  }
+  assert.equal(new Set(candidateIds).size, 16, 'cada ST existente aparece individualmente');
+  assert.equal(document.getElementById('est-bdo-opening-rules'), null,
+    'se retiraron los cuadros genéricos de puntos de la inauguración');
+  assert.doesNotMatch(document.querySelector('.est-bdo-opening-dialog').textContent, /\+\s*[135]|−\s*[13]/);
+
+  h.advanceOpeningAudio(45);
+  assert.equal(localStorage.getItem('montecristo-bdo-opening-v2:2026-10'), 'completed');
+  assert.equal(document.getElementById('est-bdo-opening-close').hidden, false);
+  assert.equal(document.getElementById('est-bdo-opening-skip').hidden, true);
+  assert.equal(document.getElementById('est-bdo-opening-play').hidden, true);
+  assert.equal(start.hidden, true, 'el acceso a la inauguración desaparece tras completarla');
+  assert.equal(start.disabled, true);
+  assert.equal(document.getElementById('est-bdo-opening-replay'), null,
+    'la apertura ya no ofrece control para repetirla');
+  start.click();
+  document.getElementById('est-bdo-opening-play').click();
+  await h.flush();
+  assert.equal(overlay.hidden, false, 'la presentación actual permanece abierta hasta que el usuario la cierre');
+  assert.equal(h.openingAudioPlayCount, 1, 'ni el botón oculto ni el control de reproducción reinician la apertura');
+  document.getElementById('est-bdo-opening-close').click();
+  assert.equal(overlay.hidden, true);
+  assert.equal(start.hidden, true, 'cerrarla después de completarla no ofrece otro inicio');
+
+  h.handlers['football:ballon_dor_market']({ market: ballonDorMarket() });
+  assert.equal(overlay.hidden, true, 'una actualización del mercado no reinicia la presentación ya vista');
+  h.handlers['football:ballon_dor_market']({
+    market: ballonDorMarket({ seasonMonth: '2026-11', eventId: 'bdo-2026-11' })
+  });
+  assert.equal(overlay.hidden, false, 'la edición siguiente tiene su propia primera presentación');
+  assert.equal(overlay.dataset.seasonMonth, '2026-11');
+  assert.equal(h.openingAudioPlayCount, 2);
+});
+
+test('Socket.IO reintenta lobby y mercado del Balón de Oro después de reconectar', async t => {
+  const h = await createBallonDorHarness({ path: '/balon-de-oro' });
+  t.after(h.close);
+  const count = event => h.socketEmitted.filter(item => item.event === event).length;
+
+  h.socket.connected = true;
+  h.handlers.connect();
+  await h.flush();
+  assert.equal(count('football:subscribe'), 1, 'primera conexión suscribe la página al lobby');
+  assert.equal(count('football:ballon_dor_market'), 1, 'primera conexión consulta el mercado');
+
+  h.socket.connected = false;
+  h.handlers.disconnect('transport close');
+  assert.match(h.window.document.getElementById('est-connection').textContent, /Sin conexión/);
+  h.socket.connected = true;
+  h.handlers.connect();
+  await h.flush();
+  assert.equal(count('football:subscribe'), 2, 'la reconexión vuelve a suscribir la página');
+  assert.equal(count('football:ballon_dor_market'), 2, 'la reconexión pide una instantánea nueva del mercado');
+  const marketWire = JSON.stringify(h.socketEmitted.filter(item => item.event === 'football:ballon_dor_market'));
+  assert.doesNotMatch(marketWire, /ballon-dor-[^"]+\.(?:mp3|wav|ogg|mp4|webm)|data:(?:audio|video)/i,
+    'Socket.IO solo lleva solicitudes/datos de mercado, nunca archivos audiovisuales');
+});
+
+test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y controles no modifican boletos', async t => {
+  const market = settledBallonDorMarket();
+  const h = await createBallonDorHarness({
+    path: '/balon-de-oro?seasonMonth=2026-10',
+    now: Date.UTC(2026, 10, 2, 12),
+    ballonDorMarket: market,
+    openingCompleted: true,
+    reducedMotion: true
+  });
+  t.after(h.close);
+  const { document, localStorage } = h.window;
+  const panel = document.getElementById('est-bdo-ceremony-panel');
+  const start = document.getElementById('est-bdo-ceremony-start');
+  assert.equal(panel.hidden, false);
+  assert.equal(start.disabled, false);
+  assert.match(document.getElementById('est-bdo-ceremony-panel-status').textContent, /resultado oficial verificado/i);
+  assert.equal(document.getElementById('est-bdo-table-wrap').hidden, false);
+  assert.ok(document.getElementById('est-bdo-archive-list').textContent.includes('Delantero 1'));
+  assert.ok(h.requests.some(request => request.url === '/api/estadio/ballon-dor?seasonMonth=2026-10'));
+
+  start.click();
+  await h.flush();
+  const overlay = document.getElementById('est-bdo-ceremony');
+  assert.equal(overlay.hidden, false);
+  assert.match(document.getElementById('est-bdo-ceremony-title').textContent, /La temporada ya tiene podio/);
+  assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="1"]').textContent, /Por revelar/);
+  assert.equal(document.querySelector('#est-bdo-ceremony-podium [data-place="3"] .est-bdo-ceremony-avatar').hidden, true);
+  assert.deepEqual(h.ceremonyAudioCounts, { music: 1, narration: 1 });
+  assert.ok(h.audioTelemetryAttempts.some(item => item.body.track === 'ceremony_music' && item.body.outcome === 'started'));
+  assert.ok(h.audioTelemetryAttempts.some(item => item.body.track === 'ceremony_narration' && item.body.outcome === 'started'));
+  assert.equal(document.getElementById('est-bdo-ceremony-stage').dataset.motion, 'reduced');
+
+  await h.finishCeremonyClip();
+  assert.match(document.getElementById('est-bdo-ceremony-stage').dataset.scene, /third-place/);
+  assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="3"]').textContent, /Por revelar/,
+    'el puesto permanece oculto mientras se pronuncia la introducción');
+  await h.finishCeremonyClip();
+  const third = document.querySelector('#est-bdo-ceremony-podium [data-place="3"]');
+  assert.match(third.textContent, /Delantero 3/);
+  assert.equal(third.querySelector('.est-bdo-ceremony-avatar').hidden, false,
+    'avatar y nombre aparecen al comenzar el clip de nombre correspondiente');
+  assert.match(third.querySelector('.est-bdo-ceremony-avatar').getAttribute('src'), /vrd_09\.svg$/);
+  assert.match(h.ceremonyAudioSrcHistory.narration[2], /names\/vrd_09\.wav$/);
+  assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="2"]').textContent, /Por revelar/);
+
+  await h.finishCeremonyClip();
+  h.advanceTime(900);
+  assert.match(document.getElementById('est-bdo-ceremony-stage').dataset.scene, /second-place/);
+  assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="2"]').textContent, /Por revelar/);
+  await h.finishCeremonyClip();
+  const second = document.querySelector('#est-bdo-ceremony-podium [data-place="2"]');
+  assert.match(second.textContent, /Delantero 2/);
+  assert.equal(second.querySelector('.est-bdo-ceremony-avatar').hidden, false);
+  assert.match(second.querySelector('.est-bdo-ceremony-avatar').getAttribute('src'), /sol_17\.svg$/);
+  assert.match(h.ceremonyAudioSrcHistory.narration[4], /names\/sol_17\.wav$/);
+
+  await h.finishCeremonyClip();
+  h.advanceTime(900);
+  assert.match(document.getElementById('est-bdo-ceremony-stage').dataset.scene, /finalists/);
+  assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="1"]').textContent, /Por revelar/);
+  await h.finishCeremonyClip();
+  assert.match(document.getElementById('est-bdo-ceremony-stage').dataset.scene, /winner-reveal/);
+  await h.finishCeremonyClip();
+  h.advanceTime(1100);
+  const winner = document.querySelector('#est-bdo-ceremony-podium [data-place="1"]');
+  assert.match(winner.textContent, /Delantero 1/);
+  assert.equal(winner.querySelector('.est-bdo-ceremony-avatar').hidden, false);
+  assert.match(winner.querySelector('.est-bdo-ceremony-avatar').getAttribute('src'), /frr_09\.svg$/);
+  assert.match(h.ceremonyAudioSrcHistory.narration[7], /names\/frr_09\.wav$/);
+  assert.match(document.getElementById('est-bdo-ceremony-breakdown').textContent, /Desglose de puntos/);
+  assert.match(document.getElementById('est-bdo-ceremony-payout').textContent, /250 fichas virtuales/);
+  assert.match(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /Delantero 1/);
+
+  await h.finishCeremonyClip();
+  assert.match(document.getElementById('est-bdo-ceremony-title').textContent, /gana el Balón de Oro/);
+  await h.finishCeremonyClip();
+  h.advanceTime(2200);
+  assert.equal(document.getElementById('est-bdo-ceremony-progress').getAttribute('aria-valuenow'), '100');
+  assert.match(document.getElementById('est-bdo-ceremony-time').textContent, /13\/13/);
+
+  const music = document.getElementById('est-bdo-ceremony-music');
+  music.click();
+  assert.equal(music.getAttribute('aria-pressed'), 'true');
+  assert.equal(localStorage.getItem('montecristo-bdo-ceremony-audio-v1:music'), 'off');
+  const narration = document.getElementById('est-bdo-ceremony-narration');
+  narration.click();
+  assert.equal(narration.getAttribute('aria-pressed'), 'true');
+  assert.equal(localStorage.getItem('montecristo-bdo-ceremony-audio-v1:narration'), 'off');
+  assert.equal(document.getElementById('est-bdo-ceremony-narration-audio').muted, true,
+    'la voz es silenciable independientemente de la música');
+  document.getElementById('est-bdo-ceremony-replay').click();
+  assert.equal(overlay.hidden, false, 'el replay vuelve a iniciar desde la misma instantánea oficial');
+  assert.match(document.getElementById('est-bdo-ceremony-title').textContent, /La temporada ya tiene podio/);
+  assert.equal(h.ceremonyAudioCounts.music, 2);
+  assert.equal(h.ceremonyAudioSrcHistory.narration.at(-1), '/assets/ballon-dor-ceremony/cues/verification.wav');
+  assert.equal(h.ballonDorSocketAttempts.length, 0);
+  assert.equal(h.ballonDorHttpAttempts.length, 0);
+  assert.equal(h.requests.some(request => request.url.includes('/ballon-dor/bet')), false);
+  document.getElementById('est-bdo-ceremony-close').click();
+  assert.equal(overlay.hidden, true);
+});
+
+test('la ceremonia sigue con subtítulos si el navegador bloquea tanto música como narración', async t => {
+  const h = await createBallonDorHarness({
+    path: '/balon-de-oro?seasonMonth=2026-10',
+    now: Date.UTC(2026, 10, 2, 12),
+    ballonDorMarket: settledBallonDorMarket(),
+    openingCompleted: true,
+    reducedMotion: true,
+    ceremonyAudioFails: true
+  });
+  t.after(h.close);
+  const { document } = h.window;
+  document.getElementById('est-bdo-ceremony-start').click();
+  await h.flush();
+  assert.equal(document.getElementById('est-bdo-ceremony').hidden, false,
+    'la reproducción visual no depende del permiso de audio');
+  assert.match(document.getElementById('est-bdo-ceremony-status').textContent, /Audio no disponible/);
+  assert.ok(h.audioTelemetryAttempts.some(item => item.body.track === 'ceremony_music' && item.body.outcome === 'blocked'));
+  assert.ok(h.audioTelemetryAttempts.some(item => item.body.track === 'ceremony_narration' && item.body.outcome === 'blocked'));
+  assert.match(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /la clasificación oficial/i);
+  assert.equal(document.getElementById('est-bdo-ceremony-stage').dataset.motion, 'reduced');
+  h.advanceTime(6000);
+  assert.match(document.getElementById('est-bdo-ceremony-stage').dataset.scene, /third-place/);
+  assert.equal(h.ballonDorSocketAttempts.length, 0);
+  assert.equal(h.ballonDorHttpAttempts.length, 0);
+});
+
+test('el podio no se revela antes de las 10 p. m.; al llegar la hora vuelve a leer el resultado oficial', async t => {
+  const now = Date.UTC(2026, 9, 31, 3);
+  const unlockAt = now + 60 * 1000;
+  const pending = settledBallonDorMarket();
+  pending.result = null;
+  pending.ceremony = null;
+  pending.resultAnnouncementAt = unlockAt;
+  pending.finalization.scheduledAt = unlockAt;
+  pending.finalization.actualAt = now + 1000;
+  const h = await createBallonDorHarness({
+    path: '/balon-de-oro?seasonMonth=2026-10', now,
+    ballonDorMarket: pending, openingCompleted: true, reducedMotion: true
+  });
+  t.after(h.close);
+  const { document } = h.window;
+  const start = document.getElementById('est-bdo-ceremony-start');
+  assert.equal(start.disabled, true);
+  assert.match(document.getElementById('est-bdo-ceremony-panel-status').textContent, /10:00 p\. m\./);
+  assert.match(document.getElementById('est-bdo-summary').textContent, /se anunciará/);
+  assert.equal(document.getElementById('est-bdo-table-wrap').hidden, true);
+  assert.doesNotMatch(document.getElementById('est-bdo-summary').textContent, /Delantero 1/);
+
+  const published = settledBallonDorMarket();
+  published.resultAnnouncementAt = unlockAt;
+  published.finalization.scheduledAt = unlockAt;
+  h.setBallonDorMarket(published);
+  h.advanceTime(60 * 1000 + 50);
+  await h.flush();
+  assert.equal(start.disabled, false);
+  assert.equal(document.getElementById('est-bdo-table-wrap').hidden, false);
+  assert.match(document.getElementById('est-bdo-summary').textContent, /Delantero 1/);
+  assert.ok(document.getElementById('est-bdo-archive-list').textContent.includes('Delantero 1'));
+});
+
+test('la inauguración de una llegada tardía no muestra puntos ni estadísticas mientras espera el anuncio', async t => {
+  const now = Date.UTC(2026, 9, 31, 3);
+  const pending = settledBallonDorMarket({ resultAnnouncementAt: now + 60 * 1000 });
+  pending.result = null;
+  pending.ceremony = null;
+  pending.awaitingAnnouncement = true;
+  pending.candidates = pending.candidates.map(candidate => ({ ...candidate, stats: null, points: null }));
+  const h = await createBallonDorHarness({ path: '/balon-de-oro', now, ballonDorMarket: pending, reducedMotion: true });
+  t.after(h.close);
+  const { document } = h.window;
+  assert.equal(document.getElementById('est-bdo-opening').hidden, false,
+    'se conserva la inauguración obligatoria aunque se llegue tarde al ciclo');
+  h.advanceOpeningAudio(8.1);
+  const card = document.querySelector('#est-bdo-opening-cards .est-bdo-opening-card');
+  assert.ok(card);
+  assert.doesNotMatch(card.textContent, /Goles|Asistencias|Apariciones|Puntos/);
+  assert.match(card.querySelector('.est-bdo-opening-card-signature').textContent, /revelarán en la ceremonia/);
+  assert.equal(document.getElementById('est-bdo-ceremony-start').disabled, true);
+});
+
+test('el piloto registra inicio y final de audio de inauguración sin enviar identidad', async t => {
+  const h = await createBallonDorHarness({ path: '/balon-de-oro', reducedMotion: true });
+  t.after(h.close);
+  await h.flush();
+  const { document } = h.window;
+  const audio = document.getElementById('est-bdo-opening-audio');
+  assert.ok(h.audioTelemetryAttempts.some(item => item.body.track === 'opening_narration'
+    && item.body.outcome === 'started' && item.body.seasonMonth === '2026-10'));
+  audio.dispatchEvent(new h.window.Event('ended'));
+  await h.flush();
+  assert.ok(h.audioTelemetryAttempts.some(item => item.body.track === 'opening_narration'
+    && item.body.outcome === 'completed'));
+  assert.doesNotMatch(JSON.stringify(h.audioTelemetryAttempts), /token|profile|alice/);
+  assert.ok(h.audioTelemetryAttempts.every(item => item.options.credentials === 'same-origin'));
+});
+
+test('la inauguración ofrece fallback visual y un control para activar audio si el navegador lo bloquea', async t => {
+  const h = await createBallonDorHarness({ path: '/balon-de-oro', reducedMotion: true, openingAudioFails: true });
+  t.after(h.close);
+  const { document } = h.window;
+  const overlay = document.getElementById('est-bdo-opening');
+  assert.equal(overlay.hidden, false, 'se abre automáticamente en la ruta dedicada');
+  assert.equal(document.getElementById('est-bdo-opening-stage').dataset.motion, 'reduced');
+  assert.match(document.getElementById('est-bdo-opening-status').textContent, /Audio no disponible/);
+  assert.ok(h.audioTelemetryAttempts.some(item => item.body.track === 'opening_narration' && item.body.outcome === 'blocked'),
+    'el bloqueo de reproducción queda disponible para observabilidad del piloto');
+  assert.match(document.querySelector('.est-bdo-opening-transcript').textContent, /Balón de Oro/);
+  const enableAudio = document.getElementById('est-bdo-opening-enable-audio');
+  assert.equal(enableAudio.hidden, false, 'hay un gesto explícito para intentar activar la voz');
+  h.advanceTime(9000);
+  assert.equal(document.getElementById('est-bdo-opening-stage').dataset.scene, 'reveal-1');
+  enableAudio.click();
+  await h.flush();
+  assert.equal(h.openingAudioPlayCount, 2);
+  assert.match(document.getElementById('est-bdo-opening-status').textContent, /Audio no disponible/);
+  document.getElementById('est-bdo-opening-play').click();
+  const pausedScene = document.getElementById('est-bdo-opening-stage').dataset.scene;
+  h.advanceTime(5000);
+  assert.equal(document.getElementById('est-bdo-opening-stage').dataset.scene, pausedScene,
+    'el fallback visual también se puede pausar sin movimiento');
+  document.getElementById('est-bdo-opening-close').click();
+  assert.equal(overlay.hidden, false, 'la primera presentación no se puede cerrar antes de terminar');
+});
+
+test('Balón de Oro muestra los 16 candidatos y confirma un boleto con recibo virtual', async t => {
+  const h = await createBallonDorHarness();
+  t.after(h.close);
+  const { document } = h.window;
+  assert.equal(document.querySelectorAll('#est-bdo-candidates tr').length, 16);
+  const candidateAvatars = [...document.querySelectorAll('#est-bdo-candidates .est-bdo-candidate-avatar')];
+  assert.equal(candidateAvatars.length, 16);
+  assert.deepEqual(candidateAvatars.map(image => image.getAttribute('src')),
+    ballonDorMarket().candidates.map(candidate => `/assets/ballon-dor-avatars/${candidate.playerId}.svg`),
+    'cada candidato conserva su avatar por playerId estable');
+  assert.match(document.getElementById('est-bdo-status').textContent, /Predicciones abiertas/);
+  assert.match(document.getElementById('est-bdo-summary').textContent, /ocho partidos de J20/);
+  assert.match(document.getElementById('est-bdo-feed').textContent, /Respaldo HTTP|Socket\.IO/);
+
+  chooseBallonDorCandidate(h, 'bdo-club-1', 100);
+  const review = document.getElementById('est-bdo-review');
+  assert.equal(review.disabled, false, 'stake y cuota válidos habilitan la revisión');
+  review.click();
+  assert.equal(document.getElementById('est-bdo-confirmation').hidden, false);
+  assert.match(document.getElementById('est-bdo-confirmation-copy').textContent, /100 fichas/);
+  assert.match(document.getElementById('est-bdo-confirmation-copy').textContent, /2\.50/);
+
+  document.getElementById('est-bdo-confirm').click();
+  await h.flush();
+  assert.equal(h.ballonDorSocketAttempts.length, 1);
+  const payload = h.ballonDorSocketAttempts[0].payload;
+  assert.equal(payload.selection, 'bdo-club-1');
+  assert.equal(payload.stake, 100);
+  assert.match(payload.idempotencyKey, /^bdo-/);
+  assert.equal(Object.hasOwn(payload, 'odds'), false, 'el cliente no manda la cuota al servidor');
+  assert.equal(document.getElementById('est-bdo-receipt').hidden, false);
+  assert.match(document.getElementById('est-bdo-receipt-body').textContent, /Delantero 1/);
+  assert.match(document.getElementById('est-bdo-receipt-body').textContent, /Pago potencial: 250 fichas/);
+  assert.equal(document.getElementById('est-chips').textContent, '900 fichas');
+
+  h.handlers['football:settlement']({ betId: 'future-ui-1', status: 'won', payout: 250 });
+  assert.match(document.getElementById('est-bdo-receipt-body').textContent, /Ganada · premio acreditado/);
+  assert.match(document.getElementById('est-bdo-receipt-body').textContent, /Pago acreditado: 250 fichas/);
+});
+
+test('Balón de Oro conserva la clave idempotente en un error y permite reintentar sin cambiar el boleto', async t => {
+  const h = await createBallonDorHarness({
+    onBallonDorSocketBet(payload, attempt) {
+      return attempt === 1
+        ? { ok: false, code: 'persistencia_pendiente' }
+        : acceptedBallonDorResult(payload);
+    }
+  });
+  t.after(h.close);
+  const { document } = h.window;
+  chooseBallonDorCandidate(h, 'bdo-club-1', 100);
+  document.getElementById('est-bdo-review').click();
+  document.getElementById('est-bdo-confirm').click();
+  await h.flush();
+
+  assert.match(document.getElementById('est-bdo-message').textContent, /pendiente de guardado/);
+  assert.equal(document.getElementById('est-bdo-confirmation').hidden, false);
+  const firstKey = h.ballonDorSocketAttempts[0].payload.idempotencyKey;
+  document.getElementById('est-bdo-confirm').click();
+  await h.flush();
+
+  assert.equal(h.ballonDorSocketAttempts.length, 2);
+  assert.equal(h.ballonDorSocketAttempts[1].payload.idempotencyKey, firstKey);
+  assert.equal(h.ballonDorSocketAttempts[1].payload.stake, 100);
+  assert.equal(document.getElementById('est-bdo-receipt').hidden, false);
+  assert.match(document.getElementById('est-bdo-message').textContent, /Predicción confirmada/);
+});
+
+test('Balón de Oro usa fallback HTTP sin Socket.IO, muestra su estado y deja el recibo', async t => {
+  const h = await createBallonDorHarness({ socketMissing: true });
+  t.after(h.close);
+  const { document } = h.window;
+  assert.match(document.getElementById('est-connection').textContent, /Sin conexión/);
+  assert.equal(document.getElementById('est-bdo-feed').dataset.state, 'http');
+  assert.match(document.getElementById('est-bdo-feed').textContent, /Respaldo HTTP/);
+
+  chooseBallonDorCandidate(h, 'bdo-club-1', 100);
+  document.getElementById('est-bdo-review').click();
+  document.getElementById('est-bdo-confirm').click();
+  await h.flush();
+
+  assert.equal(h.ballonDorSocketAttempts.length, 0);
+  assert.equal(h.ballonDorHttpAttempts.length, 1);
+  assert.ok(h.ballonDorHttpAttempts[0].body.token, 'el fallback identifica el perfil existente mediante su token de dispositivo');
+  assert.equal(h.ballonDorHttpAttempts[0].body.tos, '2026-09-28');
+  assert.equal(h.ballonDorHttpAttempts[0].body.stake, 100);
+  assert.ok(h.ballonDorHttpAttempts[0].headers['Idempotency-Key']);
+  assert.equal(document.getElementById('est-bdo-receipt').hidden, false);
+});
+
+test('el panel del Balón de Oro ofrece un estado de error recuperable y reintenta por HTTP', async t => {
+  let failMarketFetch = true;
+  const h = await createBallonDorHarness({ failBallonDorFetch: () => failMarketFetch });
+  t.after(h.close);
+  const { document } = h.window;
+  assert.match(document.getElementById('est-bdo-status').textContent, /Sin conexión/);
+  assert.equal(document.getElementById('est-bdo-table-wrap').hidden, true);
+  assert.equal(document.getElementById('est-bdo-retry').hidden, false);
+  assert.match(document.getElementById('est-bdo-feedback').textContent, /Revisa tu conexión/);
+
+  failMarketFetch = false;
+  document.getElementById('est-bdo-retry').click();
+  await h.flush();
+  assert.equal(document.querySelectorAll('#est-bdo-candidates tr').length, 16);
+  assert.equal(document.getElementById('est-bdo-table-wrap').hidden, false);
+  assert.equal(document.getElementById('est-bdo-retry').hidden, true);
+});
+
+test('el panel BDO detecta una lista incompleta, bloquea el boleto y permite reintentar', async t => {
+  const incomplete = ballonDorMarket();
+  incomplete.candidates = incomplete.candidates.slice(0, 15);
+  const complete = ballonDorMarket();
+  const h = await createBallonDorHarness({ ballonDorMarket: incomplete });
+  t.after(h.close);
+  const { document } = h.window;
+
+  assert.equal(document.querySelectorAll('#est-bdo-candidates tr').length, 15);
+  assert.match(document.getElementById('est-bdo-feedback').textContent, /exactamente 16 candidatos/);
+  assert.equal(document.getElementById('est-bdo-retry').hidden, false);
+  assert.equal(document.querySelectorAll('#est-bdo-candidates [data-bdo-select]').length, 0);
+  assert.equal(document.getElementById('est-bdo-review').disabled, true);
+
+  h.setBallonDorMarket(complete);
+  document.getElementById('est-bdo-retry').click();
+  await h.flush();
+  assert.equal(document.querySelectorAll('#est-bdo-candidates tr').length, 16);
+  assert.equal(document.getElementById('est-bdo-retry').hidden, true);
+  assert.doesNotMatch(document.getElementById('est-bdo-feedback').textContent, /exactamente 16 candidatos/);
+});
+
+test('un evento Socket.IO sin mercado vuelve al estado vacío en vez de renderizar el sobre', async t => {
+  const h = await createBallonDorHarness();
+  t.after(h.close);
+  const { document } = h.window;
+
+  h.handlers['football:ballon_dor_market']({ market: null });
+  assert.match(document.getElementById('est-bdo-status').textContent, /Sin ciclo activo/);
+  assert.equal(document.getElementById('est-bdo-table-wrap').hidden, true);
+});
+
+test('la tabla BDO recibe cambios de cuota en vivo y cierra nuevas predicciones tras J20', async t => {
+  const initial = ballonDorMarket();
+  const h = await createBallonDorHarness({ ballonDorMarket: initial });
+  t.after(h.close);
+  const { document } = h.window;
+  const firstOdds = () => document.querySelector('#est-bdo-candidates tr .est-bdo-odds').textContent;
+  assert.equal(firstOdds(), '2.50');
+
+  const live = ballonDorMarket({
+    updatedAt: 200,
+    oddsSnapshot: { afterJornada: 1, updatedAt: 200, simulations: 2000, overround: 1.1 },
+    candidates: initial.candidates.map((candidate, index) => index === 0
+      ? { ...candidate, odds: 3.75, impliedProbability: 1 / 3.75 }
+      : candidate)
+  });
+  h.handlers['football:ballon_dor_market']({ market: live });
+  assert.equal(firstOdds(), '3.75');
+  assert.equal(document.getElementById('est-bdo-feed').dataset.state, 'socket');
+  assert.match(document.getElementById('est-bdo-feedback').textContent, /al completar J1/);
+
+  const stale = ballonDorMarket({
+    updatedAt: 150,
+    candidates: initial.candidates.map((candidate, index) => index === 0 ? { ...candidate, odds: 4.75 } : candidate)
+  });
+  h.handlers['football:ballon_dor_market']({ market: stale });
+  assert.equal(firstOdds(), '3.75', 'una respuesta HTTP/socket atrasada no revierte la cuota nueva');
+
+  const locked = ballonDorMarket({
+    status: 'locked', updatedAt: 300,
+    oddsSnapshot: { afterJornada: 8, updatedAt: 300, simulations: 2000, overround: 1.1 }
+  });
+  h.handlers['football:ballon_dor_market']({ market: locked });
+  assert.match(document.getElementById('est-bdo-status').textContent, /Mercado cerrado/);
+  assert.match(document.getElementById('est-bdo-summary').textContent, /No se aceptan nuevas predicciones/);
+  assert.equal(document.getElementById('est-bdo-bet-area').hidden, true);
+});
+
+test('un ciclo BDO cancelado explica la devolución y muestra el reembolso exacto en el recibo', async t => {
+  const ticket = {
+    kind: 'future', id: 'future-void-ui', market: 'balon_de_oro', seasonMonth: '2026-10',
+    selection: 'bdo-club-1', stake: 125, odds: 2.5, potentialPayout: 312,
+    status: 'void', payout: 125, placedAt: 10, settledAt: 20
+  };
+  const h = await createBallonDorHarness({
+    ballonDorMarket: ballonDorMarket({ status: 'cancelled', updatedAt: 200, cancellationReason: 'temporada_truncada' }),
+    betHistory: { entries: [ticket], summary: { total: 1 } }
+  });
+  t.after(h.close);
+  const { document } = h.window;
+  assert.match(document.getElementById('est-bdo-status').textContent, /Cancelado/);
+  assert.match(document.getElementById('est-bdo-summary').textContent, /temporada se truncó/);
+  assert.match(document.getElementById('est-bdo-finalization-message').textContent, /10:00 p\. m\./);
+  assert.match(document.getElementById('est-bdo-finalization-message').textContent, /no tendrá ceremonia/);
+  assert.equal(document.getElementById('est-bdo-slip').hidden, true);
+  assert.equal(document.getElementById('est-bdo-receipt').hidden, false);
+  assert.match(document.getElementById('est-bdo-receipt-body').textContent, /Anulada · stake reembolsado/);
+  assert.match(document.getElementById('est-bdo-receipt-body').textContent, /Reembolso exacto: 125 fichas/);
+});
+
+test('Mi espacio del Estadio mantiene el ranking combinado en vivo y las métricas personales', async t => {
+  const h = createHarness();
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+  const { window, handlers, socketEmitted } = h;
+  const document = window.document;
+  document.getElementById('est-ledger-open').click();
+  document.getElementById('est-ledger-tab-ranking').click();
+  assert.ok(socketEmitted.some(item => item.event === 'bet_ranking_get'), 'al abrir el ranking se suscribe a la actualización en vivo');
+
+  const snapshot = {
+    updatedAt: Date.now(), participants: 2,
+    participantsBySource: { total: 2, casino: 2, stadium: 1 }, totalWagered: 1800,
+    me: {
+      name: 'Aficionado ABCD', avatar: 'fox', totalWagered: 900,
+      casinoWagered: 400, stadiumWagered: 500, stadiumBets: 3,
+      stadiumWins: 2, stadiumLosses: 1, stadiumDecisions: 3,
+      stadiumSettledBets: 3, stadiumHitRate: 67, stadiumNet: 125,
+      totalRank: 1, casinoRank: 2, stadiumRank: 1
+    },
+    ranking: {
+      total: [
+        { place: 1, name: 'Aficionado ABCD', avatar: 'fox', totalWagered: 900, casinoWagered: 400, stadiumWagered: 500 },
+        { place: 2, name: 'Aficionado EFGH', avatar: 'owl', totalWagered: 900, casinoWagered: 800, stadiumWagered: 100 }
+      ],
+      casino: [{ place: 1, name: 'Aficionado EFGH', avatar: 'owl', totalWagered: 900, casinoWagered: 800, stadiumWagered: 100 }],
+      stadium: [{ place: 1, name: 'Aficionado ABCD', avatar: 'fox', totalWagered: 900, casinoWagered: 400, stadiumWagered: 500 }]
+    }
+  };
+  handlers['bet_ranking_state'](snapshot);
+  assert.match(document.getElementById('est-bet-ranking-personal').textContent, /67%/);
+  assert.match(document.getElementById('est-bet-ranking-personal').textContent, /\+◆ 125/);
+  const publicRows = document.getElementById('est-bet-ranking-list').textContent;
+  assert.match(publicRows, /Aficionado ABCD/);
+  assert.doesNotMatch(publicRows, /profileId|deviceToken|alice/);
+
+  const next = { ...snapshot, updatedAt: snapshot.updatedAt + 1, totalWagered: 2400 };
+  handlers['bet_ranking_state'](next);
+  assert.match(document.getElementById('est-bet-ranking-updated').textContent, /2,400 fichas/);
+  document.querySelector('[data-bet-ranking-source="stadium"]').click();
+  assert.match(document.getElementById('est-bet-ranking-personal').textContent, /TU PUESTO · ESTADIO/);
+
+  document.getElementById('est-ledger-ranking-back').click();
+  assert.ok(socketEmitted.some(item => item.event === 'bet_ranking_unsubscribe'), 'al cerrar se desuscribe a la actualización en vivo');
+});
+
+test('Balón de Oro no habilita apuestas hasta aceptar la versión vigente de Términos', async t => {
+  const h = await createBallonDorHarness({ localTosVersion: 'versión-anterior' });
+  t.after(h.close);
+  const { document } = h.window;
+  assert.equal(document.getElementById('est-tos').hidden, false);
+  assert.equal(document.getElementById('est-bdo-selection').disabled, true);
+  assert.match(document.getElementById('est-bdo-message').textContent, /Acepta los Términos/);
+  assert.equal(document.querySelector('[data-bdo-select="bdo-club-1"]'), null);
+
+  document.getElementById('est-tos-accept').click();
+  await h.flush();
+  assert.equal(document.getElementById('est-tos').hidden, true);
+  assert.ok(document.querySelector('[data-bdo-select="bdo-club-1"]'));
+  chooseBallonDorCandidate(h, 'bdo-club-1', 100);
+  assert.equal(document.getElementById('est-bdo-review').disabled, false);
 });

@@ -393,6 +393,7 @@
         <button id="profile-tab-collection" class="profile-tab" type="button" aria-haspopup="dialog" aria-controls="collection-modal" data-open-collection="collection">Colección ↗</button>
         <button id="profile-tab-album" class="profile-tab" type="button" aria-haspopup="dialog" aria-controls="collection-modal" data-open-collection="album">Álbum ↗</button>
         <button id="profile-tab-activity" class="profile-tab" type="button" aria-controls="profile-section-activity" data-profile-jump="activity">Actividad</button>
+        <button id="profile-tab-betting" class="profile-tab" type="button" aria-controls="profile-section-betting" data-profile-jump="betting">Mi espacio</button>
         <button id="profile-tab-goals" class="profile-tab" type="button" aria-controls="profile-section-goals" data-profile-jump="goals">Retos y logros</button>
         <span class="profile-scroll-hint" aria-hidden="true">Desliza para ver más <b>↓</b></span>
       </nav>
@@ -449,6 +450,24 @@
               <section class="analytics-box"><div class="progress-title"><span>EVOLUCIÓN DEL SALDO</span><small id="balance-chart-note">Tus últimos movimientos</small></div><div id="balance-chart" class="balance-chart" role="img" aria-label="Gráfica de evolución del saldo"></div><a id="history-download" class="history-download-link" download>⬇ Descargar mi historial completo</a></section>
               <section class="analytics-box"><div class="progress-title"><span>HISTORIAL POR JUEGO</span><small>Rondas · victorias · balance</small></div><div id="game-breakdown" class="game-breakdown"></div></section>
             </div>
+          </section>
+          <section id="profile-section-betting" class="profile-content-section" data-profile-section="betting" aria-labelledby="profile-section-betting-title" tabindex="-1">
+            <div class="profile-main-heading"><div><span class="kicker">MI ESPACIO · CASINO + ESTADIO</span><h3 id="profile-section-betting-title" tabindex="-1">Ranking de apuestas</h3></div><span id="bet-ranking-live" class="bet-ranking-live">● Actualización en vivo</span></div>
+            <p class="bet-ranking-intro">Compara el volumen de fichas virtuales apostadas en ambos espacios. Tu resumen también muestra aciertos y balance neto del Estadio; el ranking se renueva al confirmarse cada apuesta.</p>
+            <div id="bet-ranking-personal" class="bet-ranking-personal" role="status" aria-live="polite"></div>
+            <div class="bet-ranking-toolbar">
+              <div class="bet-ranking-filters" role="group" aria-label="Elegir clasificación de apuestas">
+                <button class="bet-ranking-filter active" type="button" data-bet-ranking-source="total" aria-pressed="true">Total</button>
+                <button class="bet-ranking-filter" type="button" data-bet-ranking-source="casino" aria-pressed="false">Casino</button>
+                <button class="bet-ranking-filter" type="button" data-bet-ranking-source="stadium" aria-pressed="false">Estadio</button>
+              </div>
+              <small id="bet-ranking-updated" class="bet-ranking-updated">Las fichas no tienen valor monetario.</small>
+            </div>
+            <div class="bet-ranking-table" role="table" aria-label="Ranking de apuestas de Casino y Estadio">
+              <div class="bet-ranking-table-head" role="row"><span role="columnheader">PUESTO</span><span role="columnheader">JUGADOR</span><span role="columnheader">TOTAL</span><span role="columnheader">CASINO</span><span role="columnheader">ESTADIO</span></div>
+              <div id="bet-ranking-list" class="bet-ranking-list" role="rowgroup" aria-live="polite"><div class="bet-ranking-empty">Abre esta sección con conexión para consultar el ranking combinado.</div></div>
+            </div>
+            <p class="bet-ranking-footnote">Acierto personal = ganadas ÷ (ganadas + perdidas); no cuenta anuladas ni cashouts. Neto del Estadio = pagos y devoluciones menos stake en apuestas liquidadas. Fichas virtuales, sin valor monetario.</p>
           </section>
           <section id="profile-section-goals" class="profile-content-section" data-profile-section="goals" aria-labelledby="profile-section-goals-title" tabindex="-1">
             <div class="profile-main-heading"><div><span class="kicker">OBJETIVOS</span><h3 id="profile-section-goals-title" tabindex="-1">Retos y logros</h3></div><span>Progreso y recompensas</span></div>

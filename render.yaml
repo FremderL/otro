@@ -21,9 +21,13 @@ services:
       # Las temporadas cierran a medianoche de Ciudad de México, no a las 00:00 UTC.
       - key: CASINO_TIME_ZONE
         value: America/Mexico_City
-      # Estadio MonteCristo: habilita la sección de apuestas de fútbol.
+      # Fase 9: el Estadio queda apagado en producción hasta superar el piloto y el cierre.
+      # Solo activar manualmente en un entorno aislado y después de aprobar la puerta de lanzamiento.
       - key: FOOTBALL_ENABLED
-        value: "true"
+        value: "off"
+      # Persistencia de calendario, boletos y resultados del Estadio en el disco del servicio.
+      - key: FOOTBALL_STORE_PATH
+        value: /var/data/football.json
       # Creatividades de La Previa (imágenes aprobadas): en el disco persistente.
       - key: PROMOTION_MEDIA_DIR
         value: /var/data/promotion-media

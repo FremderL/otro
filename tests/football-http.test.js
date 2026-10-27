@@ -14,6 +14,7 @@ const fs = require('node:fs');
 const { FootballStore } = require('../lib/football-store');
 const { ProfileStore } = require('../lib/profile-store');
 const { installFootballRoutes, installFootballAdminRoutes, footballHealth, MARKET_KEYS } = require('../lib/football/http');
+const { createBallonDorAudioTelemetry } = require('../lib/football/rollout-telemetry');
 const { monthKey } = require('../lib/football-store-shared');
 
 // --- Mock de Express (app + req + res) ---
@@ -23,10 +24,13 @@ function makeApp() {
     routes,
     get(p, ...h) { routes['GET ' + p] = h; },
     post(p, ...h) { routes['POST ' + p] = h; },
-    run(method, p, { params = {}, query = {}, body = {}, adminAuth = null } = {}) {
+    run(method, p, { params = {}, query = {}, body = {}, adminAuth = null, headers = {} } = {}) {
       const handlers = routes[method + ' ' + p];
       if (!handlers) throw new Error('ruta no registrada: ' + method + ' ' + p);
-      const req = { params, query, body, adminAuth, get: () => undefined };
+      const req = {
+        params, query, body, adminAuth,
+        get: name => headers[String(name).toLowerCase()] ?? headers[name] ?? undefined
+      };
       const res = makeRes();
       let i = 0;
       const next = () => { if (res._done) return; const h = handlers[i++]; if (h) h(req, res, next); };
@@ -77,14 +81,19 @@ function setup(opts = {}) {
 
   const app = makeApp();
   const engine = makeEngine(spy);
-  const betting = makeBetting(spy);
+  const betting = opts.betting || makeBetting(spy);
   const buildLobby = () => ({ seasonMonth: month, matches: [], standings: [], nextKickoffAt: null });
   const buildMatchState = (id, profileId) => ({ match: { id }, profileId: profileId || null, state: { minute: 0 } });
   const audit = (type, data) => spy.audit.push({ type, data });
 
   installFootballRoutes(app, {
-    store, profiles, buildLobby, buildMatchState,
-    config: { tosVersion: 'v1' }, log: () => {},
+    store, profiles, betting, buildLobby, buildMatchState,
+    getBallonDorMarket: () => opts.ballonDorMarket || null,
+    accountConfig: opts.accountConfig || null,
+    audioTelemetry: opts.audioTelemetry,
+    verifyTosAcceptance: opts.verifyTosAcceptance || ((_profile, tos) => String(tos || '') === 'v1'),
+    onBetPlaced: opts.onBetPlaced,
+    config: { tosVersion: 'v1' }, log: opts.log || (() => {}),
     enabled: opts.enabled !== undefined ? opts.enabled : () => true,
     publicDir: opts.publicDir || path.join(dir, 'public')
   });
@@ -99,12 +108,25 @@ function setup(opts = {}) {
   return { dir, store, profiles, app, engine, betting, spy, scheduled, month, cleanup };
 }
 
+async function runAsync(app, method, route, options) {
+  const response = app.run(method, route, options);
+  await new Promise(resolve => setImmediate(resolve));
+  return response;
+}
+
 // ===================== RUTAS PÚBLICAS =====================
 
 test('GET /estadio sirve estadio.html', (t) => {
   const ctx = setup(); t.after(ctx.cleanup);
   const res = ctx.app.run('GET', '/estadio');
   assert.ok(res.sentFile && res.sentFile.endsWith('estadio.html'), 'sendFile estadio.html');
+  assert.equal(res.headers['Cache-Control'], 'no-store');
+});
+
+test('GET /balon-de-oro sirve la página del evento dedicado', t => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  const res = ctx.app.run('GET', '/balon-de-oro');
+  assert.ok(res.sentFile && res.sentFile.endsWith('estadio.html'), 'usa el cliente de Estadio con contexto de evento dedicado');
   assert.equal(res.headers['Cache-Control'], 'no-store');
 });
 
@@ -158,9 +180,41 @@ test('GET /api/estadio/standings devuelve la tabla de la temporada en curso', (t
 test('FOOTBALL_ENABLED apagado: todas las rutas públicas responden 404', (t) => {
   const ctx = setup({ enabled: () => false }); t.after(ctx.cleanup);
   assert.equal(ctx.app.run('GET', '/estadio').statusCode, 404);
+  assert.equal(ctx.app.run('GET', '/balon-de-oro').statusCode, 404);
   assert.equal(ctx.app.run('GET', '/api/estadio/state').statusCode, 404);
   assert.equal(ctx.app.run('GET', '/api/estadio/standings').statusCode, 404);
+  assert.equal(ctx.app.run('GET', '/api/estadio/ballon-dor').statusCode, 404);
+  assert.equal(ctx.app.run('POST', '/api/estadio/ballon-dor/bet', { body: { token: 'ignored' } }).statusCode, 404);
+  assert.equal(ctx.app.run('POST', '/api/estadio/telemetry/audio', { body: {} }).statusCode, 404);
   assert.equal(ctx.app.run('GET', '/api/estadio/matches/:id', { params: { id: ctx.scheduled.id } }).statusCode, 404);
+});
+
+test('telemetría de audio es same-origin, agregada y no conserva tokens ni IDs personales', t => {
+  const logged = [];
+  const telemetry = createBallonDorAudioTelemetry({
+    log: (event, data) => logged.push({ event, data }), limit: 100
+  });
+  const ctx = setup({ audioTelemetry: telemetry, log: (event, data) => logged.push({ event, data }) });
+  t.after(ctx.cleanup);
+  const accepted = ctx.app.run('POST', '/api/estadio/telemetry/audio', {
+    headers: { origin: 'http://localhost:3000', host: 'localhost:3000' },
+    body: {
+      seasonMonth: '2026-11', track: 'opening_narration', outcome: 'started',
+      profileId: 'private-profile', token: 'private-token', userAgent: 'private-agent'
+    }
+  });
+  assert.equal(accepted.statusCode, 202);
+  assert.deepEqual(telemetry.snapshot().opening_narration, {
+    started: 1, completed: 0, blocked: 0, error: 0
+  });
+  assert.doesNotMatch(JSON.stringify(logged), /private-profile|private-token|private-agent/);
+
+  const crossOrigin = ctx.app.run('POST', '/api/estadio/telemetry/audio', {
+    headers: { origin: 'https://attacker.example', host: 'localhost:3000' },
+    body: { seasonMonth: '2026-11', track: 'opening_narration', outcome: 'started' }
+  });
+  assert.equal(crossOrigin.statusCode, 403);
+  assert.equal(telemetry.snapshot().opening_narration.started, 1);
 });
 
 // ===================== PALANCAS ADMIN (fail-closed) =====================
@@ -196,10 +250,14 @@ test('suspend con market suspende solo ese', (t) => {
   assert.deepEqual(ctx.spy.suspended, ['1x2']);
 });
 
-test('settle fuerza liquidación (engine.forceFinish) + audita', (t) => {
+test('el cliente no puede inventar el resultado: settle ignora su marcador y consulta al motor', (t) => {
   const ctx = setup(); t.after(ctx.cleanup);
-  const res = ctx.app.run('POST', '/admin/estadio/matches/:id/settle', { params: { id: ctx.scheduled.id } });
+  const res = ctx.app.run('POST', '/admin/estadio/matches/:id/settle', {
+    params: { id: ctx.scheduled.id },
+    body: { score: { home: 99, away: 0 }, result: { home: 99, away: 0, winner: 'home' }, winner: 'away' }
+  });
   assert.equal(res.body.ok, true);
+  assert.deepEqual(res.body.result, { winner: 'home' }, 'el resultado vuelve exclusivamente de engine.forceFinish');
   assert.equal(ctx.spy.forceFinish, 1);
   assert.equal(ctx.spy.audit[0].type, 'football_match_force_settled');
 });
@@ -294,4 +352,159 @@ test('footballHealth NUNCA lanza: si el motor falla, devuelve degraded', () => {
   assert.equal(h.degraded, true);
   assert.equal(h.enabled, true);
   assert.equal(h.ledgerBalanced, false);
+});
+
+test('footballHealth incluye duración de sweeps y audio únicamente como agregados', () => {
+  const engine = makeEngine({});
+  const h = footballHealth({
+    engine,
+    enabled: true,
+    ballonDorMarket: { healthSnapshot: () => ({ current: { seasonMonth: '2026-11', status: 'active' }, sweep: { count: 20, errors: 0, p95DurationMs: 19 } }) },
+    audioTelemetry: { snapshot: () => ({ opening_narration: { started: 4, completed: 3, blocked: 1, error: 0 } }) }
+  });
+  assert.equal(h.ballonDor.sweep.p95DurationMs, 19);
+  assert.equal(h.ballonDor.audioTelemetry.opening_narration.completed, 3);
+  assert.doesNotMatch(JSON.stringify(h.ballonDor), /profileId|token|stake|payout|winner/);
+});
+
+test('GET /api/estadio/ballon-dor expone solo la proyección pública del ciclo', t => {
+  const market = { market: 'balon_de_oro', seasonMonth: '2026-10', status: 'active', candidates: [{ id: 'c1', odds: 2.5 }] };
+  const ctx = setup({ ballonDorMarket: { getMarket: () => market } });
+  t.after(ctx.cleanup);
+  const res = ctx.app.run('GET', '/api/estadio/ballon-dor');
+  assert.equal(res.body.ok, true);
+  assert.deepEqual(res.body.market, market);
+  assert.equal(res.headers['Cache-Control'], 'no-store');
+});
+
+test('la API permite leer una edición persistida y el archivo solo publica resúmenes públicos', t => {
+  const requested = [];
+  const archived = [{ seasonMonth: '2026-09', status: 'settled', winner: { playerName: 'Delantero 9', clubName: 'Club 9', score: 300 } }];
+  const service = {
+    getMarket: month => { requested.push(month); return { seasonMonth: month || '2026-10', status: 'settled', result: null }; },
+    getArchive: () => archived
+  };
+  const ctx = setup({ ballonDorMarket: service });
+  t.after(ctx.cleanup);
+  const detail = ctx.app.run('GET', '/api/estadio/ballon-dor', { query: { seasonMonth: '2026-09' } });
+  assert.equal(detail.statusCode, 200);
+  assert.equal(detail.body.market.seasonMonth, '2026-09');
+  assert.deepEqual(requested, ['2026-09']);
+  assert.equal(detail.headers['Cache-Control'], 'no-store');
+  const invalid = ctx.app.run('GET', '/api/estadio/ballon-dor', { query: { seasonMonth: '2026-19' } });
+  assert.equal(invalid.statusCode, 400);
+  assert.equal(invalid.body.error, 'season_month_invalid');
+  const archive = ctx.app.run('GET', '/api/estadio/ballon-dor/archive');
+  assert.equal(archive.body.ok, true);
+  assert.deepEqual(archive.body.cycles, archived);
+  assert.equal(archive.headers['Cache-Control'], 'no-store');
+});
+
+test('POST Balón de Oro fallback exige origen e identidad existente, usa cuota del servidor y notifica una sola colocación', async t => {
+  const received = [];
+  const notifications = [];
+  let mode = 'success';
+  const betting = {
+    suspend() {}, closeMarket() {},
+    async placeBallonDorBet(args) {
+      received.push(args);
+      if (mode === 'closed') return { ok: false, code: 'mercado_cerrado' };
+      const future = {
+        id: 'future-http-test', market: 'balon_de_oro', seasonMonth: '2026-10',
+        selection: args.selection, stake: args.stake, odds: 3.25,
+        potentialPayout: 325, status: 'open', payout: null, placedAt: 100,
+        profileId: args.profile.id, idempotencyKey: args.idempotencyKey
+      };
+      if (mode !== 'replay') args.profile.chips -= args.stake;
+      return { ok: true, future, replayed: mode === 'replay' };
+    }
+  };
+  const ctx = setup({
+    betting,
+    accountConfig: { appOrigin: 'https://game.example' },
+    onBetPlaced: payload => notifications.push(payload)
+  });
+  t.after(ctx.cleanup);
+  const profile = ctx.profiles.getOrCreate('bdo-device-token', 'Alicia');
+  profile.chips = 500;
+  ctx.profiles.saveNow();
+  const headers = {
+    origin: 'https://game.example', host: 'game.example', 'idempotency-key': 'header-bdo-key-001'
+  };
+  const body = {
+    token: 'bdo-device-token', selection: 'candidate-server', stake: 100, tos: 'v1',
+    idempotencyKey: 'body-key-should-not-win', odds: 999, jornada: 30
+  };
+
+  const success = await runAsync(ctx.app, 'POST', '/api/estadio/ballon-dor/bet', { headers, body });
+  assert.equal(success.statusCode, 200);
+  assert.equal(success.body.ok, true);
+  assert.equal(success.body.chips, 400);
+  assert.equal(success.body.future.odds, 3.25, 'no se refleja la cuota falsa enviada por el navegador');
+  assert.equal(success.body.future.selection, 'candidate-server');
+  assert.ok(!('profileId' in success.body.future) && !('idempotencyKey' in success.body.future));
+  assert.deepEqual(received[0], {
+    profile, selection: 'candidate-server', stake: 100, idempotencyKey: 'header-bdo-key-001'
+  });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].profileId, profile.id);
+  assert.equal(success.headers['Cache-Control'], 'no-store');
+
+  const tosRequired = await runAsync(ctx.app, 'POST', '/api/estadio/ballon-dor/bet', {
+    headers, body: { ...body, tos: '' }
+  });
+  assert.equal(tosRequired.statusCode, 403);
+  assert.equal(tosRequired.body.code, 'tos_required');
+  assert.equal(received.length, 1, 'no se intenta apostar antes de aceptar los términos');
+
+  const deniedOrigin = await runAsync(ctx.app, 'POST', '/api/estadio/ballon-dor/bet', {
+    headers: { origin: 'https://evil.example', host: 'game.example' }, body
+  });
+  assert.equal(deniedOrigin.statusCode, 403);
+  assert.equal(deniedOrigin.body.code, 'origin_denied');
+  assert.equal(received.length, 1, 'no se toca el servicio de apuesta antes de validar el origen');
+
+  const noIdentity = await runAsync(ctx.app, 'POST', '/api/estadio/ballon-dor/bet', {
+    headers, body: { ...body, token: 'not-an-existing-profile' }
+  });
+  assert.equal(noIdentity.statusCode, 401);
+  assert.equal(noIdentity.body.code, 'no_identity');
+  assert.equal(ctx.spy.getOrCreate, 1, 'la ruta nunca crea un perfil para el token recibido');
+
+  mode = 'closed';
+  const closed = await runAsync(ctx.app, 'POST', '/api/estadio/ballon-dor/bet', { headers, body });
+  assert.equal(closed.statusCode, 409);
+  assert.equal(closed.body.code, 'mercado_cerrado');
+  assert.equal(notifications.length, 1, 'los rechazos no actualizan el ranking');
+
+  mode = 'replay';
+  const replay = await runAsync(ctx.app, 'POST', '/api/estadio/ballon-dor/bet', { headers, body });
+  assert.equal(replay.body.ok, true);
+  assert.equal(replay.body.replayed, true);
+  assert.equal(notifications.length, 1, 'una reproducción idempotente no vuelve a difundir el ranking');
+});
+
+test('POST Balón de Oro fallback admite el mismo host cuando no hay origen configurado', async t => {
+  const profile = { id: 'host-profile', chips: 250 };
+  let calls = 0;
+  const betting = {
+    suspend() {}, closeMarket() {},
+    async placeBallonDorBet(args) {
+      calls++;
+      return { ok: true, future: {
+        id: 'host-future', market: 'balon_de_oro', seasonMonth: '2026-10',
+        selection: args.selection, stake: args.stake, odds: 2, potentialPayout: 200,
+        status: 'open', payout: null, placedAt: 1
+      } };
+    }
+  };
+  const ctx = setup({ betting });
+  t.after(ctx.cleanup);
+  ctx.profiles.getProfile = token => token === 'host-token' ? profile : null;
+  const res = await runAsync(ctx.app, 'POST', '/api/estadio/ballon-dor/bet', {
+    headers: { origin: 'https://arena.local:8443', host: 'arena.local:8443', 'idempotency-key': 'same-host-key-001' },
+    body: { token: 'host-token', selection: 'candidate', stake: 100, tos: 'v1' }
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls, 1);
 });

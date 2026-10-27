@@ -1998,3 +1998,56 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
   border-radius: 12px; background: rgba(8, 15, 17, .94); box-shadow: 0 12px 22px rgba(0, 0, 0, .38);
   backdrop-filter: blur(7px);
 }
+
+/* Mi espacio: ranking unificado del volumen apostado en Casino + Estadio. */
+.bet-ranking-live { display:inline-flex; align-items:center; gap:6px; border-color:rgba(82,224,174,.24)!important; color:#a9efd0!important; background:rgba(82,224,174,.07)!important; }
+.bet-ranking-live.disconnected { border-color:rgba(229,189,114,.28)!important; color:#e3c77f!important; background:rgba(229,189,114,.06)!important; }
+.bet-ranking-intro { margin:0 0 13px; color:#a7b8b0; font-size:11px; line-height:1.55; }
+.bet-ranking-personal { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; margin:0 0 14px; }
+.bet-ranking-me-place,.bet-ranking-me-total,.bet-ranking-me-source { min-width:0; min-height:94px; display:flex; flex-direction:column; justify-content:center; gap:5px; padding:12px; border:1px solid rgba(194,223,216,.12); border-radius:12px; background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.012)); }
+.bet-ranking-me-place { border-color:rgba(229,189,114,.25); background:linear-gradient(145deg,rgba(229,189,114,.095),rgba(255,255,255,.012)); }
+.bet-ranking-personal small { color:#94aaa0; font-size:7px; font-weight:850; letter-spacing:.1em; }
+.bet-ranking-personal b { color:#eff7f2; font:800 16px var(--display); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.bet-ranking-me-place b { color:var(--gold-2); font-size:22px; }
+.bet-ranking-personal span { color:#82948c; font-size:7px; line-height:1.35; }
+.bet-ranking-me-total b { color:var(--mint); font-size:14px; }
+.bet-ranking-toolbar { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 9px; }
+.bet-ranking-filters { display:flex; flex-wrap:wrap; gap:6px; }
+.bet-ranking-filter { min-height:31px; padding:0 13px; border:1px solid rgba(194,223,216,.14); border-radius:999px; color:#a5b8ae; background:rgba(255,255,255,.025); font:750 8px var(--body); cursor:pointer; transition:border-color .15s,color .15s,background .15s; }
+.bet-ranking-filter:hover { border-color:rgba(82,224,174,.35); color:#eaf6ef; }
+.bet-ranking-filter.active,.bet-ranking-filter[aria-pressed="true"] { border-color:rgba(82,224,174,.48); color:#b9f3d5; background:rgba(82,224,174,.11); }
+.bet-ranking-filter:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+.bet-ranking-updated { color:#81958b; font-size:7px; line-height:1.4; text-align:right; }
+.bet-ranking-table { overflow-x:auto; border:1px solid rgba(194,223,216,.1); border-radius:12px; background:rgba(3,9,10,.22); scrollbar-width:thin; scrollbar-color:rgba(82,224,174,.35) transparent; }
+.bet-ranking-table-head,.bet-ranking-row { min-width:590px; display:grid; grid-template-columns:61px minmax(150px,1fr) repeat(3,minmax(105px,.66fr)); align-items:center; gap:9px; }
+.bet-ranking-table-head { min-height:31px; padding:0 12px; border-bottom:1px solid rgba(194,223,216,.09); color:#6f8980; font-size:6px; font-weight:900; letter-spacing:.12em; }
+.bet-ranking-row { min-height:47px; padding:6px 12px; border-bottom:1px solid rgba(194,223,216,.06); color:#cad8d1; transition:background .16s; }
+.bet-ranking-row:last-child { border-bottom:0; }
+.bet-ranking-row:hover { background:rgba(255,255,255,.025); }
+.bet-ranking-row.leader { background:linear-gradient(90deg,rgba(229,189,114,.08),transparent 64%); }
+.bet-ranking-row.self { box-shadow:inset 2px 0 rgba(82,224,174,.75); }
+.bet-ranking-place { color:#9caa9f; font:800 9px var(--display); }
+.bet-ranking-row.leader .bet-ranking-place { color:var(--gold-2); font-size:14px; }
+.bet-ranking-player { min-width:0; display:flex; align-items:center; gap:8px; }
+.bet-ranking-player i { width:27px; height:27px; flex:0 0 auto; display:grid; place-items:center; border:1px solid rgba(194,223,216,.12); border-radius:9px; background:rgba(255,255,255,.045); font-size:15px; font-style:normal; }
+.bet-ranking-player b { overflow:hidden; color:#dce8e0; font-size:9px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
+.bet-ranking-row.self .bet-ranking-player b { color:#aaf0cd; }
+.bet-ranking-value { color:#9eb0a7; font-size:8px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.bet-ranking-value.primary { color:#d4c18e; font-weight:850; }
+.bet-ranking-net.positive { color:#8ee6b4; }
+.bet-ranking-net.negative { color:#f29592; }
+.bet-ranking-net.neutral { color:#c3cec6; }
+.bet-ranking-footnote { margin:9px 0 0; color:#82938b; font-size:8px; line-height:1.5; }
+.bet-ranking-empty { padding:17px 12px; color:#82938b; font-size:9px; line-height:1.5; text-align:center; }
+@media(max-width:900px) {
+  .bet-ranking-personal { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+@media(max-width:680px) {
+  .bet-ranking-personal { grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+  .bet-ranking-me-place,.bet-ranking-me-total,.bet-ranking-me-source { min-height:75px; padding:9px; }
+  .bet-ranking-personal b { font-size:14px; }
+  .bet-ranking-me-place b { font-size:20px; }
+  .bet-ranking-me-total b { font-size:12px; }
+  .bet-ranking-toolbar { align-items:flex-start; flex-direction:column; }
+  .bet-ranking-updated { text-align:left; }
+}
