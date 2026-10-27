@@ -53,8 +53,11 @@
   function accountSessionsAvailable() { return serverFlags.accountSessions !== false; }
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
+  function bettingSpaceModalIsOpen() {
+    return Boolean(document.getElementById('betting-space-modal')?.classList.contains('open'));
+  }
   function syncBetRankingSubscription() {
-    const shouldSubscribe = Boolean(ui.profileOpen && ui.profileSection === 'betting');
+    const shouldSubscribe = bettingSpaceModalIsOpen();
     if (shouldSubscribe && !ui.betRankingSubscribed) {
       ui.betRankingSubscribed = true;
       if (socket.connected) socket.emit('bet_ranking_get');
@@ -847,7 +850,7 @@
     setConnection('connected');
     setColdStartHint(false);
     renderBettingRanking();
-    if (ui.betRankingSubscribed && ui.profileOpen && ui.profileSection === 'betting') socket.emit('bet_ranking_get');
+    if (ui.betRankingSubscribed && bettingSpaceModalIsOpen()) socket.emit('bet_ranking_get');
     tryAutoJoinLobbyChat();
     requestLobbyTournaments();
     // Si el perfil de cuenta quedó sin confirmar (sin conexión), se pide ahora.
@@ -973,7 +976,11 @@
     });
     updateTableSetupPreview();
   }));
-  document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeCollectionModal(); closeModal(); closeProfileModal(); closeAccountModal(); toggleShortcutHelp(false); } });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    if (bettingSpaceModalIsOpen()) { closeBettingSpaceModal(); return; }
+    closeCollectionModal(); closeModal(); closeProfileModal(); closeAccountModal(); toggleShortcutHelp(false);
+  });
   // Fases 5 y 6: saltar animaciones (botones presentes en mesa o panel de acciones)
   document.addEventListener('click', event => {
     if (!event.target.closest) return;
@@ -2596,6 +2603,26 @@
       document.body.classList.remove('modal-open');
     }
   }
+  // Mi espacio tiene ventana propia, independiente del desplazamiento del perfil.
+  function openBettingSpaceModal() {
+    const modal = document.getElementById('betting-space-modal');
+    if (!modal) return;
+    renderBettingRanking();
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    syncBetRankingSubscription();
+    modal.querySelector('.modal-close')?.focus();
+  }
+  function closeBettingSpaceModal() {
+    const modal = document.getElementById('betting-space-modal');
+    if (!modal || !modal.classList.contains('open')) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    syncBetRankingSubscription();
+    document.body.classList.toggle('modal-open', Boolean(document.querySelector('.modal.open')));
+    if (els.profileModal?.classList.contains('open')) document.getElementById('profile-tab-betting')?.focus();
+  }
   function closeProfileModal() {
     ui.profileOpen = false;
     ui.profileNameDirty = false;
@@ -3676,6 +3703,8 @@
   });
   document.getElementById('profile-content-scroll')?.addEventListener('scroll', syncProfileSectionFromScroll, { passive: true });
   $$('[data-close-profile]').forEach(element => element.addEventListener('click', closeProfileModal));
+  $$('[data-open-betting-space]').forEach(element => element.addEventListener('click', openBettingSpaceModal));
+  $$('[data-close-betting-space]').forEach(element => element.addEventListener('click', closeBettingSpaceModal));
   $$('[data-open-collection]').forEach(element => element.addEventListener('click', () => openCollectionModal(element.dataset.openCollection)));
   $$('[data-close-collection]').forEach(element => element.addEventListener('click', closeCollectionModal));
   els.dailyBonusClaim?.addEventListener('click', event => claimDailyBonus(event.currentTarget));

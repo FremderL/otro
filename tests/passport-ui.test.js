@@ -107,7 +107,7 @@ test('la sección Pasaporte muestra temporada, puntos, sellos, catálogo y equip
   const sectionNav = document.getElementById('profile-section-nav');
   assert.ok(identityHeader.compareDocumentPosition(sectionNav) & window.Node.DOCUMENT_POSITION_FOLLOWING, 'la identidad se muestra antes de los accesos rápidos');
   assert.equal(document.getElementById('profile-display-name').textContent, profile.name, 'el encabezado muestra el nombre real del perfil');
-  const contentOffsets = { overview: 0, passport: 380, activity: 760, betting: 950, goals: 1140 };
+  const contentOffsets = { overview: 0, passport: 380, activity: 760, goals: 1140 };
   scrollPane.getBoundingClientRect = () => ({ top: 100 });
   for (const [id, offset] of Object.entries(contentOffsets)) {
     const section = document.getElementById(`profile-section-${id}`);

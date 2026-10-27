@@ -80,10 +80,15 @@ test('Mi espacio en Casino muestra volumen combinado, filtros y actualización e
 
   window.document.getElementById('account-open-btn').click();
   await new Promise(resolve => setTimeout(resolve, 20));
-  const tab = window.document.querySelector('[data-profile-jump="betting"]');
-  assert.ok(tab, 'el perfil incorpora un acceso a Mi espacio');
-  tab.click();
-  assert.ok(emitted.some(item => item.event === 'bet_ranking_get'), 'al abrir la sección se solicita el ranking en vivo');
+  const launcher = window.document.querySelector('[data-open-betting-space]');
+  assert.ok(launcher, 'el perfil incorpora un acceso independiente a Mi espacio');
+  assert.equal(launcher.getAttribute('aria-haspopup'), 'dialog');
+  launcher.click();
+  const bettingModal = window.document.getElementById('betting-space-modal');
+  assert.ok(bettingModal.classList.contains('open'), 'Mi espacio abre su propia ventana');
+  assert.equal(bettingModal.closest('#profile-modal'), null, 'la ventana del ranking es independiente del modal del perfil');
+  assert.equal(bettingModal.getAttribute('aria-hidden'), 'false');
+  assert.ok(emitted.some(item => item.event === 'bet_ranking_get'), 'al abrir Mi espacio se solicita el ranking en vivo');
 
   handlers.bet_ranking_state(rankingSnapshot());
   const personal = window.document.getElementById('bet-ranking-personal');
@@ -100,6 +105,14 @@ test('Mi espacio en Casino muestra volumen combinado, filtros y actualización e
   assert.match(personal.textContent, /TU PUESTO · ESTADIO/);
   assert.match(window.document.getElementById('bet-ranking-list').textContent.trim(), /Alicia/);
 
-  window.document.querySelector('#profile-modal .modal-close').click();
-  assert.ok(emitted.some(item => item.event === 'bet_ranking_unsubscribe'), 'al cerrar el perfil se libera la suscripción');
+  window.document.querySelector('#betting-space-modal .modal-close').click();
+  assert.ok(!bettingModal.classList.contains('open'), 'el botón de cierre cierra Mi espacio');
+  assert.ok(window.document.getElementById('profile-modal').classList.contains('open'), 'el perfil permanece detrás de su ventana independiente');
+  assert.ok(window.document.body.classList.contains('modal-open'), 'el desplazamiento sigue bloqueado mientras el perfil está abierto');
+  assert.ok(emitted.some(item => item.event === 'bet_ranking_unsubscribe'), 'al cerrar Mi espacio se libera la suscripción');
+
+  launcher.click();
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.ok(!bettingModal.classList.contains('open'), 'Escape también cierra la ventana independiente');
+  assert.ok(window.document.getElementById('profile-modal').classList.contains('open'), 'Escape deja abierto el perfil que estaba debajo');
 });
