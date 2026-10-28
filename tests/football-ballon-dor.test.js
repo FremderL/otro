@@ -53,6 +53,7 @@ test('selección determinista: 16 candidatos ST, uno por club, ordenado por ID d
       (y.attrs.sho - x.attrs.sho) || (y.attrs.pac - x.attrs.pac) || (x.num - y.num)
     )[0];
     assert.equal(candidate.position, 'ST');
+    assert.equal(candidate.clubShort, club.abbr, 'el Balón de Oro usa la abreviatura visible');
     assert.equal(candidate.playerId, selected.id);
     assert.equal(candidate.playerName, selected.name);
     assert.equal(candidate.attributes.shooting, selected.attrs.sho);
