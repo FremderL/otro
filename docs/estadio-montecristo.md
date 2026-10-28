@@ -305,9 +305,10 @@ antes de fijarla.
 
 ### 5.5 Clubes y plantillas
 
-**Decisión B3 actualizada (2026-10-28): nombres de parodia futbolera.** Los clubes siguen siendo
-100 % ficticios, pero ahora llevan juegos de palabras cómicos inspirados en equipos conocidos.
-No representan a los clubes reales ni usan sus escudos oficiales. Los 16 IDs y códigos cortos se
+**Decisión B3 actualizada (2026-10-28): parodias de clubes europeos.** Los 16 clubes siguen siendo
+100 % ficticios, con juegos de palabras inspirados exclusivamente en equipos de ligas europeas:
+España, Inglaterra, Alemania, Italia, Francia, Países Bajos y Portugal. No hay referencias a clubes
+de América Latina; tampoco se sugiere afiliación ni se usan escudos oficiales. Los IDs y códigos cortos se
 conservan para mantener intactos jugadores, fixtures, apuestas, mercados y estadísticas:
 
 | # | Club | Corto | Ciudad | Estadio | Formación | Estilo |
@@ -322,12 +323,12 @@ conservan para mantener intactos jugadores, fixtures, apuestas, mercados y estad
 | 8 | Borussia Dormund | `HLC` | Halcyon Bay | The Lighthouse | 4-3-3 | counter |
 | 9 | Juventus de los Jueves | `FRR` | Ferrata | La Forja | 4-4-2 | direct |
 | 10 | PSG de la Merienda | `CRV` | Corvane | Corona Arena | 4-2-3-1 | possession |
-| 11 | Boca Juniors de Leche | `TLB` | Talbruck | Talbruck Stadion | 3-5-2 | balanced |
-| 12 | River Plátano | `VLM` | Velmar | The Dockyard | 4-4-2 | direct |
-| 13 | Chivas de Guada-risa | `NVL` | Norvela | Estadio Norvela | 4-3-3 | balanced |
-| 14 | América de los Antojitos | `IRN` | Ironvale | The Foundry | 4-4-2 | pressing |
-| 15 | Tigres de Papel | `PRG` | Peregrine | Rovers Park | 4-2-3-1 | counter |
-| 16 | Cruz Azul de Cemento | `AMB` | Ámbar | Estadio Ámbar | 4-3-3 | possession |
+| 11 | AC Milanesa | `TLB` | Talbruck | Talbruck Stadion | 3-5-2 | balanced |
+| 12 | Inter de Milán de Miel | `VLM` | Velmar | The Dockyard | 4-4-2 | direct |
+| 13 | Chelsea Churros | `NVL` | Norvela | Estadio Norvela | 4-3-3 | balanced |
+| 14 | Tottenham Hot-Purés | `IRN` | Ironvale | The Foundry | 4-4-2 | pressing |
+| 15 | Ajax de Amster-risa | `PRG` | Peregrine | Rovers Park | 4-2-3-1 | counter |
+| 16 | Porto-galácticos | `AMB` | Ámbar | Estadio Ámbar | 4-3-3 | possession |
 
 #### Compatibilidad de nombres persistidos
 
@@ -3023,9 +3024,9 @@ cierre sin fichas atrapadas **y sin que el reset pueda quedar congelado**.
 ningún jugador vea nada (feature flag apagado), lo que reduce muchísimo el riesgo de la primera
 iteración.
 
-**Decisión actualizada**: los 16 nombres son parodias ficticias con juegos de palabras (§5.5),
-no una lista de nombres internacionales neutros. No se usan escudos ni se sugiere afiliación oficial;
-antes de cualquier explotación comercial se requiere revisar las marcas.
+**Decisión actualizada**: los 16 nombres son parodias ficticias de clubes europeos (§5.5),
+sin referencias latinoamericanas. No se usan escudos ni se sugiere afiliación oficial; antes de
+cualquier explotación comercial se requiere revisar las marcas.
 
 ---
 
@@ -3095,7 +3096,7 @@ que no se vuelva a discutir sin motivo y para que quien retome el trabajo sepa *
 | **A14** | El campeón se definía por **sorteo sembrado** si empataba en la cima tras los desempates de tabla. Es anticlimático y débil: el título de una liga se decide en cancha | **Partido de desempate** (prórroga 2×15' + tanda de penales si hace falta) cuando el **1.º puesto** empata tras diferencia de goles → goles a favor → resultado directo (§7.5) | Solo el 1.º puesto; `top4`/`top2` empatados se anulan y reembolsan (no se definen por sorteo ni por cancha). Se juega en el bloque Estelar del día de cierre, ~25-30 min, y **debe resolverse antes del −2 h** o la temporada pasa a `truncated` y el campeón vuelve a los desempates estadísticos. Seed propio `hash32('desempate'│mes│eq1│eq2)`, tanda reproducible y auditable. Mercado «Gana el desempate» 2-vías (§11.2-bis). El reset **nunca** se retrasa por esperarlo (§7.5, §11.2-bis, §15.5, T42) |
 | **B1** | `TOS_VERSION` debe subir por agregar apuestas deportivas simuladas | **Subir la versión y lanzarla junto con la sección**, una sola re-aceptación | La cláusula debe decir: eventos **simulados y ficticios**, resultado generado por el servidor, y **declarar el flujo simulado** de §11.6 |
 | **B2** | «En Vivo» colisiona con el lobby de salas | **«Estadio MonteCristo»**, ruta `/estadio`, `public/estadio.*`, `/api/estadio/*` | `#live-lobby` y `.live-section` **no se tocan**. Vocabulario interno único: `football` |
-| **B3** | Sabor de los 16 clubes | **Nombres ficticios de parodia futbolera**, con juegos de palabras cómicos inspirados en equipos conocidos | §5.5 conserva IDs/códigos y migra solo las etiquetas visibles de temporadas guardadas; jugadores, apuestas, fixtures y resultados no cambian. Sin escudos ni afiliación oficial; revisión de marcas antes de cualquier uso comercial |
+| **B3** | Sabor de los 16 clubes | **Parodias ficticias de equipos europeos**, con juegos de palabras cómicos | §5.5 conserva IDs/códigos y migra solo las etiquetas visibles de temporadas guardadas; jugadores, apuestas, fixtures y resultados no cambian. Sin clubes latinoamericanos, escudos ni afiliación oficial; revisión de marcas antes de cualquier uso comercial |
 | **C4** | Margen de casa | **7 %** en mercados principales | Queda en **6,54 % de ventaja**, más del doble que la ruleta (2,6–3,25 %) y que las slots (2,26 %), y muy por encima de dados y cara o cruz (~0 %). Obliga a: probabilidad implícita siempre visible, métrica de drenaje comparada por juego desde el día 1, y márgenes en env vars para poder bajarlos sin desplegar código (§10.3) |
 | **C5** | Límites de apuesta | **Mínimo 10 % y máximo 50 % del saldo**, techo absoluto 25.000 (revisado en ronda 9; antes: tope 25 % con mínimo fijo 10) | Jugador recién reiniciado: 100–500 fichas. El mínimo hace cada apuesta **material** para que la ventaja de la casa se ejerza; el máximo es **más restrictivo que los juegos rápidos**, que aceptan el 100 % del stack (`server.js:1311`): la boleta debe decirlo explícitamente. Funciona como limitador de pérdida natural (§11.3) |
 | **C6** | ¿Cuenta fútbol para los retos «prueba N juegos»? | **No se agrega a `AVAILABLE_GAMES`**, y además se filtra en `trackPeriod` | **Corregido**: `AVAILABLE_GAMES` por sí solo **no** excluye al fútbol de esos retos (§12.7). Sin el filtro extra, «Turista del día» y «Ruta del casino» contarían el Estadio como un juego más |

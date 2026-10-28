@@ -22,12 +22,12 @@ test('hay exactamente 16 clubes válidos con ids y cortos únicos', () => {
   assert.strictEqual(new Set(CLUBS.map(c => c.name)).size, 16, 'nombres únicos');
 });
 
-test('los clubes usan nombres ficticios de parodia con juegos de palabras cómicos', () => {
+test('los clubes son parodias cómicas basadas exclusivamente en equipos europeos', () => {
   const expected = [
     'Real Madriz', 'Farselona FC', 'Atlético Madrizzz', 'Manchesteer United',
     'Liverpulpo FC', 'Arsenalgas FC', 'Bayern Munch', 'Borussia Dormund',
-    'Juventus de los Jueves', 'PSG de la Merienda', 'Boca Juniors de Leche', 'River Plátano',
-    'Chivas de Guada-risa', 'América de los Antojitos', 'Tigres de Papel', 'Cruz Azul de Cemento'
+    'Juventus de los Jueves', 'PSG de la Merienda', 'AC Milanesa', 'Inter de Milán de Miel',
+    'Chelsea Churros', 'Tottenham Hot-Purés', 'Ajax de Amster-risa', 'Porto-galácticos'
   ];
   assert.deepStrictEqual(CLUBS.map(club => club.name), expected);
 });
