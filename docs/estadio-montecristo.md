@@ -308,34 +308,35 @@ antes de fijarla.
 **Decisión B3 actualizada (2026-10-28): parodias de clubes europeos.** Los 16 clubes siguen siendo
 100 % ficticios, con juegos de palabras inspirados exclusivamente en equipos de ligas europeas:
 España, Inglaterra, Alemania, Italia, Francia, Escocia y Portugal. No hay referencias a clubes
-de América Latina; tampoco se sugiere afiliación ni se usan escudos oficiales. Los IDs y códigos cortos se
-conservan para mantener intactos jugadores, fixtures, apuestas, mercados y estadísticas:
+de América Latina; tampoco se sugiere afiliación ni se usan escudos oficiales. El código histórico
+`short` se conserva como prefijo de los IDs de jugador; `abbr` es la abreviatura visible y sí refleja
+el nombre de cada club:
 
-| # | Club | Corto | Ciudad | Estadio | Formación | Estilo |
+| # | Club | Abrev. | Ciudad | Estadio | Formación | Estilo |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Real Mandril | `VTR` | Vantora | Arena Boreal | 4-3-3 | possession |
-| 2 | Farselona FC | `VNG` | Vanguard City | The Bulwark | 4-4-2 | pressing |
-| 3 | Atleti-comedia FC | `EST` | Estevin | Stade d'Estevin | 4-2-3-1 | possession |
-| 4 | Manchestéreo United | `SOL` | Solaris | Coliseo Helios | 4-3-3 | direct |
-| 5 | Liverpulpo FC | `ALM` | Almara | Campo Almar | 4-4-2 | balanced |
-| 6 | Arsénico FC | `KLV` | Kelvar | Kelvar Park | 3-5-2 | pressing |
-| 7 | Bayern Munchies | `VRD` | Verdania | Foro Verde | 4-2-3-1 | counter |
-| 8 | Borussia Dormund | `HLC` | Halcyon Bay | The Lighthouse | 4-3-3 | counter |
-| 9 | Juventus de los Jubilados | `FRR` | Ferrata | La Forja | 4-4-2 | direct |
-| 10 | París Sin Goles | `CRV` | Corvane | Corona Arena | 4-2-3-1 | possession |
-| 11 | Real Suciedad | `TLB` | Talbruck | Talbruck Stadion | 3-5-2 | balanced |
-| 12 | Roma de la Broma | `VLM` | Velmar | The Dockyard | 4-4-2 | direct |
-| 13 | West Hamón FC | `NVL` | Norvela | Estadio Norvela | 4-3-3 | balanced |
-| 14 | Nabo-li FC | `IRN` | Ironvale | The Foundry | 4-4-2 | pressing |
-| 15 | Celtic de Cómic | `PRG` | Peregrine | Rovers Park | 4-2-3-1 | counter |
-| 16 | Benfica de Beneficencia | `AMB` | Ámbar | Estadio Ámbar | 4-3-3 | possession |
+| 1 | Real Mandril | `RMD` | Vantora | Arena Boreal | 4-3-3 | possession |
+| 2 | Farselona FC | `FAR` | Vanguard City | The Bulwark | 4-4-2 | pressing |
+| 3 | Atleti-comedia FC | `ATC` | Estevin | Stade d'Estevin | 4-2-3-1 | possession |
+| 4 | Manchestéreo United | `MUN` | Solaris | Coliseo Helios | 4-3-3 | direct |
+| 5 | Liverpulpo FC | `LVP` | Almara | Campo Almar | 4-4-2 | balanced |
+| 6 | Arsénico FC | `ARS` | Kelvar | Kelvar Park | 3-5-2 | pressing |
+| 7 | Bayern Munchies | `BAY` | Verdania | Foro Verde | 4-2-3-1 | counter |
+| 8 | Borussia Dormund | `BDO` | Halcyon Bay | The Lighthouse | 4-3-3 | counter |
+| 9 | Juventus de los Jubilados | `JUV` | Ferrata | La Forja | 4-4-2 | direct |
+| 10 | París Sin Goles | `PSG` | Corvane | Corona Arena | 4-2-3-1 | possession |
+| 11 | Real Suciedad | `RSU` | Talbruck | Talbruck Stadion | 3-5-2 | balanced |
+| 12 | Roma de la Broma | `RDB` | Velmar | The Dockyard | 4-4-2 | direct |
+| 13 | West Hamón FC | `WHM` | Norvela | Estadio Norvela | 4-3-3 | balanced |
+| 14 | Nabo-li FC | `NAB` | Ironvale | The Foundry | 4-4-2 | pressing |
+| 15 | Celtic de Cómic | `CDC` | Peregrine | Rovers Park | 4-2-3-1 | counter |
+| 16 | Benfica de Beneficencia | `BEN` | Ámbar | Estadio Ámbar | 4-3-3 | possession |
 
-#### Compatibilidad de nombres persistidos
+#### Compatibilidad de etiquetas persistidas
 
-Al rehidratar una temporada, el servidor actualiza únicamente el nombre visible de cada club y del
-candidato correspondiente del Balón de Oro. Los IDs, códigos cortos, jugadores y números, marcadores,
-boletos, cuotas y resultados no cambian; las temporadas ya guardadas muestran las nuevas etiquetas.
-Los códigos cortos se conservan además como prefijos de identidad de los jugadores.
+Al rehidratar una temporada, el servidor actualiza el nombre y la abreviatura visibles de cada club
+así como `clubName`/`clubShort` en candidatos del Balón de Oro. Los IDs, prefijos internos, jugadores
+y números, marcadores, boletos, cuotas y resultados no cambian; las temporadas guardadas conservan sus
+identificadores y muestran las etiquetas actuales.
 
 > **Alcance:** las referencias son chistes de nombre, no afiliaciones ni avales de los clubes reales.
 > No se usan sus escudos ni uniformes oficiales. Una explotación comercial requeriría revisar las
@@ -345,7 +346,7 @@ Cada club:
 
 ```js
 {
-  id: 'vantora_fc', name: 'Real Mandril', short: 'VTR',
+  id: 'vantora_fc', name: 'Real Mandril', short: 'VTR', abbr: 'RMD',
   city: 'Vantora', stadium: 'Arena Boreal', capacity: 41000,
   colors: { primary: '#1de9b6', secondary: '#1f2a30', kit: 'stripes' },
   tactics: { formation: '4-3-3', style: 'possession' },   // possession|counter|pressing|direct|balanced

@@ -10,6 +10,7 @@ const {
   applySeasonCarryover, validateClubs, SQUAD_SLOTS, RATING_RANGE,
   refreshPersistedClubNames
 } = require('../lib/football/teams');
+const { publicTeams } = require('../lib/football/sockets');
 
 const clubsFor = (seedText) => buildSeasonClubs(mulberry32(hash32(seedText)));
 
@@ -32,22 +33,34 @@ test('los clubes son parodias cómicas basadas exclusivamente en equipos europeo
   assert.deepStrictEqual(CLUBS.map(club => club.name), expected);
 });
 
-test('rehidratar una liga actualiza solo los nombres visibles y respeta IDs/datos persistidos', () => {
+test('las abreviaturas visibles coinciden con los nombres y las envía el lobby', () => {
+  const expected = ['RMD', 'FAR', 'ATC', 'MUN', 'LVP', 'ARS', 'BAY', 'BDO', 'JUV', 'PSG', 'RSU', 'RDB', 'WHM', 'NAB', 'CDC', 'BEN'];
+  assert.deepStrictEqual(CLUBS.map(club => club.abbr), expected);
+  assert.strictEqual(new Set(expected).size, 16, 'abreviaturas únicas');
+  const teams = publicTeams();
+  assert.deepStrictEqual(CLUBS.map(club => teams[club.id].short), expected);
+  assert.deepStrictEqual(CLUBS.map(club => teams[club.id].abbr), expected);
+});
+
+test('rehidratar una liga actualiza solo las etiquetas visibles y respeta IDs/datos persistidos', () => {
   const player = { id: 'vtr_09', name: 'Delantero', pos: 'ST' };
   const league = {
     config: [{ id: 'vantora_fc', name: 'Vantora FC', short: 'VTR', squad: [player] }],
     ballonDor: { candidates: [
-      { clubId: 'vantora_fc', clubName: 'Vantora FC', playerId: 'vtr_09' },
-      { clubId: 'unknown_club', clubName: 'Club histórico', playerId: 'old_09' }
+      { clubId: 'vantora_fc', clubName: 'Vantora FC', clubShort: 'VTR', playerId: 'vtr_09' },
+      { clubId: 'unknown_club', clubName: 'Club histórico', clubShort: 'OLD', playerId: 'old_09' }
     ] }
   };
   assert.strictEqual(refreshPersistedClubNames(league), league);
   assert.strictEqual(league.config[0].name, 'Real Mandril');
-  assert.strictEqual(league.config[0].short, 'VTR');
+  assert.strictEqual(league.config[0].short, 'VTR', 'el prefijo interno permanece estable');
+  assert.strictEqual(league.config[0].abbr, 'RMD');
   assert.strictEqual(league.config[0].squad[0], player);
   assert.strictEqual(league.ballonDor.candidates[0].clubName, 'Real Mandril');
+  assert.strictEqual(league.ballonDor.candidates[0].clubShort, 'RMD');
   assert.strictEqual(league.ballonDor.candidates[0].playerId, 'vtr_09');
   assert.strictEqual(league.ballonDor.candidates[1].clubName, 'Club histórico');
+  assert.strictEqual(league.ballonDor.candidates[1].clubShort, 'OLD');
 });
 
 test('los 16 códigos cortos históricos se conservan y siguen siendo únicos', () => {
