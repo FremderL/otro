@@ -93,8 +93,8 @@ function createHarness(options = {}) {
   let perfNow = 1000;
   const intervals = [];
   const teams = {
-    home: team('home', 'Home FC', 'HOM', '#1de9b6', '#1f2a30'),
-    away: team('away', 'Away FC', 'AWY', '#d32f2f', '#1a1a1a')
+    home: team('home', options.homeName || 'Home FC', options.homeShort || 'HOM', '#1de9b6', '#1f2a30'),
+    away: team('away', options.awayName || 'Away FC', options.awayShort || 'AWY', '#d32f2f', '#1a1a1a')
   };
   teams.home.style = 'possession';
   teams.away.style = 'pressing';
@@ -396,6 +396,28 @@ function createHarness(options = {}) {
     close() { dom.window.close(); }
   };
 }
+
+test('el lobby y la tabla muestran los nombres cómicos completos, no solo los códigos cortos', async t => {
+  const h = createHarness({
+    homeName: 'Real Madriz', homeShort: 'VTR',
+    awayName: 'Farselona FC', awayShort: 'VNG',
+    standings: [
+      { teamId: 'home', played: 1, goalDiff: 1, points: 3 },
+      { teamId: 'away', played: 1, goalDiff: -1, points: 0 }
+    ]
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+  const { document } = h.window;
+  const fixture = document.querySelector('#est-match-list .est-match-teams').textContent;
+  const standings = document.querySelector('#est-standings tbody').textContent;
+  assert.match(fixture, /Real Madriz/);
+  assert.match(fixture, /Farselona FC/);
+  assert.doesNotMatch(fixture, /VTR|VNG/);
+  assert.match(standings, /Real Madriz/);
+  assert.match(standings, /Farselona FC/);
+});
 
 test('las galerías de anuncios del Estadio y de administración solo apuntan a imágenes existentes', () => {
   const publicDir = path.join(__dirname, '..', 'public');

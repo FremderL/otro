@@ -7,7 +7,8 @@ const assert = require('node:assert');
 const { hash32, mulberry32 } = require('../lib/football/prng');
 const {
   CLUBS, CLUB_IDS, buildSeasonClubs, generateSquad, seedRatings,
-  applySeasonCarryover, validateClubs, SQUAD_SLOTS, RATING_RANGE
+  applySeasonCarryover, validateClubs, SQUAD_SLOTS, RATING_RANGE,
+  refreshPersistedClubNames
 } = require('../lib/football/teams');
 
 const clubsFor = (seedText) => buildSeasonClubs(mulberry32(hash32(seedText)));
@@ -21,7 +22,35 @@ test('hay exactamente 16 clubes válidos con ids y cortos únicos', () => {
   assert.strictEqual(new Set(CLUBS.map(c => c.name)).size, 16, 'nombres únicos');
 });
 
-test('los 16 códigos cortos coinciden con la tabla validada de §5.5', () => {
+test('los clubes usan nombres ficticios de parodia con juegos de palabras cómicos', () => {
+  const expected = [
+    'Real Madriz', 'Farselona FC', 'Atlético Madrizzz', 'Manchesteer United',
+    'Liverpulpo FC', 'Arsenalgas FC', 'Bayern Munch', 'Borussia Dormund',
+    'Juventus de los Jueves', 'PSG de la Merienda', 'Boca Juniors de Leche', 'River Plátano',
+    'Chivas de Guada-risa', 'América de los Antojitos', 'Tigres de Papel', 'Cruz Azul de Cemento'
+  ];
+  assert.deepStrictEqual(CLUBS.map(club => club.name), expected);
+});
+
+test('rehidratar una liga actualiza solo los nombres visibles y respeta IDs/datos persistidos', () => {
+  const player = { id: 'vtr_09', name: 'Delantero', pos: 'ST' };
+  const league = {
+    config: [{ id: 'vantora_fc', name: 'Vantora FC', short: 'VTR', squad: [player] }],
+    ballonDor: { candidates: [
+      { clubId: 'vantora_fc', clubName: 'Vantora FC', playerId: 'vtr_09' },
+      { clubId: 'unknown_club', clubName: 'Club histórico', playerId: 'old_09' }
+    ] }
+  };
+  assert.strictEqual(refreshPersistedClubNames(league), league);
+  assert.strictEqual(league.config[0].name, 'Real Madriz');
+  assert.strictEqual(league.config[0].short, 'VTR');
+  assert.strictEqual(league.config[0].squad[0], player);
+  assert.strictEqual(league.ballonDor.candidates[0].clubName, 'Real Madriz');
+  assert.strictEqual(league.ballonDor.candidates[0].playerId, 'vtr_09');
+  assert.strictEqual(league.ballonDor.candidates[1].clubName, 'Club histórico');
+});
+
+test('los 16 códigos cortos históricos se conservan y siguen siendo únicos', () => {
   const esperados = ['VTR', 'VNG', 'EST', 'SOL', 'ALM', 'KLV', 'VRD', 'HLC', 'FRR', 'CRV', 'TLB', 'VLM', 'NVL', 'IRN', 'PRG', 'AMB'];
   assert.deepStrictEqual(CLUBS.map(c => c.short), esperados);
 });

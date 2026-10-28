@@ -55,8 +55,8 @@ en `server.js`. Se entrega en 6 fases independientes y verificables.
 ## 2. Alcance y no-alcance
 
 ### En alcance
-- Liga ficticia («Liga MonteCristo») con **16 clubes de nombre internacional neutro** (decisión B3),
-  plantillas de 18 jugadores.
+- Liga ficticia («Liga MonteCristo») con **16 clubes de nombres de parodia futbolera cómica**
+  (decisión B3 actualizada), plantillas de 18 jugadores.
 - Motor determinista de partido: 90 minutos simulados, goles, tarjetas, cambios, córners, xG.
 - Reproducción en vivo por Socket.IO + render canvas 2D cenital en página propia `/estadio`.
 - Comentario generado en servidor con dos voces, persistido en la línea de tiempo.
@@ -305,70 +305,46 @@ antes de fijarla.
 
 ### 5.5 Clubes y plantillas
 
-**Decisión B3: nombre internacional neutro.** Universo 100 % ficticio, sin sabor local marcado, para
-que la liga se lea como continental y no dependa de un mercado. Los 16 clubes:
+**Decisión B3 actualizada (2026-10-28): nombres de parodia futbolera.** Los clubes siguen siendo
+100 % ficticios, pero ahora llevan juegos de palabras cómicos inspirados en equipos conocidos.
+No representan a los clubes reales ni usan sus escudos oficiales. Los 16 IDs y códigos cortos se
+conservan para mantener intactos jugadores, fixtures, apuestas, mercados y estadísticas:
 
 | # | Club | Corto | Ciudad | Estadio | Formación | Estilo |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Vantora FC | `VTR` | Vantora | Arena Boreal | 4-3-3 | possession |
-| 2 | United Vanguard | `VNG` | Vanguard City | The Bulwark | 4-4-2 | pressing |
-| 3 | Olympique Estevin | `EST` | Estevin | Stade d'Estevin | 4-2-3-1 | possession |
-| 4 | Atlético Solaris | `SOL` | Solaris | Coliseo Helios | 4-3-3 | direct |
-| 5 | Sporting Almar | `ALM` | Almara | Campo Almar | 4-4-2 | balanced |
-| 6 | Dynamo Kelvar | `KLV` | Kelvar | Kelvar Park | 3-5-2 | pressing |
-| 7 | CS Verdania | `VRD` | Verdania | Foro Verde | 4-2-3-1 | counter |
-| 8 | Halcyon Bay FC | `HLC` | Halcyon Bay | The Lighthouse | 4-3-3 | counter |
-| 9 | Athletic Ferrata | `FRR` | Ferrata | La Forja | 4-4-2 | direct |
-| 10 | Royal Corvane | `CRV` | Corvane | Corona Arena | 4-2-3-1 | possession |
-| 11 | SV Talbruck | `TLB` | Talbruck | Talbruck Stadion | 3-5-2 | balanced |
-| 12 | Velmar Harbour FC | `VLM` | Velmar | The Dockyard | 4-4-2 | direct |
-| 13 | Norvela Sporting | `NVL` | Norvela | Estadio Norvela | 4-3-3 | balanced |
-| 14 | Ironvale FC | `IRN` | Ironvale | The Foundry | 4-4-2 | pressing |
-| 15 | Peregrine Rovers | `PRG` | Peregrine | Rovers Park | 4-2-3-1 | counter |
-| 16 | Puerto Ámbar | `AMB` | Ámbar | Estadio Ámbar | 4-3-3 | possession |
+| 1 | Real Madriz | `VTR` | Vantora | Arena Boreal | 4-3-3 | possession |
+| 2 | Farselona FC | `VNG` | Vanguard City | The Bulwark | 4-4-2 | pressing |
+| 3 | Atlético Madrizzz | `EST` | Estevin | Stade d'Estevin | 4-2-3-1 | possession |
+| 4 | Manchesteer United | `SOL` | Solaris | Coliseo Helios | 4-3-3 | direct |
+| 5 | Liverpulpo FC | `ALM` | Almara | Campo Almar | 4-4-2 | balanced |
+| 6 | Arsenalgas FC | `KLV` | Kelvar | Kelvar Park | 3-5-2 | pressing |
+| 7 | Bayern Munch | `VRD` | Verdania | Foro Verde | 4-2-3-1 | counter |
+| 8 | Borussia Dormund | `HLC` | Halcyon Bay | The Lighthouse | 4-3-3 | counter |
+| 9 | Juventus de los Jueves | `FRR` | Ferrata | La Forja | 4-4-2 | direct |
+| 10 | PSG de la Merienda | `CRV` | Corvane | Corona Arena | 4-2-3-1 | possession |
+| 11 | Boca Juniors de Leche | `TLB` | Talbruck | Talbruck Stadion | 3-5-2 | balanced |
+| 12 | River Plátano | `VLM` | Velmar | The Dockyard | 4-4-2 | direct |
+| 13 | Chivas de Guada-risa | `NVL` | Norvela | Estadio Norvela | 4-3-3 | balanced |
+| 14 | América de los Antojitos | `IRN` | Ironvale | The Foundry | 4-4-2 | pressing |
+| 15 | Tigres de Papel | `PRG` | Peregrine | Rovers Park | 4-2-3-1 | counter |
+| 16 | Cruz Azul de Cemento | `AMB` | Ámbar | Estadio Ámbar | 4-3-3 | possession |
 
-#### Validación de nombres (decisión B3, cerrada el 2026-10-07)
+#### Compatibilidad de nombres persistidos
 
-Se verificó cada candidato contra clubes reales. **Siete nombres propuestos originalmente fueron
-rechazados** y reemplazados; los reemplazos se volvieron a verificar. Los 16 códigos cortos son
-únicos entre sí.
+Al rehidratar una temporada, el servidor actualiza únicamente el nombre visible de cada club y del
+candidato correspondiente del Balón de Oro. Los IDs, códigos cortos, jugadores y números, marcadores,
+boletos, cuotas y resultados no cambian; las temporadas ya guardadas muestran las nuevas etiquetas.
+Los códigos cortos se conservan además como prefijos de identidad de los jugadores.
 
-**Rechazados por colisión real:**
-
-| Propuesto | Colisión encontrada | Reemplazo |
-| --- | --- | --- |
-| FC Nordhavn | **F.C. Nordhavn**, club danés fundado en 2017 en Copenhague (DBU København Serie 2), club asociado del F.C. København | **Vantora FC** |
-| Olympique Meridian | **Meridian VP FC** (Inglaterra, pirámide de la FA en Step 7, Kent County League, FA Charter Standard) y **Meridian FC** (Sussex Sunday League) | **Olympique Estevin** |
-| Dynamo Kessel | **K.F.C. Kessel** (Bélgica, fundado en 1926) y **Kessel United** (Bélgica, 2019, con perfil en Transfermarkt) | **Dynamo Kelvar** |
-| Royal Asteria | **Asteria Football Club** (Francia, fundado en 2017) y **Asteria Sport** (agencia de jugadores) | **Royal Corvane** |
-| Aurora Sporting | **Aurora FC** (Guatemala, primera división, fundado en 1945, ocho títulos de liga) y **Aurora FC** (Canadá, League1 Ontario) | **Norvela Sporting** |
-| Kelso Harbour FC | **Kelso United F.C.** (Escocia, 1935–2015) y su sucesor **Kelso United Thistle** | **Velmar Harbour FC** |
-| Granite City FC | **Granite City FC** (EE. UU., USL League Two) — descartado antes de la tabla | **Ironvale FC** |
-
-**Conservados con riesgo residual bajo y documentado:**
-
-| Club | Hallazgo | Por qué se conserva |
-| --- | --- | --- |
-| Atlético Solaris | Un `Solaris FC` en Instagram con 986 seguidores | Sin liga, sin federación, sin marca. No es un club constituido |
-| Halcyon Bay FC | `Halcyon` aparece como agencia deportiva y en otros rubros | Ningún club de fútbol con ese nombre |
-| Velmar Harbour FC | Un `Velmar Football Club` en Instagram con 138 seguidores | Elegido a sabiendas: presencia nula, y se registra aquí para que sea auditable |
-| Puerto Ámbar | `Club Ámbar` es un local nocturno en Santiago; `Ámbar` aparece como nombre de una futbolista | Ninguno es un club de fútbol homónimo |
-
-**Limpios** (búsqueda sin resultados): United Vanguard, Sporting Almar, CS Verdania, Athletic
-Ferrata, SV Talbruck, Ironvale FC, Peregrine Rovers, Vantora FC, Olympique Estevin, Dynamo Kelvar,
-Royal Corvane, Norvela Sporting.
-
-> **Límite del método.** Esto fue verificación por búsqueda web, no un estudio de marcas. Reduce el
-> riesgo de forma sustancial —de hecho atrapó siete colisiones que a ojo habrían pasado— pero no es
-> un dictamen legal. Si el producto llegara a comercializarse fuera del círculo de amigos, conviene
-> una revisión de marcas sobre los 16 nombres definitivos. El riesgo R17 queda así mitigado, no
-> eliminado.
+> **Alcance:** las referencias son chistes de nombre, no afiliaciones ni avales de los clubes reales.
+> No se usan sus escudos ni uniformes oficiales. Una explotación comercial requeriría revisar las
+> marcas antes de publicarse.
 
 Cada club:
 
 ```js
 {
-  id: 'vantora_fc', name: 'Vantora FC', short: 'NRD',
+  id: 'vantora_fc', name: 'Real Madriz', short: 'VTR',
   city: 'Vantora', stadium: 'Arena Boreal', capacity: 41000,
   colors: { primary: '#1de9b6', secondary: '#1f2a30', kit: 'stripes' },
   tactics: { formation: '4-3-3', style: 'possession' },   // possession|counter|pressing|direct|balanced
@@ -3047,9 +3023,9 @@ cierre sin fichas atrapadas **y sin que el reset pueda quedar congelado**.
 ningún jugador vea nada (feature flag apagado), lo que reduce muchísimo el riesgo de la primera
 iteración.
 
-**Prerrequisito cumplido**: los 16 nombres de clubes ya fueron validados contra clubes reales
-(§5.5); siete candidatos fueron rechazados y reemplazados en el proceso. La Fase A puede arrancar
-sin pasos humanos pendientes.
+**Decisión actualizada**: los 16 nombres son parodias ficticias con juegos de palabras (§5.5),
+no una lista de nombres internacionales neutros. No se usan escudos ni se sugiere afiliación oficial;
+antes de cualquier explotación comercial se requiere revisar las marcas.
 
 ---
 
@@ -3119,7 +3095,7 @@ que no se vuelva a discutir sin motivo y para que quien retome el trabajo sepa *
 | **A14** | El campeón se definía por **sorteo sembrado** si empataba en la cima tras los desempates de tabla. Es anticlimático y débil: el título de una liga se decide en cancha | **Partido de desempate** (prórroga 2×15' + tanda de penales si hace falta) cuando el **1.º puesto** empata tras diferencia de goles → goles a favor → resultado directo (§7.5) | Solo el 1.º puesto; `top4`/`top2` empatados se anulan y reembolsan (no se definen por sorteo ni por cancha). Se juega en el bloque Estelar del día de cierre, ~25-30 min, y **debe resolverse antes del −2 h** o la temporada pasa a `truncated` y el campeón vuelve a los desempates estadísticos. Seed propio `hash32('desempate'│mes│eq1│eq2)`, tanda reproducible y auditable. Mercado «Gana el desempate» 2-vías (§11.2-bis). El reset **nunca** se retrasa por esperarlo (§7.5, §11.2-bis, §15.5, T42) |
 | **B1** | `TOS_VERSION` debe subir por agregar apuestas deportivas simuladas | **Subir la versión y lanzarla junto con la sección**, una sola re-aceptación | La cláusula debe decir: eventos **simulados y ficticios**, resultado generado por el servidor, y **declarar el flujo simulado** de §11.6 |
 | **B2** | «En Vivo» colisiona con el lobby de salas | **«Estadio MonteCristo»**, ruta `/estadio`, `public/estadio.*`, `/api/estadio/*` | `#live-lobby` y `.live-section` **no se tocan**. Vocabulario interno único: `football` |
-| **B3** | Sabor de los 16 clubes | **Internacional neutro** (Vantora FC, United Vanguard…), **ya validados contra clubes reales** | Tabla y validación en §5.5. Siete candidatos fueron rechazados por colisión real y reemplazados. Cambiar nombres después de publicada la jornada 1 rompe la continuidad, así que esta lista se considera definitiva |
+| **B3** | Sabor de los 16 clubes | **Nombres ficticios de parodia futbolera**, con juegos de palabras cómicos inspirados en equipos conocidos | §5.5 conserva IDs/códigos y migra solo las etiquetas visibles de temporadas guardadas; jugadores, apuestas, fixtures y resultados no cambian. Sin escudos ni afiliación oficial; revisión de marcas antes de cualquier uso comercial |
 | **C4** | Margen de casa | **7 %** en mercados principales | Queda en **6,54 % de ventaja**, más del doble que la ruleta (2,6–3,25 %) y que las slots (2,26 %), y muy por encima de dados y cara o cruz (~0 %). Obliga a: probabilidad implícita siempre visible, métrica de drenaje comparada por juego desde el día 1, y márgenes en env vars para poder bajarlos sin desplegar código (§10.3) |
 | **C5** | Límites de apuesta | **Mínimo 10 % y máximo 50 % del saldo**, techo absoluto 25.000 (revisado en ronda 9; antes: tope 25 % con mínimo fijo 10) | Jugador recién reiniciado: 100–500 fichas. El mínimo hace cada apuesta **material** para que la ventaja de la casa se ejerza; el máximo es **más restrictivo que los juegos rápidos**, que aceptan el 100 % del stack (`server.js:1311`): la boleta debe decirlo explícitamente. Funciona como limitador de pérdida natural (§11.3) |
 | **C6** | ¿Cuenta fútbol para los retos «prueba N juegos»? | **No se agrega a `AVAILABLE_GAMES`**, y además se filtra en `trackPeriod` | **Corregido**: `AVAILABLE_GAMES` por sí solo **no** excluye al fútbol de esos retos (§12.7). Sin el filtro extra, «Turista del día» y «Ruta del casino» contarían el Estadio como un juego más |
@@ -3792,7 +3768,7 @@ el Estadio:
   de esa fecha: apuestas, fichas apostadas, cobradas y en juego.
 - **Fila por apuesta** (`est-ledger-row`), pensada para leerse sin esfuerzo:
   icono de estado (38 px), selección a **17 px** y mercado como distintivo,
-  equipos con escudos y marcador final (`Vantora FC 2–0 Atlético Solaris`) más la
+  equipos con escudos y marcador final (`Real Madriz 2–0 Farselona FC`) más la
   jornada, y los datos de la apuesta en **fichas independientes** (Monto, Cuota,
   En vivo, Temporada, Apostada/Liquidada) con etiqueta de 10 px y valor de 13 px,
   en lugar de un párrafo único con separadores «·». A la derecha, separada por una
