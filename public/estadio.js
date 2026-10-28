@@ -2454,7 +2454,7 @@
   }
 
   // ===== Lobby =====
-  function teamName(id) { var t = S.teams[id]; return t ? t.short || t.name : String(id || '?').slice(0, 3).toUpperCase(); }
+  function teamName(id) { var t = S.teams[id]; return t ? t.name || t.short : String(id || '?').slice(0, 3).toUpperCase(); }
   function teamFull(id) { var t = S.teams[id]; return t ? t.name : id; }
   function teamColor(id) { var t = S.teams[id]; return t ? t.colors.primary : '#888'; }
   function currentServerTime() {

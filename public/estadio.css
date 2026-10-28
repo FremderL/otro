@@ -105,6 +105,7 @@
 }
 .est-team-home { justify-content: flex-start; }
 .est-team-away { justify-content: flex-end; text-align: right; }
+.est-team > span:not(.est-crest) { min-width: 0; overflow-wrap: anywhere; }
 .est-crest {
   display: inline-block;
   width: 14px;
