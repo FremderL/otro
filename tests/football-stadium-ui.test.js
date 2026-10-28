@@ -399,7 +399,7 @@ function createHarness(options = {}) {
 
 test('el lobby y la tabla muestran los nombres cómicos completos, no solo los códigos cortos', async t => {
   const h = createHarness({
-    homeName: 'Real Madriz', homeShort: 'VTR',
+    homeName: 'Real Mandril', homeShort: 'VTR',
     awayName: 'Farselona FC', awayShort: 'VNG',
     standings: [
       { teamId: 'home', played: 1, goalDiff: 1, points: 3 },
@@ -412,10 +412,10 @@ test('el lobby y la tabla muestran los nombres cómicos completos, no solo los c
   const { document } = h.window;
   const fixture = document.querySelector('#est-match-list .est-match-teams').textContent;
   const standings = document.querySelector('#est-standings tbody').textContent;
-  assert.match(fixture, /Real Madriz/);
+  assert.match(fixture, /Real Mandril/);
   assert.match(fixture, /Farselona FC/);
   assert.doesNotMatch(fixture, /VTR|VNG/);
-  assert.match(standings, /Real Madriz/);
+  assert.match(standings, /Real Mandril/);
   assert.match(standings, /Farselona FC/);
 });
 

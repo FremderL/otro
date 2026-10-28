@@ -25,7 +25,7 @@ const rnd = (s) => prng.mulberry32(prng.hash32(s));
 
 // Vars completos: ninguna plantilla queda fuera por datos ausentes.
 const FULL_VARS = {
-  jugador: 'Kenji Kovac', equipo: 'Real Madriz', rival: 'Farselona FC', estadio: 'Arena Boreal',
+  jugador: 'Kenji Kovac', equipo: 'Real Mandril', rival: 'Farselona FC', estadio: 'Arena Boreal',
   minuto: 32, marcador: '1-0', goles: 5, xgFavor: '0.38', xg: '0.38', posesion: '55 %',
   tiros: '12-9', asistencia: 'Santiago Novak', resultado: '¡gol!', marcadorTanda: '3-2',
   equipoRival: 'Farselona FC', puestoRival: 'ST'
@@ -170,7 +170,7 @@ test('requiredVars y satisfied detectan datos ausentes', () => {
 
 test('§9 — el filtrado por variables evita salidas rotas (datos parciales)', () => {
   // Con vars MÍNIMOS, las plantillas que exigen asistencia/xg/etc. no deben salir.
-  const minVars = { equipo: 'Real Madriz', rival: 'Farselona FC', estadio: 'Arena Boreal', minuto: 30, marcador: '0-0' };
+  const minVars = { equipo: 'Real Mandril', rival: 'Farselona FC', estadio: 'Arena Boreal', minuto: 30, marcador: '0-0' };
   const memory = createMemory();
   for (const type of ALL_TYPES) {
     for (let k = 0; k < 15; k++) {
@@ -249,7 +249,7 @@ test('matices — el gol agónico usa su repertorio con datos completos y sin pl
 });
 
 test('matices — con datos mínimos el matiz cae al repertorio base (nunca sale una plantilla rota)', () => {
-  const minVars = { equipo: 'Real Madriz', rival: 'Farselona FC', estadio: 'Arena Boreal', minuto: 88, marcador: '0-0' };
+  const minVars = { equipo: 'Real Mandril', rival: 'Farselona FC', estadio: 'Arena Boreal', minuto: 88, marcador: '0-0' };
   const memory = createMemory();
   for (let k = 0; k < 15; k++) {
     for (const line of generateCommentary('goal', minVars, rnd(`agm-${k}`), memory)) {

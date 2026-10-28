@@ -55,7 +55,7 @@ en `server.js`. Se entrega en 6 fases independientes y verificables.
 ## 2. Alcance y no-alcance
 
 ### En alcance
-- Liga ficticia («Liga MonteCristo») con **16 clubes de nombres de parodia futbolera cómica**
+- Liga ficticia («Liga MonteCristo») con **16 parodias cómicas de clubes europeos**
   (decisión B3 actualizada), plantillas de 18 jugadores.
 - Motor determinista de partido: 90 minutos simulados, goles, tarjetas, cambios, córners, xG.
 - Reproducción en vivo por Socket.IO + render canvas 2D cenital en página propia `/estadio`.
@@ -307,28 +307,28 @@ antes de fijarla.
 
 **Decisión B3 actualizada (2026-10-28): parodias de clubes europeos.** Los 16 clubes siguen siendo
 100 % ficticios, con juegos de palabras inspirados exclusivamente en equipos de ligas europeas:
-España, Inglaterra, Alemania, Italia, Francia, Países Bajos y Portugal. No hay referencias a clubes
+España, Inglaterra, Alemania, Italia, Francia, Escocia y Portugal. No hay referencias a clubes
 de América Latina; tampoco se sugiere afiliación ni se usan escudos oficiales. Los IDs y códigos cortos se
 conservan para mantener intactos jugadores, fixtures, apuestas, mercados y estadísticas:
 
 | # | Club | Corto | Ciudad | Estadio | Formación | Estilo |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Real Madriz | `VTR` | Vantora | Arena Boreal | 4-3-3 | possession |
+| 1 | Real Mandril | `VTR` | Vantora | Arena Boreal | 4-3-3 | possession |
 | 2 | Farselona FC | `VNG` | Vanguard City | The Bulwark | 4-4-2 | pressing |
-| 3 | Atlético Madrizzz | `EST` | Estevin | Stade d'Estevin | 4-2-3-1 | possession |
-| 4 | Manchesteer United | `SOL` | Solaris | Coliseo Helios | 4-3-3 | direct |
+| 3 | Atleti-comedia FC | `EST` | Estevin | Stade d'Estevin | 4-2-3-1 | possession |
+| 4 | Manchestéreo United | `SOL` | Solaris | Coliseo Helios | 4-3-3 | direct |
 | 5 | Liverpulpo FC | `ALM` | Almara | Campo Almar | 4-4-2 | balanced |
-| 6 | Arsenalgas FC | `KLV` | Kelvar | Kelvar Park | 3-5-2 | pressing |
-| 7 | Bayern Munch | `VRD` | Verdania | Foro Verde | 4-2-3-1 | counter |
+| 6 | Arsénico FC | `KLV` | Kelvar | Kelvar Park | 3-5-2 | pressing |
+| 7 | Bayern Munchies | `VRD` | Verdania | Foro Verde | 4-2-3-1 | counter |
 | 8 | Borussia Dormund | `HLC` | Halcyon Bay | The Lighthouse | 4-3-3 | counter |
-| 9 | Juventus de los Jueves | `FRR` | Ferrata | La Forja | 4-4-2 | direct |
-| 10 | PSG de la Merienda | `CRV` | Corvane | Corona Arena | 4-2-3-1 | possession |
-| 11 | AC Milanesa | `TLB` | Talbruck | Talbruck Stadion | 3-5-2 | balanced |
-| 12 | Inter de Milán de Miel | `VLM` | Velmar | The Dockyard | 4-4-2 | direct |
-| 13 | Chelsea Churros | `NVL` | Norvela | Estadio Norvela | 4-3-3 | balanced |
-| 14 | Tottenham Hot-Purés | `IRN` | Ironvale | The Foundry | 4-4-2 | pressing |
-| 15 | Ajax de Amster-risa | `PRG` | Peregrine | Rovers Park | 4-2-3-1 | counter |
-| 16 | Porto-galácticos | `AMB` | Ámbar | Estadio Ámbar | 4-3-3 | possession |
+| 9 | Juventus de los Jubilados | `FRR` | Ferrata | La Forja | 4-4-2 | direct |
+| 10 | París Sin Goles | `CRV` | Corvane | Corona Arena | 4-2-3-1 | possession |
+| 11 | Real Suciedad | `TLB` | Talbruck | Talbruck Stadion | 3-5-2 | balanced |
+| 12 | Roma de la Broma | `VLM` | Velmar | The Dockyard | 4-4-2 | direct |
+| 13 | West Hamón FC | `NVL` | Norvela | Estadio Norvela | 4-3-3 | balanced |
+| 14 | Nabo-li FC | `IRN` | Ironvale | The Foundry | 4-4-2 | pressing |
+| 15 | Celtic de Cómic | `PRG` | Peregrine | Rovers Park | 4-2-3-1 | counter |
+| 16 | Benfica de Beneficencia | `AMB` | Ámbar | Estadio Ámbar | 4-3-3 | possession |
 
 #### Compatibilidad de nombres persistidos
 
@@ -345,7 +345,7 @@ Cada club:
 
 ```js
 {
-  id: 'vantora_fc', name: 'Real Madriz', short: 'VTR',
+  id: 'vantora_fc', name: 'Real Mandril', short: 'VTR',
   city: 'Vantora', stadium: 'Arena Boreal', capacity: 41000,
   colors: { primary: '#1de9b6', secondary: '#1f2a30', kit: 'stripes' },
   tactics: { formation: '4-3-3', style: 'possession' },   // possession|counter|pressing|direct|balanced
@@ -3769,7 +3769,7 @@ el Estadio:
   de esa fecha: apuestas, fichas apostadas, cobradas y en juego.
 - **Fila por apuesta** (`est-ledger-row`), pensada para leerse sin esfuerzo:
   icono de estado (38 px), selección a **17 px** y mercado como distintivo,
-  equipos con escudos y marcador final (`Real Madriz 2–0 Farselona FC`) más la
+  equipos con escudos y marcador final (`Real Mandril 2–0 Farselona FC`) más la
   jornada, y los datos de la apuesta en **fichas independientes** (Monto, Cuota,
   En vivo, Temporada, Apostada/Liquidada) con etiqueta de 10 px y valor de 13 px,
   en lugar de un párrafo único con separadores «·». A la derecha, separada por una

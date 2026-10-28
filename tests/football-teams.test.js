@@ -24,10 +24,10 @@ test('hay exactamente 16 clubes válidos con ids y cortos únicos', () => {
 
 test('los clubes son parodias cómicas basadas exclusivamente en equipos europeos', () => {
   const expected = [
-    'Real Madriz', 'Farselona FC', 'Atlético Madrizzz', 'Manchesteer United',
-    'Liverpulpo FC', 'Arsenalgas FC', 'Bayern Munch', 'Borussia Dormund',
-    'Juventus de los Jueves', 'PSG de la Merienda', 'AC Milanesa', 'Inter de Milán de Miel',
-    'Chelsea Churros', 'Tottenham Hot-Purés', 'Ajax de Amster-risa', 'Porto-galácticos'
+    'Real Mandril', 'Farselona FC', 'Atleti-comedia FC', 'Manchestéreo United',
+    'Liverpulpo FC', 'Arsénico FC', 'Bayern Munchies', 'Borussia Dormund',
+    'Juventus de los Jubilados', 'París Sin Goles', 'Real Suciedad', 'Roma de la Broma',
+    'West Hamón FC', 'Nabo-li FC', 'Celtic de Cómic', 'Benfica de Beneficencia'
   ];
   assert.deepStrictEqual(CLUBS.map(club => club.name), expected);
 });
@@ -42,10 +42,10 @@ test('rehidratar una liga actualiza solo los nombres visibles y respeta IDs/dato
     ] }
   };
   assert.strictEqual(refreshPersistedClubNames(league), league);
-  assert.strictEqual(league.config[0].name, 'Real Madriz');
+  assert.strictEqual(league.config[0].name, 'Real Mandril');
   assert.strictEqual(league.config[0].short, 'VTR');
   assert.strictEqual(league.config[0].squad[0], player);
-  assert.strictEqual(league.ballonDor.candidates[0].clubName, 'Real Madriz');
+  assert.strictEqual(league.ballonDor.candidates[0].clubName, 'Real Mandril');
   assert.strictEqual(league.ballonDor.candidates[0].playerId, 'vtr_09');
   assert.strictEqual(league.ballonDor.candidates[1].clubName, 'Club histórico');
 });
