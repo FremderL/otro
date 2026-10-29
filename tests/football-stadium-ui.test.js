@@ -195,6 +195,34 @@ function createHarness(options = {}) {
     pretendToBeVisual: true
   });
   const { window } = dom;
+  const speechUtterances = [];
+  let activeSpeechUtterance = null, speechOverlapCount = 0, speechCancelCount = 0, speechResumeCount = 0;
+  let speechApi = null;
+  if (options.speechSynthesis) {
+    window.SpeechSynthesisUtterance = function (text) { this.text = String(text); };
+    speechApi = {
+      speaking: false,
+      voices: options.speechVoices || [
+        { name: 'Narrador mexicano', lang: 'es-MX', localService: true },
+        { name: 'Analista mexicana', lang: 'es-MX', localService: true }
+      ],
+      getVoices() { return this.voices.slice(); },
+      addEventListener() {},
+      resume() { speechResumeCount++; },
+      speak(utterance) {
+        if (this.speaking) speechOverlapCount++;
+        this.speaking = true;
+        activeSpeechUtterance = utterance;
+        speechUtterances.push(utterance);
+      },
+      cancel() {
+        speechCancelCount++;
+        this.speaking = false;
+        activeSpeechUtterance = null;
+      }
+    };
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: speechApi });
+  }
   window.Date.now = () => nowMs;
   Object.defineProperty(window.performance, 'now', { configurable: true, value: () => perfNow });
   const mobileGateStyle = window.document.createElement('style');
@@ -351,6 +379,21 @@ function createHarness(options = {}) {
   return {
     dom, window, socket, handlers, match, matchState, players, drawnText, requests, ballTrace, socketEmitted,
     audioTelemetryAttempts, ballonDorSocketAttempts, ballonDorHttpAttempts,
+    speech: speechApi ? {
+      utterances: speechUtterances,
+      get overlapCount() { return speechOverlapCount; },
+      get cancelCount() { return speechCancelCount; },
+      get resumeCount() { return speechResumeCount; },
+      finish(index) {
+        const utterance = speechUtterances[index];
+        if (!utterance) throw new Error('No existe la locución ' + index);
+        if (activeSpeechUtterance === utterance) {
+          activeSpeechUtterance = null;
+          speechApi.speaking = false;
+        }
+        if (typeof utterance.onend === 'function') utterance.onend({ type: 'end' });
+      }
+    } : null,
     get openingAudioPlayCount() { return openingAudioPlayCount; },
     get ceremonyAudioCounts() { return { ...ceremonyAudioCounts }; },
     get ceremonyAudioSrcHistory() { return { music: ceremonyAudioSrcHistory.music.slice(), narration: ceremonyAudioSrcHistory.narration.slice() }; },
@@ -492,6 +535,12 @@ test('avatares persistentes, cues y nombres grabados del Balón de Oro usan asse
 });
 
 test('el CSS del evento conserva layouts móviles, movimiento reducido y sintaxis balanceada', () => {
+  assert.match(STYLES, /\.est-commentary-panel/);
+  assert.match(STYLES, /\.est-commentary-voice-toggle/);
+  assert.match(STYLES, /\.est-cmt\.is-latest/);
+  assert.match(STYLES, /\.est-cmt\.is-speaking/);
+  assert.match(STYLES, /@media\s*\(max-width:\s*680px\)[\s\S]*?\.est-cmt/);
+  assert.match(STYLES, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.est-commentary-live/);
   assert.match(STYLES, /@media\(max-width:760px\)[\s\S]*?\.est-bdo-opening-dialog/);
   assert.match(STYLES, /@media\(max-width:680px\)[\s\S]*?\.est-bdo-ceremony-panel/);
   assert.match(STYLES, /@media\(prefers-reduced-motion:\s*reduce\)[\s\S]*?animation:none !important/);
@@ -1159,6 +1208,73 @@ test('la UI sigue el estado del motor: kickoff, pausas, gol, sustitución y fina
   handlers['football:status']({ matchId: id, code: 'full_time', minute: 94 });
   assert.equal(window.document.getElementById('est-clock').textContent, 'Final');
   assert.ok(marketButtons().every(button => button.disabled), 'el final cierra el mercado');
+});
+
+test('la cabina de comentarios destaca el feed y diferencia a sus dos voces', async t => {
+  const h = createHarness();
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const panel = window.document.querySelector('.est-commentary-panel');
+  const feed = window.document.getElementById('est-commentary');
+  assert.ok(panel, 'el relato tiene una cabina destacada bajo la cancha');
+  assert.equal(panel.querySelector('h2').textContent, 'Relato en vivo');
+  assert.match(panel.querySelector('.est-commentary-live').textContent, /En directo/i);
+  assert.equal(feed.getAttribute('role'), 'log', 'los nuevos comentarios se anuncian de forma accesible');
+  const voiceToggle = panel.querySelector('#est-commentary-voice');
+  assert.ok(voiceToggle, 'hay un control explícito para escuchar a los comentaristas');
+  assert.equal(voiceToggle.disabled, true, 'si Web Speech no existe, se evita ofrecer una acción que no funcionará');
+
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: '¡Se acerca el gol!' });
+  const narrator = feed.querySelector('.est-cmt.is-latest');
+  assert.ok(narrator.classList.contains('narrador'));
+  assert.match(narrator.querySelector('.est-cmt-voice').textContent, /NARRADOR/);
+  assert.match(narrator.textContent, /¡Se acerca el gol!/);
+
+  handlers['football:commentary']({ matchId: match.id, voice: 'analista', text: 'La defensa quedó muy abierta.' });
+  const analyst = feed.querySelector('.est-cmt.is-latest');
+  assert.ok(analyst.classList.contains('analista'));
+  assert.match(analyst.querySelector('.est-cmt-voice').textContent, /ANALISTA/);
+  assert.equal(feed.querySelectorAll('.est-cmt.is-latest').length, 1, 'solo el comentario más reciente conserva el foco visual');
+});
+
+test('las voces del relato se alternan en cola, con dos locutores y sin superposición', async t => {
+  const h = createHarness({ speechSynthesis: true });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match, speech } = h;
+  const button = window.document.getElementById('est-commentary-voice');
+  assert.equal(button.disabled, false);
+  assert.equal(button.getAttribute('aria-pressed'), 'false', 'el audio requiere activación explícita');
+
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: 'Comentario previo a activar las voces.' });
+  assert.equal(speech.utterances.length, 0, 'no lee el historial ni empieza sin permiso del espectador');
+  button.click();
+  assert.equal(button.getAttribute('aria-pressed'), 'true');
+  assert.equal(speech.resumeCount, 1, 'reanuda el sintetizador dentro del gesto del usuario');
+
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: '¡Se acerca el gol!' });
+  handlers['football:commentary']({ matchId: match.id, voice: 'analista', text: 'La defensa quedó muy abierta.' });
+  assert.equal(speech.utterances.length, 1, 'el segundo comentarista espera su turno');
+  assert.equal(speech.utterances[0].text, '¡Se acerca el gol!');
+  assert.equal(speech.utterances[0].lang, 'es-MX');
+  assert.equal(speech.utterances[0].voice.name, 'Narrador mexicano');
+  assert.ok(window.document.querySelector('.est-cmt.narrador.is-speaking'));
+
+  speech.finish(0);
+  h.advanceTime(500);
+  assert.equal(speech.utterances.length, 2, 'el analista entra después de la pausa conversacional');
+  assert.equal(speech.utterances[1].voice.name, 'Analista mexicana');
+  assert.ok(window.document.querySelector('.est-cmt.analista.is-speaking'));
+  assert.equal(speech.overlapCount, 0, 'nunca se invoca speak mientras otra voz continúa activa');
+
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: 'Llega otra jugada.' });
+  button.click();
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
+  assert.ok(speech.cancelCount > 0, 'al silenciar se detienen el turno actual y la cola');
+  assert.equal(window.document.querySelectorAll('.est-cmt.is-speaking').length, 0);
+  h.advanceTime(1000);
+  assert.equal(speech.utterances.length, 2, 'ningún comentario pendiente se reproduce tras silenciar');
 });
 
 test('el relato del gol espera a que termine la animación del balón', async t => {

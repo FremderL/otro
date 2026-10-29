@@ -142,7 +142,8 @@
     betHistory: null, betHistoryFetchedAt: 0, betsUnseen: null, betsLoading: false, betsError: null,
     betRanking: null, betRankingSource: 'total', betRankingSubscribed: false, ledgerView: 'history',
     betsOnlyMatch: false, betsRequestSeq: 0, ledgerFilter: 'all', ledgerTrigger: null,
-    slip: null, muted: false, soundOn: localStorage.getItem('montecristo-notifications') !== 'off', musicOn: localStorage.getItem('montecristo-music') === 'on',
+    slip: null, muted: false, commentaryVoiceOn: false,
+    soundOn: localStorage.getItem('montecristo-notifications') !== 'off', musicOn: localStorage.getItem('montecristo-music') === 'on',
     players: [], authoritativePlayers: [], possessionTeam: 'home', ballCarrierId: null, playStopped: true,
     ball: { x: .5, y: .5 }, ballStart: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 },
     ballT0: 0, ballDur: 800, playerT0: 0, playerDur: 1900,
@@ -163,7 +164,7 @@
       'est-promo-copy-input', 'est-promo-image-input', 'est-promo-target', 'est-promo-room-field', 'est-promo-room-code',
       'est-promo-submit', 'est-promo-message',
       'est-scoreboard', 'crest-home', 'crest-away', 'name-home', 'name-away', 'score-home', 'score-away',
-      'est-clock', 'est-pitch', 'est-goal-banner', 'est-commentary', 'est-text-state', 'est-market-phase',
+      'est-clock', 'est-pitch', 'est-goal-banner', 'est-commentary', 'est-commentary-voice', 'est-text-state', 'est-market-phase',
       'est-markets', 'est-bet-slip', 'est-slip-pick', 'est-slip-clear', 'est-slip-odds', 'est-slip-implied',
       'est-stake', 'est-denoms', 'est-slip-range', 'est-place-bet', 'est-bet-msg', 'est-mybets',
       'est-mybets-count', 'est-bets-link-note', 'est-bets-link-dot',
@@ -2970,6 +2971,7 @@
   // ===== Estado del partido =====
   function applyMatchState(ms) {
     if (!ms) return;
+    if (S.match && ms.match && S.match.id !== ms.match.id) cancelCommentarySpeech();
     S.match = ms.match; S.markets = ms.markets || {}; S.movement = {};
     S.myBets = (ms.myBets || []).slice();
     var rawMin = ms.state ? (ms.state.displayMinute != null ? ms.state.displayMinute : ms.state.minute) : 0;
@@ -3374,23 +3376,201 @@
     el['est-pitch'].setAttribute('aria-label', 'Cancha cenital. ' + teamFull(S.match.homeId) + ' ' + S.score.home + ' – ' + S.score.away + ' ' + teamFull(S.match.awayId) + '. Minuto ' + S.minute + ', ' + phaseLabel(S.phase) + '.');
   }
 
+  // ===== Relato hablado =====
+  // La voz es opt-in: los navegadores pueden bloquear el audio automático y el
+  // oyente decide cuándo activarlo. Las intervenciones usan una cola propia para
+  // mantener los turnos (narrador -> analista), nunca se lanzan en paralelo.
+  var COMMENTARY_SPEECH_QUEUE_LIMIT = 8;
+  var commentarySpeech = {
+    queue: [], active: null, activeCard: null, timer: null, token: 0, lastVoice: null,
+    voices: { narrador: null, analista: null }, listenersBound: false, buttonBound: false
+  };
+  function commentarySpeechSupported() {
+    return Boolean(window.speechSynthesis && typeof window.speechSynthesis.speak === 'function' &&
+      typeof window.SpeechSynthesisUtterance === 'function');
+  }
+  function refreshCommentaryVoices() {
+    var api = window.speechSynthesis;
+    if (!api || typeof api.getVoices !== 'function') return;
+    var voices = [];
+    try { voices = api.getVoices() || []; } catch (_) {}
+    var spanish = voices.filter(function (voice) { return /^es(?:[-_]|$)/i.test(voice.lang || ''); });
+    var mexican = spanish.filter(function (voice) { return /^es[-_]MX$/i.test(voice.lang || ''); });
+    var preferred = mexican.length >= 2 ? mexican : (spanish.length >= 2 ? spanish : (mexican.length ? mexican : spanish));
+    var first = preferred[0] || null;
+    commentarySpeech.voices.narrador = first;
+    commentarySpeech.voices.analista = preferred.find(function (voice) { return voice !== first; }) || first;
+  }
+  function updateCommentaryVoiceButton() {
+    var button = el['est-commentary-voice'];
+    if (!button) return;
+    var label = button.querySelector('.est-commentary-voice-label');
+    var icon = button.querySelector('.est-commentary-voice-icon');
+    var supported = commentarySpeechSupported();
+    button.disabled = !supported;
+    button.setAttribute('aria-pressed', String(Boolean(S.commentaryVoiceOn)));
+    button.setAttribute('aria-label', supported
+      ? (S.commentaryVoiceOn ? 'Silenciar voces del relato' : 'Activar voces del relato')
+      : 'Voces no disponibles en este navegador');
+    button.title = supported
+      ? (S.commentaryVoiceOn ? 'Silenciar la narración hablada' : 'Activar narración hablada en español')
+      : 'Este navegador no ofrece síntesis de voz.';
+    if (label) label.textContent = supported ? (S.commentaryVoiceOn ? 'Silenciar voces' : 'Activar voces') : 'Voz no disponible';
+    if (icon) icon.textContent = S.commentaryVoiceOn ? '◖' : '◗';
+  }
+  function setupCommentarySpeech() {
+    updateCommentaryVoiceButton();
+    var api = window.speechSynthesis;
+    if (!api || commentarySpeech.listenersBound) return;
+    commentarySpeech.listenersBound = true;
+    refreshCommentaryVoices();
+    if (typeof api.addEventListener === 'function') api.addEventListener('voiceschanged', refreshCommentaryVoices);
+    else api.onvoiceschanged = refreshCommentaryVoices;
+  }
+  function updateCommentaryMuteStyles() {
+    if (!el['est-commentary']) return;
+    Array.prototype.forEach.call(el['est-commentary'].querySelectorAll('.est-cmt'), function (node) {
+      node.classList.toggle('muted-all', S.muted);
+    });
+  }
+  function cancelCommentarySpeech() {
+    commentarySpeech.token++;
+    commentarySpeech.queue.length = 0;
+    if (commentarySpeech.timer) clearTimeout(commentarySpeech.timer);
+    commentarySpeech.timer = null;
+    commentarySpeech.lastVoice = null;
+    if (commentarySpeech.activeCard) commentarySpeech.activeCard.classList.remove('is-speaking');
+    commentarySpeech.active = null;
+    commentarySpeech.activeCard = null;
+    setCommentaryMusicDuck(false);
+    var api = window.speechSynthesis;
+    if (api && typeof api.cancel === 'function') {
+      try { api.cancel(); } catch (_) {}
+    }
+  }
+  function setCommentaryVoiceEnabled(enabled, notify) {
+    if (enabled && !commentarySpeechSupported()) {
+      updateCommentaryVoiceButton();
+      if (notify !== false) toast('La narración por voz no está disponible en este navegador.', '');
+      return false;
+    }
+    S.commentaryVoiceOn = Boolean(enabled);
+    S.muted = !S.commentaryVoiceOn;
+    updateCommentaryMuteStyles();
+    updateCommentaryVoiceButton();
+    if (S.commentaryVoiceOn) {
+      refreshCommentaryVoices();
+      try { window.speechSynthesis.resume(); } catch (_) {}
+      if (notify !== false) toast('Voces activadas. Narrador y analista hablarán por turnos.', '');
+    } else {
+      cancelCommentarySpeech();
+      if (notify !== false) toast('Voces silenciadas.', '');
+    }
+    return true;
+  }
+  function queueCommentarySpeech(message, card) {
+    if (!S.commentaryVoiceOn || S.muted || !commentarySpeechSupported()) return;
+    var text = String(message && message.text || '').trim();
+    if (!text) return;
+    var item = {
+      matchId: S.currentMatchId,
+      voice: message.voice === 'analista' ? 'analista' : 'narrador',
+      text: text,
+      card: card || null
+    };
+    if (commentarySpeech.queue.length >= COMMENTARY_SPEECH_QUEUE_LIMIT) {
+      var analystIndex = commentarySpeech.queue.findIndex(function (queued) { return queued.voice === 'analista'; });
+      commentarySpeech.queue.splice(analystIndex >= 0 ? analystIndex : 0, 1);
+    }
+    commentarySpeech.queue.push(item);
+    runNextCommentaryTurn();
+  }
+  function runNextCommentaryTurn() {
+    var api = window.speechSynthesis;
+    if (!S.commentaryVoiceOn || S.muted || !commentarySpeechSupported() || commentarySpeech.active || commentarySpeech.timer) return;
+    while (commentarySpeech.queue.length && commentarySpeech.queue[0].matchId !== S.currentMatchId) commentarySpeech.queue.shift();
+    if (!commentarySpeech.queue.length) return;
+    var item = commentarySpeech.queue.shift();
+    var voice = commentarySpeech.voices[item.voice];
+    var utterance;
+    try { utterance = new window.SpeechSynthesisUtterance(item.text); }
+    catch (_) { return; }
+    utterance.lang = voice && voice.lang || 'es-MX';
+    utterance.rate = item.voice === 'narrador' ? 1.03 : .97;
+    utterance.pitch = item.voice === 'narrador' ? 1.06 : .95;
+    utterance.volume = 1;
+    if (voice) utterance.voice = voice;
+    var token = ++commentarySpeech.token;
+    var previousVoice = commentarySpeech.lastVoice;
+    var settled = false;
+    commentarySpeech.active = utterance;
+    commentarySpeech.activeCard = item.card;
+    if (item.card && item.card.isConnected) item.card.classList.add('is-speaking');
+    setCommentaryMusicDuck(true);
+    function finishTurn() {
+      if (settled) return;
+      settled = true;
+      if (token !== commentarySpeech.token) return;
+      if (commentarySpeech.activeCard) commentarySpeech.activeCard.classList.remove('is-speaking');
+      commentarySpeech.active = null;
+      commentarySpeech.activeCard = null;
+      commentarySpeech.lastVoice = item.voice;
+      setCommentaryMusicDuck(false);
+      var pause = previousVoice && previousVoice !== item.voice ? 380 : 170;
+      commentarySpeech.timer = setTimeout(function () {
+        commentarySpeech.timer = null;
+        runNextCommentaryTurn();
+      }, pause);
+    }
+    utterance.onend = finishTurn;
+    utterance.onerror = function (event) {
+      if (token !== commentarySpeech.token) return;
+      if (event && event.error === 'not-allowed') {
+        S.commentaryVoiceOn = false;
+        S.muted = false;
+        cancelCommentarySpeech();
+        updateCommentaryMuteStyles();
+        updateCommentaryVoiceButton();
+        toast('El navegador bloqueó la voz. Pulsa «Activar voces» para intentarlo otra vez.', '');
+        return;
+      }
+      finishTurn();
+    };
+    try { api.speak(utterance); }
+    catch (_) { finishTurn(); }
+  }
+
   // ===== Relato =====
   function renderCommentary(list) {
     var box = el['est-commentary']; box.innerHTML = '';
-    if (!list || !list.length) { box.innerHTML = '<p class="est-commentary-empty">El relato comenzará cuando arranque el partido…</p>'; return; }
+    if (!list || !list.length) { box.innerHTML = '<p class="est-commentary-empty">El relato aparecerá aquí cuando comience el partido.</p>'; return; }
     list.forEach(function (m) { appendCommentary(m, true); });
+    var latest = box.lastElementChild;
+    if (latest && latest.classList.contains('est-cmt')) latest.classList.add('is-latest');
     box.scrollTop = box.scrollHeight;
   }
   function appendCommentary(m, silentScroll) {
     var box = el['est-commentary'];
     var empty = box.querySelector('.est-commentary-empty'); if (empty) empty.remove();
+    if (!silentScroll) {
+      var previousLatest = box.querySelector('.est-cmt.is-latest');
+      if (previousLatest) previousLatest.classList.remove('is-latest');
+    }
     var voice = m.voice === 'analista' ? 'analista' : 'narrador';
+    var voiceLabel = voice === 'narrador' ? 'NARRADOR' : 'ANALISTA';
+    var voiceMark = voice === 'narrador' ? 'N' : 'A';
     var div = document.createElement('div');
-    div.className = 'est-cmt ' + voice + (S.muted ? ' muted-all' : '');
-    div.innerHTML = '<span class="est-cmt-voice">' + (voice === 'narrador' ? 'Relato' : 'Análisis') + '</span><span class="est-cmt-text">' + esc(m.text) + '</span>';
+    div.className = 'est-cmt ' + voice + (S.muted ? ' muted-all' : '') + (silentScroll ? '' : ' is-latest is-entering');
+    div.innerHTML = '<span class="est-cmt-speaker"><span class="est-cmt-mark" aria-hidden="true">' + voiceMark + '</span><span class="est-cmt-voice">' + voiceLabel + '</span></span><span class="est-cmt-text">' + esc(m.text) + '</span>';
     box.appendChild(div);
     while (box.children.length > 40) box.removeChild(box.firstChild);
     if (!silentScroll) box.scrollTop = box.scrollHeight;
+    return div;
+  }
+  function appendLiveCommentary(data) {
+    var message = { voice: data.voice, text: data.text };
+    var card = appendCommentary(message);
+    queueCommentarySpeech(message, card);
   }
   function onCommentary(data) {
     if (!data || data.matchId !== S.currentMatchId) return;
@@ -3400,10 +3580,10 @@
     if (delay > 0) {
       setTimeout(function () {
         if (data.matchId !== S.currentMatchId) return;
-        appendCommentary({ voice: data.voice, text: data.text });
+        appendLiveCommentary(data);
       }, delay);
     } else {
-      appendCommentary({ voice: data.voice, text: data.text });
+      appendLiveCommentary(data);
     }
   }
 
@@ -4793,6 +4973,13 @@
     el['est-promo-target'].addEventListener('change', updatePromotionRoomField);
     updatePromotionRoomField();
     setupStudioControls();
+    setupCommentarySpeech();
+    if (!commentarySpeech.buttonBound) {
+      commentarySpeech.buttonBound = true;
+      el['est-commentary-voice'].addEventListener('click', function () {
+        setCommentaryVoiceEnabled(!S.commentaryVoiceOn);
+      });
+    }
     el['est-showcase-prev'].addEventListener('click', function () {
       setShowcaseIndex(S.showcaseIndex - 1);
       restartShowcaseRotation();
@@ -4938,10 +5125,13 @@
   }
   // Música de ambiente de estadio: un solo bucle, solo con el sonido activado por el usuario.
   var music = null;
+  function setCommentaryMusicDuck(active) {
+    if (music) music.volume = active && S.musicOn ? 0.14 : 0.32;
+  }
   function syncMusic() {
     if (!music) {
       music = new Audio('/assets/match-ambience.mp3');
-      music.loop = true; music.preload = 'auto'; music.volume = 0.32;
+      music.loop = true; music.preload = 'auto'; music.volume = commentarySpeech.active && S.musicOn ? 0.14 : 0.32;
     }
     if (S.musicOn) {
       var p = music.play();
@@ -4969,8 +5159,12 @@
     else if (k === 'escape') { el['est-help'].hidden = true; if (!el['est-tos'].hidden && tosAccepted()) el['est-tos'].hidden = true; }
   }
   function toggleMute() {
+    if (commentarySpeechSupported()) {
+      setCommentaryVoiceEnabled(!S.commentaryVoiceOn);
+      return;
+    }
     S.muted = !S.muted;
-    Array.prototype.forEach.call(el['est-commentary'].querySelectorAll('.est-cmt'), function (n) { n.classList.toggle('muted-all', S.muted); });
+    updateCommentaryMuteStyles();
     toast(S.muted ? 'Relato silenciado.' : 'Relato activado.', '');
   }
   function highlightActive() {

@@ -120,10 +120,33 @@
         <div id="est-goal-banner" class="est-goal-banner" aria-hidden="true">¡GOOOL!</div>
       </div>
 
-      <!-- Relato de dos voces -->
-      <div class="est-commentary" id="est-commentary" aria-live="polite" aria-label="Relato del partido">
-        <p class="est-commentary-empty">El relato comenzará cuando arranque el partido…</p>
-      </div>
+      <!-- Cabina de comentaristas: panel destacado y feed accesible del partido -->
+      <section class="est-commentary-panel" aria-labelledby="est-commentary-title">
+        <div class="est-commentary-head">
+          <div class="est-commentary-title-group">
+            <span class="est-commentary-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="3" width="6" height="12" rx="3"></rect>
+                <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8"></path>
+              </svg>
+            </span>
+            <div>
+              <p class="est-commentary-kicker">Cabina del partido · Dos voces</p>
+              <h2 class="est-commentary-title" id="est-commentary-title">Relato en vivo</h2>
+            </div>
+          </div>
+          <div class="est-commentary-actions">
+            <span class="est-commentary-live"><i aria-hidden="true"></i> En directo</span>
+            <button class="est-commentary-voice-toggle" id="est-commentary-voice" type="button" aria-label="Activar voces del relato" aria-pressed="false" title="Activar narración hablada">
+              <span class="est-commentary-voice-icon" aria-hidden="true">◖</span>
+              <span class="est-commentary-voice-label">Activar voces</span>
+            </button>
+          </div>
+        </div>
+        <div class="est-commentary" id="est-commentary" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Comentarios del narrador y el analista">
+          <p class="est-commentary-empty">El relato aparecerá aquí cuando comience el partido.</p>
+        </div>
+      </section>
 
       <!-- Fallback solo texto (accesibilidad / canvas desactivado / reduced-motion extremo) -->
       <div class="est-text-fallback" id="est-text-fallback" aria-live="polite">
