@@ -3377,17 +3377,25 @@
   // ===== Relato =====
   function renderCommentary(list) {
     var box = el['est-commentary']; box.innerHTML = '';
-    if (!list || !list.length) { box.innerHTML = '<p class="est-commentary-empty">El relato comenzará cuando arranque el partido…</p>'; return; }
+    if (!list || !list.length) { box.innerHTML = '<p class="est-commentary-empty">El relato aparecerá aquí cuando comience el partido.</p>'; return; }
     list.forEach(function (m) { appendCommentary(m, true); });
+    var latest = box.lastElementChild;
+    if (latest && latest.classList.contains('est-cmt')) latest.classList.add('is-latest');
     box.scrollTop = box.scrollHeight;
   }
   function appendCommentary(m, silentScroll) {
     var box = el['est-commentary'];
     var empty = box.querySelector('.est-commentary-empty'); if (empty) empty.remove();
+    if (!silentScroll) {
+      var previousLatest = box.querySelector('.est-cmt.is-latest');
+      if (previousLatest) previousLatest.classList.remove('is-latest');
+    }
     var voice = m.voice === 'analista' ? 'analista' : 'narrador';
+    var voiceLabel = voice === 'narrador' ? 'NARRADOR' : 'ANALISTA';
+    var voiceMark = voice === 'narrador' ? 'N' : 'A';
     var div = document.createElement('div');
-    div.className = 'est-cmt ' + voice + (S.muted ? ' muted-all' : '');
-    div.innerHTML = '<span class="est-cmt-voice">' + (voice === 'narrador' ? 'Relato' : 'Análisis') + '</span><span class="est-cmt-text">' + esc(m.text) + '</span>';
+    div.className = 'est-cmt ' + voice + (S.muted ? ' muted-all' : '') + (silentScroll ? '' : ' is-latest is-entering');
+    div.innerHTML = '<span class="est-cmt-speaker"><span class="est-cmt-mark" aria-hidden="true">' + voiceMark + '</span><span class="est-cmt-voice">' + voiceLabel + '</span></span><span class="est-cmt-text">' + esc(m.text) + '</span>';
     box.appendChild(div);
     while (box.children.length > 40) box.removeChild(box.firstChild);
     if (!silentScroll) box.scrollTop = box.scrollHeight;
