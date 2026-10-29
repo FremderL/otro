@@ -641,6 +641,30 @@
   margin: 0 0 12px;
 }
 .est-commentary-title-group { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.est-commentary-actions { display: flex; flex: none; align-items: center; gap: 8px; }
+.est-commentary-voice-toggle {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid rgba(82,224,174,.34);
+  border-radius: 999px;
+  background: rgba(82,224,174,.08);
+  color: #c6f5e3;
+  font: 800 8px var(--sans);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease, color .18s ease;
+}
+.est-commentary-voice-toggle:hover { border-color: rgba(82,224,174,.72); background: rgba(82,224,174,.15); }
+.est-commentary-voice-toggle[aria-pressed="true"] { border-color: rgba(229,189,114,.5); background: rgba(229,189,114,.12); color: #fff0c8; }
+.est-commentary-voice-toggle:focus-visible { outline: 2px solid var(--gold-2); outline-offset: 3px; }
+.est-commentary-voice-toggle:disabled { opacity: .5; cursor: not-allowed; }
+.est-commentary-voice-icon { font-size: 13px; line-height: 1; }
 .est-commentary-icon {
   display: grid;
   flex: none;
@@ -720,6 +744,8 @@
 .est-cmt.analista { border-left-color: rgba(82,224,174,.85); background: linear-gradient(100deg, rgba(82,224,174,.07), rgba(7,14,16,.8) 45%); }
 .est-cmt.is-latest { border-color: rgba(229,189,114,.38); box-shadow: 0 5px 20px rgba(0,0,0,.17), inset 0 1px rgba(255,255,255,.06); }
 .est-cmt.analista.is-latest { border-color: rgba(82,224,174,.38); }
+.est-cmt.is-speaking { border-color: rgba(229,189,114,.72); box-shadow: 0 0 0 1px rgba(229,189,114,.12), 0 0 24px rgba(229,189,114,.11); }
+.est-cmt.analista.is-speaking { border-color: rgba(82,224,174,.75); box-shadow: 0 0 0 1px rgba(82,224,174,.13), 0 0 24px rgba(82,224,174,.1); }
 .est-cmt-speaker { display: flex; min-width: 0; align-items: center; gap: 8px; }
 .est-cmt-mark {
   display: grid;
@@ -744,10 +770,17 @@
 .est-cmt.muted-all { opacity: .4; }
 @keyframes estCommentaryPulse { 0% { transform: scale(.55); opacity: .9; } 100% { transform: scale(1.7); opacity: 0; } }
 @keyframes estCommentaryEnter { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+@media (min-width: 961px) and (max-width: 1040px) {
+  .est-commentary-head { flex-wrap: wrap; }
+  .est-commentary-title-group { flex: 1 1 100%; }
+  .est-commentary-actions { width: 100%; justify-content: space-between; }
+}
 @media (max-width: 680px) {
   .est-commentary-panel { padding: 12px; }
-  .est-commentary-head { gap: 8px; }
-  .est-commentary-title-group { gap: 8px; }
+  .est-commentary-head { flex-wrap: wrap; gap: 9px; }
+  .est-commentary-title-group { flex: 1 1 100%; gap: 8px; }
+  .est-commentary-actions { width: 100%; justify-content: space-between; }
+  .est-commentary-voice-toggle { min-height: 34px; padding: 0 10px; }
   .est-commentary-icon { width: 36px; height: 36px; border-radius: 10px; }
   .est-commentary-live { gap: 5px; padding: 7px 8px; font-size: 7px; }
   .est-commentary { max-height: 250px; }
