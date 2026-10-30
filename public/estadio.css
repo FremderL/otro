@@ -2026,3 +2026,133 @@ body.est-ledger-open { overflow: hidden; }
 
 .est-fantasy-subtitle { font-size:.75rem; margin:12px 0 5px; }
 .est-fantasy-opt { display:flex; align-items:center; gap:5px; font-size:.72rem; }
+
+/* Zona de afición: una vista propia para no alargar la columna de partidos. */
+.est-hub-launch { position:relative; isolation:isolate; display:flex; flex-direction:column; align-items:flex-start; gap:8px; width:100%; min-height:174px; padding:19px; overflow:hidden; text-align:left; color:#f3faf6; border:1px solid rgba(107,214,178,.3); border-radius:14px; cursor:pointer; background:linear-gradient(115deg,rgba(4,23,20,.97),rgba(5,27,24,.83)),url('/assets/estadio-tunnel.jpg') center/cover; }
+.est-hub-launch:after { content:''; position:absolute; z-index:-1; width:130px; height:130px; right:-42px; top:-36px; border:1px solid rgba(128,222,181,.22); border-radius:50%; box-shadow:0 0 0 22px rgba(128,222,181,.04),0 0 0 44px rgba(128,222,181,.025); }
+.est-hub-launch:hover { border-color:#77d9b3; background-color:#123b31; }
+.est-hub-launch-kicker,.est-hub-eyebrow { margin:0; color:#8de2bf; font-size:10px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
+.est-hub-launch strong { font-family:var(--display); font-size:21px; line-height:1.1; }
+.est-hub-launch strong span { color:#8de2bf; font-family:var(--sans); font-size:16px; }
+.est-hub-launch > span:not(.est-hub-launch-kicker):not(.est-hub-launch-action) { max-width:190px; color:#c3d4cd; font-size:12px; line-height:1.45; }
+.est-hub-launch .est-hub-launch-action { margin-top:auto; color:#a4f0cd; font-size:12px; font-weight:800; }
+.est-hub-launch-action span { padding-left:5px; }
+body.est-hub-open { overflow:hidden; }
+.est-hub { position:fixed; inset:0; z-index:65; overflow:auto; padding:34px 28px 60px; background:radial-gradient(ellipse at 88% 0%,rgba(48,112,87,.15),transparent 42%),#081210; color:#ecf5f1; }
+.est-hub[hidden], .est-hub [data-hub-panel][hidden] { display:none !important; }
+.est-hub-shell { max-width:1300px; margin:auto; }
+.est-hub-header { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; padding-bottom:28px; border-bottom:1px solid rgba(205,232,219,.14); }
+.est-hub-header h2 { margin:9px 0 4px; font:800 clamp(30px,4vw,48px)/1 var(--display); letter-spacing:-.02em; }
+.est-hub-header h2 span { color:#8de2bf; }
+.est-hub-header > div > p:last-child { margin:9px 0 0; color:#b2c5bb; font-size:13px; }
+.est-hub-close { display:flex; gap:9px; align-items:center; padding:10px 14px; border:1px solid rgba(205,232,219,.2); border-radius:9px; color:#e4f0e9; background:#14251f; cursor:pointer; }
+.est-hub-layout { display:grid; grid-template-columns:220px minmax(0,1fr); gap:36px; padding-top:30px; }
+.est-hub-nav { min-width:0; display:flex; flex-direction:column; gap:6px; }
+.est-hub-nav > p:first-child { margin:4px 10px 12px; color:#9fb4aa; font-size:10px; font-weight:800; letter-spacing:.14em; }
+.est-hub-nav button { display:flex; align-items:center; gap:12px; min-width:0; width:100%; text-align:left; padding:12px 10px; border:1px solid transparent; border-radius:10px; background:transparent; color:#c5d4cc; cursor:pointer; }
+.est-hub-nav button:hover { background:rgba(255,255,255,.04); }
+.est-hub-nav button[aria-pressed="true"] { background:#183a30; border-color:#3c7962; color:#f1faf5; }
+.est-hub-nav-icon { display:grid; place-items:center; flex:0 0 35px; width:35px; height:35px; border-radius:9px; background:rgba(136,225,184,.1); color:#94e4bd; font-size:19px; }
+.est-hub-nav button > span:nth-child(2) { min-width:0; display:grid; gap:3px; }
+.est-hub-nav b { font-size:12px; line-height:1.25; }
+.est-hub-nav small { color:#a9beb2; font-size:10px; }
+.est-hub-nav-arrow { margin-left:auto; color:#8de2bf; }
+.est-hub-nav-note { margin:22px 10px; padding-top:17px; border-top:1px solid rgba(205,232,219,.12); color:#9fb4aa; font-size:11px; line-height:1.5; }
+.est-hub-content { min-width:0; }
+.est-fantasy-hero { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:27px 30px; border:1px solid #335849; border-radius:16px; background:radial-gradient(circle at 85% 20%,rgba(129,222,175,.2),transparent 38%),linear-gradient(110deg,#163e32,#102821); }
+.est-fantasy-hero h2 { margin:10px 0 9px; color:#f3faf6; font:800 clamp(25px,3.3vw,40px)/1.1 var(--display); }
+.est-fantasy-hero h2 em { color:#99e6bd; font-style:normal; }
+.est-fantasy-hero p:last-child { margin:0; max-width:50ch; color:#c5d9cc; font-size:13px; line-height:1.5; }
+.est-fantasy-formation { display:flex; flex-direction:column; align-items:center; min-width:120px; padding:14px; border:1px solid rgba(190,234,208,.22); border-radius:12px; background:rgba(3,18,13,.28); }
+.est-fantasy-formation small { color:#b6d2c1; font-size:9px; letter-spacing:.12em; }
+.est-fantasy-formation strong { margin:3px 0; color:#b1f1cf; font:800 25px/1.1 var(--display); }
+.est-fantasy-formation span { color:#c5d9cc; font-size:11px; }
+.est-fantasy-status { display:flex; align-items:flex-start; gap:10px; margin:14px 0 24px; padding:12px 14px; border:1px solid rgba(131,198,163,.18); border-radius:9px; background:#12231c; }
+.est-fantasy-status-dot { flex:none; width:7px; height:7px; margin-top:5px; border-radius:50%; background:#8de2bf; }
+.est-fantasy-status p { margin:0; color:#c7ded1; font-size:12px; line-height:1.5; }
+.est-fantasy-layout { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(230px,.8fr); gap:24px; align-items:start; }
+.est-fantasy-main { min-width:0; }
+.est-fantasy-section-head { display:flex; justify-content:space-between; align-items:end; gap:12px; }
+.est-fantasy-section-head h3,.est-fantasy-side-card h3 { margin:5px 0 0; font:800 21px/1.2 var(--display); color:#eef8f2; }
+.est-fantasy-section-head > span { color:#a9beb2; font-size:11px; letter-spacing:.1em; }
+.est-fantasy-intro,.est-fantasy-fine { color:#b0c5b9; font-size:12px; line-height:1.55; }
+.est-fantasy-intro { margin:8px 0 14px; }
+.est-fantasy-players { position:relative; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; min-height:90px; padding:20px; border:1px solid #47715c; border-radius:14px; background:repeating-linear-gradient(0deg,rgba(122,200,150,.035) 0 48px,transparent 48px 96px),linear-gradient(150deg,#1a4434,#15392c); }
+.est-fantasy-players label { display:flex; flex-direction:column; align-items:stretch; gap:7px; min-width:0; padding:9px; border:1px solid rgba(212,242,222,.2); border-radius:9px; background:rgba(6,27,19,.82); color:#e6f4eb; font-size:11px; }
+.est-fantasy-players label:first-child { grid-column:2 / span 2; }
+.est-fantasy-players label:nth-child(10),.est-fantasy-players label:nth-child(11) { grid-column:span 2; }
+.est-fantasy-slot-title { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.est-fantasy-slot-badge { display:grid; place-items:center; width:25px; height:25px; flex:none; border-radius:7px; background:#37785c; color:#e7fff1; font-size:9px; font-weight:800; }
+.est-fantasy-players select { width:100%; min-width:0; min-height:34px; padding:5px; border:1px solid #59826e; border-radius:6px; background:#10281d; color:#f1faf4; font-size:11px; }
+.est-fantasy-players select:disabled { opacity:.65; }
+#est-fantasy-save { display:flex; justify-content:space-between; align-items:center; width:100%; margin-top:12px; padding:12px 16px; border:0; border-radius:9px; background:#9ce9be; color:#0b2c1c; font-weight:800; cursor:pointer; }
+#est-fantasy-save:disabled { opacity:.55; cursor:not-allowed; }
+#est-fantasy-feedback { margin:8px 0 0; color:#aaf1c9; font-size:12px; }
+.est-fantasy-scoring { margin-top:20px; padding:17px; border:1px solid rgba(205,232,219,.14); border-radius:12px; background:#101f19; }
+.est-fantasy-scoring > div { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.est-fantasy-scoring span { padding:6px 9px; border-radius:6px; background:#1c3428; color:#c8d9cf; font-size:11px; }
+.est-fantasy-scoring span b { color:#a2eac2; }
+.est-fantasy-scoring > p:last-child { margin:10px 0 0; color:#b0c5b9; font-size:11px; }
+.est-fantasy-side { display:grid; gap:14px; }
+.est-fantasy-side-card { padding:20px; border:1px solid rgba(205,232,219,.14); border-radius:14px; background:#102019; }
+.est-fantasy-side-card h3 { font-size:18px; }
+.est-fantasy-side-card h3 span { color:#d9c17b; }
+.est-fantasy-side-card > p:not(.est-hub-eyebrow) { color:#b0c5b9; font-size:11px; line-height:1.5; }
+.est-fantasy-list { margin:13px 0 0; padding-left:19px; color:#d4e4da; font-size:12px; line-height:1.6; }
+.est-fantasy-list li + li { margin-top:8px; }
+.est-fantasy-opt { display:flex; align-items:flex-start; gap:8px; margin-top:15px; color:#e4f1e9; font-size:12px; line-height:1.4; }
+.est-fantasy-opt input { flex:none; accent-color:#9ce9be; }
+.est-hub-unavailable { min-height:360px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; padding:clamp(24px,5vw,60px); border:1px solid #335849; border-radius:16px; background:radial-gradient(circle at 85% 15%,rgba(129,222,175,.15),transparent 35%),#10251d; }
+.est-hub-unavailable-icon { display:grid; place-items:center; width:58px; height:58px; margin-bottom:25px; border-radius:14px; background:#254b39; color:#a8efc8; font-size:28px; }
+.est-hub-unavailable h2 { margin:10px 0; font:800 clamp(26px,3vw,36px)/1.15 var(--display); }
+.est-hub-unavailable > p:not(.est-hub-eyebrow) { color:#c0d3c7; font-size:14px; }
+.est-hub-unavailable > span { margin-top:15px; padding:7px 10px; border:1px solid #5c7b69; border-radius:20px; color:#c6dbcd; font-size:10px; font-weight:800; letter-spacing:.1em; }
+.est-hub button:focus-visible,.est-hub select:focus-visible,.est-hub input:focus-visible,.est-hub-launch:focus-visible { outline:3px solid #9cf2c0; outline-offset:3px; }
+@media (max-width:1000px) { .est-hub-layout { grid-template-columns:190px minmax(0,1fr); gap:22px; } .est-fantasy-layout { grid-template-columns:1fr; } .est-fantasy-side { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:680px) { .est-hub { padding:22px 16px 40px; } .est-hub-header { padding-bottom:20px; } .est-hub-layout { display:block; padding-top:18px; } .est-hub-nav { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin-bottom:20px; } .est-hub-nav > p { display:none; } .est-hub-nav button { padding:9px; border-color:rgba(205,232,219,.12); background:#102019; } .est-hub-nav-icon { width:30px; height:30px; flex-basis:30px; } .est-hub-nav-arrow { display:none; } .est-fantasy-hero { padding:21px; } .est-fantasy-formation { min-width:85px; padding:10px; } .est-fantasy-formation strong { font-size:21px; } .est-fantasy-side { grid-template-columns:1fr; } .est-fantasy-players { grid-template-columns:repeat(2,minmax(0,1fr)); padding:13px; } .est-fantasy-players label:first-child { grid-column:1 / -1; } .est-fantasy-players label:nth-child(10),.est-fantasy-players label:nth-child(11) { grid-column:auto; } }
+@media (max-width:360px) { .est-fantasy-hero { align-items:flex-start; flex-direction:column; } .est-fantasy-formation { flex-direction:row; gap:8px; } .est-hub-nav button { gap:6px; } }
+
+/* Escudos originales de la liga, decorativos junto al nombre legible del club. */
+.est-club-crest { display:inline-block; width:20px; height:24px; object-fit:contain; flex:none; vertical-align:middle; }
+.est-club-crest-fallback { width:12px; height:12px; border:1px solid currentColor; border-radius:3px; background:currentColor; }
+.est-standing-crest { margin-right:6px; }
+.est-match-crest { width:18px; height:21px; margin:0 3px; }
+.est-crest { width:30px; height:35px; border-radius:0; box-shadow:none; }
+.est-score-crest-img { width:30px; height:35px; }
+.est-compare-club .est-compare-dot { width:22px; height:26px; border-radius:0; background:transparent; }
+.est-ledger-crest.est-club-crest { width:20px; height:24px; border-radius:0; }
+.est-bdo-club-crest { width:18px; height:21px; margin-right:4px; }
+.est-inline-crest, .est-fantasy-club-crest { width:17px; height:20px; margin-right:4px; }
+.est-fantasy-selected-club { display:block; color:#c5d9cc; font-size:10px; line-height:1.3; }
+.est-fantasy-selected-club:empty { display:none; }
+.est-fan-emblem { font-size:55px; color:#b4e8ca; }
+.est-fan-current { padding:20px; border:1px solid #476e56; border-radius:12px; background:#183427; color:#f0faf1; font:800 18px var(--display); }
+.est-fan-current .est-inline-crest { width:40px; height:48px; margin-right:12px; }
+.est-fan-label { display:block; margin:18px 0 6px; color:#c5d9cc; font-size:12px; }
+#est-fan-club { width:100%; min-height:42px; padding:9px; border:1px solid #59826e; border-radius:8px; background:#10281d; color:#f1faf4; }
+.est-fan-primary { width:100%; margin-top:10px; padding:12px 16px; border:0; border-radius:9px; color:#0b2c1c; background:#9ce9be; font-weight:800; cursor:pointer; }
+.est-fan-primary:disabled { opacity:.55; cursor:not-allowed; }
+.est-fan-confirm { margin-top:14px; padding:18px; border:1px solid #9b8352; border-radius:10px; color:#eee3c2; background:#332e1d; }
+.est-fan-confirm h3 { margin:0; font-family:var(--display); }.est-fan-confirm p { font-size:12px; line-height:1.5; }
+.est-fan-confirm button { padding:9px 12px; border:1px solid #b4a373; border-radius:7px; background:#e5ce91; color:#2f2717; font-weight:700; cursor:pointer; }
+.est-fan-confirm button+button { color:#f3edd9; background:#49422e; }
+#est-fan-feedback { color:#aaf1c9; font-size:12px; }
+
+.est-transfer-list { list-style:none; display:grid; gap:10px; padding:0; margin:12px 0; }
+.est-transfer-list li { display:grid; gap:6px; padding:12px; border:1px solid var(--line); border-radius:10px; background:rgba(255,255,255,.035); }
+.est-transfer-list li span { display:flex; align-items:center; flex-wrap:wrap; gap:5px; }
+.est-active-fan-pin { display:inline-flex; align-items:center; gap:5px; font-size:11px; }
+.est-active-fan-pin[hidden] { display:none; }
+#est-fan-rewards button { margin-left:8px; padding:4px 8px; border:1px solid rgba(82,224,174,.4); border-radius:6px; color:inherit; background:rgba(82,224,174,.08); cursor:pointer; }
+.est-bdo-opening-club { grid-auto-flow:column; gap:3px; }
+.est-opening-club-crest.est-club-crest { width:19px; height:23px; }
+.est-opening-monogram-crest.est-club-crest { width:42px; height:50px; }
+#est-fan-selected-club:not(:empty) { margin:8px 0 0; }
+.est-ledger-chip .est-ledger-crest { width:14px; height:17px; }
+.est-ledger-leg-copy .est-ledger-crest { width:14px; height:17px; }
+.est-bdo-opening-card-monogram { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; }
+.est-highlights { margin:16px 0; padding:20px; border:1px solid rgba(206,181,116,.35); border-radius:14px; background:#132920; color:#edf8f1; }
+.est-highlights-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; }
+.est-highlights h2 { margin:4px 0; font:800 21px var(--display); }.est-highlights h3 { margin:14px 0 5px; font-size:13px; }
+.est-highlights ol { margin:0; padding-left:20px; font-size:13px; line-height:1.6; }.est-highlights button { padding:9px 12px; border:1px solid #90d5af; border-radius:7px; background:#1e5139; color:#fff; cursor:pointer; }
+.est-highlights-note { color:#aec7b7; font-size:11px; }

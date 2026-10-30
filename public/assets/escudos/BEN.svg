@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 280" role="img" aria-labelledby="title desc">
+<title id="title">Escudo original de Benfica de Beneficencia</title><desc id="desc">Insignia ilustrada con un símbolo de heart; diseño ficticio original.</desc>
+<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#b98532"/><stop offset="1" stop-color="#4d391b"/></linearGradient><clipPath id="cut"><path d="M120 12 Q167 12 216 35 L211 162 Q202 231 120 270 Q38 231 29 162 L24 35 Q73 12 120 12Z"/></clipPath></defs>
+<path d="M120 12 Q167 12 216 35 L211 162 Q202 231 120 270 Q38 231 29 162 L24 35 Q73 12 120 12Z" fill="#f6dfae"/><g transform="translate(120 140) scale(.96) translate(-120 -140)"><path d="M120 12 Q167 12 216 35 L211 162 Q202 231 120 270 Q38 231 29 162 L24 35 Q73 12 120 12Z" fill="url(#g)"/>
+<g clip-path="url(#cut)" fill="none" stroke="#f6dfae" stroke-width="4" opacity=".12"><path d="M0 194 L125 5 M40 250 L200 5 M110 280 L240 75"/></g>
+<path d="M120 12 Q167 12 216 35 L211 162 Q202 231 120 270 Q38 231 29 162 L24 35 Q73 12 120 12Z" fill="none" stroke="#f6dfae" stroke-width="3" opacity=".8"/>
+<path d="M49 76 Q120 65 191 76" fill="none" stroke="#f6dfae" stroke-width="2" opacity=".65"/>
+<text x="120" y="60" text-anchor="middle" fill="#f6dfae" font-family="Arial, sans-serif" font-size="21" font-weight="900" letter-spacing="5">BEN</text>
+<circle cx="120" cy="132" r="57" fill="#4d391b" opacity=".45"/><circle cx="120" cy="132" r="56" fill="none" stroke="#f6dfae" stroke-width="2" opacity=".75"/>
+<g transform="translate(70 82)" style="color:#f6dfae" fill="none" stroke="currentColor" stroke-width="4.3" stroke-linecap="round" stroke-linejoin="round"><path d="M50 68 C39 60 30 54 30 43 C30 32 43 28 50 38 C57 28 70 32 70 43 C70 54 61 60 50 68Z"/><path d="M20 61 Q26 72 38 77 M80 61 Q74 72 62 77 M19 54 L21 62 M81 54 L79 62"/></g>
+<path d="M69 205 Q120 219 171 205 M77 213 Q120 225 163 213" fill="none" stroke="#f6dfae" stroke-width="2" opacity=".8"/>
+<circle cx="58" cy="202" r="3" fill="#f6dfae"/><circle cx="182" cy="202" r="3" fill="#f6dfae"/>
+<text x="120" y="232" text-anchor="middle" fill="#f6dfae" font-family="Arial, sans-serif" font-size="8" font-weight="bold" letter-spacing="1.5">ESTADIO MC</text></g></svg>

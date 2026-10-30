@@ -113,6 +113,7 @@
     socket: null, token: null, name: null, avatar: null, tosVersion: TOS_FALLBACK,
     teams: {}, profile: null, chips: 0,
     fantasy: null, fantasyDraft: [], fantasyDirty: false, fantasySeq: 0, fantasyBusy: false,
+    fan: null, fanBusy: false, fanSeq: 0,
     lobby: null, standings: [], countdownTo: null, lobbyServerNow: null, lobbyReceivedAt: null,
     preshowDataMatchId: null, preshowDataStandings: null, teamIndicators: [],
     showcaseItems: [], showcaseIndex: 0, showcaseRotationId: null, sponsoredPromotions: [],
@@ -445,7 +446,7 @@
       if (S.betRankingSubscribed && ledgerOpen() && S.ledgerView === 'ranking') S.socket.emit('bet_ranking_get');
       renderBetRanking();
     });
-    S.socket.on('disconnect', function () { S.fantasySeq++; S.fantasyBusy = false; setConn('error'); startBallonDorPolling(); renderBetRanking(); });
+    S.socket.on('disconnect', function () { S.fantasySeq++; S.fantasyBusy = false; S.fanSeq++; S.fanBusy = false; setConn('error'); startBallonDorPolling(); renderBetRanking(); });
     S.socket.on('connect_error', function () { setConn('error'); startBallonDorPolling(); });
     S.socket.on('football:lobby', function (lobby) { renderLobby(lobby); });
     S.socket.on('football:ballon_dor_market', function (payload) {
@@ -483,6 +484,7 @@
       S.teams = res.teams || S.teams;
       if (res.profile) { S.profile = res.profile; S.chips = res.profile.chips; updateChips(); }
       refreshFantasy();
+      refreshFan();
       renderBallonDorMarket();
       renderLobby(res.lobby);
       // Al entrar (también si el partido ya terminó) se trae el historial y pagos.
@@ -741,7 +743,7 @@
       var result = document.createElement('span');
       result.className = 'est-bdo-archive-result';
       if (cycle.winner && cycle.status === 'settled') {
-        result.textContent = '🏆 ' + cycle.winner.playerName + ' · ' + cycle.winner.clubName + ' · ' + fmt(cycle.winner.score) + ' puntos';
+        result.innerHTML = '🏆 ' + esc(cycle.winner.playerName) + ' · ' + clubCrestMarkup(cycle.winner.clubId, 'est-inline-crest') + esc(cycle.winner.clubName) + ' · ' + fmt(cycle.winner.score) + ' puntos';
       } else if (cycle.status === 'cancelled') result.textContent = 'Edición cancelada · no se liquidó un ganador.';
       else result.textContent = 'Edición ' + (cycle.status || 'sin estado') + ' · consulta la clasificación oficial.';
       var state = document.createElement('span');
@@ -979,6 +981,12 @@
     el['est-bdo-status'].textContent = stateLabels[market.status] || 'Estado no disponible';
     el['est-bdo-status'].dataset.state = market.status || '';
     el['est-bdo-summary'].textContent = ballonDorStatusMessage(market);
+    var summaryWinner = market.status === 'settled' && market.result && (market.candidates || []).find(function (c) { return c.id === market.result.winnerCandidateId; });
+    if (summaryWinner) {
+      el['est-bdo-summary'].textContent = 'Ciclo liquidado. Ganador: ' + summaryWinner.playerName + ' · ';
+      el['est-bdo-summary'].insertAdjacentHTML('beforeend', clubCrestMarkup(summaryWinner.clubId, 'est-inline-crest'));
+      el['est-bdo-summary'].appendChild(document.createTextNode(summaryWinner.clubName + '.'));
+    }
     if (!S.ballonDorError) {
       var progress = market.oddsSnapshot && Number(market.oddsSnapshot.afterJornada);
       if (market.status === 'settled' && !market.result && Number(market.resultAnnouncementAt) > Date.now()) {
@@ -1046,8 +1054,6 @@
           ? (Number(candidate.impliedProbability) * 100).toFixed(2) + '%'
           : ((1 / odds) * 100).toFixed(2) + '%')
         : '—';
-      var color = candidate.clubColors && /^#[0-9a-f]{6}$/i.test(candidate.clubColors.primary || '')
-        ? candidate.clubColors.primary : '#7d8b88';
       var buttonLabel = candidate.id === selectedId ? 'Elegido' : 'Elegir';
       var action = canChoose && odds
         ? '<button class="est-bdo-select" type="button" data-bdo-select="' + esc(candidate.id) + '" aria-label="Elegir a ' + esc(candidate.playerName) + ' de ' + esc(candidate.clubName) + '"' + (candidate.id === selectedId ? ' aria-pressed="true"' : '') + '>' + buttonLabel + '</button>'
@@ -1055,7 +1061,7 @@
       var rank = officialRank.get(candidate.id) || index + 1;
       var row = document.createElement('tr');
       row.innerHTML = '<td>' + rank + '</td>' +
-        '<td><span class="est-bdo-candidate"><img class="est-bdo-candidate-avatar" src="' + esc(ballonDorAvatarUrl(candidate)) + '" alt="" aria-hidden="true" loading="lazy" decoding="async" width="40" height="40"><i class="est-bdo-candidate-dot" style="background:' + color + '"></i><span class="est-bdo-candidate-copy"><b>' + esc(candidate.playerName) + ' · #' + fmt(candidate.playerNumber) + '</b><small>' + esc(candidate.clubName) + '</small></span></span></td>' +
+        '<td><span class="est-bdo-candidate"><img class="est-bdo-candidate-avatar" src="' + esc(ballonDorAvatarUrl(candidate)) + '" alt="" aria-hidden="true" loading="lazy" decoding="async" width="40" height="40"><span class="est-bdo-candidate-copy"><b>' + esc(candidate.playerName) + ' · #' + fmt(candidate.playerNumber) + '</b><small>' + clubCrestMarkup(candidate.clubId, 'est-bdo-club-crest') + esc(candidate.clubName) + '</small></span></span></td>' +
         '<td class="est-bdo-points">' + fmt(candidate.points && candidate.points.total) + '</td>' +
         '<td>' + fmt(stats.goals) + '</td><td>' + fmt(stats.assists) + '</td><td>' + fmt(stats.appearances) + '</td>' +
         '<td>' + fmt(stats.yellowCards) + '</td><td>' + fmt(stats.redCards) + '</td>' +
@@ -1166,7 +1172,7 @@
       var name = document.createElement('b');
       name.textContent = candidate.playerName || 'Delantero';
       var club = document.createElement('span');
-      club.textContent = candidate.clubName || 'Club por confirmar';
+      setClubLabel(club, candidate.clubId, candidate.clubName || 'Club por confirmar');
       copy.appendChild(name);
       copy.appendChild(club);
       card.appendChild(avatar);
@@ -1191,7 +1197,7 @@
     card.classList.toggle('is-winner', Boolean(reveal && winner));
     if (reveal) {
       player.textContent = row.candidate.playerName || 'Delantero';
-      club.textContent = row.candidate.clubName || 'Club MonteCristo';
+      setClubLabel(club, row.candidate.clubId, row.candidate.clubName || 'Club MonteCristo');
       score.textContent = fmt(row.score) + ' puntos · ' + fmt(row.candidate.stats && row.candidate.stats.goals) + ' goles';
       card.setAttribute('aria-label', ['Primer', 'Segundo', 'Tercer'][rank - 1] + ' lugar: '
         + row.candidate.playerName + ', ' + row.candidate.clubName + ', ' + fmt(row.score) + ' puntos');
@@ -1304,6 +1310,15 @@
     el['est-bdo-ceremony-kicker'].textContent = kicker;
     el['est-bdo-ceremony-title'].textContent = title;
     el['est-bdo-ceremony-description'].textContent = description;
+    var revealedCandidate = step.type === 'name' && revealName && rows[step.rank - 1] ? rows[step.rank - 1].candidate : null;
+    if (revealedCandidate) {
+      el['est-bdo-ceremony-title'].textContent = revealedCandidate.playerName + ' · ';
+      el['est-bdo-ceremony-title'].insertAdjacentHTML('beforeend', clubCrestMarkup(revealedCandidate.clubId, 'est-inline-crest'));
+      el['est-bdo-ceremony-title'].appendChild(document.createTextNode(revealedCandidate.clubName));
+    }
+    if (step.key === 'winner-congratulations') {
+      el['est-bdo-ceremony-description'].innerHTML = clubCrestMarkup(winner.clubId, 'est-inline-crest') + esc(description);
+    }
     el['est-bdo-ceremony-caption'].textContent = caption;
     [1, 2, 3].forEach(function (rank) {
       var revealed = Boolean(S.ballonDorCeremonyRevealedRanks[rank]);
@@ -1786,7 +1801,7 @@
       var badge = document.createElement('span');
       badge.className = 'est-bdo-opening-club';
       badge.style.setProperty('--club-color', color);
-      badge.textContent = candidate.clubShort || String(candidate.clubName || 'Club').slice(0, 3).toUpperCase();
+      badge.innerHTML = clubCrestMarkup(candidate.clubId, 'est-opening-club-crest') + '<span>' + esc(candidate.clubShort || String(candidate.clubName || 'Club').slice(0, 3).toUpperCase()) + '</span>';
       badge.setAttribute('aria-label', candidate.clubName || 'Club candidato');
       badge.title = candidate.clubName || 'Club candidato';
       container.appendChild(badge);
@@ -1835,7 +1850,7 @@
     aside.className = 'est-bdo-opening-card-aside';
     var monogram = document.createElement('span');
     monogram.className = 'est-bdo-opening-card-monogram';
-    monogram.textContent = candidate.clubShort || String(candidate.clubName || 'MC').slice(0, 3).toUpperCase();
+    monogram.innerHTML = clubCrestMarkup(candidate.clubId, 'est-opening-monogram-crest') + '<span>' + esc(candidate.clubShort || String(candidate.clubName || 'MC').slice(0, 3).toUpperCase()) + '</span>';
     monogram.setAttribute('aria-hidden', 'true');
     var number = document.createElement('b');
     number.className = 'est-bdo-opening-card-number';
@@ -1851,7 +1866,7 @@
     content.className = 'est-bdo-opening-card-content';
     var club = document.createElement('span');
     club.className = 'est-bdo-opening-card-club';
-    club.textContent = candidate.clubName || 'Club MonteCristo';
+    setClubLabel(club, candidate.clubId, candidate.clubName || 'Club MonteCristo');
     var player = document.createElement('h3');
     player.className = 'est-bdo-opening-card-player';
     player.textContent = candidate.playerName || 'Delantero';
@@ -1987,6 +2002,11 @@
     el['est-bdo-opening-kicker'].textContent = kicker;
     el['est-bdo-opening-title'].textContent = title;
     el['est-bdo-opening-description'].textContent = description;
+    if (playerIndex >= 0 && S.ballonDorOpeningCandidates[playerIndex]) {
+      var openingCandidate = S.ballonDorOpeningCandidates[playerIndex];
+      el['est-bdo-opening-kicker'].innerHTML = 'PRESENTACIÓN ' + String(playerIndex + 1).padStart(2, '0') + ' DE 16 · ' + clubCrestMarkup(openingCandidate.clubId, 'est-inline-crest') + esc(openingCandidate.clubName || 'MONTECRISTO');
+      el['est-bdo-opening-description'].innerHTML = clubCrestMarkup(openingCandidate.clubId, 'est-inline-crest') + esc(description);
+    }
     el['est-bdo-opening-caption'].textContent = caption;
     el['est-bdo-opening-clubs'].hidden = scene !== 'lineup';
     el['est-bdo-opening-cards'].hidden = playerIndex < 0;
@@ -2280,6 +2300,8 @@
     if (!active) return;
     var candidate = (market.candidates || []).find(function (item) { return item.id === S.ballonDorSelection; });
     var quote = ballonDorQuote(candidate);
+    var selectedClub = $('est-bdo-selected-club');
+    if (selectedClub) { if (candidate) setClubLabel(selectedClub, candidate.clubId, candidate.clubName); else selectedClub.textContent = ''; }
     var hasProfile = Boolean(S.profile && S.profile.id);
     var termsAccepted = tosAccepted();
     var bounds = ballonDorStakeBounds();
@@ -2305,7 +2327,9 @@
     else if (ticket) setBallonDorMessage('Ya tienes un boleto en este ciclo; no puedes cambiarlo ni hacer cash-out.', '');
     if (S.ballonDorReview) {
       el['est-bdo-confirmation'].hidden = false;
-      el['est-bdo-confirmation-copy'].textContent = 'Predicción: ' + ballonDorCandidateName(market, S.ballonDorReview.selection)
+      var reviewCandidate = (market.candidates || []).find(function (c) { return c.id === S.ballonDorReview.selection; });
+      var reviewName = reviewCandidate ? esc(reviewCandidate.playerName) + ' · ' + clubCrestMarkup(reviewCandidate.clubId, 'est-inline-crest') + esc(reviewCandidate.clubName) : esc(ballonDorCandidateName(market, S.ballonDorReview.selection));
+      el['est-bdo-confirmation-copy'].innerHTML = 'Predicción: ' + reviewName
         + '. Stake: ' + fmt(S.ballonDorReview.stake) + ' fichas. Cuota revisada: ' + Number(S.ballonDorReview.odds).toFixed(2)
         + '. Pago potencial estimado: ' + fmt(S.ballonDorReview.potentialPayout) + ' fichas.';
       el['est-bdo-confirm'].disabled = Boolean(S.ballonDorSubmitting);
@@ -2330,7 +2354,8 @@
     if (!box) return;
     box.hidden = !ticket;
     if (!ticket) return;
-    var name = ballonDorCandidateName(market, ticket.selection);
+    var receiptCandidate = (market.candidates || []).find(function (c) { return c.id === ticket.selection; });
+    var name = receiptCandidate ? esc(receiptCandidate.playerName) + ' · ' + clubCrestMarkup(receiptCandidate.clubId, 'est-inline-crest') + esc(receiptCandidate.clubName) : esc(ballonDorCandidateName(market, ticket.selection));
     var statusLabels = {
       pending: 'Confirmación pendiente de persistencia', open: 'Activa · cuota congelada',
       won: 'Ganada · premio acreditado', lost: 'No acertada', void: 'Anulada · stake reembolsado'
@@ -2344,7 +2369,7 @@
         : ticket.status === 'lost' ? 'Pago: 0 fichas.'
           : 'Pago potencial: ' + fmt(ticket.potentialPayout) + ' fichas.';
     el['est-bdo-receipt-body'].innerHTML =
-      '<div class="est-bdo-receipt-row"><span>Selección</span><b>' + esc(name) + '</b></div>' +
+      '<div class="est-bdo-receipt-row"><span>Selección</span><b>' + name + '</b></div>' +
       '<div class="est-bdo-receipt-row"><span>Stake</span><b>' + fmt(ticket.stake) + ' fichas</b></div>' +
       '<div class="est-bdo-receipt-row"><span>Cuota congelada</span><b>' + Number(ticket.odds || 1).toFixed(2) + '</b></div>' +
       '<div class="est-bdo-receipt-row"><span>Estado</span><b>' + esc(status) + '</b></div>' +
@@ -2525,6 +2550,29 @@
   }
 
   // ===== Lobby =====
+  // Las rutas son un catálogo cerrado: no se incorpora ningún id externo a la URL.
+  var CLUB_CRESTS = {
+    vantora_fc:'RMD', united_vanguard:'FAR', olympique_estevin:'ATC', atletico_solaris:'MUN',
+    sporting_almar:'LVP', dynamo_kelvar:'ARS', cs_verdania:'BAY', halcyon_bay_fc:'BDO',
+    athletic_ferrata:'JUV', royal_corvane:'PSG', sv_talbruck:'RSU', velmar_harbour_fc:'RDB',
+    norvela_sporting:'WHM', ironvale_fc:'NAB', peregrine_rovers:'CDC', puerto_ambar:'BEN'
+  };
+  function clubCrestMarkup(id, extraClass) {
+    var code = Object.prototype.hasOwnProperty.call(CLUB_CRESTS, id) ? CLUB_CRESTS[id] : null;
+    if (!code) return '<span class="est-club-crest est-club-crest-fallback ' + (extraClass || '') + '" aria-hidden="true"></span>';
+    return '<img class="est-club-crest ' + (extraClass || '') + '" src="/assets/escudos/' + code + '.svg" alt="" aria-hidden="true" decoding="async">';
+  }
+  function setClubLabel(node, teamId, name) {
+    node.innerHTML = clubCrestMarkup(teamId, 'est-inline-crest');
+    node.appendChild(document.createTextNode(name));
+  }
+  function setScoreboardCrest(id, teamId, color) {
+    var node = el[id];
+    if (node.dataset.teamId === String(teamId)) return;
+    node.dataset.teamId = String(teamId);
+    node.innerHTML = clubCrestMarkup(teamId, 'est-score-crest-img');
+    node.style.color = color;
+  }
   function teamName(id) { var t = S.teams[id]; return t ? t.name || t.short : String(id || '?').slice(0, 3).toUpperCase(); }
   function teamFull(id) { var t = S.teams[id]; return t ? t.name : id; }
   function teamColor(id) { var t = S.teams[id]; return t ? t.colors.primary : '#888'; }
@@ -2612,7 +2660,8 @@
       textAlign: 'left',
       ctaText: matchCard ? matchCard.action : promotion.action,
       href: matchCard ? matchCard.href : promotion.href,
-      image: matchCard ? matchCard.image : promotion.image
+      image: matchCard ? matchCard.image : promotion.image,
+      matchTextMarkup: matchCard ? matchCard.textMarkup : null
     };
   }
 
@@ -2648,13 +2697,13 @@
       '<img' + imageId + ' class="est-promo-image" src="' + esc(image) + '" alt="" decoding="async">' +
       '<div class="est-promo-content">' +
         '<span' + labelId + ' class="est-promo-label"' + labelStyle + '>' + esc(label) + '</span>' +
-        '<p' + textId + (hasText ? '' : ' class="is-empty"') + '>' + esc(promotion.text || '') + '</p>' +
+        '<p' + textId + (hasText ? '' : ' class="is-empty"') + '>' + (promotion.matchTextMarkup || esc(promotion.text || '')) + '</p>' +
       '</div>' +
       '<a' + linkId + ' class="btn btn-ghost btn-small est-showcase-cta" href="' + esc(href) + '"' + labelStyle + '>' + esc(ctaText) + '</a>' +
     '</article>';
   }
 
-  function indicatorSlideMarkup(indicators, homeColor, awayColor) {
+  function indicatorSlideMarkup(indicators, _homeColor, _awayColor) {
     var homeId = ' id="est-compare-home"';
     var awayId = ' id="est-compare-away"';
     var rows = indicators.map(function (indicator, index) {
@@ -2669,9 +2718,9 @@
     return '<article class="est-showcase-slide est-showcase-stat" data-showcase-key="indicators" data-indicator-count="' + indicators.length + '" aria-label="Todos los indicadores del partido: ' + esc(teamFull(S.match.homeId)) + ' contra ' + esc(teamFull(S.match.awayId)) + '">' +
       '<div class="est-showcase-stat-head"><div><p class="est-compare-kicker">Cara a cara</p><h3>Indicadores del partido</h3></div><span class="est-showcase-kind">Comparativa completa · ' + indicators.length + ' datos</span></div>' +
       '<div class="est-compare-teams" aria-label="Equipos comparados">' +
-        '<div' + homeId + ' class="est-compare-club est-compare-club-home"><i class="est-compare-dot" aria-hidden="true" style="background-color:' + homeColor + ';color:' + homeColor + '"></i><span>' + esc(teamFull(S.match.homeId)) + '</span></div>' +
+        '<div' + homeId + ' class="est-compare-club est-compare-club-home">' + clubCrestMarkup(S.match.homeId, 'est-compare-dot') + '<span>' + esc(teamFull(S.match.homeId)) + '</span></div>' +
         '<span class="est-compare-versus" aria-hidden="true">VS</span>' +
-        '<div' + awayId + ' class="est-compare-club est-compare-club-away"><i class="est-compare-dot" aria-hidden="true" style="background-color:' + awayColor + ';color:' + awayColor + '"></i><span>' + esc(teamFull(S.match.awayId)) + '</span></div>' +
+        '<div' + awayId + ' class="est-compare-club est-compare-club-away">' + clubCrestMarkup(S.match.awayId, 'est-compare-dot') + '<span>' + esc(teamFull(S.match.awayId)) + '</span></div>' +
       '</div>' +
       '<div class="est-showcase-stat-body"><table class="est-indicator-table" aria-label="Comparativa completa de indicadores"><thead><tr><th scope="col">Indicador</th><th scope="col">Local</th><th scope="col">Visitante</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '</article>';
@@ -2814,6 +2863,7 @@
     return {
       label: 'Promoción de MonteCristo',
       text: copy,
+      textMarkup: '⚔️ ' + clubCrestMarkup(homeId, 'est-inline-crest') + esc(homeName) + ' (' + esc(homeTactic) + ') vs ' + clubCrestMarkup(awayId, 'est-inline-crest') + esc(awayName) + ' (' + esc(awayTactic) + ')' + (posText ? ' · Posiciones: ' + esc(posText) : '') + ' · ¡Duelo estelar en vivo!',
       textPosition: 'bottom',
       textSize: 'medium',
       href: '/estadio',
@@ -2995,7 +3045,7 @@
       li.setAttribute('aria-label', teamFull(m.homeId) + ' contra ' + teamFull(m.awayId) + ', ' + (STATUS_LABEL[m.status] || m.status));
       var score = (m.status === 'settled' || m.status === 'finished' || live) && m.result ? (m.result.score ? m.result.score.home + '–' + m.result.score.away : '') : (m.minute != null ? '' : kickoffTime(m.scheduledKickoffAt));
       li.innerHTML =
-        '<div><div class="est-match-teams"><span style="color:' + teamColor(m.homeId) + '">' + esc(teamName(m.homeId)) + '</span> vs <span style="color:' + teamColor(m.awayId) + '">' + esc(teamName(m.awayId)) + '</span>' + (m.featured ? ' ★' : '') + '</div>' +
+        '<div><div class="est-match-teams">' + clubCrestMarkup(m.homeId, 'est-match-crest') + '<span style="color:' + preshowTeamColor(m.homeId) + '">' + esc(teamName(m.homeId)) + '</span> vs ' + clubCrestMarkup(m.awayId, 'est-match-crest') + '<span style="color:' + preshowTeamColor(m.awayId) + '">' + esc(teamName(m.awayId)) + '</span>' + (m.featured ? ' ★' : '') + '</div>' +
         '<div class="est-match-meta">' + esc(blockLabel(m.block)) + ' · J' + m.jornada + '</div></div>' +
         '<div><div class="est-match-score">' + esc(score) + '</div><div class="est-match-status ' + (live ? 'live' : 'scheduled') + '">' + esc(STATUS_LABEL[m.status] || m.status) + (m.minute != null && live ? ' ' + m.minute + "'" : '') + '</div></div>';
       li.addEventListener('click', function () { selectMatch(m.id); });
@@ -3004,6 +3054,148 @@
     });
     renderStandings();
     renderPreshow(currentServerTime());
+  }
+  // La zona conserva el formulario montado: cambiar de vista o cerrar no borra el borrador.
+  var hubTrigger = null;
+  function hubOpen() { var hub = $('est-hub'); return Boolean(hub && !hub.hidden); }
+  function setHubView(view) {
+    var hub = $('est-hub');
+    if (!hub) return;
+    Array.prototype.forEach.call(hub.querySelectorAll('[data-hub-view]'), function (button) {
+      button.setAttribute('aria-pressed', String(button.getAttribute('data-hub-view') === view));
+    });
+    Array.prototype.forEach.call(hub.querySelectorAll('[data-hub-panel]'), function (panel) {
+      panel.hidden = panel.getAttribute('data-hub-panel') !== view;
+    });
+  }
+  function openHub(trigger) {
+    var hub = $('est-hub');
+    if (!hub || hubOpen()) return;
+    hubTrigger = trigger || document.activeElement;
+    setHubView('once');
+    hub.hidden = false;
+    document.body.classList.add('est-hub-open');
+    $('est-hub-close').focus();
+    refreshFantasy();
+  }
+  function closeHub() {
+    var hub = $('est-hub');
+    if (!hubOpen()) return;
+    hub.hidden = true;
+    document.body.classList.remove('est-hub-open');
+    if (hubTrigger && hubTrigger.isConnected) hubTrigger.focus();
+    hubTrigger = null;
+  }
+  function trapHubFocus(event) {
+    if (event.key !== 'Tab') return;
+    var nodes = $('est-hub').querySelectorAll('button:not([disabled]), select:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])');
+    var list = Array.prototype.filter.call(nodes, function (node) { return !node.closest('[hidden]'); });
+    if (!list.length) { event.preventDefault(); $('est-hub').focus(); return; }
+    var first = list[0], last = list[list.length - 1], active = document.activeElement;
+    if (list.indexOf(active) < 0) { event.preventDefault(); (event.shiftKey ? last : first).focus(); }
+    else if (event.shiftKey && active === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus(); }
+  }
+  function refreshQuiniela() {
+    var list = $('est-quiniela-list');
+    if (!list || !S.socket || !S.socket.connected) { if (list) list.textContent = 'Conéctate para consultar la jornada.'; return; }
+    list.textContent = 'Consultando la próxima jornada…';
+    S.socket.emit('football:quiniela_get', {}, function (res) {
+      if (!res || !res.ok || !res.quiniela) { list.textContent = res && res.error || 'No se pudo consultar la jornada.'; return; }
+      var data = res.quiniela;
+      if (!data.matches || !data.matches.length) { list.textContent = 'No hay otra jornada programada en esta temporada.'; return; }
+      list.innerHTML = '<p>Jornada ' + Number(data.jornada) + ' · La inscripción no está disponible.</p><ul class="est-transfer-list">' + data.matches.map(function (match) {
+        return '<li><span>' + clubCrestMarkup(match.homeId, 'est-inline-crest') + esc(teamName(match.homeId)) + ' vs ' + clubCrestMarkup(match.awayId, 'est-inline-crest') + esc(teamName(match.awayId)) + '</span></li>';
+      }).join('') + '</ul>';
+    });
+  }
+  function refreshTransfers() {
+    var list = $('est-transfers-list');
+    if (!list || !S.socket || !S.socket.connected) { if (list) list.textContent = 'Conéctate para consultar el mercado.'; return; }
+    list.textContent = 'Consultando el mercado…';
+    S.socket.emit('football:transfers_get', {}, function (res) {
+      if (!res || !res.ok || !res.transfers) { list.textContent = res && res.error || 'No se pudo consultar el mercado.'; return; }
+      var market = res.transfers;
+      if (market.status === 'scheduled') { list.textContent = 'Los traspasos se anunciarán el día 15 de este mes.'; return; }
+      if (!Array.isArray(market.moves) || !market.moves.length) { list.textContent = 'No hay acuerdos disponibles para esta temporada.'; return; }
+      list.innerHTML = '<p>Acuerdos para la temporada ' + esc(market.effectiveSeason) + '.</p><ul class="est-transfer-list">' + market.moves.map(function (move) {
+        return '<li><b>' + esc(move.playerName) + '</b><span>' + clubCrestMarkup(move.fromId, 'est-inline-crest') + esc(teamName(move.fromId)) + ' → ' + clubCrestMarkup(move.toId, 'est-inline-crest') + esc(teamName(move.toId)) + '</span></li>';
+      }).join('') + '</ul>';
+    });
+  }
+  function refreshFan() {
+    if (!$('est-fan-club') || !S.socket || !S.socket.connected || S.fanBusy) return;
+    var seq = ++S.fanSeq;
+    S.socket.emit('football:fan_get', {}, function (res) {
+      if (seq !== S.fanSeq) return;
+      if (!res || !res.ok || !res.fan) { $('est-fan-summary').textContent = res && res.error || 'Mi afición no está disponible.'; return; }
+      S.fan = res.fan; renderFan();
+    });
+  }
+  function renderFan() {
+    var data = S.fan; if (!data) return;
+    var select = $('est-fan-club'), previous = select.value;
+    select.innerHTML = '<option value="">Elige un club…</option>' + Object.keys(S.teams).sort(function (a,b) { return teamName(a).localeCompare(teamName(b), 'es-MX'); }).map(function (id) {
+      return '<option value="' + esc(id) + '">' + esc(teamName(id)) + '</option>';
+    }).join('');
+    select.value = previous || data.clubId || '';
+    select.disabled = S.fanBusy;
+    $('est-fan-choose').disabled = S.fanBusy || !select.value;
+    if ($('est-fan-selected-club')) { if (select.value) setClubLabel($('est-fan-selected-club'), select.value, teamName(select.value)); else $('est-fan-selected-club').textContent = ''; }
+    $('est-fan-choose').textContent = data.clubId ? 'Cambiar club →' : 'Elegir club →';
+    $('est-fan-summary').textContent = data.clubId ? data.wins + ' victorias desde tu adhesión · Nivel ' + data.level + '.' : 'Elige un club para comenzar.';
+    var current = $('est-fan-current');
+    if (data.clubId) setClubLabel(current, data.clubId, teamName(data.clubId)); else current.textContent = 'Aún no has elegido un club.';
+    $('est-fan-rewards').innerHTML = (data.rewards || []).map(function (reward) {
+      var progress = reward.target ? ' · ' + Number(reward.progress) + '/' + Number(reward.target) + ' victorias' : '';
+      var button = reward.unlocked ? '<button type="button" data-fan-pin="' + esc(reward.id) + '" ' + (S.fanBusy ? 'disabled' : '') + '>' + (reward.equipped ? 'Quitar' : 'Equipar') + '</button>' : '';
+      return '<li>' + (reward.unlocked ? '✦ ' : '○ ') + esc(reward.title) + progress + (reward.equipped ? ' · En uso ' : ' ') + button + '</li>';
+    }).join('') || '<li>Elige un club para comenzar.</li>';
+    Array.prototype.forEach.call($('est-fan-rewards').querySelectorAll('[data-fan-pin]'), function (button) {
+      button.addEventListener('click', function () { equipFanPin(button.getAttribute('data-fan-pin')); });
+    });
+    var pin = $('est-active-fan-pin');
+    if (pin) { pin.hidden = !data.clubId || !data.equippedPin; pin.innerHTML = pin.hidden ? '' : clubCrestMarkup(data.clubId, 'est-inline-crest') + esc(teamName(data.clubId)); }
+    $('est-fan-opt').disabled = S.fanBusy || !data.clubId;
+    $('est-fan-opt').checked = Boolean(data.rankingOptIn);
+    $('est-fan-ranking').innerHTML = (data.ranking || []).map(function (row) {
+      return '<li value="' + Number(row.rank) + '">' + clubCrestMarkup(row.clubId, 'est-inline-crest') + esc(teamName(row.clubId)) + ' · ' + Number(row.wins) + ' victorias · ' + Number(row.participants) + ' participantes</li>';
+    }).join('') || '<li>Aún no hay participantes.</li>';
+  }
+  function equipFanPin(pin) {
+    if (!S.fan || S.fanBusy || !S.socket || !S.socket.connected) return;
+    S.fanBusy = true; var seq = ++S.fanSeq; renderFan();
+    $('est-fan-feedback').textContent = 'Guardando pin…';
+    S.socket.emit('football:fan_equip', { currentClubId:S.fan.clubId, pin:S.fan.equippedPin === pin ? null : pin }, function (res) {
+      if (seq !== S.fanSeq) return;
+      S.fanBusy = false;
+      if (res && res.ok && res.fan) { S.fan = res.fan; renderFan(); $('est-fan-feedback').textContent = 'Tu pin quedó actualizado.'; }
+      else { renderFan(); $('est-fan-feedback').textContent = res && res.error || 'No se pudo guardar el pin.'; }
+    });
+  }
+  function selectFanClub(confirmed) {
+    if (!S.fan || S.fanBusy || !S.socket || !S.socket.connected) return;
+    var clubId = $('est-fan-club').value;
+    if (!clubId) return;
+    S.fanBusy = true; var seq = ++S.fanSeq; renderFan();
+    $('est-fan-feedback').textContent = 'Guardando…';
+    S.socket.emit('football:fan_select', { clubId:clubId, currentClubId:S.fan.clubId, confirmed:confirmed, tos:S.tosVersion }, function (res) {
+      if (seq !== S.fanSeq) return;
+      S.fanBusy = false;
+      if (res && res.ok && res.fan) { S.fan = res.fan; $('est-fan-confirm').hidden = true; renderFan(); $('est-fan-feedback').textContent = 'Tu club quedó guardado.'; }
+      else { renderFan(); $('est-fan-feedback').textContent = res && res.error || 'No se pudo confirmar. Consulta de nuevo.'; }
+    });
+  }
+  function optFan() {
+    if (!S.fan || S.fanBusy || !S.socket || !S.socket.connected) return;
+    var enabled = $('est-fan-opt').checked;
+    S.fanBusy = true; var seq = ++S.fanSeq; renderFan();
+    S.socket.emit('football:fan_ranking_opt', { enabled:enabled, currentClubId:S.fan.clubId }, function (res) {
+      if (seq !== S.fanSeq) return;
+      S.fanBusy = false;
+      if (res && res.ok && res.fan) { S.fan = res.fan; renderFan(); $('est-fan-feedback').textContent = enabled ? 'Participas en el ranking por clubes.' : 'Ya no participas en el ranking.'; }
+      else { renderFan(); $('est-fan-feedback').textContent = res && res.error || 'No se pudo guardar la preferencia.'; }
+    });
   }
   var FANTASY_SLOTS = ['GK','DF','DF','DF','DF','MF','MF','MF','MF','FW','FW'];
   var FANTASY_LABELS = { GK:'Portero', DF:'Defensa', MF:'Medio', FW:'Delantero' };
@@ -3037,7 +3229,10 @@
       var options = (data.players || []).filter(function (p) { return p.group === group; }).map(function (p) {
         return '<option value="' + esc(p.id) + '"' + (S.fantasyDraft[i] === p.id ? ' selected' : '') + '>' + esc(p.name) + ' · ' + esc(p.clubName) + ' (' + esc(p.position) + ')</option>';
       }).join('');
-      return '<label>' + FANTASY_LABELS[group] + ' ' + (i + 1) + '<select data-fantasy-slot="' + i + '" required' + (!data.next || S.fantasyBusy ? ' disabled' : '') + '><option value="">Elegir…</option>' + options + '</select></label>';
+      var positionNumber = FANTASY_SLOTS.slice(0, i + 1).filter(function (slot) { return slot === group; }).length;
+      var selectedPlayer = (data.players || []).find(function (player) { return player.id === S.fantasyDraft[i]; });
+      var clubLabel = selectedPlayer ? clubCrestMarkup(selectedPlayer.clubId, 'est-fantasy-club-crest') + esc(selectedPlayer.clubName) : '';
+      return '<label><span class="est-fantasy-slot-title"><span class="est-fantasy-slot-badge" aria-hidden="true">' + group + '</span>' + FANTASY_LABELS[group] + ' ' + positionNumber + '</span><select data-fantasy-slot="' + i + '" required' + (!data.next || S.fantasyBusy ? ' disabled' : '') + '><option value="">Elegir…</option>' + options + '</select><span class="est-fantasy-selected-club">' + clubLabel + '</span></label>';
     }).join('');
     el['est-fantasy-save'].disabled = !data.next || S.fantasyBusy;
     el['est-fantasy-opt'].disabled = S.fantasyBusy;
@@ -3080,7 +3275,7 @@
       var tr = document.createElement('tr');
       var id = row.teamId || row.id;
       tr.innerHTML = '<td class="' + (i === 0 ? 'pos-1' : '') + '">' + (i + 1) + '</td>' +
-        '<td><span class="est-crest-dot" style="background:' + teamColor(id) + '"></span>' + esc(teamName(id)) + '</td>' +
+        '<td>' + clubCrestMarkup(id, 'est-standing-crest') + esc(teamName(id)) + '</td>' +
         '<td>' + (row.played != null ? row.played : (row.pj != null ? row.pj : '')) + '</td>' +
         '<td>' + (row.goalDiff != null ? (row.goalDiff > 0 ? '+' : '') + row.goalDiff : (row.dg != null ? row.dg : '')) + '</td>' +
         '<td class="pts">' + (row.points != null ? row.points : (row.pts != null ? row.pts : '')) + '</td>';
@@ -3103,6 +3298,23 @@
   }
 
   // ===== Estado del partido =====
+  function renderHighlights(data) {
+    var box=$('est-highlights'); if (!box) return;
+    box.hidden=!data || !S.match;
+    if (box.hidden) return;
+    var labels={goal:'Gol',penalty_scored:'Gol de penal',shot_on_target:'Tiro a puerta',big_chance:'Gran oportunidad',red_card:'Tarjeta roja',second_yellow:'Segunda amarilla'};
+    function sideId(side) { return side === 'home' ? S.match.homeId : S.match.awayId; }
+    function line(item) {
+      var team=sideId(item.side);
+      return '<li><b>' + Number(item.minute) + "′ · " + esc(labels[item.type] || 'Jugada') + '</b> · ' + clubCrestMarkup(team,'est-inline-crest') + esc(teamName(team)) + (item.player ? ' · ' + esc(item.player) : '') + (item.assist ? ' · Asistencia: ' + esc(item.assist) : '') + '</li>';
+    }
+    $('est-highlights-score').innerHTML=clubCrestMarkup(S.match.homeId,'est-inline-crest') + esc(teamName(S.match.homeId)) + ' ' + Number(S.match.result && S.match.result.home != null ? S.match.result.home : S.score.home) + '–' + Number(S.match.result && S.match.result.away != null ? S.match.result.away : S.score.away) + ' ' + clubCrestMarkup(S.match.awayId,'est-inline-crest') + esc(teamName(S.match.awayId));
+    $('est-highlights-goals').innerHTML=(data.goals || []).map(line).join('') || '<li>No hubo goles.</li>';
+    $('est-highlights-moments').innerHTML=(data.moments || []).map(line).join('') || '<li>No hubo jugadas destacadas registradas.</li>';
+    var star=data.star, club=star && sideId(star.side);
+    $('est-highlights-star').innerHTML=star ? '<b>Figura estadística:</b> ' + esc(star.name) + ' · ' + clubCrestMarkup(club,'est-inline-crest') + esc(teamName(club)) + ' · ' + Number(star.goals) + ' goles · ' + Number(star.assists) + ' asistencias' : 'Figura estadística no disponible.';
+  }
+
   function applyMatchState(ms) {
     if (!ms) return;
     if (S.match && ms.match && S.match.id !== ms.match.id) cancelCommentarySpeech();
@@ -3132,6 +3344,7 @@
     renderMarkets();
     renderMyBets();
     renderCommentary(ms.commentary || []);
+    renderHighlights(ms.match && ms.match.status === 'settled' ? ms.match.highlights : null);
     updateTextFallback();
     renderPreshow(currentServerTime());
     if (!S.rafId) S.rafId = requestAnimationFrame(frame);
@@ -3501,7 +3714,8 @@
   }
   function renderScoreboard() {
     if (!S.match) return;
-    el['crest-home'].style.background = S.homeKit; el['crest-away'].style.background = S.awayKit;
+    setScoreboardCrest('crest-home', S.match.homeId, S.homeKit);
+    setScoreboardCrest('crest-away', S.match.awayId, S.awayKit);
     el['name-home'].textContent = teamFull(S.match.homeId); el['name-away'].textContent = teamFull(S.match.awayId);
     el['score-home'].textContent = S.score.home; el['score-away'].textContent = S.score.away;
     var live = ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0;
@@ -3912,6 +4126,8 @@
       S.match.status = 'finished';
       S.playStopped = true;
       S.ballCarrierId = null;
+      if (data.result) { S.match.result = data.result; S.score = {home:Number(data.result.home) || 0, away:Number(data.result.away) || 0}; }
+      renderHighlights(data.highlights || null);
     } else if (code === 'rescheduled') {
       if (data.scheduledKickoffAt != null && Number.isFinite(Number(data.scheduledKickoffAt))) {
         S.match.scheduledKickoffAt = Number(data.scheduledKickoffAt);
@@ -4406,14 +4622,18 @@
     }
     return teamFull(m.homeId) + ' vs ' + teamFull(m.awayId);
   }
+  function matchupMarkup(match) {
+    if (!match) return '';
+    return clubCrestMarkup(match.homeId, 'est-ledger-crest') + '<span class="est-ledger-team">' + esc(teamFull(match.homeId)) + '</span> vs ' + clubCrestMarkup(match.awayId, 'est-ledger-crest') + '<span class="est-ledger-team">' + esc(teamFull(match.awayId)) + '</span>';
+  }
   function entryScoreLine(entry) {
     var m = entry && entry.match;
     if (!m || !m.result) return '';
-    return '<span class="est-ledger-crest" style="background:' + teamColor(m.homeId) + '"></span>' +
+    return clubCrestMarkup(m.homeId, 'est-ledger-crest') +
       '<span class="est-ledger-team">' + esc(teamFull(m.homeId)) + '</span>' +
       '<b class="est-ledger-score">' + Number(m.result.home) + '–' + Number(m.result.away) + '</b>' +
       '<span class="est-ledger-team">' + esc(teamFull(m.awayId)) + '</span>' +
-      '<span class="est-ledger-crest" style="background:' + teamColor(m.awayId) + '"></span>';
+      clubCrestMarkup(m.awayId, 'est-ledger-crest');
   }
   function entryPickLabel(entry) {
     if (entry.kind === 'parlay') return 'Combinada de ' + ((entry.legs || []).length) + ' selecciones';
@@ -4545,7 +4765,7 @@
       onlyMatch.classList.toggle('active', Boolean(S.betsOnlyMatch));
       onlyMatch.setAttribute('aria-pressed', String(Boolean(S.betsOnlyMatch)));
       var current = S.currentMatchId && S.match ? teamName(S.match.homeId) + ' vs ' + teamName(S.match.awayId) : '';
-      onlyMatch.textContent = current ? 'Solo ' + current : 'Solo este partido';
+      onlyMatch.innerHTML = current ? 'Solo ' + matchupMarkup(S.match) : 'Solo este partido';
     }
 
     if (S.betsError) {
@@ -4651,12 +4871,12 @@
     var legs = '';
     if (entry.legs && entry.legs.length) {
       legs = '<ul class="est-ledger-legs">' + entry.legs.map(function (leg) {
-        var legMatch = leg.match ? teamFull(leg.match.homeId) + ' vs ' + teamFull(leg.match.awayId) : 'Partido';
+        var legMatch = leg.match ? matchupMarkup(leg.match) : 'Partido';
         return '<li data-leg="' + esc(leg.status || '') + '">' +
           '<span class="est-ledger-leg-mark" aria-hidden="true">' + esc(betStatusGlyph(leg.status)) + '</span>' +
           '<span class="est-ledger-leg-copy"><b>' + esc(selLabel(leg.market, leg.selection)) + '</b>' +
           '<span class="est-ledger-leg-market">' + esc(MARKET_LABEL[leg.market] || leg.market) + '</span>' +
-          '<small>' + esc(legMatch) + ' · ' + esc(betStatusLabel(leg.status)) + '</small></span>' +
+          '<small>' + legMatch + ' · ' + esc(betStatusLabel(leg.status)) + '</small></span>' +
           '<span class="est-ledger-leg-odds" title="Cuota">' + Number(leg.odds || 1).toFixed(2) + '</span>' +
           '</li>';
       }).join('') + '</ul>';
@@ -4668,13 +4888,13 @@
       '<span class="est-ledger-glyph" aria-hidden="true">' + esc(betStatusGlyph(status)) + '</span>' +
       '<div class="est-ledger-row-main">' +
       '<div class="est-ledger-row-head">' +
-      '<span class="est-ledger-pick">' + esc(entryPickLabel(entry)) + '</span>' +
+      '<span class="est-ledger-pick">' + (entry.kind === 'future' && S.teams[entry.selection] ? clubCrestMarkup(entry.selection, 'est-inline-crest') : '') + esc(entryPickLabel(entry)) + '</span>' +
       '<span class="est-ledger-market">' + esc(entryMarketLabel(entry)) + '</span>' +
       '</div>' +
       '<p class="est-ledger-row-match">' +
       (score
         ? score + '<span class="est-ledger-jornada">J' + esc(entry.match.jornada) + '</span>'
-        : '<span class="est-ledger-team">' + esc(entryMatchLabel(entry)) + '</span>') +
+        : (entry.match ? matchupMarkup(entry.match) : '<span class="est-ledger-team">' + esc(entryMatchLabel(entry)) + '</span>')) +
       '</p>' +
       facts +
       legs +
@@ -5097,10 +5317,45 @@
 
   // ===== UI: enlaces, atajos, TOS =====
   function bindUI() {
+    if ($('est-highlights-audio')) $('est-highlights-audio').addEventListener('click', function () {
+      if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) { toast('La narración no está disponible en este navegador.', 'info'); return; }
+      var voices=window.speechSynthesis.getVoices(), voice=voices.find(function (v) { return /^es[-_]mx$/i.test(v.lang || ''); });
+      if (!voice) { toast('No hay una voz de español de México disponible en este dispositivo.', 'info'); return; }
+      cancelCommentarySpeech();
+      var text=$('est-highlights-score').textContent + '. Goles y asistencias. ' + $('est-highlights-goals').textContent + '. Momentos destacados. ' + $('est-highlights-moments').textContent + '. ' + $('est-highlights-star').textContent;
+      var utterance=new window.SpeechSynthesisUtterance(text); utterance.lang='es-MX'; utterance.voice=voice; window.speechSynthesis.speak(utterance);
+    });
+    if ($('est-hub')) {
+      $('est-hub-open').addEventListener('click', function (event) { openHub(event.currentTarget); });
+      $('est-hub-close').addEventListener('click', closeHub);
+      $('est-hub').addEventListener('keydown', trapHubFocus);
+      Array.prototype.forEach.call($('est-hub').querySelectorAll('[data-hub-view]'), function (button) {
+        button.addEventListener('click', function () { var view = button.getAttribute('data-hub-view'); setHubView(view); if (view === 'aficion') refreshFan(); if (view === 'mercado') refreshTransfers(); if (view === 'quiniela') refreshQuiniela(); });
+      });
+    }
+    if ($('est-fan-club')) {
+      $('est-fan-club').addEventListener('change', function () { $('est-fan-choose').disabled = S.fanBusy || !this.value; $('est-fan-confirm').hidden = true; if (this.value) setClubLabel($('est-fan-selected-club'), this.value, teamName(this.value)); else $('est-fan-selected-club').textContent = ''; });
+      $('est-fan-choose').addEventListener('click', function () {
+        if (!S.fan || !this || !$('est-fan-club').value) return;
+        var next = $('est-fan-club').value;
+        if (S.fan.clubId && S.fan.clubId !== next) {
+          $('est-fan-confirm-copy').innerHTML = 'Vas a dejar ' + clubCrestMarkup(S.fan.clubId, 'est-inline-crest') + esc(teamName(S.fan.clubId)) + ' para apoyar a ' + clubCrestMarkup(next, 'est-inline-crest') + esc(teamName(next)) + '.';
+          $('est-fan-confirm').hidden = false; $('est-fan-confirm-yes').focus();
+        } else selectFanClub(false);
+      });
+      $('est-fan-confirm-yes').addEventListener('click', function () { selectFanClub(true); });
+      $('est-fan-confirm-no').addEventListener('click', function () { $('est-fan-confirm').hidden = true; $('est-fan-choose').focus(); });
+      $('est-fan-opt').addEventListener('change', optFan);
+    }
     if (el['est-fantasy-form']) {
       el['est-fantasy-form'].addEventListener('submit', saveFantasy);
       el['est-fantasy-players'].addEventListener('change', function (event) {
-        if (event.target && event.target.dataset.fantasySlot != null) { S.fantasyDraft[Number(event.target.dataset.fantasySlot)] = event.target.value; S.fantasyDirty = true; }
+        if (event.target && event.target.dataset.fantasySlot != null) {
+          S.fantasyDraft[Number(event.target.dataset.fantasySlot)] = event.target.value; S.fantasyDirty = true;
+          var player = S.fantasy && (S.fantasy.players || []).find(function (item) { return item.id === event.target.value; });
+          var club = event.target.parentNode.querySelector('.est-fantasy-selected-club');
+          if (club) { if (player) setClubLabel(club, player.clubId, player.clubName); else club.textContent = ''; }
+        }
       });
       el['est-fantasy-opt'].addEventListener('change', optFantasy);
     }
@@ -5288,6 +5543,10 @@
     }
   }
   function onKey(e) {
+    if (hubOpen()) {
+      if (e.key.toLowerCase() === 'escape') { e.preventDefault(); closeHub(); }
+      return;
+    }
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
     var k = e.key.toLowerCase();
     // Con el historial abierto, el teclado pertenece al diálogo (solo Esc actúa).
@@ -5315,6 +5574,6 @@
     if (S.lobby) renderLobby(S.lobby);
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once:true });
   else boot();
 })();

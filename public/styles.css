@@ -2057,3 +2057,16 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
   .bet-ranking-toolbar { align-items:flex-start; flex-direction:column; }
   .bet-ranking-updated { text-align:left; }
 }
+
+/* Rueda de la Fortuna: los importes son pagos totales en fichas virtuales. */
+.fortune-wheel { display:grid; place-items:center; width:min(190px, 60vw); aspect-ratio:1; margin:14px auto; border:8px solid #d0aa66; border-radius:50%; background:repeating-conic-gradient(#246f55 0 6.6667deg,#bf8750 6.6667deg 13.3333deg,#8c4551 13.3333deg 20deg); box-shadow:inset 0 0 0 5px #322f20,0 7px 25px rgba(0,0,0,.38); }
+.fortune-wheel span { display:grid; place-items:center; width:64px; height:64px; border:3px solid #d6bc85; border-radius:50%; background:#162820; color:#f2e6c7; font:800 27px var(--display); }
+.fortune-wheel.rolling { animation:fortune-roll 1.15s ease-out; }
+.fortune-note { color:var(--muted); font-size:11px; line-height:1.4; text-align:center; }
+@keyframes fortune-roll { from { transform:rotate(0deg); } to { transform:rotate(720deg); } }
+@media (prefers-reduced-motion:reduce) { .fortune-wheel.rolling { animation:none; } }
+.quick-game-card .btn-card:disabled { opacity:.65; cursor:not-allowed; }
+.fan-pin { display:inline-block; width:20px; height:23px; object-fit:contain; margin-left:5px; vertical-align:middle; }
+.fan-pin-fan-1 { filter:drop-shadow(0 0 2px #d5a782); }
+.fan-pin-fan-2 { filter:drop-shadow(0 0 3px #c6d6d2); }
+.fan-pin-fan-3 { filter:drop-shadow(0 0 4px #f2cc67); }

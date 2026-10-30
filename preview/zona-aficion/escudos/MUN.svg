@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 280" role="img" aria-labelledby="title desc">
+<title id="title">Escudo original de Manchestéreo United</title><desc id="desc">Insignia ilustrada con un símbolo de sound; diseño ficticio original.</desc>
+<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#c09532"/><stop offset="1" stop-color="#514018"/></linearGradient><clipPath id="cut"><path d="M120 12 Q167 12 216 35 L211 162 Q202 231 120 270 Q38 231 29 162 L24 35 Q73 12 120 12Z"/></clipPath></defs>
+<path d="M120 12 Q167 12 216 35 L211 162 Q202 231 120 270 Q38 231 29 162 L24 35 Q73 12 120 12Z" fill="#ffebaf"/><g transform="translate(120 140) scale(.96) translate(-120 -140)"><path d="M120 12 Q167 12 216 35 L211 162 Q202 231 120 270 Q38 231 29 162 L24 35 Q73 12 120 12Z" fill="url(#g)"/>
+<g clip-path="url(#cut)" fill="none" stroke="#ffebaf" stroke-width="4" opacity=".12"><path d="M0 194 L125 5 M40 250 L200 5 M110 280 L240 75"/></g>
+<path d="M120 12 Q167 12 216 35 L211 162 Q202 231 120 270 Q38 231 29 162 L24 35 Q73 12 120 12Z" fill="none" stroke="#ffebaf" stroke-width="3" opacity=".8"/>
+<path d="M49 76 Q120 65 191 76" fill="none" stroke="#ffebaf" stroke-width="2" opacity=".65"/>
+<text x="120" y="60" text-anchor="middle" fill="#ffebaf" font-family="Arial, sans-serif" font-size="21" font-weight="900" letter-spacing="5">MUN</text>
+<circle cx="120" cy="132" r="57" fill="#514018" opacity=".45"/><circle cx="120" cy="132" r="56" fill="none" stroke="#ffebaf" stroke-width="2" opacity=".75"/>
+<g transform="translate(70 82)" style="color:#ffebaf" fill="none" stroke="currentColor" stroke-width="4.3" stroke-linecap="round" stroke-linejoin="round"><rect x="20" y="34" width="60" height="39" rx="7"/><path d="M28 29 Q50 10 72 29 M32 23 Q50 9 68 23 M29 54 L29 61 M38 45 L38 64 M47 39 L47 66 M56 48 L56 62 M65 42 L65 65 M73 51 L73 61"/></g>
+<path d="M69 205 Q120 219 171 205 M77 213 Q120 225 163 213" fill="none" stroke="#ffebaf" stroke-width="2" opacity=".8"/>
+<circle cx="58" cy="202" r="3" fill="#ffebaf"/><circle cx="182" cy="202" r="3" fill="#ffebaf"/>
+<text x="120" y="232" text-anchor="middle" fill="#ffebaf" font-family="Arial, sans-serif" font-size="8" font-weight="bold" letter-spacing="1.5">ESTADIO MC</text></g></svg>

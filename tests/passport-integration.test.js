@@ -123,7 +123,7 @@ test('el Pasaporte se acredita en liquidaciones válidas y el cliente no puede i
   await waitForServer(child, output);
   const health = await fetch(`http://127.0.0.1:${port}/healthz`).then(response => response.json());
   assert.equal(health.passportEnabled, true, '/healthz refleja el flag activado');
-  for (const asset of ['/', '/app.js', '/styles.css']) {
+  for (const asset of ['/', '/app.js', '/styles.css', '/estadio.html', '/estadio.js', '/estadio.css']) {
     const response = await fetch(`http://127.0.0.1:${port}${asset}`);
     assert.equal(response.headers.get('cache-control'), 'no-cache, must-revalidate', `${asset} se revalida para no mostrar una UI cacheada`);
   }
@@ -264,4 +264,104 @@ test('con PASSPORT_ENABLED ausente se pausa el progreso, se rechaza el equipamie
   const refreshed = await emitWithAck(socket, 'profile_update', { name: initial.name, avatar: initial.avatar });
   assert.equal(refreshed.profile.passport.season.points, 0);
   assert.equal(refreshed.profile.passport.inventory.length, 0);
+});
+
+test('Rueda de la Fortuna crea una mesa y liquida el sector con pago total correcto', { timeout: 20000 }, async t => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-fortune-'));
+  const port = await reservePort(); const output = { text:'' };
+  const child = spawn(process.execPath, ['server.js'], {
+    cwd:path.resolve(__dirname, '..'),
+    env:{ ...process.env, PORT:String(port), DATABASE_URL:'', PROFILE_STORE_PATH:path.join(tempDir,'profiles.json'),
+      ADMIN_FEATURE_ENABLED:'off', FOOTBALL_ENABLED:'off', AUTO_BOTS:'off', LOG_JSON:'off', FORTUNE_PREVIEW_UNSAFE:'on', NODE_ENV:'test' },
+    stdio:['ignore','pipe','pipe']
+  });
+  let socket;
+  t.after(async () => {
+    socket?.disconnect();
+    if (child.exitCode === null && child.signalCode === null) {
+      await new Promise(resolve => { const timer=setTimeout(() => { child.kill('SIGKILL'); resolve(); },3000); child.once('exit', () => { clearTimeout(timer); resolve(); }); child.kill('SIGTERM'); });
+    }
+    fs.rmSync(tempDir,{recursive:true,force:true});
+  });
+  await waitForServer(child,output);
+  const html=await fetch(`http://127.0.0.1:${port}/`).then(r=>r.text());
+  assert.match(html,/data-game="fortune"/);
+  const token='fortune-' + Date.now(); socket=await connectSocket(port,token);
+  const created=await emitWithAck(socket,'create_room',{token,name:'Rueda Prueba',game:'fortune',avatar:'fox',tos:TOS_VERSION});
+  assert.equal(created.ok,true,JSON.stringify(created));
+  const bet=await emitWithAck(socket,'quick_bet',{amount:10,choice:'1'}); assert.equal(bet.ok,true,JSON.stringify(bet));
+  const complete=waitForRoomProfile(socket,(_profile,room)=>room.game==='fortune' && room.phase==='results');
+  const resolve=await emitWithAck(socket,'quick_resolve',{}); assert.equal(resolve.ok,true,JSON.stringify(resolve));
+  const { room }=await complete; const record=room.results.find(row=>row.id===token);
+  assert.ok([1,2,5,10,20,40].includes(room.quickResult.value));
+  assert.equal(record.choice,'1');
+  const basePayout=room.quickResult.value===1 ? 20 : 0;
+  assert.equal(room.specialEvent, null, 'Rueda no tiene eventos especiales');
+  assert.equal(record.specialBonus || 0, 0);
+  assert.equal(record.payout,basePayout);
+  assert.equal(record.amount,record.payout-10);
+  const repeat = await emitWithAck(socket, 'quick_resolve', {});
+  assert.equal(repeat.ok,false,'no se puede volver a liquidar la misma ronda');
+  const invalid = await emitWithAck(socket, 'quick_bet', {amount:10,choice:'40'});
+  assert.equal(invalid.ok,false,'no se puede apostar después de liquidar');
+});
+
+async function assertFortuneIsPaused(t, databaseUrl, nodeEnv) {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-fortune-guard-'));
+  const port = await reservePort();
+  const output = { text: '' };
+  const child = spawn(process.execPath, ['server.js'], {
+    cwd: path.resolve(__dirname, '..'),
+    env: { ...process.env, PORT: String(port), DATABASE_URL: databaseUrl,
+      PROFILE_STORE_PATH: path.join(tempDir, 'profiles.json'),
+      ADMIN_FEATURE_ENABLED: 'off', FOOTBALL_ENABLED: 'off', AUTO_BOTS: 'off', LOG_JSON: 'off',
+      FORTUNE_PREVIEW_UNSAFE: 'on', NODE_ENV: nodeEnv },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let socket;
+  t.after(async () => {
+    socket?.disconnect();
+    if (child.exitCode === null && child.signalCode === null) {
+      await new Promise(resolve => {
+        const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 5000);
+        child.once('exit', () => { clearTimeout(timer); resolve(); });
+        child.kill('SIGTERM');
+      });
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+  await waitForServer(child, output);
+  const health = await fetch(`http://127.0.0.1:${port}/healthz`).then(response => response.json());
+  assert.equal(health.fortuneEnabled, false);
+  const token = `fortune-pause-${Date.now()}`;
+  socket = await connectSocket(port, token);
+  const attempt = await emitWithAck(socket, 'create_room', { token, name: 'Rueda Prueba', game: 'fortune', tos: TOS_VERSION });
+  assert.equal(attempt.ok, false);
+  assert.match(attempt.error, /no está disponible/i);
+}
+
+test('Rueda permanece pausada en producción aun si se solicita la vista insegura', { timeout: 20000 }, async t => {
+  await assertFortuneIsPaused(t, '', 'production');
+});
+
+test('Rueda permanece pausada con PostgreSQL hasta integrar recuperación', {
+  timeout: 30000, skip: !process.env.FORTUNE_TEST_DATABASE_URL
+}, async t => {
+  await assertFortuneIsPaused(t, process.env.FORTUNE_TEST_DATABASE_URL, 'test');
+});
+
+test('Mi afición equipa y retira el escudo en una mesa real del Casino', { timeout:30000 }, async t => {
+  const tempDir=fs.mkdtempSync(path.join(os.tmpdir(),'mc-fan-pin-'));
+  const port=await reservePort(), output={text:''};
+  const child=spawn(process.execPath,['server.js'],{cwd:path.resolve(__dirname,'..'),env:{...process.env,PORT:String(port),DATABASE_URL:'',PROFILE_STORE_PATH:path.join(tempDir,'profiles.json'),FOOTBALL_STORE_PATH:path.join(tempDir,'football.json'),FOOTBALL_ENABLED:'on',ADMIN_FEATURE_ENABLED:'off',AUTO_BOTS:'off',LOG_JSON:'off'},stdio:['ignore','pipe','pipe']});
+  let socket;
+  t.after(async()=>{socket?.disconnect();if(child.exitCode===null&&child.signalCode===null) await new Promise(resolve=>{const timer=setTimeout(()=>{child.kill('SIGKILL');resolve();},3000);child.once('exit',()=>{clearTimeout(timer);resolve();});child.kill('SIGTERM');});fs.rmSync(tempDir,{recursive:true,force:true});});
+  await waitForServer(child,output); const token='fan-int-'+Date.now(); socket=await connectSocket(port,token);
+  const created=await emitWithAck(socket,'create_room',{token,name:'Fan Prueba',game:'poker',avatar:'fox',tos:TOS_VERSION});assert.equal(created.ok,true);
+  const sub=await emitWithAck(socket,'football:subscribe',{token,name:'Fan Prueba',scope:'lobby',tos:TOS_VERSION});assert.equal(sub.ok,true);
+  const selected=await emitWithAck(socket,'football:fan_select',{clubId:'united_vanguard',currentClubId:null,tos:TOS_VERSION});assert.equal(selected.ok,true);
+  const equippedState=waitForRoomProfile(socket,(profile,room)=>profile.fanPin?.abbr==='FAR' && room.players.some(p=>p.fanPin?.abbr==='FAR'));
+  const equipped=await emitWithAck(socket,'football:fan_equip',{currentClubId:'united_vanguard',pin:'club-pin'});assert.equal(equipped.ok,true);await equippedState;
+  const clearedState=waitForRoomProfile(socket,(profile,room)=>profile.fanPin===null && room.players.every(p=>p.fanPin===null));
+  const changed=await emitWithAck(socket,'football:fan_select',{clubId:'sporting_almar',currentClubId:'united_vanguard',confirmed:true,tos:TOS_VERSION});assert.equal(changed.ok,true);await clearedState;
 });

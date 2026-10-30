@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 280" role="img" aria-labelledby="title desc">
+<title id="title">Escudo original de Real Suciedad</title><desc id="desc">Insignia ilustrada con un símbolo de soap; diseño ficticio original.</desc>
+<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#708e9f"/><stop offset="1" stop-color="#2c414a"/></linearGradient><clipPath id="cut"><path d="M120 14 Q175 14 216 39 L211 155 Q208 224 120 270 Q32 224 29 155 L24 39 Q65 14 120 14Z"/></clipPath></defs>
+<path d="M120 14 Q175 14 216 39 L211 155 Q208 224 120 270 Q32 224 29 155 L24 39 Q65 14 120 14Z" fill="#e7e7d1"/><g transform="translate(120 140) scale(.96) translate(-120 -140)"><path d="M120 14 Q175 14 216 39 L211 155 Q208 224 120 270 Q32 224 29 155 L24 39 Q65 14 120 14Z" fill="url(#g)"/>
+<g clip-path="url(#cut)" fill="none" stroke="#e7e7d1" stroke-width="4" opacity=".12"><path d="M35 0 V270 M70 0 V270 M170 0 V270 M205 0 V270"/></g>
+<path d="M120 14 Q175 14 216 39 L211 155 Q208 224 120 270 Q32 224 29 155 L24 39 Q65 14 120 14Z" fill="none" stroke="#e7e7d1" stroke-width="3" opacity=".8"/>
+<path d="M49 76 Q120 65 191 76" fill="none" stroke="#e7e7d1" stroke-width="2" opacity=".65"/>
+<text x="120" y="60" text-anchor="middle" fill="#e7e7d1" font-family="Arial, sans-serif" font-size="21" font-weight="900" letter-spacing="5">RSU</text>
+<circle cx="120" cy="132" r="57" fill="#2c414a" opacity=".45"/><circle cx="120" cy="132" r="56" fill="none" stroke="#e7e7d1" stroke-width="2" opacity=".75"/>
+<g transform="translate(70 82)" style="color:#e7e7d1" fill="none" stroke="currentColor" stroke-width="4.3" stroke-linecap="round" stroke-linejoin="round"><path d="M25 56 Q25 35 46 35 Q67 35 67 56 Q67 77 46 77 Q25 77 25 56Z"/><circle cx="69" cy="29" r="9"/><circle cx="79" cy="47" r="5"/><path d="M35 48 Q38 43 43 43 M57 58 Q56 65 50 67"/><path d="M22 24 L26 20 M23 29 L17 29"/></g>
+<path d="M69 205 Q120 219 171 205 M77 213 Q120 225 163 213" fill="none" stroke="#e7e7d1" stroke-width="2" opacity=".8"/>
+<circle cx="58" cy="202" r="3" fill="#e7e7d1"/><circle cx="182" cy="202" r="3" fill="#e7e7d1"/>
+<text x="120" y="232" text-anchor="middle" fill="#e7e7d1" font-family="Arial, sans-serif" font-size="8" font-weight="bold" letter-spacing="1.5">ESTADIO MC</text></g></svg>

@@ -34,6 +34,7 @@
     <span class="estadio-tag">🏟 Estadio</span>
     <div class="estadio-nav-right">
       <span id="est-connection" class="connection-badge connecting"><i></i><span>Conectando</span></span>
+      <span id="est-active-fan-pin" class="est-active-fan-pin" hidden></span>
       <span id="est-chips" class="est-chips" title="Tus fichas virtuales">— fichas</span>
       <a id="est-bdo-nav-link" class="btn btn-ghost btn-small est-bdo-nav-link" href="/balon-de-oro" aria-label="Abrir el evento Balón de Oro MonteCristo" title="Balón de Oro MonteCristo">🏆 <span>Balón de Oro</span></a>
       <a id="est-bdo-dedicated-back" class="btn btn-ghost btn-small est-bdo-dedicated-back" href="/estadio">← Volver al Estadio</a>
@@ -51,28 +52,18 @@
 
   <main id="estadio-main" class="estadio-shell">
     <!-- Columna izquierda: lobby (partidos de hoy) + tabla de posiciones -->
-    <aside class="est-col-left" aria-label="Partidos y posiciones">
+    <aside class="est-col-left" aria-label="Partidos, posiciones y zona de afición">
       <section class="est-panel" id="est-lobby-panel">
         <h2 class="est-panel-title">Jornada de hoy</h2>
         <div id="est-countdown" class="est-countdown" aria-live="off">—</div>
         <ul id="est-match-list" class="est-match-list" aria-label="Partidos de hoy"></ul>
       </section>
-      <section class="est-panel est-fantasy" id="est-fantasy-panel" aria-labelledby="est-fantasy-title">
-        <h2 class="est-panel-title" id="est-fantasy-title">Mi Once · 4-4-2</h2>
-        <p class="est-muted">Sin fichas: +2 por participar, +5 por gol, +3 por asistencia y −1 por roja. Cuenta la liga regular.</p>
-        <p id="est-fantasy-summary" role="status" class="est-muted">Conecta al Estadio para armar tu once.</p>
-        <form id="est-fantasy-form">
-          <div id="est-fantasy-players" class="est-fantasy-players"></div>
-          <button type="submit" id="est-fantasy-save" disabled>Guardar Mi Once</button>
-        </form>
-        <p id="est-fantasy-feedback" role="status" aria-live="polite"></p>
-        <p class="est-muted">Los cambios aplican desde la primera jornada que aún no inicia y se mantienen hasta el siguiente cambio. No se inventan datos de partidos anteriores.</p>
-        <h3 class="est-fantasy-subtitle">Retos y pines</h3>
-        <ul id="est-fantasy-challenges" class="est-fantasy-list"><li>Aún no hay puntos.</li></ul>
-        <label class="est-fantasy-opt"><input id="est-fantasy-opt" type="checkbox" disabled> Participar en la clasificación anónima</label>
-        <p class="est-muted">Opcional y revocable; se publican solamente puestos y puntos, sin nombres ni identificadores. Los pines se muestran durante esta temporada.</p>
-        <ol id="est-fantasy-ranking" class="est-fantasy-list" aria-label="Clasificación anónima de Mi Once"></ol>
-      </section>
+      <button class="est-hub-launch" id="est-hub-open" type="button" aria-haspopup="dialog" aria-controls="est-hub">
+        <span class="est-hub-launch-kicker">TU ESPACIO EN EL ESTADIO</span>
+        <strong>Zona de afición <span aria-hidden="true">↗</span></strong>
+        <span>Arma tu once y descubre más del fútbol.</span>
+        <span class="est-hub-launch-action">Entrar a la zona <span aria-hidden="true">→</span></span>
+      </button>
       <section class="est-panel" id="est-standings-panel">
         <h2 class="est-panel-title">Posiciones</h2>
         <div class="est-table-wrap">
@@ -162,6 +153,13 @@
         <div class="est-commentary" id="est-commentary" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Comentarios del narrador y el analista">
           <p class="est-commentary-empty">El relato aparecerá aquí cuando comience el partido.</p>
         </div>
+      </section>
+
+      <section id="est-highlights" class="est-highlights" aria-labelledby="est-highlights-title" hidden>
+        <div class="est-highlights-head"><div><p class="est-hub-eyebrow">PARTIDO FINALIZADO</p><h2 id="est-highlights-title">Destacados del partido</h2></div><button id="est-highlights-audio" type="button">Escuchar resumen</button></div>
+        <p id="est-highlights-score"></p><h3>Goles y asistencias</h3><ol id="est-highlights-goals"></ol>
+        <h3>Momentos destacados</h3><ol id="est-highlights-moments"></ol>
+        <p id="est-highlights-star"></p><p class="est-highlights-note">Figura estadística: se priorizan goles y asistencias; en empate, minutos jugados.</p>
       </section>
 
       <!-- Fallback solo texto (accesibilidad / canvas desactivado / reduced-motion extremo) -->
@@ -459,6 +457,7 @@
             <select id="est-bdo-selection" name="selection">
               <option value="">Selecciona una fila o un candidato</option>
             </select>
+            <p id="est-bdo-selected-club" class="est-fantasy-selected-club" aria-live="polite"></p>
             <label for="est-bdo-stake">Monto a predecir (fichas virtuales)</label>
             <input id="est-bdo-stake" type="number" min="0" step="1" inputmode="numeric" autocomplete="off" placeholder="Ej. 100">
             <p id="est-bdo-quote" class="est-bdo-quote">Cuota: — · Pago potencial: —</p>
@@ -641,6 +640,65 @@
         <p class="est-bet-ranking-note">El ranking se ordena por volumen, no por ganancias. El acierto personal cuenta solo ganadas ÷ (ganadas + perdidas); excluye anuladas y cashouts. El neto es lo devuelto menos lo apostado en apuestas liquidadas. Fichas virtuales, sin valor monetario.</p>
         <button id="est-ledger-ranking-back" class="est-ledger-back" type="button">← Volver al Estadio</button>
       </section>
+    </div>
+  </div>
+
+  <!-- Vista independiente para las experiencias del aficionado. -->
+  <div id="est-hub" class="est-hub" role="dialog" aria-modal="true" aria-labelledby="est-hub-title" tabindex="-1" hidden>
+    <div class="est-hub-shell">
+      <header class="est-hub-header">
+        <div><p class="est-hub-eyebrow">ESTADIO MONTECRISTO / TU ESPACIO</p><h2 id="est-hub-title">Zona de afición<span>.</span></h2><p>Tu fútbol, más allá de la cancha.</p></div>
+        <button id="est-hub-close" class="est-hub-close" type="button" aria-label="Cerrar zona de afición">✕ <span>Cerrar</span></button>
+      </header>
+      <div class="est-hub-layout">
+        <nav class="est-hub-nav" aria-label="Experiencias de la zona de afición">
+          <p>EXPLORA</p>
+          <button type="button" data-hub-view="once" aria-pressed="true"><span class="est-hub-nav-icon" aria-hidden="true">◈</span><span><b>Mi Once</b><small>Tu alineación</small></span><span class="est-hub-nav-arrow" aria-hidden="true">↗</span></button>
+          <button type="button" data-hub-view="mercado" aria-pressed="false"><span class="est-hub-nav-icon" aria-hidden="true">⇄</span><span><b>Mercado de traspasos</b><small>Noticias del mercado</small></span><span class="est-hub-nav-arrow" aria-hidden="true">↗</span></button>
+          <button type="button" data-hub-view="quiniela" aria-pressed="false"><span class="est-hub-nav-icon" aria-hidden="true">✓</span><span><b>Quiniela · 8 de 8</b><small>No disponible</small></span><span class="est-hub-nav-arrow" aria-hidden="true">↗</span></button>
+          <button type="button" data-hub-view="aficion" aria-pressed="false"><span class="est-hub-nav-icon" aria-hidden="true">⚑</span><span><b>Mi afición</b><small>Tu club y tus pines</small></span><span class="est-hub-nav-arrow" aria-hidden="true">↗</span></button>
+          <p class="est-hub-nav-note">Una zona para vivir la temporada a tu manera.</p>
+        </nav>
+        <div class="est-hub-content">
+          <section id="est-fantasy-panel" class="est-fantasy" data-hub-panel="once" aria-labelledby="est-fantasy-title">
+            <div class="est-fantasy-hero"><div><p class="est-hub-eyebrow">FANTASY / TEMPORADA REGULAR</p><h2 id="est-fantasy-title">Tu equipo. <em>Tu estrategia.</em></h2><p>Elige jugadores de cualquier club y sigue su desempeño durante la temporada.</p></div><div class="est-fantasy-formation"><small>FORMACIÓN</small><strong>4-4-2</strong><span>11 jugadores</span></div></div>
+            <div class="est-fantasy-status"><span class="est-fantasy-status-dot" aria-hidden="true"></span><p id="est-fantasy-summary" role="status">Conecta al Estadio para armar tu once.</p></div>
+            <div class="est-fantasy-layout">
+              <div class="est-fantasy-main">
+                <div class="est-fantasy-section-head"><div><p class="est-hub-eyebrow">LA ALINEACIÓN</p><h3>Arma tu once</h3></div><span>1 · 4 · 4 · 2</span></div>
+                <p class="est-fantasy-intro">Elige 11 jugadores distintos. Puedes combinar clubes.</p>
+                <form id="est-fantasy-form">
+                  <div id="est-fantasy-players" class="est-fantasy-players"></div>
+                  <button type="submit" id="est-fantasy-save" disabled>Guardar Mi Once <span aria-hidden="true">→</span></button>
+                </form>
+                <p id="est-fantasy-feedback" role="status" aria-live="polite"></p>
+                <p class="est-fantasy-fine">Los cambios aplican desde la primera jornada que aún no inicia y se mantienen hasta el siguiente cambio. No se inventan datos de partidos anteriores.</p>
+                <div class="est-fantasy-scoring"><p class="est-hub-eyebrow">CÓMO SUMAS</p><div><span><b>+2</b> Participar</span><span><b>+5</b> Gol</span><span><b>+3</b> Asistencia</span><span><b>−1</b> Roja</span></div><p>Sin fichas · Cuenta la liga regular</p></div>
+              </div>
+              <aside class="est-fantasy-side" aria-label="Retos y clasificación de Mi Once">
+                <section class="est-fantasy-side-card"><p class="est-hub-eyebrow">TU PROGRESO</p><h3>Retos y pines <span aria-hidden="true">✦</span></h3><p>Completa retos para desbloquear pines de temporada.</p><ul id="est-fantasy-challenges" class="est-fantasy-list"><li>Arma tu once para empezar.</li></ul></section>
+                <section class="est-fantasy-side-card"><p class="est-hub-eyebrow">LA TABLA</p><h3>Clasificación anónima</h3><label class="est-fantasy-opt"><input id="est-fantasy-opt" type="checkbox" disabled> Participar en la clasificación</label><p>Opcional y revocable. Solo se publican puestos y puntos, sin nombres ni identificadores.</p><ol id="est-fantasy-ranking" class="est-fantasy-list" aria-label="Clasificación anónima de Mi Once"><li>Aún no hay participantes.</li></ol></section>
+              </aside>
+            </div>
+          </section>
+          <section class="est-fan" data-hub-panel="mercado" aria-labelledby="est-hub-mercado-title" hidden><p class="est-hub-eyebrow">MERCADO / ESTADIO</p><h2 id="est-hub-mercado-title">Mercado de traspasos</h2><p>Los acuerdos se anuncian a mitad de mes y se hacen efectivos en la siguiente temporada. No modifican partidos ni cuotas actuales.</p><div id="est-transfers-list" aria-live="polite">Consulta el mercado al entrar.</div></section>
+          <section class="est-fan" data-hub-panel="quiniela" aria-labelledby="est-hub-quiniela-title" hidden><p class="est-hub-eyebrow">QUINIELA / ESTADIO</p><h2 id="est-hub-quiniela-title">Quiniela · 8 de 8</h2><p>La inscripción no está disponible todavía. Se requieren ocho aciertos; la entrada será de 50 fichas virtuales.</p><div id="est-quiniela-list" aria-live="polite">Conéctate para consultar la próxima jornada.</div></section>
+          <section class="est-fan" data-hub-panel="aficion" aria-labelledby="est-hub-aficion-title" hidden>
+            <div class="est-fantasy-hero"><div><p class="est-hub-eyebrow">TU CLUB / TU AFICIÓN</p><h2 id="est-hub-aficion-title">Tus colores. <em>Tu historia.</em></h2><p>Elige un club y celebra sus victorias de liga desde tu adhesión. Sin fichas.</p></div><span class="est-fan-emblem" aria-hidden="true">⚑</span></div>
+            <div class="est-fantasy-status"><span class="est-fantasy-status-dot" aria-hidden="true"></span><p id="est-fan-summary" role="status">Conecta al Estadio para consultar tu afición.</p></div>
+            <div class="est-fantasy-layout"><div class="est-fantasy-main">
+              <div class="est-fantasy-section-head"><div><p class="est-hub-eyebrow">TU CLUB</p><h3>Elige tus colores</h3></div></div>
+              <p class="est-fantasy-intro">Tus victorias cuentan desde la adhesión y únicamente cuando el resultado está asentado.</p>
+              <div id="est-fan-current" class="est-fan-current">Aún no has elegido un club.</div>
+              <label class="est-fan-label" for="est-fan-club">Club</label><select id="est-fan-club" disabled><option value="">Elige un club…</option></select><p id="est-fan-selected-club" class="est-fantasy-selected-club" aria-live="polite"></p>
+              <button id="est-fan-choose" class="est-fan-primary" type="button" disabled>Elegir club →</button>
+              <div id="est-fan-confirm" class="est-fan-confirm" hidden><h3>¿Cambiar de club?</h3><p id="est-fan-confirm-copy"></p><p>Perderás las victorias, el nivel y los pines de tu club anterior, incluso si regresas. El nuevo club empieza desde cero. Tu Mi Once y tus fichas no cambian.</p><button type="button" id="est-fan-confirm-yes">Confirmar cambio</button> <button type="button" id="est-fan-confirm-no">Cancelar</button></div>
+              <p id="est-fan-feedback" role="status" aria-live="polite"></p>
+              <div class="est-fantasy-scoring"><p class="est-hub-eyebrow">EL CAMINO DE TU AFICIÓN</p><div><span><b>0</b> Inicio</span><span><b>1</b> Primera victoria</span><span><b>3</b> Tribuna fiel</span><span><b>5</b> Leyenda</span></div><p>Sin fichas ni premios monetarios.</p></div>
+            </div><aside class="est-fantasy-side" aria-label="Pines y clasificación de afición"><section class="est-fantasy-side-card"><p class="est-hub-eyebrow">TUS RECOMPENSAS</p><h3>Retos y pines de afición</h3><p>Gana con tu club para desbloquear pines. Equipa uno para mostrarlo en Casino y Estadio.</p><ul id="est-fan-rewards" class="est-fantasy-list"><li>Elige un club para comenzar.</li></ul></section><section class="est-fantasy-side-card"><p class="est-hub-eyebrow">LA TRIBUNA</p><h3>Ranking por clubes</h3><p>Opcional y revocable; se muestra el club, sus victorias y el total de participantes, sin nombres ni identificadores.</p><label class="est-fantasy-opt"><input id="est-fan-opt" type="checkbox" disabled> Participar en el ranking por clubes</label><ol id="est-fan-ranking" class="est-fantasy-list"><li>Aún no hay participantes.</li></ol></section></aside></div>
+          </section>
+        </div>
+      </div>
     </div>
   </div>
 

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 280" role="img" aria-labelledby="title desc">
+<title id="title">Escudo original de Celtic de Cómic</title><desc id="desc">Insignia ilustrada con un símbolo de comic; diseño ficticio original.</desc>
+<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#759687"/><stop offset="1" stop-color="#29463a"/></linearGradient><clipPath id="cut"><path d="M120 14 Q175 14 216 39 L211 155 Q208 224 120 270 Q32 224 29 155 L24 39 Q65 14 120 14Z"/></clipPath></defs>
+<path d="M120 14 Q175 14 216 39 L211 155 Q208 224 120 270 Q32 224 29 155 L24 39 Q65 14 120 14Z" fill="#f1edd1"/><g transform="translate(120 140) scale(.96) translate(-120 -140)"><path d="M120 14 Q175 14 216 39 L211 155 Q208 224 120 270 Q32 224 29 155 L24 39 Q65 14 120 14Z" fill="url(#g)"/>
+<g clip-path="url(#cut)" fill="none" stroke="#f1edd1" stroke-width="4" opacity=".12"><path d="M35 0 V270 M70 0 V270 M170 0 V270 M205 0 V270"/></g>
+<path d="M120 14 Q175 14 216 39 L211 155 Q208 224 120 270 Q32 224 29 155 L24 39 Q65 14 120 14Z" fill="none" stroke="#f1edd1" stroke-width="3" opacity=".8"/>
+<path d="M49 76 Q120 65 191 76" fill="none" stroke="#f1edd1" stroke-width="2" opacity=".65"/>
+<text x="120" y="60" text-anchor="middle" fill="#f1edd1" font-family="Arial, sans-serif" font-size="21" font-weight="900" letter-spacing="5">CDC</text>
+<circle cx="120" cy="132" r="57" fill="#29463a" opacity=".45"/><circle cx="120" cy="132" r="56" fill="none" stroke="#f1edd1" stroke-width="2" opacity=".75"/>
+<g transform="translate(70 82)" style="color:#f1edd1" fill="none" stroke="currentColor" stroke-width="4.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 25 Q20 19 27 19 L73 19 Q80 19 80 26 L80 60 Q80 67 73 67 L52 67 L38 79 L40 67 L27 67 Q20 67 20 60Z"/><path d="M34 41 L41 41 M48 41 L55 41 M62 41 L68 41 M31 52 L68 52"/></g>
+<path d="M69 205 Q120 219 171 205 M77 213 Q120 225 163 213" fill="none" stroke="#f1edd1" stroke-width="2" opacity=".8"/>
+<circle cx="58" cy="202" r="3" fill="#f1edd1"/><circle cx="182" cy="202" r="3" fill="#f1edd1"/>
+<text x="120" y="232" text-anchor="middle" fill="#f1edd1" font-family="Arial, sans-serif" font-size="8" font-weight="bold" letter-spacing="1.5">ESTADIO MC</text></g></svg>

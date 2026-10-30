@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 280" role="img" aria-labelledby="title desc">
+<title id="title">Escudo original de Farselona FC</title><desc id="desc">Insignia ilustrada con un símbolo de jester; diseño ficticio original.</desc>
+<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#a84d58"/><stop offset="1" stop-color="#4d202b"/></linearGradient><clipPath id="cut"><path d="M120 13 Q165 13 218 31 L218 151 Q218 225 120 271 Q22 225 22 151 L22 31 Q75 13 120 13Z"/></clipPath></defs>
+<path d="M120 13 Q165 13 218 31 L218 151 Q218 225 120 271 Q22 225 22 151 L22 31 Q75 13 120 13Z" fill="#f2d7a6"/><g transform="translate(120 140) scale(.96) translate(-120 -140)"><path d="M120 13 Q165 13 218 31 L218 151 Q218 225 120 271 Q22 225 22 151 L22 31 Q75 13 120 13Z" fill="url(#g)"/>
+<g clip-path="url(#cut)" fill="none" stroke="#f2d7a6" stroke-width="4" opacity=".12"><path d="M-8 44 L200 252 M25 14 L230 219 M-25 82 L160 267"/></g>
+<path d="M120 13 Q165 13 218 31 L218 151 Q218 225 120 271 Q22 225 22 151 L22 31 Q75 13 120 13Z" fill="none" stroke="#f2d7a6" stroke-width="3" opacity=".8"/>
+<path d="M49 76 Q120 65 191 76" fill="none" stroke="#f2d7a6" stroke-width="2" opacity=".65"/>
+<text x="120" y="60" text-anchor="middle" fill="#f2d7a6" font-family="Arial, sans-serif" font-size="21" font-weight="900" letter-spacing="5">FAR</text>
+<circle cx="120" cy="132" r="57" fill="#4d202b" opacity=".45"/><circle cx="120" cy="132" r="56" fill="none" stroke="#f2d7a6" stroke-width="2" opacity=".75"/>
+<g transform="translate(70 82)" style="color:#f2d7a6" fill="none" stroke="currentColor" stroke-width="4.3" stroke-linecap="round" stroke-linejoin="round"><path d="M22 39 Q28 26 35 16 L48 33 L64 15 Q69 28 78 39 L71 44 Q69 69 50 75 Q31 69 29 44Z"/><circle cx="35" cy="16" r="4"/><circle cx="65" cy="15" r="4"/><path d="M38 50 L43 50 M57 50 L62 50 M39 59 Q50 70 61 59"/><path d="M24 42 Q50 33 76 42"/></g>
+<path d="M69 205 Q120 219 171 205 M77 213 Q120 225 163 213" fill="none" stroke="#f2d7a6" stroke-width="2" opacity=".8"/>
+<circle cx="58" cy="202" r="3" fill="#f2d7a6"/><circle cx="182" cy="202" r="3" fill="#f2d7a6"/>
+<text x="120" y="232" text-anchor="middle" fill="#f2d7a6" font-family="Arial, sans-serif" font-size="8" font-weight="bold" letter-spacing="1.5">ESTADIO MC</text></g></svg>

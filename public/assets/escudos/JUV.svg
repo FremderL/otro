@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 280" role="img" aria-labelledby="title desc">
+<title id="title">Escudo original de Juventus de los Jubilados</title><desc id="desc">Insignia ilustrada con un símbolo de hourglass; diseño ficticio original.</desc>
+<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#c06a47"/><stop offset="1" stop-color="#512c1d"/></linearGradient><clipPath id="cut"><path d="M120 13 Q165 13 218 31 L218 151 Q218 225 120 271 Q22 225 22 151 L22 31 Q75 13 120 13Z"/></clipPath></defs>
+<path d="M120 13 Q165 13 218 31 L218 151 Q218 225 120 271 Q22 225 22 151 L22 31 Q75 13 120 13Z" fill="#f5ddb2"/><g transform="translate(120 140) scale(.96) translate(-120 -140)"><path d="M120 13 Q165 13 218 31 L218 151 Q218 225 120 271 Q22 225 22 151 L22 31 Q75 13 120 13Z" fill="url(#g)"/>
+<g clip-path="url(#cut)" fill="none" stroke="#f5ddb2" stroke-width="4" opacity=".12"><path d="M-8 44 L200 252 M25 14 L230 219 M-25 82 L160 267"/></g>
+<path d="M120 13 Q165 13 218 31 L218 151 Q218 225 120 271 Q22 225 22 151 L22 31 Q75 13 120 13Z" fill="none" stroke="#f5ddb2" stroke-width="3" opacity=".8"/>
+<path d="M49 76 Q120 65 191 76" fill="none" stroke="#f5ddb2" stroke-width="2" opacity=".65"/>
+<text x="120" y="60" text-anchor="middle" fill="#f5ddb2" font-family="Arial, sans-serif" font-size="21" font-weight="900" letter-spacing="5">JUV</text>
+<circle cx="120" cy="132" r="57" fill="#512c1d" opacity=".45"/><circle cx="120" cy="132" r="56" fill="none" stroke="#f5ddb2" stroke-width="2" opacity=".75"/>
+<g transform="translate(70 82)" style="color:#f5ddb2" fill="none" stroke="currentColor" stroke-width="4.3" stroke-linecap="round" stroke-linejoin="round"><path d="M32 19 L68 19 M32 81 L68 81 M36 20 Q36 39 48 50 Q36 60 36 80 M64 20 Q64 39 52 50 Q64 60 64 80 M42 29 L58 29 M41 70 Q50 59 59 70"/><circle cx="50" cy="54" r="2" fill="currentColor" stroke="none"/></g>
+<path d="M69 205 Q120 219 171 205 M77 213 Q120 225 163 213" fill="none" stroke="#f5ddb2" stroke-width="2" opacity=".8"/>
+<circle cx="58" cy="202" r="3" fill="#f5ddb2"/><circle cx="182" cy="202" r="3" fill="#f5ddb2"/>
+<text x="120" y="232" text-anchor="middle" fill="#f5ddb2" font-family="Arial, sans-serif" font-size="8" font-weight="bold" letter-spacing="1.5">ESTADIO MC</text></g></svg>
