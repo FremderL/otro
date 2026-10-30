@@ -1896,7 +1896,8 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 .tournament-prizes-dialog p { margin:0 0 14px; color:#a8b6af; font-size:8px; line-height:1.5; }
 .tournament-prize-table { width:100%; border-collapse:collapse; font-size:8px; }
 .tournament-prize-table td { padding:8px 6px; border-bottom:1px solid rgba(194,223,216,.09); }
-.tournament-prize-table td:last-child { color:var(--gold-2); font-weight:900; text-align:right; }
+.tournament-prize-table td:first-child { line-height:1.4; }
+.tournament-prize-table td:last-child { color:var(--gold-2); font-weight:900; text-align:right; white-space:nowrap; }
 .tournament-prizes-close { min-height:36px; margin-top:14px; padding:0 13px; border:1px solid rgba(194,223,216,.17); border-radius:8px; color:#d6e2dc; background:rgba(255,255,255,.04); font-size:8px; font-weight:850; cursor:pointer; }
 
 /* Equipped looks affect presentation only; game rules/data remain unchanged. */

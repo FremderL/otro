@@ -16,7 +16,7 @@ const { buildBettingLeaderboard, createBettingLeaderboard } = require('./lib/bet
 const { seatIdentity } = require('./lib/seat-identity');
 const { equipPassportCosmetic, publicPassportIdentity } = require('./lib/passport');
 const { equipCosmetic, publicCollectionIdentity } = require('./lib/cosmetics');
-const { LobbyTournamentManager } = require('./lib/lobby-tournaments');
+const { LobbyTournamentManager, placementLabel } = require('./lib/lobby-tournaments');
 const { createLobbyTournamentStore } = require('./lib/lobby-tournament-store');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
 const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
@@ -1464,10 +1464,11 @@ async function awardLobbyTournamentPrizes(event, payouts) {
     for (const payout of payouts) {
       const profile = profiles.profiles.get(payout.profileId);
       if (!profile || payout.prize <= 0) continue;
+      const placeLabel = placementLabel(event, payout) || `${payout.place}.º puesto`;
       profile.lobbyTournamentPayouts = Array.isArray(profile.lobbyTournamentPayouts)
         ? profile.lobbyTournamentPayouts : [];
       if (profile.lobbyTournamentPayouts.includes(event.id)) continue;
-      credit(profile, payout.prize, `Premio virtual · ${event.name} · puesto ${payout.place}`);
+      credit(profile, payout.prize, `Premio virtual · ${event.name} · ${placeLabel}`);
       profile.lobbyTournamentPayouts = [...profile.lobbyTournamentPayouts, event.id].slice(-256);
       profiles.touch(profile);
       const entrant = event.registered.find(item => item.profileId === payout.profileId);
@@ -1475,7 +1476,7 @@ async function awardLobbyTournamentPrizes(event, payouts) {
       if (socket) socket.emit('profile_event', {
         events: [{
           type: 'lobby_tournament_prize', id: event.id, icon: '🏆',
-          name: `Premio de ${event.name}`, place: payout.place, reward: payout.prize
+          name: `Premio de ${event.name}`, place: payout.place, placeLabel, reward: payout.prize
         }],
         profile: publicProgress(profile, true)
       });

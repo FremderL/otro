@@ -106,6 +106,12 @@ test('bracket de 8 avanza por partidas y asigna premios fijos al completar la fi
   assert.equal(result.payouts.find(payout => payout.profileId === winnerId).place, 1);
   assert.equal(result.payouts.find(payout => payout.profileId === winnerId).prize, 2400);
   assert.equal(result.payouts.filter(payout => payout.place === 3).length, 2);
+  const completedSnapshot = manager.snapshotFor(winnerId, event.completedAt).tournaments.find(item => item.id === event.id);
+  assert.equal(completedSnapshot.myPlacementLabel, '1.º puesto');
+  assert.equal(completedSnapshot.participants.filter(person => person.state === '3.º puesto compartido').length, 2);
+  assert.equal(completedSnapshot.participants.filter(person => person.state === '5.º puesto compartido').length, 4);
+  assert.equal(completedSnapshot.rounds.flatMap(round => round.matches).flatMap(match => match.players)
+    .filter(player => player.placeLabel === '3.º puesto compartido').length, 2);
   assert.equal(manager.markPayoutsAwarded(event.id), true);
   assert.equal(manager.markPayoutsAwarded(event.id), false, 'el crédito queda protegido contra repetición');
 });
