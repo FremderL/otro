@@ -48,6 +48,26 @@ test('aleatoriedad inyectada inválida se rechaza', () => {
 });
 
 
+test('tiempos por partida: registro e intervalo propios mandan en advance y en la vista', () => {
+  const game = L.newGame({ id:'rapida', openedAt:1000, random:rand, registrationMs:5_000, callIntervalMs:300 });
+  assert.equal(game.closesAt, 6000);
+  L.join(game,'a',1000,rand); L.join(game,'b',1000,rand);
+  assert.equal(L.join(game,'c',6000,rand).reason,'closed');
+  L.advance(game,6000);
+  assert.deepEqual(L.advance(game,6000+299),[]);
+  assert.equal(L.advance(game,6000+300).length,1);
+  assert.equal(L.advance(game,6000+300*3).length,2);
+  assert.equal(game.called.length,3);
+  assert.equal(L.publicState(game,'a').callIntervalMs,300);
+  assert.equal(L.callIntervalOf(game),300);
+  // Una partida antigua sin tiempos guardados cae en los valores acordados.
+  const legacy = L.newGame({ id:'legado', openedAt:0, random:rand });
+  delete legacy.callIntervalMs; delete legacy.registrationMs;
+  assert.equal(L.callIntervalOf(legacy),L.CALL_INTERVAL_MS);
+  assert.throws(() => L.newGame({id:'x',openedAt:0,registrationMs:10}),TypeError);
+  assert.throws(() => L.newGame({id:'x',openedAt:0,callIntervalMs:1.5}),TypeError);
+});
+
 test('rechaza tiempos inválidos y bote que podría desbordarse', () => {
   assert.throws(() => L.newGame({id:'x', openedAt:0, carry:Number.MAX_SAFE_INTEGER}),TypeError);
   const game = L.newGame({id:'x', openedAt:100, random:rand});

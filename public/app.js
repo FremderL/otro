@@ -20,7 +20,7 @@
   // sesiones de cuenta conservan su fallback si healthz falla; el Pasaporte,
   // en cambio, queda oculto por seguridad hasta que el servidor confirme que
   // está activado expresamente.
-  const serverFlags = { accountSessions: null, passport: null, cardGacha: null };
+  const serverFlags = { accountSessions: null, passport: null, cardGacha: null, loteria: null };
   const serverFlagsReady = fetch('/healthz', { cache: 'no-store' })
     .then(response => (response.ok ? response.json() : null))
     .then(data => {
@@ -31,6 +31,11 @@
       // Gachapón de cartas: solo se muestra si healthz lo confirma de forma explícita.
       serverFlags.cardGacha = data?.cardGachaEnabled === true;
       setFortuneAvailability(data?.fortuneEnabled === true);
+      // Lotería: fail-closed como el Pasaporte; solo aparece si el servidor la
+      // confirma encendida, y entonces se pide el estado de la partida.
+      serverFlags.loteria = data?.loteriaEnabled === true;
+      setLoteriaAvailability(serverFlags.loteria);
+      if (serverFlags.loteria) requestLoteria();
       document.getElementById('profile-section-album')?.classList.toggle('hidden', !serverFlags.cardGacha);
       document.getElementById('profile-tab-album')?.classList.toggle('hidden', !serverFlags.cardGacha);
       if (!serverFlags.cardGacha && ui.profileSection === 'album') jumpToProfileSection('overview');
@@ -44,6 +49,8 @@
     .catch(() => {
       serverFlags.accountSessions = true;
       serverFlags.passport = false;
+      serverFlags.loteria = false;
+      setLoteriaAvailability(false);
       document.getElementById('passport-panel')?.classList.add('hidden');
       document.getElementById('profile-section-passport')?.classList.add('hidden');
       document.getElementById('profile-tab-passport')?.classList.add('hidden');
@@ -55,6 +62,16 @@
     document.querySelectorAll('[data-game="fortune"], [data-select-game="fortune"]').forEach(button => { button.disabled = !available; });
     const caption = document.querySelector('[data-game="fortune"] span');
     if (caption) caption.textContent = available ? 'Elegir mi sector' : 'Rueda en desarrollo';
+  }
+  function setLoteriaAvailability(available) {
+    document.getElementById('loteria')?.classList.toggle('hidden', !available);
+    document.querySelectorAll('[data-loteria-open]').forEach(button => {
+      button.disabled = !available;
+      const caption = button.querySelector('span');
+      if (caption) caption.textContent = available ? 'Ir a la partida' : 'Aún no disponible';
+      if (!available) button.setAttribute('aria-label', 'Lotería mexicana: aún no disponible');
+      else button.removeAttribute('aria-label');
+    });
   }
   function accountSessionsAvailable() { return serverFlags.accountSessions !== false; }
   const $ = selector => document.querySelector(selector);
@@ -124,6 +141,11 @@
     liveRooms: $('#live-rooms'), liveRoomCount: $('#live-room-count'), onlinePlayerCount: $('#online-player-count'),
     heroOnlineCount: $('#hero-online-count'), lobbyRefresh: $('#lobby-refresh'),
     lobbyTournamentList: $('#lobby-tournament-list'), weeklyFinal: $('#lobby-weekly-final'),
+    loteriaPanel: $('#loteria'), loteriaStatus: $('#loteria-status'), loteriaPot: $('#loteria-pot'),
+    loteriaCount: $('#loteria-count'), loteriaTimer: $('#loteria-timer'), loteriaTimerLabel: $('#loteria-timer-label'),
+    loteriaCalledCount: $('#loteria-called-count'), loteriaCurrent: $('#loteria-current'), loteriaHistory: $('#loteria-history'),
+    loteriaBoard: $('#loteria-board'), loteriaBoardNote: $('#loteria-board-note'),
+    loteriaJoin: $('#loteria-join'), loteriaLeave: $('#loteria-leave'), loteriaMessage: $('#loteria-message'), loteriaLive: $('#loteria-live'),
     tournamentNameDialog: $('#lobby-tournament-name-dialog'), tournamentNameForm: $('#lobby-tournament-name-form'), tournamentNameInput: $('#lobby-tournament-name-input'),
     notificationsToggle: $('#notifications-toggle'), roomNotificationsToggle: $('#room-notifications-toggle'),
     lobbyChatWidget: $('#lobby-chat-widget'), lobbyChatBubble: $('#lobby-chat-bubble'), lobbyChatPanel: $('#lobby-chat-panel'),
@@ -262,6 +284,7 @@
     betRanking: null, betRankingSource: 'total', betRankingSubscribed: false,
     profileRevision: 0, // sube con cada snapshot de perfil aplicado (ver applyProfileSnapshot)
     lobbyTournaments: null, expandedTournamentBrackets: new Set(), pendingTournamentSignup: null,
+    loteria: null, loteriaClockOffset: 0, loteriaAnnouncedGame: null, loteriaAnnouncedCalls: 0, pendingLoteriaSignup: false,
     communityTab: 'friends', communityData: null,
     rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null, resultQueue: [],
     spectating: false
@@ -864,6 +887,7 @@
     if (ui.betRankingSubscribed && bettingSpaceModalIsOpen()) socket.emit('bet_ranking_get');
     tryAutoJoinLobbyChat();
     requestLobbyTournaments();
+    requestLoteria();
     // Si el perfil de cuenta quedó sin confirmar (sin conexión), se pide ahora.
     if (ui.profileStale && ui.accountSession?.accountId) refreshAccountProfile();
     setTimeout(() => { if (!ui.joining) setOverlay(false); }, 350);
@@ -1151,6 +1175,246 @@
     renderLobby();
     renderSeasonRanking();
   });
+  // ---------- Lotería mexicana (partida compartida) ----------
+  // Las 54 figuras clásicas, en su orden tradicional: el servidor solo manda
+  // números (1-54); nombres e iconos son presentación. Índice = número - 1.
+  const LOTERIA_CARDS = [
+    ['El Gallo', '🐓'], ['El Diablito', '😈'], ['La Dama', '💃'], ['El Catrín', '🎩'],
+    ['El Paraguas', '☂️'], ['La Sirena', '🧜‍♀️'], ['La Escalera', '🪜'], ['La Botella', '🍾'],
+    ['El Barril', '🛢️'], ['El Árbol', '🌳'], ['El Melón', '🍈'], ['El Valiente', '🗡️'],
+    ['El Gorrito', '🧢'], ['La Muerte', '☠️'], ['La Pera', '🍐'], ['La Bandera', '🇲🇽'],
+    ['El Bandolón', '🪕'], ['El Violoncello', '🎻'], ['La Garza', '🦩'], ['El Pájaro', '🐦'],
+    ['La Mano', '✋'], ['La Bota', '👢'], ['La Luna', '🌙'], ['El Cotorro', '🦜'],
+    ['El Borracho', '🍺'], ['El Negrito', '🕺'], ['El Corazón', '❤️'], ['La Sandía', '🍉'],
+    ['El Tambor', '🥁'], ['El Camarón', '🦐'], ['Las Jaras', '🏹'], ['El Músico', '🎺'],
+    ['La Araña', '🕷️'], ['El Soldado', '🪖'], ['La Estrella', '⭐'], ['El Cazo', '🍳'],
+    ['El Mundo', '🌍'], ['El Apache', '🪶'], ['El Nopal', '🌵'], ['El Alacrán', '🦂'],
+    ['La Rosa', '🌹'], ['La Calavera', '💀'], ['La Campana', '🔔'], ['El Cantarito', '🏺'],
+    ['El Venado', '🦌'], ['El Sol', '☀️'], ['La Corona', '👑'], ['La Chalupa', '🛶'],
+    ['El Pino', '🌲'], ['El Pescado', '🐟'], ['La Palma', '🌴'], ['La Maceta', '🪴'],
+    ['El Arpa', '🎼'], ['La Rana', '🐸']
+  ];
+  function loteriaCard(number) {
+    return LOTERIA_CARDS[number - 1] || [`Carta ${number}`, '🎴'];
+  }
+  function loteriaNow() { return Date.now() + (ui.loteriaClockOffset || 0); }
+  function loteriaRequestKey(gameId) { return `montecristo-loteria-request:${gameId}`; }
+  function loteriaRequestId(gameId) {
+    if (!gameId) return null;
+    let stored = null;
+    try { stored = localStorage.getItem(loteriaRequestKey(gameId)); } catch (_) { /* storage opcional */ }
+    if (stored && /^[a-zA-Z0-9_-]{8,100}$/.test(stored)) return stored;
+    const fresh = (window.crypto?.randomUUID ? window.crypto.randomUUID() : `loteria-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    try { localStorage.setItem(loteriaRequestKey(gameId), fresh); } catch (_) { /* el reintento generará otra; el servidor idempotiza por cartón */ }
+    return fresh;
+  }
+  function clearLoteriaRequestId(gameId) {
+    try { if (gameId) localStorage.removeItem(loteriaRequestKey(gameId)); } catch (_) { /* sin storage no hay nada que limpiar */ }
+  }
+  function requestLoteria() {
+    if (!socket.connected || serverFlags.loteria !== true) return;
+    emitAck('loteria_get', { accountId: ui.accountSession?.accountId }).then(response => {
+      if (!response?.ok || !response.snapshot) return;
+      applyLoteriaSnapshot(response.snapshot);
+    });
+  }
+  socket.on('loteria_state', snapshot => {
+    if (!snapshot || typeof snapshot !== 'object') return;
+    applyLoteriaSnapshot(snapshot);
+  });
+  function applyLoteriaSnapshot(snapshot) {
+    ui.loteria = snapshot;
+    if (Number.isFinite(snapshot.serverNow)) ui.loteriaClockOffset = snapshot.serverNow - Date.now();
+    announceLoteria(snapshot.game);
+    renderLoteria();
+  }
+  // Lector de pantalla: se canta cada carta nueva y el resultado, una sola vez.
+  function announceLoteria(game) {
+    if (!els.loteriaLive || !game) return;
+    if (ui.loteriaAnnouncedGame !== game.id) {
+      ui.loteriaAnnouncedGame = game.id;
+      ui.loteriaAnnouncedCalls = Array.isArray(game.called) ? game.called.length : 0;
+      return; // al entrar a mitad de partida no se recita todo el historial
+    }
+    const called = Array.isArray(game.called) ? game.called : [];
+    if (called.length > ui.loteriaAnnouncedCalls) {
+      ui.loteriaAnnouncedCalls = called.length;
+      if (game.status === 'calling') {
+        const [name] = loteriaCard(called[called.length - 1]);
+        els.loteriaLive.textContent = `Carta cantada: ${name}. Van ${called.length} de 54.`;
+        return;
+      }
+    }
+    if (game.status === 'settled' && game.result) {
+      els.loteriaLive.textContent = game.result.won
+        ? `¡Lotería! Completaste tu cartón y ganaste ${game.result.myPayout} fichas virtuales.`
+        : `Terminó la partida. Bote de ${game.result.pot} fichas para ${game.result.winnerCount} ${game.result.winnerCount === 1 ? 'cartón' : 'cartones'}.`;
+    } else if (game.status === 'cancelled') {
+      els.loteriaLive.textContent = 'Partida cancelada por falta de cartones. Las entradas se reembolsaron.';
+    }
+  }
+  function loteriaPhaseDeadline(game, nextGameAt) {
+    if (!game) return { at: null, label: 'SIGUIENTE FASE' };
+    if (game.status === 'registration') return { at: game.closesAt, label: 'CIERRA LA INSCRIPCIÓN' };
+    if (game.status === 'calling') {
+      return { at: game.closesAt + (game.callIntervalMs || 2000) * ((game.called?.length || 0) + 1), label: 'SIGUIENTE CARTA' };
+    }
+    return { at: nextGameAt, label: 'SIGUIENTE PARTIDA' };
+  }
+  function renderLoteriaTimer() {
+    if (!els.loteriaTimer || !ui.loteria) return;
+    const { at, label } = loteriaPhaseDeadline(ui.loteria.game, ui.loteria.nextGameAt);
+    if (els.loteriaTimerLabel) els.loteriaTimerLabel.textContent = label;
+    if (!at) { els.loteriaTimer.textContent = '—'; return; }
+    const seconds = Math.max(0, Math.ceil((at - loteriaNow()) / 1000));
+    els.loteriaTimer.textContent = seconds >= 60 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds}s`;
+  }
+  setInterval(renderLoteriaTimer, 250);
+  function renderLoteria() {
+    if (!els.loteriaPanel || serverFlags.loteria === false) return;
+    const snapshot = ui.loteria;
+    const game = snapshot?.game || null;
+    if (!game) {
+      if (els.loteriaStatus) els.loteriaStatus.textContent = 'Sincronizando…';
+      if (els.loteriaBoardNote) els.loteriaBoardNote.textContent = 'Sincronizando la partida con el servidor…';
+      return;
+    }
+    const called = Array.isArray(game.called) ? game.called : [];
+    const calledSet = new Set(called);
+    const board = Array.isArray(game.board) ? game.board : null;
+    if (els.loteriaPot) els.loteriaPot.textContent = `◆ ${formatChips(game.pot || 0)}`;
+    if (els.loteriaCount) els.loteriaCount.textContent = `${game.count || 0}/${game.maxPlayers || 100}`;
+    if (els.loteriaCalledCount) els.loteriaCalledCount.textContent = `${called.length}/54`;
+    renderLoteriaTimer();
+
+    let status = 'Partida en curso';
+    if (game.status === 'registration') status = game.count >= (game.minPlayers || 2) ? 'Inscripción abierta' : `Inscripción abierta · faltan ${(game.minPlayers || 2) - game.count} para jugar`;
+    else if (game.status === 'calling') status = 'Cantando las cartas…';
+    else if (game.status === 'settled') status = game.result?.won ? '🏆 ¡Lotería! Cartón completo' : 'Partida terminada';
+    else if (game.status === 'cancelled') status = 'Cancelada: no hubo suficientes cartones';
+    if (els.loteriaStatus) {
+      els.loteriaStatus.textContent = status;
+      els.loteriaStatus.dataset.phase = game.status;
+    }
+
+    // Carta cantada e historial.
+    if (els.loteriaCurrent) {
+      if (called.length) {
+        const [name, emoji] = loteriaCard(called[called.length - 1]);
+        els.loteriaCurrent.innerHTML = `<span class="loteria-current-emoji" aria-hidden="true">${emoji}</span><b>¡${escapeHtml(name)}!</b>`;
+      } else {
+        els.loteriaCurrent.innerHTML = '<span class="loteria-current-emoji" aria-hidden="true">🎴</span><b>Esperando el canto…</b>';
+      }
+    }
+    if (els.loteriaHistory) {
+      els.loteriaHistory.innerHTML = called.map(number => {
+        const [name, emoji] = loteriaCard(number);
+        const mine = board && board.includes(number) ? ' mine' : '';
+        return `<span class="loteria-chip${mine}" title="${escapeHtml(name)}"><i aria-hidden="true">${emoji}</i>${escapeHtml(name.replace(/^(El|La|Las)\s+/i, ''))}</span>`;
+      }).join('') || '<span class="loteria-history-empty">Aún no sale ninguna carta.</span>';
+      els.loteriaHistory.scrollLeft = els.loteriaHistory.scrollWidth;
+    }
+
+    // Mi cartón (o la invitación a comprarlo).
+    if (els.loteriaBoard) {
+      if (board) {
+        els.loteriaBoard.innerHTML = board.map(number => {
+          const [name, emoji] = loteriaCard(number);
+          const marked = calledSet.has(number);
+          return `<div class="loteria-cell${marked ? ' marked' : ''}" role="img" aria-label="${escapeHtml(name)}${marked ? ', marcada' : ''}"><span aria-hidden="true">${emoji}</span><small>${escapeHtml(name)}</small>${marked ? '<b class="loteria-mark" aria-hidden="true">◆</b>' : ''}</div>`;
+        }).join('');
+      } else {
+        els.loteriaBoard.innerHTML = `<div class="loteria-board-empty">${game.status === 'registration'
+          ? 'Compra tu cartón y aquí aparecerán tus 16 figuras.'
+          : 'No compraste cartón en esta partida. Puedes mirar el canto y entrar a la siguiente.'}</div>`;
+      }
+    }
+    if (els.loteriaBoardNote) {
+      if (board) {
+        const hits = board.filter(number => calledSet.has(number)).length;
+        const missing = board.filter(number => !calledSet.has(number));
+        els.loteriaBoardNote.textContent = game.status === 'settled' && game.result?.won
+          ? `¡Cartón completo! Premio abonado: ◆ ${formatChips(game.result.myPayout)}.`
+          : missing.length && missing.length <= 3 && game.status === 'calling'
+            ? `Llevas ${hits} de 16. Te falta${missing.length === 1 ? '' : 'n'}: ${missing.map(number => loteriaCard(number)[0]).join(', ')}.`
+            : `Llevas ${hits} de 16 figuras marcadas. El marcado es automático.`;
+      } else {
+        els.loteriaBoardNote.textContent = game.status === 'registration'
+          ? `Entrada ◆${game.entryCost || 50} fichas virtuales. Un cartón por persona y partida.`
+          : 'La próxima inscripción abre al terminar esta partida.';
+      }
+    }
+
+    // Acciones según fase.
+    const canJoin = game.status === 'registration' && !game.joined;
+    const full = (game.count || 0) >= (game.maxPlayers || 100);
+    if (els.loteriaJoin) {
+      els.loteriaJoin.classList.toggle('hidden', !canJoin);
+      els.loteriaJoin.disabled = full;
+      els.loteriaJoin.textContent = full ? 'Partida llena' : `Comprar cartón · ◆${game.entryCost || 50}`;
+    }
+    if (els.loteriaLeave) {
+      els.loteriaLeave.classList.toggle('hidden', !(game.joined && game.status === 'registration'));
+      els.loteriaLeave.textContent = `Salir y recuperar ◆${game.entryCost || 50}`;
+    }
+    if (els.loteriaMessage) {
+      let message = '';
+      if (game.joined && game.status === 'registration') message = 'Ya tienes tu cartón. Si te desconectas antes del cierre, tu entrada se cancela y se reembolsa.';
+      else if (game.joined && game.status === 'calling') message = 'Tu cartón juega solo: aunque cierres la pestaña, sigues participando y el premio se abona a tu perfil.';
+      else if (game.status === 'settled' && game.result) message = game.result.won
+        ? `🏆 El bote de ◆${formatChips(game.result.pot)} se repartió entre ${game.result.winnerCount} ${game.result.winnerCount === 1 ? 'cartón' : 'cartones'}; te tocaron ◆${formatChips(game.result.myPayout)}.`
+        : `El bote de ◆${formatChips(game.result.pot)} fue para ${game.result.winnerCount} ${game.result.winnerCount === 1 ? 'cartón' : 'cartones'} (◆${formatChips(game.result.payoutPerWinner)} cada uno).`;
+      else if (game.status === 'cancelled') message = game.result?.refunded
+        ? 'No se juntaron los cartones mínimos y tu entrada ya volvió a tu saldo.'
+        : 'No se juntaron los cartones mínimos; las entradas se reembolsaron.';
+      els.loteriaMessage.textContent = message;
+    }
+  }
+  async function joinLoteria(chosenName = '') {
+    if (!tosAccepted()) { showTosModal(); return; }
+    const name = String(chosenName || ui.accountSession?.name || ui.playerName || localStorage.getItem('montecristo-name') || '').trim();
+    if (!name) {
+      ui.pendingLoteriaSignup = true;
+      ui.pendingTournamentSignup = null;
+      if (els.tournamentNameInput) els.tournamentNameInput.value = '';
+      const title = document.getElementById('lobby-tournament-name-title');
+      if (title) title.textContent = 'Elige tu nombre para la lotería';
+      const help = document.getElementById('lobby-tournament-name-help');
+      if (help) help.textContent = 'La lotería usa tu nombre y avatar del perfil. La entrada cuesta 50 fichas virtuales y el cobro se valida en el servidor.';
+      els.tournamentNameDialog?.showModal?.();
+      els.tournamentNameInput?.focus();
+      return;
+    }
+    ui.playerName = name;
+    localStorage.setItem('montecristo-name', name);
+    const gameId = ui.loteria?.game?.id;
+    if (!gameId) { requestLoteria(); return showToast('Sincronizando la lotería', 'Espera un instante y vuelve a intentarlo.', 'notice', 3000, '🎴'); }
+    const avatar = ui.accountSession?.avatar || ui.selectedAvatar || 'fox';
+    const response = await emitAck('loteria_join', {
+      accountId: ui.accountSession?.accountId, name, avatar,
+      tos: localStorage.getItem(TOS_KEY), requestId: loteriaRequestId(gameId)
+    }, els.loteriaJoin);
+    if (!response.ok) {
+      // Esa solicitud ya se canceló y reembolsó: la siguiente pulsación debe
+      // comprar con una clave nueva, no reintentar la muerta.
+      if (response.code === 'cancelled_request') clearLoteriaRequestId(gameId);
+      return showToast('No se pudo comprar el cartón', response.error || 'Intenta de nuevo.', 'error');
+    }
+    if (response.profile) applyProfileSnapshot(response.profile);
+    if (response.snapshot) applyLoteriaSnapshot(response.snapshot);
+    showToast(response.code === 'already_joined' ? 'Ya tenías tu cartón' : '¡Cartón comprado!',
+      'El marcado es automático. ¡Que salgan tus figuras!', 'notice', 4200, '🎴');
+  }
+  async function leaveLoteria() {
+    const gameId = ui.loteria?.game?.id;
+    const response = await emitAck('loteria_leave', { accountId: ui.accountSession?.accountId }, els.loteriaLeave);
+    if (!response.ok) return showToast('No se pudo salir', response.error || 'Intenta de nuevo.', 'error');
+    clearLoteriaRequestId(gameId);
+    if (response.profile) applyProfileSnapshot(response.profile);
+    if (response.snapshot) applyLoteriaSnapshot(response.snapshot);
+    showToast('Inscripción cancelada', 'Tu entrada volvió a tu saldo. Puedes comprar otro cartón mientras la inscripción siga abierta.', 'notice', 3800, '↩');
+  }
+
   function requestLobbyTournaments() {
     if (!socket.connected) return;
     emitAck('lobby_tournaments_get', { accountId: ui.accountSession?.accountId }).then(response => {
@@ -1371,7 +1635,13 @@
     const name = String(chosenName || ui.accountSession?.name || ui.playerName || localStorage.getItem('montecristo-name') || '').trim();
     if (!name) {
       ui.pendingTournamentSignup = tournamentId;
+      ui.pendingLoteriaSignup = false;
       if (els.tournamentNameInput) els.tournamentNameInput.value = '';
+      // El mismo diálogo pide el nombre para la lotería: se restauran sus textos.
+      const title = document.getElementById('lobby-tournament-name-title');
+      if (title) title.textContent = 'Elige tu identidad de torneo';
+      const help = document.getElementById('lobby-tournament-name-help');
+      if (help) help.textContent = 'El bracket del lobby usa tu nombre y avatar del perfil. La inscripción es gratuita y se valida en el servidor.';
       els.tournamentNameDialog?.showModal?.();
       els.tournamentNameInput?.focus();
       return;
@@ -2390,6 +2660,17 @@
           const placeLabel = event.placeLabel || `Puesto ${event.place}`;
           showToast('Premio de torneo relámpago', `${placeLabel} · +${formatChips(event.reward)} fichas virtuales.`, 'reward', 6000, '🏆', true);
           playTone('win');
+          return;
+        }
+        if (event.type === 'loteria_prize') {
+          showToast('🏆 ¡Lotería!', `Completaste tu cartón: +${formatChips(event.amount)} fichas virtuales del bote de ◆${formatChips(event.pot)}.`, 'reward', 7000, '🎴', true);
+          playTone('win');
+          return;
+        }
+        if (event.type === 'loteria_refund') {
+          showToast('Entrada de lotería reembolsada', event.cancelled
+            ? `La partida se canceló por falta de cartones: +${formatChips(event.amount)} fichas de vuelta.`
+            : `+${formatChips(event.amount)} fichas virtuales de vuelta en tu saldo.`, 'notice', 5000, '↩');
           return;
         }
         if (event.type === 'passport_unlock') {
@@ -3739,15 +4020,28 @@
     event.preventDefault();
     const name = String(els.tournamentNameInput?.value || '').trim().slice(0, 18);
     const tournamentId = ui.pendingTournamentSignup;
-    if (!name || !tournamentId) return;
+    const loteriaPending = ui.pendingLoteriaSignup;
+    if (!name || (!tournamentId && !loteriaPending)) return;
     ui.pendingTournamentSignup = null;
+    ui.pendingLoteriaSignup = false;
     els.tournamentNameDialog?.close?.();
-    joinLobbyTournament(tournamentId, null, name);
+    if (loteriaPending) joinLoteria(name);
+    else joinLobbyTournament(tournamentId, null, name);
   });
   document.querySelector('[data-tournament-name-cancel]')?.addEventListener('click', () => {
     ui.pendingTournamentSignup = null;
+    ui.pendingLoteriaSignup = false;
     els.tournamentNameDialog?.close?.();
   });
+  els.loteriaJoin?.addEventListener('click', () => joinLoteria());
+  els.loteriaLeave?.addEventListener('click', () => leaveLoteria());
+  $$('[data-loteria-open]').forEach(button => button.addEventListener('click', () => {
+    if (serverFlags.loteria !== true) return;
+    els.loteriaPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (els.loteriaJoin && !els.loteriaJoin.classList.contains('hidden')) {
+      setTimeout(() => els.loteriaJoin.focus({ preventScroll: true }), 450);
+    }
+  }));
   document.getElementById('profile-content-scroll')?.addEventListener('scroll', syncProfileSectionFromScroll, { passive: true });
   $$('[data-close-profile]').forEach(element => element.addEventListener('click', closeProfileModal));
   $$('[data-open-betting-space]').forEach(element => element.addEventListener('click', openBettingSpaceModal));

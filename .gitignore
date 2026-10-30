@@ -22,6 +22,9 @@ data/football.json
 data/community.json
 # Calendario, inscripciones y brackets de torneos relámpago del lobby
 data/lobby-tournaments.json
+# Diario de la partida compartida de lotería (cartones, canto y reembolsos)
+data/loteria.json
+data/loteria.json.tmp
 # Creatividades de La Previa (imágenes subidas): nunca se versionan.
 data/promotion-media/
 

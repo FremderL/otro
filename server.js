@@ -19,6 +19,9 @@ const { equipCosmetic, publicCollectionIdentity } = require('./lib/cosmetics');
 const { publicFanPin } = require('./lib/football/fan-club-profile');
 const { LobbyTournamentManager, placementLabel } = require('./lib/lobby-tournaments');
 const { createLobbyTournamentStore } = require('./lib/lobby-tournament-store');
+const { LoteriaService } = require('./lib/loteria/service');
+const { createLoteriaStore } = require('./lib/loteria/store');
+const LoteriaGame = require('./lib/loteria/game');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
 const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
 const { HAND_NAMES, compareScores, bestPokerScore } = require('./lib/poker-evaluator');
@@ -58,6 +61,15 @@ const passportConfig = loadPassportConfig();
 // Gachapón de cartas: activo por defecto; CARD_GACHA_ENABLED=off lo apaga de
 // inmediato (el servidor rechaza nuevas cápsulas y la interfaz lo oculta).
 const cardGachaEnabled = process.env.CARD_GACHA_ENABLED !== 'off';
+// Lotería mexicana compartida: activa por defecto; LOTERIA_ENABLED=off la apaga
+// por completo (sin servicio, sin sockets y con la interfaz oculta). Los
+// tiempos LOTERIA_*_MS son una palanca operativa acotada (pruebas/eventos);
+// sin ellos rigen los valores acordados en lib/loteria/game.js.
+const loteriaEnabled = process.env.LOTERIA_ENABLED !== 'off';
+function loteriaTimingEnv(name, min, max) {
+  const value = Number(process.env[name]);
+  return Number.isSafeInteger(value) && value >= min && value <= max ? value : undefined;
+}
 
 // Estadio MonteCristo (Fase E4): feature flag fail-closed, apagado por defecto.
 // loadFootballConfig() se invoca aquí, junto a loadAdminConfig y ANTES de la red
@@ -205,6 +217,7 @@ app.get('/healthz', (_req, res) => {
     accountSessionsEnabled: adminConfig.accountSessionsEnabled,
     passportEnabled: passportConfig.enabled,
     cardGachaEnabled,
+    loteriaEnabled,
     fortuneEnabled: fortunePreviewAvailable(),
     promotionsEnabled: footballConfig.enabled && adminConfig.enabled && adminConfig.accountSessionsEnabled,
     // Estadio MonteCristo (§15.8): bloque de salud del motor. Con el flag apagado
@@ -352,6 +365,11 @@ let lobbyTournaments = null;
 let lobbyTournamentStore = null;
 const lobbyTournamentPayoutsPending = new Map();
 let lobbyTournamentTimer = null;
+// Lotería mexicana compartida: se crean en bootstrap() (tras cargar perfiles)
+// solo con loteriaEnabled; los handlers y /healthz los leen en diferido.
+let loteriaService = null;
+let loteriaStore = null;
+let loteriaTimer = null;
 // Estadio MonteCristo (Fase E4): servicios creados en bootstrap() SOLO si
 // footballConfig.enabled. Nacen en null; las rutas /api/estadio/* y /healthz los
 // leen en diferido (getters), igual que el casino lee `profiles`.
@@ -858,6 +876,56 @@ function broadcastLobbyTournaments() {
     const profileId = lobbyTournamentProfileIdForSocket(socket);
     socket.emit('lobby_tournaments_state', lobbyTournaments.snapshotFor(profileId));
   }
+}
+// Identidad de lotería: la misma cadena de confianza que los torneos del lobby
+// (cookie de cuenta, perfil ya resuelto en este socket, asiento o token de
+// dispositivo). Ningún id del payload manda sobre una identidad ya resuelta.
+function loteriaProfileIdForSocket(socket, legacyAccountId = null) {
+  const authenticatedId = socket?.data?.accountProfileId;
+  if (authenticatedId && profiles?.profiles?.has(authenticatedId)) return authenticatedId;
+  const selectedId = socket?.data?.loteriaProfileId;
+  if (selectedId && profiles?.profiles?.has(selectedId)) return selectedId;
+  const tournamentId = socket?.data?.lobbyTournamentProfileId;
+  if (tournamentId && profiles?.profiles?.has(tournamentId)) return tournamentId;
+  const seatedId = socket?.data?.playerId;
+  if (seatedId && profiles?.profiles?.has(seatedId)) return seatedId;
+  if (!adminConfig.accountSessionsEnabled && legacyAccountId) {
+    const candidateId = String(legacyAccountId).slice(0, 80);
+    if (profiles?.profiles?.get(candidateId)?.username) return candidateId;
+  }
+  return String(socket?.handshake?.auth?.deviceToken || '').trim().slice(0, 80);
+}
+// El cartón es privado: cada socket suscrito recibe SU vista de la partida.
+function broadcastLoteria() {
+  if (!loteriaService) return;
+  for (const socket of io.of('/').sockets.values()) {
+    if (!socket.data?.loteriaSubscribed) continue;
+    socket.emit('loteria_state', loteriaService.snapshotFor(loteriaProfileIdForSocket(socket)));
+  }
+}
+// Premios, reembolsos y logros de la lotería llegan por el canal de perfil que
+// el cliente ya sabe pintar (saldo actualizado + avisos), esté donde esté.
+function emitLoteriaProfileEvents(profile, events) {
+  if (!profile || !Array.isArray(events) || !events.length) return;
+  const payload = { events, profile: publicProgress(profile, true) };
+  for (const socket of io.of('/').sockets.values()) {
+    if (socket.data?.accountProfileId === profile.id || loteriaProfileIdForSocket(socket) === profile.id) {
+      socket.emit('profile_event', payload);
+    }
+  }
+}
+function startLoteriaScheduler() {
+  if (!loteriaService) return;
+  if (loteriaTimer) clearInterval(loteriaTimer);
+  loteriaTimer = setInterval(() => {
+    // El servicio serializa su propio trabajo; aquí solo se evita que un
+    // fallo de persistencia tumbe el proceso o deje de reintentarse.
+    loteriaService.tick().catch(error => {
+      console.error('[LOTERIA_TICK_ERROR]', error);
+      logEvent('loteria_tick_error', { message: String(error?.message || error) });
+    });
+  }, 500);
+  loteriaTimer.unref?.();
 }
 function gameEvent(room, type, text, playerId = null, meta = {}) {
   const event = { type, text, playerId, time: Date.now(), ...meta };
@@ -2324,6 +2392,57 @@ io.on('connection', socket => {
     broadcastLobbyTournaments();
   });
 
+  // Lotería mexicana compartida (docs/loteria.md): una sola partida para todo
+  // el casino. Mirar es libre; comprar un cartón exige la misma identidad y
+  // aceptación de Términos que inscribirse a un torneo del lobby.
+  socket.on('loteria_get', (payload = {}, ack) => {
+    if (!loteriaEnabled || !loteriaService) return ackError(ack, 'La lotería todavía no está lista.');
+    socket.data.loteriaSubscribed = true;
+    const profileId = loteriaProfileIdForSocket(socket, payload.accountId);
+    if (profileId && profiles.profiles.has(profileId)) socket.data.loteriaProfileId = profileId;
+    const snapshot = loteriaService.snapshotFor(profileId);
+    socket.emit('loteria_state', snapshot);
+    ackOk(ack, { snapshot });
+  });
+
+  socket.on('loteria_join', async (payload = {}, ack) => {
+    if (!loteriaEnabled || !loteriaService) return ackError(ack, 'La lotería todavía no está lista.');
+    if (socket.data.roomCode && rooms.has(socket.data.roomCode)) return ackError(ack, 'Vuelve al lobby antes de comprar tu cartón.');
+    // Comprar mueve fichas, pero no hace falta freno por tiempo: el servicio
+    // serializa las operaciones e idempotiza por requestId (doble clic,
+    // reconexión o reintento no cobran dos veces), como el resto del casino.
+    let profileId = loteriaProfileIdForSocket(socket, payload.accountId);
+    let profile = profileId ? profiles.profiles.get(profileId) : null;
+    if (!profile) {
+      const token = String(socket.handshake?.auth?.deviceToken || '').trim().slice(0, 80);
+      const name = cleanName(payload.name);
+      if (!token || !name) return ackError(ack, 'No pudimos confirmar tu identidad. Escribe tu nombre en el lobby y vuelve a intentarlo.');
+      if (String(payload.tos || '') !== TOS_VERSION) return ackError(ack, TOS_REQUIRED_MESSAGE);
+      const issue = nameIssue(name, { exceptId: token });
+      if (issue) return ackError(ack, issue);
+      profile = profiles.getOrCreate(token, name, payload.avatar);
+      profileId = profile.id;
+    }
+    if (!verifyTosAcceptance(profile, payload.tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
+    socket.data.loteriaSubscribed = true;
+    socket.data.loteriaProfileId = profile.id;
+    const result = await loteriaService.join(profile, payload.requestId);
+    if (!result.ok) return ackResult(ack, result);
+    ackOk(ack, { code: result.code, snapshot: result.state, profile: publicProgress(profile, true) });
+  });
+
+  socket.on('loteria_leave', async (payload = {}, ack) => {
+    if (!loteriaEnabled || !loteriaService) return ackError(ack, 'La lotería todavía no está lista.');
+    const profileId = loteriaProfileIdForSocket(socket, payload.accountId);
+    const profile = profileId ? profiles.profiles.get(profileId) : null;
+    if (!profile) return ackError(ack, 'No pudimos encontrar tu perfil.');
+    socket.data.loteriaSubscribed = true;
+    socket.data.loteriaProfileId = profile.id;
+    const result = await loteriaService.leave(profile.id);
+    if (!result.ok) return ackResult(ack, result);
+    ackOk(ack, { code: result.code, snapshot: result.state, profile: publicProgress(profile, true) });
+  });
+
   socket.on('create_room', ({ name, roomName, game, token, avatar, tos } = {}, ack) => {
     name = cleanName(name);
     game = ['poker', 'blackjack', ...Object.keys(QUICK_GAMES)].includes(game) ? game : 'poker';
@@ -2956,6 +3075,26 @@ io.on('connection', socket => {
     setImmediate(() => {
       try { broadcastLobby(); }
       catch (error) { console.error('[HANDLER_ERROR] evento=disconnect (presencia):', error); }
+      // Lotería: desconectarse ANTES del cierre cancela y reembolsa la entrada
+      // (después del cierre el cartón sigue en juego). Solo cuando ya no queda
+      // NINGÚN socket de ese perfil: otra pestaña abierta mantiene el cartón.
+      try {
+        if (loteriaService && (socket.data.loteriaProfileId || socket.data.loteriaSubscribed)) {
+          const loteriaProfileId = socket.data.loteriaProfileId || loteriaProfileIdForSocket(socket);
+          if (loteriaProfileId && profiles?.profiles?.has(loteriaProfileId)) {
+            const stillConnected = [...io.of('/').sockets.values()].some(other => other !== socket
+              && (other.data?.loteriaProfileId === loteriaProfileId
+                || other.data?.accountProfileId === loteriaProfileId
+                || loteriaProfileIdForSocket(other) === loteriaProfileId));
+            if (!stillConnected) {
+              loteriaService.handleDisconnect(loteriaProfileId).catch(error => {
+                console.error('[LOTERIA_DISCONNECT_ERROR]', error);
+                logEvent('loteria_disconnect_error', { message: String(error?.message || error) });
+              });
+            }
+          }
+        }
+      } catch (error) { console.error('[HANDLER_ERROR] evento=disconnect (lotería):', error); }
     });
   });
 });
@@ -3085,6 +3224,7 @@ async function gracefulShutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   if (lobbyTournamentTimer) clearInterval(lobbyTournamentTimer);
+  if (loteriaTimer) clearInterval(loteriaTimer);
   logEvent('shutdown_start', { signal, rooms: rooms.size });
   if (!profiles) {
     // Señal recibida antes de terminar de arrancar (bootstrap() aún esperando
@@ -3146,6 +3286,12 @@ async function gracefulShutdown(signal) {
     }
     try { await lobbyTournamentStore?.close?.(); } catch (error) {
       console.warn('No se pudo cerrar el store de torneos del lobby:', error.message);
+    }
+    try { await loteriaStore?.saveNow?.(loteriaService?.serialize()); } catch (error) {
+      console.warn('No se pudo guardar el estado de la lotería:', error.message);
+    }
+    try { await loteriaStore?.close?.(); } catch (error) {
+      console.warn('No se pudo cerrar el store de la lotería:', error.message);
     }
     server.close(() => {
       logEvent('shutdown_complete', {});
@@ -3335,6 +3481,36 @@ async function bootstrap() {
         }));
     };
   }
+  // Lotería mexicana compartida: se carga el diario (sin mover fichas) ANTES
+  // de ensureSeason() para extender la misma puerta del reset mensual: si una
+  // partida recuperada tiene entradas comprometidas, el cierre se aplaza. La
+  // recuperación con dinero (recover) corre después, ya con la temporada al
+  // día y junto al resto de servicios del lobby.
+  if (loteriaEnabled) {
+    loteriaStore = await createLoteriaStore(process.env.LOTERIA_STORE_PATH, process.env.DATABASE_URL);
+    loteriaService = new LoteriaService({
+      store: loteriaStore,
+      profiles,
+      registrationMs: loteriaTimingEnv('LOTERIA_REGISTRATION_MS', LoteriaGame.MIN_REGISTRATION_MS, LoteriaGame.MAX_REGISTRATION_MS),
+      callIntervalMs: loteriaTimingEnv('LOTERIA_CALL_INTERVAL_MS', LoteriaGame.MIN_CALL_INTERVAL_MS, LoteriaGame.MAX_CALL_INTERVAL_MS),
+      intermissionMs: loteriaTimingEnv('LOTERIA_INTERMISSION_MS', 0, 120_000) ?? 12_000,
+      onState: () => broadcastLoteria(),
+      onProfileEvents: (profile, events) => emitLoteriaProfileEvents(profile, events),
+      log: logEvent
+    });
+    loteriaService.load();
+    const gateBeforeLoteria = profiles.onBeforeSeasonReset;
+    profiles.onBeforeSeasonReset = context => {
+      const previousGate = typeof gateBeforeLoteria === 'function' ? gateBeforeLoteria(context) : null;
+      if (previousGate) return previousGate;
+      try {
+        if (loteriaService.hasOpenStake()) return { type: 'deferred', reason: 'loteria_en_curso' };
+      } catch (error) {
+        console.warn('Gate de reset de temporada: no se pudo consultar la lotería; se permite el cierre:', error.message);
+      }
+      return null;
+    };
+  }
   // Fase F (A12): comprobación/cierre de la temporada del casino, AHORA con el gate
   // cableado. Puede devolver 'closed', 'repair', 'deferred' o null.
   const seasonResult = profiles.ensureSeason();
@@ -3375,6 +3551,19 @@ async function bootstrap() {
     cancelledEvents: lobbyTournaments.recovery.cancelledEvents,
     recoveredPayouts
   });
+  // Lotería: recuperación completa (cobros/pagos pendientes y reanudar el
+  // canto por reloj) antes de abrir el puerto, como el resto de servicios.
+  if (loteriaService) {
+    await loteriaService.recover();
+    startLoteriaScheduler();
+    const loteriaSnapshot = loteriaService.snapshotFor('');
+    logEvent('loteria_initialized', {
+      game: loteriaSnapshot.game?.id || null,
+      status: loteriaSnapshot.game?.status || null,
+      players: loteriaSnapshot.game?.count || 0,
+      store: loteriaStore.filePath, backend: loteriaStore.backend
+    });
+  }
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`MonteCristo lista en http://0.0.0.0:${PORT}`);
     logEvent('server_listening', {

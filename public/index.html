@@ -191,8 +191,8 @@
         <article class="quick-game-card loteria-mini">
           <img class="quick-card-media" loading="lazy" decoding="async" src="/assets/loteria-lounge.svg" alt="Ilustración de un cartón de lotería, cartas y fichas sobre una mesa verde" />
           <div class="quick-card-shade"></div>
-          <div class="quick-game-copy"><span>EN DESARROLLO</span><h3>Lotería mexicana</h3><p>Cartón completo y bote compartido en fichas virtuales.</p><div class="quick-meta"><span>◎ 2–100 jugadores</span></div></div>
-          <button class="btn btn-card" type="button" disabled aria-label="Lotería mexicana: aún no disponible"><span>Aún no disponible</span></button>
+          <div class="quick-game-copy"><span>PARTIDA COMPARTIDA</span><h3>Lotería mexicana</h3><p>Cartón completo y bote compartido en fichas virtuales. Entrada: 50 fichas.</p><div class="quick-meta"><span>◎ 2–100 jugadores</span><span>◷ ~3 min</span></div></div>
+          <button class="btn btn-card" type="button" data-loteria-open disabled><span>Comprobando disponibilidad…</span><b>→</b></button>
         </article>
         <article class="quick-game-card fortune-mini">
           <img class="quick-card-media" loading="lazy" decoding="async" src="/assets/roulette-lounge.jpg" alt="Rueda dorada sobre una mesa verde del casino" />
@@ -249,6 +249,40 @@
             </div>
           </div>
         </div>
+        <section id="loteria" class="loteria-panel hidden" aria-labelledby="loteria-title">
+          <div class="loteria-head">
+            <div>
+              <span class="kicker"><i class="pulse-dot"></i> PARTIDA COMPARTIDA · TODO EL CASINO</span>
+              <h3 id="loteria-title">Lotería mexicana</h3>
+              <p>Cartón completo gana el bote. Marcado automático: si te desconectas después del cierre, tu cartón sigue jugando y tu premio se abona igual. Si falta gente, la partida se cancela y se devuelve la entrada.</p>
+            </div>
+            <span id="loteria-status" class="loteria-status">Cargando…</span>
+          </div>
+          <div class="loteria-stats">
+            <span><b id="loteria-pot">◆ 0</b><small>BOTE</small></span>
+            <span><b id="loteria-count">0/100</b><small>CARTONES</small></span>
+            <span><b id="loteria-timer">—</b><small id="loteria-timer-label">SIGUIENTE FASE</small></span>
+            <span><b id="loteria-called-count">0/54</b><small>CARTAS CANTADAS</small></span>
+          </div>
+          <div class="loteria-main">
+            <div class="loteria-caller">
+              <span class="loteria-caller-label">CARTA CANTADA</span>
+              <div id="loteria-current" class="loteria-current"><span class="loteria-current-emoji" aria-hidden="true">🎴</span><b>Esperando el canto…</b></div>
+              <div id="loteria-history" class="loteria-history" aria-label="Cartas cantadas en esta partida"></div>
+            </div>
+            <div class="loteria-board-wrap">
+              <span class="loteria-caller-label">TU CARTÓN</span>
+              <div id="loteria-board" class="loteria-board"></div>
+              <p id="loteria-board-note" class="loteria-board-note">Sincronizando la partida con el servidor…</p>
+            </div>
+          </div>
+          <div class="loteria-actions">
+            <button id="loteria-join" class="btn btn-primary" type="button">Comprar cartón · ◆50</button>
+            <button id="loteria-leave" class="btn btn-ghost hidden" type="button">Salir y recuperar ◆50</button>
+            <p id="loteria-message" class="loteria-message" role="status"></p>
+          </div>
+          <p id="loteria-live" class="sr-only" aria-live="polite"></p>
+        </section>
         <section id="lobby-tournaments" class="lobby-tournaments" aria-labelledby="lobby-tournaments-title">
           <div class="tournament-calendar-head">
             <div><span class="kicker">CALENDARIO EN VIVO</span><h3 id="lobby-tournaments-title">Torneos relámpago</h3><p>Inscripción gratuita · partidas reales de Texas Hold’em · premios en fichas virtuales.</p></div>
@@ -664,7 +698,7 @@
 
   <dialog id="lobby-tournament-name-dialog" class="tournament-prizes-dialog tournament-name-dialog" aria-labelledby="lobby-tournament-name-title">
     <h3 id="lobby-tournament-name-title">Elige tu identidad de torneo</h3>
-    <p>El bracket del lobby usa tu nombre y avatar del perfil. La inscripción es gratuita y se valida en el servidor.</p>
+    <p id="lobby-tournament-name-help">El bracket del lobby usa tu nombre y avatar del perfil. La inscripción es gratuita y se valida en el servidor.</p>
     <form id="lobby-tournament-name-form">
       <label for="lobby-tournament-name-input">Nombre de jugador</label>
       <input id="lobby-tournament-name-input" name="name" maxlength="18" autocomplete="nickname" required>
