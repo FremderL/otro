@@ -100,6 +100,7 @@ Apuesta inicial, pedir, plantarse, doblar y pago de Blackjack 3:2. Cada turno di
 
 - 54 sectores: 25 del 1, 15 del 2, 7 del 5, 4 del 10, 2 del 20 y uno del 40. Pago total (incluye la apuesta) de x2, x3, x6, x11, x21 y x41 respectivamente.
 - Se elige el sector antes de lanzar; el servidor decide y liquida. Sin eventos especiales ni bonificaciones adicionales.
+- Rueda dibujada sector a sector con un color por franja, número legible en cada casilla y una **flecha dorada** que marca dónde se detuvo; el resultado no se revela hasta que la rueda frena. Leyenda de pagos con los mismos colores y sectores en juego resaltados.
 - Está **abierta a cualquier persona**, también en producción. Un diario en disco (`FORTUNE_STATE_PATH`) cobra y paga con operaciones idempotentes: al reiniciar se devuelve toda apuesta sin resultado y se paga el resultado ya confirmado, así que un despliegue no cuesta fichas. Ver `docs/rueda-fortuna.md`.
 - `FORTUNE_ENABLED=off` la apaga y el lobby lo refleja; `GET /healthz` publica `fortuneEnabled`.
 

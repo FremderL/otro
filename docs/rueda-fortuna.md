@@ -59,6 +59,25 @@ aparta como `*.corrupt-<marca de tiempo>` y la Rueda arranca vacía en lugar de
 impedir el arranque del casino. Está pensado para **un único proceso escritor**,
 igual que el resto de la persistencia del casino; no coordina réplicas.
 
+## Interfaz
+
+- La rueda se dibuja sector a sector (54 casillas) en `public/fortune-wheel.js`,
+  con un color por franja de premio; el número de cada casilla está siempre
+  visible y en tamaño legible, sin amontonarse.
+- Una **flecha dorada** baja sobre el aro y marca el sector ganador. Mientras la
+  cinta gira, el centro muestra la apuesta (*TU SECTOR · PAGA xN*); al detenerse,
+  la casilla ganadora se ilumina y el centro pasa a *SECTOR · PAGA xN* con el
+  resultado propio (*Gana +N fichas*). El sector no se revela antes de tiempo.
+- El giro da varias vueltas y frena con `transform` de CSS en el ángulo exacto
+  (`landingAngle`), así que todos los navegadores aterrizan en la misma casilla;
+  hay botón «Ver el resultado ya» y se respeta `prefers-reduced-motion`.
+- Los sectores donde alguien apostó quedan realzados, y la leyenda de pagos usa
+  los mismos colores que la rueda (sector, pago total y número de casillas).
+- Los botones de apuesta llevan el color de su franja para que se elija el
+  sector sabiendo cuántas casillas tiene y cuánto paga.
+- Todo sigue siendo de escritorio y habla de fichas virtuales; el pago mostrado
+  incluye la apuesta.
+
 ## Configuración
 
 - `FORTUNE_ENABLED=off`: apaga la Rueda (el lobby deshabilita la tarjeta y el
@@ -77,6 +96,8 @@ casino abre igual, `fortuneEnabled` queda en `false` y se registra
 - `tests/fortune.test.js`: reglas puras (sectores, cuotas, topes, etiquetas).
 - `tests/fortune-ledger.test.js`: cobro, pago, devolución, idempotencia,
   recuperación tras caída, cierre mensual, archivo corrupto, retención y topes.
+- `tests/fortune-wheel-ui.test.js`: geometría de los 54 sectores, reparto de
+  premios, aterrizaje exacto bajo la flecha y la mesa real en jsdom.
 - `tests/fortune-sockets.test.js`: servidor real en un proceso aparte — mesa en
   producción, pago del sector, salida antes del resultado y **caída con SIGKILL**
   seguida de arranque que devuelve la apuesta; además `FORTUNE_ENABLED=off`.
