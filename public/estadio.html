@@ -155,6 +155,36 @@
         </div>
       </section>
 
+      <!-- Grada: reacciones rápidas y charla del partido en vivo.
+           El servidor ya difundía football:reaction y football:chat; este panel
+           los pinta y permite enviarlos (solo con identidad de Estadio). -->
+      <section class="est-crowd-panel" aria-labelledby="est-crowd-title">
+        <div class="est-crowd-head">
+          <div>
+            <p class="est-commentary-kicker">Grada del Estadio</p>
+            <h2 class="est-crowd-title" id="est-crowd-title">Reacciones y charla</h2>
+          </div>
+          <div class="est-crowd-reactions" id="est-crowd-reactions" role="group" aria-label="Reacciones rápidas">
+            <button class="est-crowd-react" type="button" data-crowd-reaction="⚽" aria-label="Reaccionar: ¡Gol!" title="¡Gol!">⚽</button>
+            <button class="est-crowd-react" type="button" data-crowd-reaction="🔥" aria-label="Reaccionar: ¡Qué jugada!" title="¡Qué jugada!">🔥</button>
+            <button class="est-crowd-react" type="button" data-crowd-reaction="👏" aria-label="Reaccionar: Aplausos" title="Aplausos">👏</button>
+            <button class="est-crowd-react" type="button" data-crowd-reaction="😱" aria-label="Reaccionar: ¡No puede ser!" title="¡No puede ser!">😱</button>
+            <button class="est-crowd-react" type="button" data-crowd-reaction="🟨" aria-label="Reaccionar: Pide tarjeta" title="Pide tarjeta">🟨</button>
+          </div>
+        </div>
+        <div class="est-crowd-body">
+          <ol class="est-crowd-feed" id="est-crowd-feed" role="log" aria-live="polite" aria-relevant="additions text"></ol>
+          <form class="est-crowd-form" id="est-crowd-form" autocomplete="off">
+            <label class="est-crowd-label" for="est-crowd-input">Mensaje para la grada <small>máx. 120</small></label>
+            <div class="est-crowd-input-row">
+              <input id="est-crowd-input" type="text" maxlength="120" placeholder="Escribe algo para el partido…" aria-describedby="est-crowd-message">
+              <button id="est-crowd-send" class="est-crowd-send" type="submit">Enviar</button>
+            </div>
+            <p id="est-crowd-message" class="est-crowd-message" role="status"></p>
+          </form>
+        </div>
+      </section>
+
       <section id="est-highlights" class="est-highlights" aria-labelledby="est-highlights-title" hidden>
         <div class="est-highlights-head"><div><p class="est-hub-eyebrow">PARTIDO FINALIZADO</p><h2 id="est-highlights-title">Destacados del partido</h2></div><button id="est-highlights-audio" type="button">Escuchar resumen</button></div>
         <p id="est-highlights-score"></p><h3>Goles y asistencias</h3><ol id="est-highlights-goals"></ol>

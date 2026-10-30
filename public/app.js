@@ -54,6 +54,15 @@
       if (ui.room) renderRoom();
       else if (ui.profileOpen) renderProfileModal();
     });
+  // La disponibilidad de la Rueda se lee al cargar; si el servidor la rechaza a
+  // mitad de sesión (su diario falló en caliente), se vuelve a preguntar y el
+  // lobby se corrige sin recargar la página.
+  function refreshFortuneAvailability() {
+    return fetch('/healthz', { cache: 'no-store' })
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => { if (data) setFortuneAvailability(data.fortuneEnabled !== false); })
+      .catch(() => {});
+  }
   function setFortuneAvailability(available) {
     // La Rueda está activa salvo que el servidor la apague (FORTUNE_ENABLED=off)
     // o que su diario no haya podido iniciarse; el lobby refleja ese estado.
@@ -1064,7 +1073,11 @@
       : await emitAck('create_room', { name, roomName: els.roomName.value.trim(), game: ui.selectedGame, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) });
     setButtonLoading(els.modalSubmit, false); ui.joining = false;
     if (!response.ok) {
-      setOverlay(false); showToast('No se pudo entrar', response.error || 'Intenta de nuevo.', 'error'); return;
+      setOverlay(false);
+      showToast('No se pudo entrar', response.error || 'Intenta de nuevo.', 'error');
+      // La Rueda puede haber dejado de estar disponible con la página abierta.
+      if (!joining && ui.selectedGame === 'fortune') refreshFortuneAvailability();
+      return;
     }
     ui.spectating = spectating;
     ui.activeCode = response.code;
@@ -1469,6 +1482,22 @@
     if (wasOutside) enterRoom();
     renderRoom();
     setOverlay(false);
+  });
+
+  // Cuenta moderada desde el panel: el servidor avisa y cierra la sesión 250 ms
+  // después. Se muestra el motivo y el lobby vuelve a modo invitado sin perder
+  // el perfil anónimo (el token de dispositivo no se toca).
+  socket.on('account_moderated', ({ status, until } = {}) => {
+    const permanente = status === 'banned';
+    const fecha = until ? new Date(Number(until)).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : null;
+    const detalle = permanente
+      ? 'El acceso a tu cuenta quedó bloqueado de forma permanente.'
+      : fecha ? `Tu cuenta está suspendida hasta el ${fecha}.` : 'Tu cuenta está suspendida temporalmente.';
+    clearAccountSession();
+    if (ui.room) leaveToLobby(false);
+    showToast(permanente ? 'Cuenta bloqueada' : 'Cuenta suspendida',
+      `${detalle} Puedes seguir jugando como invitado con este dispositivo.`,
+      'error', 9000);
   });
 
   // Fase 8: la mesa fue cerrada por el servidor (sin jugadores humanos); regresar a la portada.

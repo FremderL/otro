@@ -144,8 +144,19 @@ installAdminRoutes(app, {
   getIdempotencyStore: () => idempotencyStore,
   onModerated: async (target, state) => {
     const roomName = `account:${target.id}`;
-    io.to(roomName).emit('account_moderated', { status:state.status, until:state.until });
-    io.in(roomName).disconnectSockets(true);
+    // Desbloquear (unban) deja la cuenta activa: no hay nada que avisar y, sobre
+    // todo, no se debe expulsar a quien acaba de recuperar el acceso.
+    if (!state || state.status === 'active') return;
+    // Aviso ANTES de cortar: el cliente necesita recibir el motivo y la fecha.
+    io.to(roomName).emit('account_moderated', {
+      status: state.status,
+      until: state.until || null,
+      reason: state.reason || null
+    });
+    // Se cierra 250 ms después para que el paquete salga; cortar en el mismo
+    // instante descartaba el aviso y la persona solo veía «sin conexión».
+    const timer = setTimeout(() => io.in(roomName).disconnectSockets(true), 250);
+    if (typeof timer.unref === 'function') timer.unref();
   },
   onRoleChanged: async target => {
     io.in(`account:${target.id}`).disconnectSockets(true);
@@ -2261,6 +2272,10 @@ function purgeDepartedPlayers(room) {
   for (const player of departed) {
     if (room.game === 'fortune' && player.bet > 0 && room.phase === 'betting' && fortuneLedger && room.fortuneRoundId) {
       // Rueda: la apuesta vive en el diario; se devuelve allí (idempotente).
+      // Defensa en profundidad: en el flujo normal esta rama no se alcanza
+      // porque removeOrDisconnectPlayer ya devolvió y dejó bet=0, y
+      // resetQuickRound limpia las apuestas al abrir ronda. Se conserva para
+      // que un cambio futuro de fases no pueda perder fichas.
       fortuneLedger.refundBet({ roundId: room.fortuneRoundId, profileId: player.id, reason: 'left_before_result' });
       player.bet = 0;
       player.quickChoice = null;

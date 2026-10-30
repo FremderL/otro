@@ -28,17 +28,12 @@ const read = file => fs.readFileSync(path.join(ROOT, file), 'utf8');
 const UI_FILES = ['public/app.js', 'public/estadio.js', 'public/admin.js', 'public/loteria.js'];
 const HTML_FILES = ['public/index.html', 'public/estadio.html', 'public/admin.html', 'public/loteria.html'];
 
-// Eventos que el servidor anuncia y ningún cliente escucha todavía. Cada uno es
-// una deuda consciente: o se le pone interfaz, o se deja de emitir.
-const EVENTS_WITHOUT_CLIENT = new Set([
-  // Se emite justo antes de expulsar la sesión; el aviso nunca llega. Ver
-  // docs/auditoria-codigo-inerte.md (hallazgo B1).
-  'account_moderated',
-  // Estadio: el servidor los emite pero el cliente todavía no los pinta. La
-  // función está apagada en producción (FOOTBALL_ENABLED=off); se revisan antes
-  // de encenderla. Ver el mismo informe (hallazgo B2).
-  'football:goal', 'football:reaction', 'football:chat', 'football:reconcile'
-]);
+// Eventos que el servidor anuncia y ningún cliente escucha todavía. Cada uno
+// sería una deuda consciente: o se le pone interfaz, o se deja de emitir.
+// Vacío desde que se cerraron los hallazgos B1 y B2 de
+// docs/auditoria-codigo-inerte.md; se mantiene el mecanismo para que cualquier
+// evento nuevo sin consumidor rompa la suite.
+const EVENTS_WITHOUT_CLIENT = new Set([]);
 
 test('cada evento que emite el servidor tiene quien lo escuche', () => {
   const server = serverSources();
