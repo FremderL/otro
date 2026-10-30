@@ -1,6 +1,6 @@
 # MonteCristo
 
-Casino social multijugador para jugar con amigos mediante una URL privada. Incluye **Texas Hold’em, Blackjack/21, Ruleta Nova, Dados Cósmicos y Cara o Cruz**.
+Casino social multijugador para jugar con amigos mediante una URL privada. Incluye **Texas Hold’em, Blackjack/21, Ruleta Nova, Rueda de la Fortuna, Dados Cósmicos, Cara o Cruz, Tragamonedas y la Lotería mexicana**.
 
 > Todas las fichas, apuestas, recompensas y jackpots son completamente virtuales. No hay dinero real, depósitos, retiros, pagos ni premios canjeables.
 
@@ -32,6 +32,7 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Atajos de teclado en mesa (`F/C/R/A` en póker, `H/S/D` en blackjack, `Enter` confirma apuestas rápidas, `T` enfoca el chat y `?` muestra la guía) e imágenes originales en las cinco tarjetas del lobby.
 - Ruleta europea completa: paño de apuestas con docenas y columnas, fichas visibles sobre el paño y rueda animada en canvas cuya pelota cae siempre en el número autoritativo del servidor.
 - Tragamonedas MonteCristo: tres rodillos que se detienen en secuencia con los símbolos que decidió el servidor, tabla de pagos visible y símbolo premium ♠.
+- Lotería mexicana en sala común (`/loteria`): entrada de 50 fichas, cartones privados de 16 cartas, inscripción de 60 segundos y canto automático cada 2 segundos; gana el primer cartón completo y, si hay empate, el bote se reparte en partes enteras con el sobrante acumulado para la siguiente ronda. Los cobros y premios son idempotentes y la ronda se recupera tras un reinicio.
 - Estadio MonteCristo: liga de fútbol simulada con apuestas en fichas virtuales. **Los pagos se acreditan automáticamente** al liquidarse el partido, aunque no estés conectado. El historial vive en su **propia vista a pantalla completa** (`/estadio#apuestas` o el botón 🧾 del nav): todas las apuestas simples, combinadas y futuros agrupadas por día, con el marcador final, el pago recibido, cifras de apostado/cobrado/neto y un aviso de lo que se liquidó mientras no estabas. En la columna del Estadio solo queda lo que se usa al apostar: las apuestas abiertas con cash-out.
 - Interfaz exclusiva para computadoras de escritorio y laptops, sin animaciones largas que bloqueen la partida.
 
@@ -85,6 +86,23 @@ Apuesta inicial, pedir, plantarse, doblar y pago de Blackjack 3:2. Cada turno di
 - Tres iguales pagan según el símbolo: 🍒 x5 · 🍀 x8 · 🔔 x12 · 💎 x20 · ♠ x40 (pago total sobre la apuesta).
 - Dos símbolos iguales devuelven la apuesta (x1); tres distintos pierden.
 - Los rodillos giran y se detienen en secuencia (izquierda → centro → derecha) con desaceleración y rebote, mostrando exactamente los símbolos que decidió el servidor; la animación se puede saltar.
+
+### Lotería mexicana
+
+- Sala común para todo el casino (no una mesa privada): de 2 a 100 cartones por ronda y 54 cartas en el mazo, cada una con su nombre tradicional y su emoji.
+- Entrada de 50 fichas virtuales. La inscripción dura 60 segundos; salir antes del cierre reembolsa la entrada y, una vez cerrada, el cartón sigue participando aunque la persona se desconecte.
+- El canto es automático: una carta cada 2 segundos, en el orden que decidió el servidor con aleatoriedad criptográfica. El marcado del cartón es automático y cada persona solo ve el suyo.
+- Si al cierre hay menos de dos cartones, la ronda se cancela, se devuelven las entradas y el acumulado previo se conserva.
+- Empate: reparto en fichas enteras iguales y el sobrante queda como acumulado de la siguiente ronda.
+- Pantalla propia en `/loteria` con cartón 4×4, últimas cartas cantadas, cartones en juego, cuenta atrás y resultado. La tarjeta del lobby enlaza directamente a la sala.
+
+### Rueda de la Fortuna
+
+- 54 sectores: 25 del 1, 15 del 2, 7 del 5, 4 del 10, 2 del 20 y uno del 40. Pago total (incluye la apuesta) de x2, x3, x6, x11, x21 y x41 respectivamente.
+- Se elige el sector antes de lanzar; el servidor decide y liquida. Sin eventos especiales ni bonificaciones adicionales.
+- Rueda dibujada sector a sector con un color por franja, número legible en cada casilla y una **flecha dorada** que marca dónde se detuvo; el resultado no se revela hasta que la rueda frena. Leyenda de pagos con los mismos colores y sectores en juego resaltados.
+- Está **abierta a cualquier persona**, también en producción. Un diario en disco (`FORTUNE_STATE_PATH`) cobra y paga con operaciones idempotentes: al reiniciar se devuelve toda apuesta sin resultado y se paga el resultado ya confirmado, así que un despliegue no cuesta fichas. Ver `docs/rueda-fortuna.md`.
+- `FORTUNE_ENABLED=off` la apaga y el lobby lo refleja; `GET /healthz` publica `fortuneEnabled`.
 
 En los juegos rápidos, cada participante confirma una sola apuesta por ronda. Solo el anfitrión inicia el lanzamiento, pero **el servidor genera y liquida el resultado**. Las animaciones (incluidas la rueda de la ruleta y los rodillos de la tragamonedas) solo representan el estado autoritativo y nunca deciden el resultado.
 
@@ -185,6 +203,9 @@ Variables útiles para pruebas y despliegue:
 - `BOT_FORCE_DECISION_ERROR=1`: fuerza errores de estrategia para validar el fallback; no debe activarse normalmente.
 - `PROFILE_STORE_PATH`: ruta del archivo de perfiles (en Render, apúntalo al disco persistente, p. ej. `/var/data/profiles.json`). Se ignora si `DATABASE_URL` está definida.
 - `LOBBY_TOURNAMENT_STORE_PATH`: ruta del archivo persistente de calendario/inscripciones/brackets; por defecto `data/lobby-tournaments.json`. Se ignora si `DATABASE_URL` está definida.
+- `LOTERIA_STATE_PATH`: ruta del estado de la ronda compartida de la Lotería; por defecto `data/loteria.json` (en Render, `/var/data/loteria.json`). `LOTERIA_ENABLED=off` apaga la sala; `LOTERIA_REGISTRATION_MS`, `LOTERIA_CALL_INTERVAL_MS` y `LOTERIA_BREAK_MS` ajustan el ritmo y están pensadas para pruebas.
+- Auditoría de código inerte (piezas que existen y no hacen nada, con su arreglo): `docs/auditoria-codigo-inerte.md`.
+- `FORTUNE_STATE_PATH`: ruta del diario de la Rueda de la Fortuna; por defecto `data/fortune-ledger.json` (en Render, `/var/data/fortune-ledger.json`). `FORTUNE_ENABLED=off` apaga la Rueda.
 - `DATABASE_URL`: cadena de conexión Postgres (Fase 10). Si está definida, los perfiles se guardan en Postgres en vez de en el archivo JSON — pensado para el free tier de Neon, que no requiere tarjeta. Ver «Persistencia de perfiles» abajo.
 - `CASINO_TIME_ZONE`: zona IANA del calendario mensual del ranking y de la rotación visual estacional. Por defecto `America/Mexico_City`; los cambios de temporada ocurren a medianoche local y no a las 00:00 UTC del servidor.
 - `SHUTDOWN_GRACE_MS`: milisegundos que espera el apagado ordenado a que termine el guardado final antes de forzar la salida (Fase 11.3). Por defecto 10000 con Postgres y 2500 con el archivo local; súbelo si tu plan de hosting da poco tiempo de gracia y Neon suele tardar más en responder.
@@ -243,10 +264,15 @@ lib/bots/bot-controller.js         Planificación, revalidación, cancelación y
 lib/profile-store.js              Perfiles persistentes y catálogo de avatares
 lib/progression.js                Transacciones, estadísticas, retos, logros y bono diario
 lib/quick-games.js                Registro, reglas, cuotas y resultados de minijuegos
+lib/loteria/game.js               Reglas puras de la Lotería (cartones, canto, reparto)
+lib/loteria/cards.js              Catálogo de las 54 cartas (nombre y emoji)
+lib/loteria/service.js            Sala común: cobros, premios idempotentes y recuperación
+lib/fortune/ledger.js             Diario de la Rueda: cobros, pagos, reembolsos y recuperación
 lib/special-events.js             Eventos temporales y bonificaciones
 public/index.html                 Lobby, mesas, panel de bots y componentes sociales
 public/styles.css                 Identidad visual y juegos temáticos (diseño solo escritorio)
 public/app.js                     Cliente Socket.IO y renderizado de todos los juegos
+public/loteria.html/.js/.css      Pantalla completa de la Lotería mexicana
 public/assets/                     Imágenes locales del lobby
 tests/multiplayer-smoke.js        Regresión autoritativa con varios clientes
 tests/bots-smoke.js               Integración normal, ciclo de vida y carreras de bots

@@ -292,9 +292,11 @@ function createHarness(options = {}) {
   window.setInterval = (callback, delay) => { intervals.push({ callback, delay }); return intervals.length; };
   window.clearInterval = () => {};
   const timeouts = [];
+  const scheduledTimeouts = []; // bitácora de todos los setTimeout, sin consumir
   window.setTimeout = (callback, delay) => {
-    const timer = { callback, at: perfNow + (delay || 0) };
+    const timer = { callback, at: perfNow + (delay || 0), delay: Number(delay) || 0 };
     timeouts.push(timer);
+    scheduledTimeouts.push(timer);
     return timer;
   };
   window.clearTimeout = timer => {
@@ -387,7 +389,7 @@ function createHarness(options = {}) {
   window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
 
   return {
-    dom, window, socket, handlers, match, matchState, players, drawnText, requests, ballTrace, socketEmitted,
+    dom, window, socket, handlers, match, matchState, players, drawnText, requests, ballTrace, socketEmitted, scheduledTimeouts,
     audioTelemetryAttempts, ballonDorSocketAttempts, ballonDorHttpAttempts,
     speech: speechApi ? {
       utterances: speechUtterances,
@@ -2358,4 +2360,65 @@ test('destacados se muestran solo al finalizar y pueden escucharse con voz es-MX
  const h=createHarness({speechSynthesis:true});t.after(h.close);await h.connectToMatch();const doc=h.window.document,box=doc.getElementById('est-highlights');assert.equal(box.hidden,true);
  h.handlers['football:status']({matchId:h.match.id,code:'full_time',result:{home:1,away:0},highlights:{goals:[{type:'goal',minute:12,side:'home',player:'<Jugador>',assist:'Pase'}],moments:[{type:'goal',minute:12,side:'home',player:'<Jugador>',assist:'Pase'}],star:{name:'<Jugador>',side:'home',goals:1,assists:0,minutes:90}}});
  assert.equal(box.hidden,false);assert.match(box.textContent,/1–0/);assert.match(box.textContent,/<Jugador>/);assert.equal(box.querySelector('jugador'),null);assert.match(box.textContent,/Asistencia: Pase/);doc.getElementById('est-highlights-audio').click();assert.equal(h.speech.utterances.length,1);assert.equal(h.speech.utterances[0].lang,'es-MX');
+});
+
+test('la grada del Estadio pinta la charla y las reacciones del partido', async t => {
+  const h = createHarness();
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+  const { document } = h.window;
+  const feed = document.getElementById('est-crowd-feed');
+  assert.ok(feed, 'el panel de la grada existe en el marcado');
+  assert.equal(feed.querySelectorAll('.est-crowd-empty').length, 1, 'arranca con el aviso de sala vacía');
+
+  h.handlers['football:chat']({ matchId: h.match.id, text: '<b>hola</b>', name: 'Beti', at: 1 });
+  h.handlers['football:reaction']({ matchId: h.match.id, emoji: '⚽', from: 'Ana' });
+  h.handlers['football:chat']({ matchId: 'otro-partido', text: 'no debe verse', name: 'Intruso', at: 2 });
+  await h.flush();
+
+  const lines = [...feed.querySelectorAll('.est-crowd-line')];
+  assert.equal(lines.length, 2, 'solo se pintan los eventos de la sala del partido abierto');
+  assert.equal(feed.querySelector('.est-crowd-empty'), null, 'el aviso de sala vacía se retira al primer mensaje');
+  assert.match(feed.textContent, /<b>hola<\/b>/, 'el texto ajeno se muestra tal cual');
+  assert.equal(feed.querySelector('b'), null, 'el texto ajeno nunca se interpreta como HTML');
+  assert.match(lines[1].className, /is-react/);
+  assert.match(lines[1].textContent, /⚽/);
+  assert.match(lines[1].textContent, /Ana/);
+  assert.doesNotMatch(feed.textContent, /no debe verse/);
+});
+
+test('las reacciones de la grada se envían al partido abierto', async t => {
+  const h = createHarness();
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+  const button = h.window.document.querySelector('#est-crowd-reactions [data-crowd-reaction]');
+  assert.ok(button, 'hay botones de reacción');
+  assert.equal(button.disabled, false, 'con partido abierto se puede reaccionar');
+  button.click();
+  await h.flush();
+  const sent = h.socketEmitted.filter(item => item.event === 'football:reaction');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].payload.matchId, h.match.id);
+  assert.equal(sent[0].payload.emoji, button.getAttribute('data-crowd-reaction'));
+});
+
+test('el cartel de gol no se duplica y sigue sirviendo de respaldo', async t => {
+  const h = createHarness();
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+  const bannerTimers = () => h.scheduledTimeouts.filter(timer => timer.delay === 2200).length;
+  const event = { type: 'goal', minute: 12, marcador: '1-0' };
+
+  h.handlers['football:event']({ matchId: h.match.id, event });
+  assert.equal(bannerTimers(), 1, 'el evento genérico pinta el cartel');
+  h.handlers['football:goal']({ matchId: h.match.id, event });
+  assert.equal(bannerTimers(), 1, 'football:goal en el mismo tick no repite el cartel');
+
+  // Si el evento genérico no llegó (reconexión, catch-up perdido), el cue lo pinta.
+  h.advanceTime(4000);
+  h.handlers['football:goal']({ matchId: h.match.id, event: { type: 'goal', minute: 30, marcador: '2-0' } });
+  assert.equal(bannerTimers(), 2, 'football:goal funciona como respaldo visual');
 });

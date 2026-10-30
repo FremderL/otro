@@ -151,7 +151,8 @@
     ballT0: 0, ballDur: 800, playerT0: 0, playerDur: 1900,
     serverMinute: 0, minuteReceivedAt: 0,
     minute: 0, phase: 'pre', score: { home: 0, away: 0 }, possession: { home: .5, away: .5 },
-    goalFlashUntil: 0, goalAnimUntil: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false
+    goalFlashUntil: 0, goalAnimUntil: 0, goalCueAt: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false,
+    crowdLastSentAt: 0
   };
 
   var el = {};
@@ -168,6 +169,7 @@
       'est-promo-submit', 'est-promo-message',
       'est-scoreboard', 'crest-home', 'crest-away', 'name-home', 'name-away', 'score-home', 'score-away',
       'est-clock', 'est-pitch', 'est-goal-banner', 'est-commentary', 'est-commentary-voice', 'est-text-state', 'est-market-phase',
+      'est-crowd-feed', 'est-crowd-form', 'est-crowd-input', 'est-crowd-send', 'est-crowd-message', 'est-crowd-reactions',
       'est-markets', 'est-bet-slip', 'est-slip-pick', 'est-slip-clear', 'est-slip-odds', 'est-slip-implied',
       'est-stake', 'est-denoms', 'est-slip-range', 'est-place-bet', 'est-bet-msg', 'est-mybets',
       'est-mybets-count', 'est-bets-link-note', 'est-bets-link-dot',
@@ -302,6 +304,7 @@
     S.name = localStorage.getItem('montecristo-name') || ('Aficionado ' + S.token.slice(-4).toUpperCase());
     S.avatar = localStorage.getItem('montecristo-avatar') || 'fox';
     bindUI();
+    bindCrowdControls();
     initPitchCanvas();
     loadBallonDorMarket(); // primera pintura por HTTP; funciona aunque Socket.IO no cargue
     if (IS_BDO_DEDICATED_PAGE) loadBallonDorArchive();
@@ -441,12 +444,13 @@
     S.socket.on('connect', function () {
       setConn('connected');
       stopBallonDorPolling();
+      updateCrowdAvailability();
       subscribeLobby();
       requestBallonDorMarket();
       if (S.betRankingSubscribed && ledgerOpen() && S.ledgerView === 'ranking') S.socket.emit('bet_ranking_get');
       renderBetRanking();
     });
-    S.socket.on('disconnect', function () { S.fantasySeq++; S.fantasyBusy = false; S.fanSeq++; S.fanBusy = false; setConn('error'); startBallonDorPolling(); renderBetRanking(); });
+    S.socket.on('disconnect', function () { S.fantasySeq++; S.fantasyBusy = false; S.fanSeq++; S.fanBusy = false; setConn('error'); startBallonDorPolling(); renderBetRanking(); updateCrowdAvailability(); });
     S.socket.on('connect_error', function () { setConn('error'); startBallonDorPolling(); });
     S.socket.on('football:lobby', function (lobby) { renderLobby(lobby); });
     S.socket.on('football:ballon_dor_market', function (payload) {
@@ -457,6 +461,9 @@
     });
     S.socket.on('football:tick', onTick);
     S.socket.on('football:event', onEvent);
+    S.socket.on('football:goal', onGoalCue);
+    S.socket.on('football:chat', onCrowdChat);
+    S.socket.on('football:reaction', onCrowdReaction);
     S.socket.on('football:commentary', onCommentary);
     S.socket.on('football:odds', onOdds);
     S.socket.on('football:settlement', onSettlement);
@@ -467,6 +474,16 @@
     });
     S.socket.on('football:status', onStatus);
     S.socket.on('football:rescheduled', onRescheduled);
+    // Cuenta moderada: el servidor avisa 250 ms antes de cerrar la sesión. La
+    // publicidad exige cuenta, así que el formulario vuelve a modo invitado.
+    S.socket.on('account_moderated', function (data) {
+      S.promoProfile = null;
+      S.promoCsrfToken = null;
+      updatePromotionComposer();
+      toast(data && data.status === 'banned'
+        ? 'Tu cuenta fue bloqueada. Puedes seguir como invitado.'
+        : 'Tu cuenta fue suspendida. Puedes seguir como invitado.', 'lose');
+    });
     S.socket.on('account_chips_updated', function (data) {
       if (!data || !S.promoProfile || data.profileId !== S.promoProfile.id) return;
       S.promoProfile.chips = Number(data.chips) || 0;
@@ -2540,10 +2557,15 @@
     if (S.currentMatchId && S.currentMatchId !== matchId) S.socket.emit('football:unsubscribe', { scope: 'match', matchId: S.currentMatchId });
     S.socket.emit('football:subscribe', { scope: 'match', matchId: matchId, token: S.token, tos: S.tosVersion }, function (res) {
       if (!res || !res.ok) return onSubError(res);
-      S.currentMatchId = matchId;
+      if (S.currentMatchId !== matchId) {
+        S.currentMatchId = matchId;
+        resetCrowdFeed();
+        setCrowdMessage('', '');
+      }
       S.teams = res.teams || S.teams;
       if (res.profile) { S.chips = res.profile.chips; updateChips(); }
       applyMatchState(res.matchState);
+      updateCrowdAvailability();
       if (ledgerOpen()) renderLedger();
       highlightActive();
     });
@@ -4072,6 +4094,9 @@
     if (ev.type === 'goal' || ev.type === 'penalty_scored') {
       S.goalFlashUntil = performance.now() + 1400;
       S.goalAnimUntil = performance.now() + (reduced.matches ? 0 : 700);
+      // El evento genérico ya pinta el cartel: football:goal (que llega en el
+      // mismo tick) solo lo repite si este cliente se perdió el evento.
+      S.goalCueAt = performance.now();
       showGoalBanner();
       if (ev.marcador) {
         var parts = String(ev.marcador).split('-');
@@ -4099,6 +4124,166 @@
   function showGoalBanner() {
     var b = el['est-goal-banner']; b.classList.add('show'); b.setAttribute('aria-hidden', 'false');
     setTimeout(function () { b.classList.remove('show'); b.setAttribute('aria-hidden', 'true'); }, 2200);
+  }
+
+  // Cartel de gol de respaldo: el servidor emite football:goal justo después de
+  // football:event, así que solo se usa cuando el evento genérico no llegó
+  // (catch-up perdido o reconexión). Evita cartel y sonido duplicados.
+  function onGoalCue(data) {
+    if (!data || data.matchId !== S.currentMatchId) return;
+    if (performance.now() - S.goalCueAt < 2000) return;
+    S.goalCueAt = performance.now();
+    S.goalFlashUntil = S.goalCueAt + 1400;
+    S.goalAnimUntil = reduced.matches ? 0 : S.goalCueAt + 700;
+    showGoalBanner();
+    playSfx('goal');
+  }
+
+  // ===== Grada: reacciones y charla del partido =====
+  // El servidor difunde football:reaction y football:chat a la sala del partido
+  // (lib/football/sockets.js). Aquí se pintan y se envían; todo texto ajeno se
+  // inserta con textContent para que nunca se interprete como HTML.
+  var CROWD_MAX_LINES = 40;
+  var CROWD_COOLDOWN_MS = 1500;
+  var crowdHintShown = '';
+  function crowdHint() {
+    return S.socket && S.socket.connected
+      ? 'Elige un partido para participar en la grada.'
+      : 'Sin conexión con el partido.';
+  }
+
+  function setCrowdMessage(text, state) {
+    var node = el['est-crowd-message'];
+    if (!node) return;
+    node.textContent = text || '';
+    node.className = 'est-crowd-message' + (state ? ' is-' + state : '');
+  }
+
+  function resetCrowdFeed() {
+    var feed = el['est-crowd-feed'];
+    if (!feed) return;
+    feed.innerHTML = '';
+    var empty = document.createElement('li');
+    empty.className = 'est-crowd-empty';
+    empty.textContent = 'Sin mensajes todavía. Aquí aparece lo que comparten los aficionados del partido.';
+    feed.appendChild(empty);
+  }
+
+  function pushCrowdLine(kind, who, what) {
+    var feed = el['est-crowd-feed'];
+    if (!feed) return;
+    var placeholder = feed.querySelector('.est-crowd-empty');
+    if (placeholder && placeholder.parentNode === feed) feed.removeChild(placeholder);
+    var line = document.createElement('li');
+    line.className = 'est-crowd-line' + (kind === 'reaction' ? ' is-react' : '');
+    var tag = document.createElement('span');
+    tag.className = 'est-crowd-who';
+    tag.textContent = String(who || '').slice(0, 40);
+    var body = document.createElement('span');
+    body.className = 'est-crowd-what';
+    body.textContent = String(what || '').slice(0, 240);
+    line.appendChild(tag);
+    line.appendChild(body);
+    feed.appendChild(line);
+    while (feed.children.length > CROWD_MAX_LINES) feed.removeChild(feed.firstElementChild);
+    feed.scrollTop = feed.scrollHeight;
+  }
+
+  // Solo se participa con identidad resuelta: el servidor exige suscripción con
+  // token y TOS para aceptar football:chat / football:reaction.
+  function crowdReady() {
+    return Boolean(S.socket && S.socket.connected && S.currentMatchId);
+  }
+
+  function updateCrowdAvailability() {
+    var ready = crowdReady();
+    if (el['est-crowd-input']) {
+      el['est-crowd-input'].disabled = !ready;
+      el['est-crowd-input'].placeholder = ready ? 'Escribe algo para el partido…' : 'Elige un partido para participar';
+    }
+    if (el['est-crowd-send']) el['est-crowd-send'].disabled = !ready;
+    var box = el['est-crowd-reactions'];
+    var buttons = box ? box.querySelectorAll('[data-crowd-reaction]') : [];
+    Array.prototype.forEach.call(buttons, function (button) { button.disabled = !ready; });
+    var message = el['est-crowd-message'];
+    if (!message) return;
+    if (!ready) {
+      crowdHintShown = crowdHint();
+      setCrowdMessage(crowdHintShown, 'error');
+    } else if (crowdHintShown && message.textContent === crowdHintShown) {
+      crowdHintShown = '';
+      setCrowdMessage('', '');
+    }
+  }
+
+  function sendCrowdReaction(emoji) {
+    if (!crowdReady()) { setCrowdMessage('Elige un partido para participar.', 'error'); return; }
+    if (!emoji) return;
+    try { S.socket.emit('football:reaction', { matchId: S.currentMatchId, emoji: String(emoji).slice(0, 8) }); }
+    catch (_) { setCrowdMessage('No se pudo enviar la reacción.', 'error'); }
+  }
+
+  function sendCrowdChat(event) {
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    if (!crowdReady()) { setCrowdMessage('Elige un partido para participar.', 'error'); return; }
+    var input = el['est-crowd-input'];
+    var text = input ? String(input.value || '').trim() : '';
+    if (!text) { setCrowdMessage('Escribe un mensaje antes de enviarlo.', 'error'); return; }
+    var now = Date.now();
+    if (now - S.crowdLastSentAt < CROWD_COOLDOWN_MS) {
+      setCrowdMessage('Espera un momento antes de enviar otro mensaje.', 'error');
+      return;
+    }
+    S.crowdLastSentAt = now;
+    if (el['est-crowd-send']) el['est-crowd-send'].disabled = true;
+    setCrowdMessage('Enviando…', '');
+    try {
+      S.socket.emit('football:chat', { matchId: S.currentMatchId, text: text.slice(0, 120) }, function (res) {
+        updateCrowdAvailability();
+        if (input) input.disabled = !crowdReady();
+        if (!res || !res.ok) {
+          setCrowdMessage(res && res.code === 'empty'
+            ? 'El mensaje quedó vacío.'
+            : 'No se pudo enviar el mensaje. Inicia sesión en el Estadio para charlar.', 'error');
+          return;
+        }
+        if (input) input.value = '';
+        setCrowdMessage('', '');
+        if (input) input.focus();
+      });
+    } catch (_) {
+      updateCrowdAvailability();
+      setCrowdMessage('No se pudo enviar el mensaje.', 'error');
+    }
+  }
+
+  function onCrowdChat(data) {
+    if (!data || data.matchId !== S.currentMatchId) return;
+    var who = data.name || 'Aficionado';
+    var mine = Boolean(S.profile && data.name && data.name === S.profile.name);
+    pushCrowdLine('chat', mine ? 'Tú' : who, data.text);
+    if (mine && el['est-crowd-message'] && el['est-crowd-message'].textContent === 'Enviando…') setCrowdMessage('', '');
+  }
+
+  function onCrowdReaction(data) {
+    if (!data || data.matchId !== S.currentMatchId) return;
+    pushCrowdLine('reaction', data.from || 'Aficionado', data.emoji);
+  }
+
+  function bindCrowdControls() {
+    var form = el['est-crowd-form'];
+    if (form) form.addEventListener('submit', sendCrowdChat);
+    var box = el['est-crowd-reactions'];
+    if (box) {
+      box.addEventListener('click', function (event) {
+        var target = event.target;
+        var button = target && typeof target.closest === 'function' ? target.closest('[data-crowd-reaction]') : null;
+        if (!button) return;
+        sendCrowdReaction(button.getAttribute('data-crowd-reaction'));
+      });
+    }
+    resetCrowdFeed();
+    updateCrowdAvailability();
   }
   function onStatus(data) {
     if (!data || data.matchId !== S.currentMatchId || !S.match) return;

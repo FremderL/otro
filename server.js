@@ -4,7 +4,7 @@ const http = require('http');
 const { randomUUID } = require('node:crypto');
 const path = require('path');
 const { Server } = require('socket.io');
-const { AVATARS, avatarInfo } = require('./lib/profile-store');
+const { AVATARS } = require('./lib/profile-store');
 // Fase 10.2: DATABASE_URL activa el backend de Postgres (Neon free); sin ella,
 // se mantiene el ProfileStore de archivo JSON de siempre. Ver lib/profile-store-factory.js.
 const { createProfileStore } = require('./lib/profile-store-factory');
@@ -49,6 +49,9 @@ const { createIdempotencyStore } = require('./lib/idempotency-store-factory');
 const { createCommunityStore } = require('./lib/community-store');
 const { installCommunityRoutes } = require('./lib/community-http');
 const { installSeasonalThemeRoutes } = require('./lib/seasonal-theme-http');
+const { LoteriaService } = require('./lib/loteria/service');
+const { CARDS: LOTERIA_CARDS } = require('./lib/loteria/cards');
+const { FortuneLedger } = require('./lib/fortune/ledger');
 
 // Fase administrativa 0: el feature flag permanece apagado por defecto y, si
 // se activa, el proceso falla cerrado antes de escuchar tráfico cuando falta
@@ -58,6 +61,13 @@ const passportConfig = loadPassportConfig();
 // Gachapón de cartas: activo por defecto; CARD_GACHA_ENABLED=off lo apaga de
 // inmediato (el servidor rechaza nuevas cápsulas y la interfaz lo oculta).
 const cardGachaEnabled = process.env.CARD_GACHA_ENABLED !== 'off';
+// Lotería mexicana: activa por defecto; LOTERIA_ENABLED=off la apaga sin tocar
+// el resto del casino (la tarjeta del lobby y la página se ocultan).
+const loteriaEnabled = process.env.LOTERIA_ENABLED !== 'off';
+// Rueda de la Fortuna: activa por defecto desde que su diario transaccional
+// (lib/fortune/ledger.js) permite devolver lo no resuelto al reiniciar.
+// FORTUNE_ENABLED=off la apaga; FORTUNE_PREVIEW_UNSAFE ya no hace falta.
+const fortuneEnabled = process.env.FORTUNE_ENABLED !== 'off';
 
 // Estadio MonteCristo (Fase E4): feature flag fail-closed, apagado por defecto.
 // loadFootballConfig() se invoca aquí, junto a loadAdminConfig y ANTES de la red
@@ -134,8 +144,19 @@ installAdminRoutes(app, {
   getIdempotencyStore: () => idempotencyStore,
   onModerated: async (target, state) => {
     const roomName = `account:${target.id}`;
-    io.to(roomName).emit('account_moderated', { status:state.status, until:state.until });
-    io.in(roomName).disconnectSockets(true);
+    // Desbloquear (unban) deja la cuenta activa: no hay nada que avisar y, sobre
+    // todo, no se debe expulsar a quien acaba de recuperar el acceso.
+    if (!state || state.status === 'active') return;
+    // Aviso ANTES de cortar: el cliente necesita recibir el motivo y la fecha.
+    io.to(roomName).emit('account_moderated', {
+      status: state.status,
+      until: state.until || null,
+      reason: state.reason || null
+    });
+    // Se cierra 250 ms después para que el paquete salga; cortar en el mismo
+    // instante descartaba el aviso y la persona solo veía «sin conexión».
+    const timer = setTimeout(() => io.in(roomName).disconnectSockets(true), 250);
+    if (typeof timer.unref === 'function') timer.unref();
   },
   onRoleChanged: async target => {
     io.in(`account:${target.id}`).disconnectSockets(true);
@@ -179,7 +200,7 @@ installSeasonalThemeRoutes(app, {
 // imágenes del lobby (tienen nombre estable; si se reemplazan, cambiar el nombre del archivo).
 app.use(compression());
 app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: '7d', immutable: false }));
-const revalidateAppShell = new Set(['index.html', 'app.js', 'styles.css', 'chat-format.js', 'estadio-banner.js', 'estadio.html', 'estadio.js', 'estadio.css']);
+const revalidateAppShell = new Set(['index.html', 'app.js', 'styles.css', 'chat-format.js', 'estadio-banner.js', 'estadio.html', 'estadio.js', 'estadio.css', 'loteria.html', 'loteria.js', 'loteria.css']);
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: '5m',
   setHeaders(res, filePath) {
@@ -205,7 +226,14 @@ app.get('/healthz', (_req, res) => {
     accountSessionsEnabled: adminConfig.accountSessionsEnabled,
     passportEnabled: passportConfig.enabled,
     cardGachaEnabled,
-    fortuneEnabled: fortunePreviewAvailable(),
+    fortuneEnabled: fortuneAvailable(),
+    loteria: loteriaEnabled && loteria
+      ? {
+        enabled: true,
+        status: loteria.snapshotFor(null).game?.status || null,
+        players: loteria.snapshotFor(null).game?.count || 0
+      }
+      : { enabled: false },
     promotionsEnabled: footballConfig.enabled && adminConfig.enabled && adminConfig.accountSessionsEnabled,
     // Estadio MonteCristo (§15.8): bloque de salud del motor. Con el flag apagado
     // (o antes de bootstrap) queda reducido a { enabled: false }; footballHealth
@@ -221,6 +249,9 @@ app.get('/healthz', (_req, res) => {
   });
 });
 app.get('/terminos', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'terminos.html')));
+// Lotería mexicana: página propia (como /estadio), registrada ANTES del
+// catch-all para que no la atrape la shell del casino.
+app.get('/loteria', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'loteria.html')));
 // Fase 11.1: descarga del historial completo (saldo y transacciones) del propio
 // perfil. El token es el mismo identificador de dispositivo que ya usa el resto
 // de la app (mismo modelo de confianza ya documentado en REVISION_CALIDAD.md:
@@ -368,6 +399,12 @@ let reportStore = null;
 let passwordResetStore = null;
 let idempotencyStore = null;
 let botController = null;
+// Lotería mexicana: una sola ronda compartida para todo el casino. Se crea en
+// bootstrap() (necesita el almacén de perfiles) y las rutas/sockets la leen en
+// diferido, igual que el resto de servicios.
+let loteria = null;
+// Rueda de la Fortuna: diario de apuestas y pagos (se crea en bootstrap()).
+let fortuneLedger = null;
 const ROOM_CAPACITY = 6;
 const BOT_ONLY_ROOM_TTL_MS = Math.max(100, Number(process.env.BOT_ONLY_ROOM_TTL_MS) || 5 * 60 * 1000);
 // Fase 2: ciclo de vida de mesas. AUTO_BOTS=off restaura el comportamiento manual (usado por tests legados).
@@ -525,10 +562,26 @@ function newPlayer(id, socket, name, avatar) {
   });
   return player;
 }
-// Hasta integrar diario transaccional y recuperación, solo se permite una
-// demostración local con archivo; jamás abrir Rueda en producción o PostgreSQL.
-function fortunePreviewAvailable() {
-  return process.env.NODE_ENV !== 'production' && process.env.FORTUNE_PREVIEW_UNSAFE === 'on' && profiles?.backend === 'file';
+// La Rueda está disponible cuando su diario transaccional arrancó. Con
+// FORTUNE_ENABLED=off (o si el diario no pudo iniciarse) se rechaza en el
+// servidor y la interfaz deshabilita la tarjeta con el aviso de healthz.
+function fortuneAvailable() {
+  return Boolean(fortuneEnabled && fortuneLedger?.ready);
+}
+// Cierra (con devolución) la ronda de Rueda de una mesa que desaparece: la
+// gente pudo apostar y quedarse sin resultado si la mesa se destruye.
+function closeFortuneRoom(room, reason = 'room_closed') {
+  if (!room || room.game !== 'fortune' || !room.fortuneRoundId || !fortuneLedger) return 0;
+  const roundId = room.fortuneRoundId;
+  room.fortuneRoundId = null;
+  try {
+    const result = fortuneLedger.refundOpenRound({ roundId, reason });
+    if (result.refunded > 0) logEvent('fortune_round_refunded', { room: room.code, roundId, amount: result.refunded, reason });
+    return result.refunded;
+  } catch (error) {
+    logEvent('fortune_refund_failed', { room: room.code, roundId, message: String(error?.message || error) });
+    return 0;
+  }
 }
 function createRoom(game, host, socket, requestedName) {
   const code = makeCode();
@@ -570,6 +623,9 @@ function createRoom(game, host, socket, requestedName) {
     lobbyTournamentMatch: null, // Torneo relámpago del lobby; no comparte entrada/premio del Sit & Go
     tournament: null, // Fase 8.1: torneo sit & go (solo póker)
     specialEvent: quick && game !== 'fortune' ? rollSpecialEvent() : null,
+    // Rueda: identificador de la ronda en el diario transaccional. Cada ronda
+    // nueva recibe uno distinto (ver resetQuickRound).
+    fortuneRoundId: game === 'fortune' ? randomUUID() : null,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -989,6 +1045,8 @@ function removeSpectator(room, spectatorId) {
 function destroyRoom(code) {
   const room = rooms.get(code);
   if (!room) return false;
+  // Si la mesa se destruye con apuestas de la Rueda sin resultado, se devuelven.
+  closeFortuneRoom(room, 'room_closed');
   clearRoomTasks(room);
   rooms.delete(code);
   // Fase 8: avisar a espectadores (y a cualquier socket rezagado) que la mesa cerró.
@@ -1058,13 +1116,6 @@ function ackResult(ack, result) {
 }
 function ackError(ack, message) { return ackResult(ack, actionError(message)); }
 function ackOk(ack, extra = {}) { return ackResult(ack, actionOk(extra)); }
-function requireTurn(room, player, ack) {
-  if (room.turnId !== player.id) {
-    ackError(ack, 'Aún no es tu turno.');
-    return false;
-  }
-  return true;
-}
 function nextConnectedHost(room) {
   // La autoridad de la mesa siempre prefiere personas reales conectadas.
   const next = room.players.find(p => p.connected && !p.isBot) || room.players.find(p => p.connected);
@@ -1119,9 +1170,6 @@ function blackjackScore(hand) {
   }
   while (value > 21 && aces > 0) { value -= 10; aces--; }
   return { value, soft: aces > 0 };
-}
-function activeBlackjackPlayers(room) {
-  return room.players.filter(p => p.bet > 0 && ['playing', 'blackjack'].includes(p.status));
 }
 function nextBlackjackTurn(room, afterId) {
   const start = room.players.findIndex(p => p.id === afterId);
@@ -1812,6 +1860,12 @@ function showdownPoker(room) {
 
 // ---------------- QUICK SOCIAL GAMES ----------------
 function resetQuickRound(room, announce = true) {
+  // Rueda: la ronda anterior ya está liquidada; antes de abrir apuestas se
+  // cierra en el diario (sin apuestas abiertas) y se estrena identificador.
+  if (room.game === 'fortune') {
+    closeFortuneRoom(room, 'round_closed');
+    room.fortuneRoundId = randomUUID();
+  }
   room.phase = 'betting';
   room.results = [];
   room.quickResult = null;
@@ -1827,11 +1881,83 @@ function resetQuickRound(room, announce = true) {
     if (room.specialEvent) gameEvent(room, 'special', `${room.specialEvent.icon} ${room.specialEvent.label}: ${room.specialEvent.description}.`);
   }
 }
+// Rueda de la Fortuna: el resultado se confirma en el diario ANTES de mover
+// fichas. Todo el movimiento económico (premio, estadísticas, logros) ocurre
+// con operaciones idempotentes, así que un reinicio ni paga dos veces ni deja
+// apuestas huérfanas.
+function resolveFortuneRound(room, result) {
+  const roundId = room.fortuneRoundId;
+  const bettors = room.players.filter(item => item.bet > 0);
+  const rows = bettors.map(player => {
+    const payout = Math.floor(player.bet * totalPayoutMultiplier(room.game, player.quickChoice, result));
+    return { player, payout, net: payout - player.bet };
+  });
+  // 1) Resultado y pagos de las personas reales: primero el diario (idempotente).
+  let events = [];
+  const journaled = Boolean(fortuneLedger && roundId);
+  if (journaled) {
+    const settled = fortuneLedger.settleRound({
+      roundId, roomCode: room.code, result,
+      payouts: rows.filter(row => !row.player.isBot).map(row => ({
+        profileId: row.player.id, amount: row.payout, net: row.net
+      }))
+    });
+    events = settled.events || [];
+  } else {
+    // Sin diario no debería existir una mesa de Rueda; si ocurriera, se paga en
+    // memoria para no dejar a nadie sin premio y se registra el incidente.
+    logEvent('fortune_resolve_without_ledger', { room: room.code, roundId, players: rows.length });
+  }
+  // 2) Resultados visibles, premios de bots y estado de cada participante.
+  room.results = [];
+  for (const { player, payout, net } of rows) {
+    if (player.isBot) {
+      if (payout > 0) player.chips += payout;
+      player.bet = 0;
+      completePlayerRound(room, player, net);
+    } else if (!journaled) {
+      if (payout > 0) player.chips += payout;
+      player.bet = 0;
+    } else {
+      // El premio y la progresión ya se aplicaron en el diario; aquí solo se
+      // cierra la fila del jugador.
+      player.bet = 0;
+    }
+    const won = net > 0;
+    player.status = won ? 'winner' : net < 0 ? 'lost' : 'push';
+    room.results.push({
+      id: player.id, name: player.name, choice: player.quickChoice,
+      choiceLabel: choiceLabel(room.game, player.quickChoice), label: won ? 'Gana' : net < 0 ? 'Pierde' : 'Empate',
+      payout, amount: net, specialBonus: 0
+    });
+    addRecentWinner(room, player, net);
+    if (!player.isBot) {
+      gameEvent(room, won ? 'win' : net < 0 ? 'loss' : 'push',
+        won ? `Ganaste ${net} fichas.` : net < 0 ? `Perdiste ${Math.abs(net)} fichas.` : 'La ronda terminó en empate.',
+        player.id, { amount: net });
+    }
+  }
+  for (const item of events) {
+    const player = room.players.find(entry => entry.id === item.profileId);
+    if (!player) continue;
+    emitProgress(room, player, item.events);
+  }
+  room.phase = 'results';
+  addSystem(room, `${resultLabel(room.game, result)}. Ronda resuelta.`);
+  gameEvent(room, 'quick_result', `Resultado: ${resultLabel(room.game, result)}.`);
+  releaseBotSeats(room);
+  broadcast(room);
+}
+
 function resolveQuickRound(room) {
   if (!room || !isQuickGame(room.game) || room.phase !== 'rolling') return;
   const result = roll(room.game);
   room.quickResult = result;
   room.results = [];
+  if (room.game === 'fortune') {
+    resolveFortuneRound(room, result);
+    return;
+  }
   for (const player of room.players.filter(item => item.bet > 0)) {
     const multiplier = totalPayoutMultiplier(room.game, player.quickChoice, result);
     const payout = Math.floor(player.bet * multiplier);
@@ -1865,6 +1991,25 @@ function executeQuickBet(room, player, { amount, choice } = {}) {
   if (!choice) return actionError('Elige una opción válida.');
   if (player.bet > 0) return actionError('Ya confirmaste tu apuesta para esta ronda.');
   if (!Number.isSafeInteger(amount) || amount < 10 || amount > player.chips || (room.game === 'fortune' && (!Number.isSafeInteger(player.chips) || amount > Math.floor((Number.MAX_SAFE_INTEGER - player.chips) / 40)))) return actionError('Apuesta entre 10 y tus fichas disponibles, dentro del límite permitido.');
+  if (room.game === 'fortune') {
+    // La Rueda cobra a través de su diario transaccional (idempotente y con
+    // devolución garantizada si el resultado no llega a confirmarse).
+    if (!fortuneAvailable()) return actionError('La Rueda no está disponible en este momento.');
+    if (!player.isBot) {
+      if (!room.fortuneRoundId) room.fortuneRoundId = randomUUID();
+      const placed = fortuneLedger.placeBet({
+        roundId: room.fortuneRoundId, roomCode: room.code, profileId: player.id,
+        name: player.name, amount, choice
+      });
+      if (!placed.ok) return actionError(placed.error || 'No se pudo confirmar la apuesta.');
+      player.bet = amount;
+      player.quickChoice = choice;
+      player.status = 'ready';
+      trackWager(room, player, amount);
+      addSystem(room, `${player.name} confirmó una apuesta de ${amount} fichas.`);
+      return actionOk();
+    }
+  }
   player.chips -= amount;
   player.bet = amount;
   player.quickChoice = choice;
@@ -2125,6 +2270,18 @@ function purgeDepartedPlayers(room) {
   const departed = room.players.filter(p => !p.isBot && !p.connected);
   if (!departed.length) return false;
   for (const player of departed) {
+    if (room.game === 'fortune' && player.bet > 0 && room.phase === 'betting' && fortuneLedger && room.fortuneRoundId) {
+      // Rueda: la apuesta vive en el diario; se devuelve allí (idempotente).
+      // Defensa en profundidad: en el flujo normal esta rama no se alcanza
+      // porque removeOrDisconnectPlayer ya devolvió y dejó bet=0, y
+      // resetQuickRound limpia las apuestas al abrir ronda. Se conserva para
+      // que un cambio futuro de fases no pueda perder fichas.
+      fortuneLedger.refundBet({ roundId: room.fortuneRoundId, profileId: player.id, reason: 'left_before_result' });
+      player.bet = 0;
+      player.quickChoice = null;
+      player.status = 'waiting';
+      continue;
+    }
     if ((room.game === 'blackjack' || isQuickGame(room.game)) && room.phase === 'betting' && player.bet > 0) {
       player.chips += player.bet;
       player.bet = 0;
@@ -2149,7 +2306,15 @@ function removeOrDisconnectPlayer(room, player, leave = false) {
   const lobbyMatch = room.lobbyTournamentMatch;
   if (leave && lobbyMatch?.status === 'playing') lobbyMatch.forfeitId = player.id;
   player.connected = false;
-  if ((room.game === 'blackjack' || isQuickGame(room.game)) && room.phase === 'betting' && player.bet > 0) {
+  if (room.game === 'fortune' && room.phase === 'betting' && player.bet > 0) {
+    // Rueda: devolución desde el diario (idempotente; si ya se liquidó, no toca nada).
+    if (!player.isBot && fortuneLedger && room.fortuneRoundId) {
+      fortuneLedger.refundBet({ roundId: room.fortuneRoundId, profileId: player.id, reason: leave ? 'left_before_result' : 'disconnected_before_result' });
+    }
+    player.bet = 0;
+    player.quickChoice = null;
+    player.status = 'waiting';
+  } else if ((room.game === 'blackjack' || isQuickGame(room.game)) && room.phase === 'betting' && player.bet > 0) {
     player.chips += player.bet;
     player.bet = 0;
     player.quickChoice = null;
@@ -2200,6 +2365,60 @@ botController = new BotController({
   announce: (room, bot, label, meta) => gameEvent(room, 'bot_action', `🤖 ${bot.name}: ${label}.`, null, { botId: bot.id, fallback: Boolean(meta?.fallback) }),
   logError: ({ roomCode, botId, botName, game, purpose, error }) => console.warn(`[BOT_FALLBACK] room=${roomCode} bot=${botId} name=${botName} game=${game} task=${purpose}: ${error.message}`)
 });
+
+// ---------------- LOTERÍA MEXICANA (transporte) ----------------
+// Identidad de la lotería: la misma regla que en las mesas. Con sesión de
+// cuenta verificada por cookie se usa el perfil de la cuenta; sin ella, el
+// perfil del dispositivo. Nunca se acepta un id enviado por el navegador.
+function loteriaTokenForSocket(socket) {
+  return String(socket.handshake?.auth?.deviceToken || '').trim().slice(0, 80);
+}
+function loteriaProfileIdForSocket(socket) {
+  const token = loteriaTokenForSocket(socket);
+  if (!token && !socket.data.accountProfileId) return null;
+  return seatIdFor(socket, token) || null;
+}
+function loteriaSnapshotView(profileId = null) {
+  if (!loteria || !loteriaEnabled) {
+    return { enabled: false, serverNow: Date.now(), game: null };
+  }
+  return loteria.snapshotFor(profileId);
+}
+function broadcastLoteriaState() {
+  if (!loteria || !loteriaEnabled) return;
+  try {
+    io.emit('loteria_state', loteria.snapshotFor(null));
+    for (const client of io.sockets.sockets.values()) {
+      const profileId = client.data?.loteriaProfileId;
+      if (!profileId) continue;
+      const you = loteria.youFor(profileId);
+      if (you) client.emit('loteria_you', you);
+    }
+  } catch (error) {
+    console.warn('No se pudo difundir el estado de la Lotería:', error.message);
+  }
+}
+// Logros, retos y cosméticos ganados con la Lotería llegan tanto a la pestaña
+// de la lotería como al lobby abierto en otra pestaña del mismo perfil.
+function emitLoteriaProgress(profileId, events = []) {
+  if (!events.length) return;
+  const profile = profiles?.getProfile(profileId);
+  if (!profile) return;
+  const payload = { events, profile: publicProgress(profile, true) };
+  for (const client of io.sockets.sockets.values()) {
+    const sameAccount = client.data?.accountProfileId === profileId;
+    const sameDevice = loteriaTokenForSocket(client) === profileId;
+    const sameLoteria = client.data?.loteriaProfileId === profileId;
+    if (sameAccount || sameDevice || sameLoteria) client.emit('profile_event', payload);
+  }
+}
+function loteriaSocketsFor(profileId) {
+  let total = 0;
+  for (const client of io.sockets.sockets.values()) {
+    if (client.data?.loteriaProfileId === profileId) total++;
+  }
+  return total;
+}
 
 // Fase 1: una cookie válida vincula la conexión con una cuenta autenticada.
 // Una cookie ausente o vencida no bloquea el modo invitado; simplemente no
@@ -2259,6 +2478,81 @@ io.on('connection', socket => {
   socket.on('bet_ranking_unsubscribe', (_payload = {}, ack) => {
     socket.data.betRankingSubscribed = false;
     ackOk(ack);
+  });
+
+  // ---- Lotería mexicana ----
+  // Una sola ronda para todo el casino: el servidor es la autoridad del canto,
+  // del cartón de cada quien y del reparto. El cliente solo dibuja.
+  socket.on('loteria_subscribe', (_payload = {}, ack) => {
+    if (!loteriaEnabled || !loteria) return ackError(ack, 'La Lotería todavía no está disponible.');
+    const profileId = loteriaProfileIdForSocket(socket);
+    const profile = profileId ? profiles.getProfile(profileId) : null;
+    if (profile) socket.data.loteriaProfileId = profile.id;
+    ackOk(ack, {
+      cards: LOTERIA_CARDS,
+      tosVersion: TOS_VERSION,
+      state: loteriaSnapshotView(profile ? profile.id : null),
+      you: profile ? loteria.youFor(profile.id) : null
+    });
+  });
+
+  socket.on('loteria_join', async (payload = {}, ack) => {
+    if (!loteriaEnabled || !loteria) return ackError(ack, 'La Lotería todavía no está disponible.');
+    const token = loteriaTokenForSocket(socket);
+    const seatId = loteriaProfileIdForSocket(socket);
+    let profile = seatId ? profiles.getProfile(seatId) : null;
+    if (!profile) {
+      const name = cleanName(payload.name);
+      if (!token) return ackError(ack, 'No pudimos identificar este dispositivo. Recarga la página.');
+      if (!name) return ackError(ack, 'Escribe tu nombre para jugar.');
+      if (String(payload.tos || '') !== TOS_VERSION) return ackError(ack, TOS_REQUIRED_MESSAGE);
+      const issue = nameIssue(name, { exceptId: token });
+      if (issue) return ackError(ack, issue);
+      profile = profiles.getOrCreate(token, name, payload.avatar);
+    }
+    if (!verifyTosAcceptance(profile, payload.tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
+    socket.data.loteriaProfileId = profile.id;
+    const result = await loteria.join(profile.id, { name: profile.name, avatar: profile.avatar });
+    if (!result.ok) {
+      broadcastLoteriaState();
+      return ackResult(ack, actionError(result.error, result.code));
+    }
+    ackOk(ack, { board: result.board, state: result.state, you: loteria.youFor(profile.id) });
+    broadcastLoteriaState();
+    logEvent('loteria_joined', {
+      profileId: profile.id, gameId: result.state?.game?.id || null,
+      players: result.state?.game?.count || 0
+    });
+  });
+
+  socket.on('loteria_leave', async (_payload = {}, ack) => {
+    if (!loteriaEnabled || !loteria) return ackError(ack, 'La Lotería todavía no está disponible.');
+    const profileId = socket.data.loteriaProfileId || loteriaProfileIdForSocket(socket);
+    const profile = profileId ? profiles.getProfile(profileId) : null;
+    if (!profile) return ackError(ack, 'No encontramos tu perfil.');
+    const result = await loteria.leave(profile.id);
+    if (!result.ok) return ackResult(ack, actionError(result.error, result.code));
+    ackOk(ack, { refunded: Boolean(result.refunded), state: result.state, you: loteria.youFor(profile.id) });
+    broadcastLoteriaState();
+  });
+
+  // Regla acordada: quien se va antes del cierre recupera su entrada. Cuando la
+  // ronda ya empezó, el cartón sigue participando y conserva su premio; el
+  // servicio rechaza el reembolso y aquí solo se ignora. Si el mismo perfil
+  // tiene otra pestaña abierta en la lotería, no se cancela nada.
+  socket.on('disconnect', () => {
+    const profileId = socket.data.loteriaProfileId;
+    if (!profileId || !loteria || !loteriaEnabled) return;
+    // Gracia breve: al recargar la página el socket nuevo vuelve a suscribirse
+    // con el mismo perfil y no debe perder su cartón. Solo se cancela si de
+    // verdad no queda ninguna pestaña de la Lotería para esa persona.
+    const grace = setTimeout(() => {
+      if (loteriaSocketsFor(profileId) > 0) return;
+      loteria.leave(profileId)
+        .then(result => { if (result.ok) broadcastLoteriaState(); })
+        .catch(error => console.warn('No se pudo cancelar la entrada de la Lotería al desconectarse:', error.message));
+    }, 2000);
+    grace.unref?.();
   });
 
   // El callback de conexión en sí tampoco está cubierto por la envoltura de
@@ -2327,7 +2621,7 @@ io.on('connection', socket => {
   socket.on('create_room', ({ name, roomName, game, token, avatar, tos } = {}, ack) => {
     name = cleanName(name);
     game = ['poker', 'blackjack', ...Object.keys(QUICK_GAMES)].includes(game) ? game : 'poker';
-    if (game === 'fortune' && !fortunePreviewAvailable()) return ackError(ack, 'La Rueda aún no está disponible: falta validar recuperación y persistencia.');
+    if (game === 'fortune' && !fortuneAvailable()) return ackError(ack, 'La Rueda no está disponible en este momento.');
     if (!name) return ackError(ack, 'Escribe tu nombre.');
     if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
     const seatId = seatIdFor(socket, token);
@@ -3085,6 +3379,9 @@ async function gracefulShutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   if (lobbyTournamentTimer) clearInterval(lobbyTournamentTimer);
+  // La Lotería guarda su estado en cada transición; aquí solo se detiene el
+  // reloj para que no abra ni liquide una ronda nueva durante el apagado.
+  try { loteria?.stop(); } catch (_) { /* el guardado de perfiles es lo crítico */ }
   logEvent('shutdown_start', { signal, rooms: rooms.size });
   if (!profiles) {
     // Señal recibida antes de terminar de arrancar (bootstrap() aún esperando
@@ -3094,6 +3391,9 @@ async function gracefulShutdown(signal) {
   }
   try {
     for (const room of rooms.values()) {
+      // Rueda: una apuesta sin resultado no puede sobrevivir a la mesa; se
+      // devuelve ahora y el guardado final ya la deja en el saldo.
+      closeFortuneRoom(room, 'server_restart');
       addSystem(room, '🔄 El servidor se está actualizando y se reiniciará en unos segundos. Tus fichas ya están guardadas; conserva esta pestaña para volver a tu asiento.');
       broadcast(room);
     }
@@ -3369,6 +3669,65 @@ async function bootstrap() {
     if (await awardLobbyTournamentPrizes(event, payouts)) recoveredPayouts++;
   }
   startLobbyTournamentScheduler();
+  // Rueda de la Fortuna: el diario se abre y se recupera ANTES de aceptar
+  // tráfico, para que ninguna apuesta interrumpida por un despliegue quede sin
+  // devolución ni ningún premio confirmado sin pagar. Si algo falla, la Rueda
+  // se apaga sola (fortuneAvailable() queda en false) y el casino abre igual.
+  if (fortuneEnabled) {
+    try {
+      fortuneLedger = new FortuneLedger({
+        profiles,
+        statePath: process.env.FORTUNE_STATE_PATH || path.join(__dirname, 'data', 'fortune-ledger.json'),
+        log: logEvent,
+        now: () => Date.now()
+      });
+      const recovered = fortuneLedger.start();
+      logEvent('fortune_initialized', {
+        statePath: process.env.FORTUNE_STATE_PATH || path.join(__dirname, 'data', 'fortune-ledger.json'),
+        pendingRounds: fortuneLedger.pendingRounds(),
+        ...recovered
+      });
+    } catch (error) {
+      fortuneLedger = null;
+      console.warn('No se pudo iniciar el diario de la Rueda:', error.message);
+      logEvent('fortune_init_failed', { message: String(error?.message || error) });
+    }
+  }
+  // Lotería mexicana: el servicio se arranca ANTES de abrir el puerto para que
+  // una ronda interrumpida por un despliegue se recupere (reembolsos y premios
+  // pendientes incluidos) y para que nadie entre a un estado a medio liquidar.
+  if (loteriaEnabled) {
+    const clampInt = (raw, fallback, min, max) => {
+      const value = Math.floor(Number(raw));
+      return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+    };
+    try {
+      loteria = new LoteriaService({
+        profiles,
+        statePath: process.env.LOTERIA_STATE_PATH || path.join(__dirname, 'data', 'loteria.json'),
+        log: logEvent,
+        onProgress: (profileId, events) => emitLoteriaProgress(profileId, events),
+        onStateChange: () => broadcastLoteriaState(),
+        registrationMs: clampInt(process.env.LOTERIA_REGISTRATION_MS, 60 * 1000, 3000, 10 * 60 * 1000),
+        callIntervalMs: clampInt(process.env.LOTERIA_CALL_INTERVAL_MS, 2000, 20, 60 * 1000),
+        breakMs: clampInt(process.env.LOTERIA_BREAK_MS, 12000, 1000, 5 * 60 * 1000),
+        tickMs: 500
+      });
+      await loteria.start();
+      const health = loteria.snapshotFor(null);
+      logEvent('loteria_initialized', {
+        statePath: process.env.LOTERIA_STATE_PATH || path.join(__dirname, 'data', 'loteria.json'),
+        gameId: health.game?.id || null,
+        status: health.game?.status || null,
+        players: health.game?.count || 0
+      });
+    } catch (error) {
+      // La lotería nunca debe impedir que el casino abra: se apaga y se registra.
+      loteria = null;
+      console.warn('No se pudo iniciar la Lotería:', error.message);
+      logEvent('loteria_init_failed', { message: String(error?.message || error) });
+    }
+  }
   logEvent('lobby_tournaments_initialized', {
     timeZone: CASINO_TIME_ZONE, events: lobbyTournaments.events.size,
     interruptedMatches: lobbyTournaments.recovery.interruptedMatches,

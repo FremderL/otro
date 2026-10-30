@@ -14,6 +14,15 @@ services:
     envVars:
       - key: PROFILE_STORE_PATH
         value: /var/data/profiles.json
+      # Estado de la ronda compartida de la Lotería mexicana (entradas, cantos y
+      # pagos pendientes). Vive en el disco persistente para sobrevivir despliegues.
+      - key: LOTERIA_STATE_PATH
+        value: /var/data/loteria.json
+      # Diario de la Rueda de la Fortuna (apuestas, resultados y pagos). Al
+      # arrancar devuelve lo apostado sin resultado y paga lo confirmado, así un
+      # despliegue nunca cuesta fichas.
+      - key: FORTUNE_STATE_PATH
+        value: /var/data/fortune-ledger.json
       - key: LOBBY_TOURNAMENT_STORE_PATH
         value: /var/data/lobby-tournaments.json
       - key: NODE_ENV

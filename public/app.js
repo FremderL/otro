@@ -30,7 +30,7 @@
       serverFlags.passport = data?.passportEnabled === true;
       // Gachapón de cartas: solo se muestra si healthz lo confirma de forma explícita.
       serverFlags.cardGacha = data?.cardGachaEnabled === true;
-      setFortuneAvailability(data?.fortuneEnabled === true);
+      setFortuneAvailability(data?.fortuneEnabled !== false);
       document.getElementById('profile-section-album')?.classList.toggle('hidden', !serverFlags.cardGacha);
       document.getElementById('profile-tab-album')?.classList.toggle('hidden', !serverFlags.cardGacha);
       if (!serverFlags.cardGacha && ui.profileSection === 'album') jumpToProfileSection('overview');
@@ -42,6 +42,9 @@
       else if (ui.profileOpen) renderProfileModal();
     })
     .catch(() => {
+      // Sin datos de salud no se ofrece la Rueda, pero el resto del lobby sigue
+      // igual que antes (la Rueda se habilita al recargar con el servidor sano).
+      setFortuneAvailability(false);
       serverFlags.accountSessions = true;
       serverFlags.passport = false;
       document.getElementById('passport-panel')?.classList.add('hidden');
@@ -51,10 +54,25 @@
       if (ui.room) renderRoom();
       else if (ui.profileOpen) renderProfileModal();
     });
+  // La disponibilidad de la Rueda se lee al cargar; si el servidor la rechaza a
+  // mitad de sesión (su diario falló en caliente), se vuelve a preguntar y el
+  // lobby se corrige sin recargar la página.
+  function refreshFortuneAvailability() {
+    return fetch('/healthz', { cache: 'no-store' })
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => { if (data) setFortuneAvailability(data.fortuneEnabled !== false); })
+      .catch(() => {});
+  }
   function setFortuneAvailability(available) {
-    document.querySelectorAll('[data-game="fortune"], [data-select-game="fortune"]').forEach(button => { button.disabled = !available; });
+    // La Rueda está activa salvo que el servidor la apague (FORTUNE_ENABLED=off)
+    // o que su diario no haya podido iniciarse; el lobby refleja ese estado.
+    document.querySelectorAll('[data-game="fortune"], [data-select-game="fortune"]').forEach(button => {
+      button.disabled = !available;
+      if (!available) button.setAttribute('title', 'La Rueda no está disponible en este momento.');
+      else button.removeAttribute('title');
+    });
     const caption = document.querySelector('[data-game="fortune"] span');
-    if (caption) caption.textContent = available ? 'Elegir mi sector' : 'Rueda en desarrollo';
+    if (caption) caption.textContent = available ? 'Elegir mi sector' : 'Rueda no disponible';
   }
   function accountSessionsAvailable() { return serverFlags.accountSessions !== false; }
   const $ = selector => document.querySelector(selector);
@@ -264,6 +282,7 @@
     lobbyTournaments: null, expandedTournamentBrackets: new Set(), pendingTournamentSignup: null,
     communityTab: 'friends', communityData: null,
     rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null, resultQueue: [],
+    fortuneAngle: 0, fortuneLanded: null, fortuneSpin: null, fortuneTimer: null,
     spectating: false
   };
 
@@ -566,10 +585,6 @@
     sessionStorage.setItem('montecristo-session', JSON.stringify({ code: ui.activeCode, name: ui.playerName, avatar: ui.selectedAvatar, spectate: ui.spectating }));
   }
   function clearSession() { sessionStorage.removeItem('montecristo-session'); }
-  function initials(name) {
-    const chunks = String(name || '?').trim().split(/\s+/).filter(Boolean);
-    return (chunks[0]?.[0] || '?') + (chunks.length > 1 ? chunks[chunks.length - 1][0] : '');
-  }
   function avatarEmoji(id) { return AVATARS.find(item => item.id === id)?.emoji || '🦊'; }
   function passportFrameClasses(passport) {
     if (serverFlags.passport !== true) return '';
@@ -997,6 +1012,7 @@
     if (!event.target.closest) return;
     if (event.target.closest('[data-roulette-skip]') && ui.rouletteSpin) ui.rouletteSpin.skip = true;
     if (event.target.closest('[data-slots-skip]') && ui.slotsSpin) ui.slotsSpin.skip = true;
+    if (event.target.closest('[data-fortune-skip]') && ui.fortuneSpin) ui.fortuneSpin.finish();
   });
 
   // ---------- Atajos de teclado en mesa (fase 4) ----------
@@ -1057,7 +1073,11 @@
       : await emitAck('create_room', { name, roomName: els.roomName.value.trim(), game: ui.selectedGame, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) });
     setButtonLoading(els.modalSubmit, false); ui.joining = false;
     if (!response.ok) {
-      setOverlay(false); showToast('No se pudo entrar', response.error || 'Intenta de nuevo.', 'error'); return;
+      setOverlay(false);
+      showToast('No se pudo entrar', response.error || 'Intenta de nuevo.', 'error');
+      // La Rueda puede haber dejado de estar disponible con la página abierta.
+      if (!joining && ui.selectedGame === 'fortune') refreshFortuneAvailability();
+      return;
     }
     ui.spectating = spectating;
     ui.activeCode = response.code;
@@ -1462,6 +1482,22 @@
     if (wasOutside) enterRoom();
     renderRoom();
     setOverlay(false);
+  });
+
+  // Cuenta moderada desde el panel: el servidor avisa y cierra la sesión 250 ms
+  // después. Se muestra el motivo y el lobby vuelve a modo invitado sin perder
+  // el perfil anónimo (el token de dispositivo no se toca).
+  socket.on('account_moderated', ({ status, until } = {}) => {
+    const permanente = status === 'banned';
+    const fecha = until ? new Date(Number(until)).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : null;
+    const detalle = permanente
+      ? 'El acceso a tu cuenta quedó bloqueado de forma permanente.'
+      : fecha ? `Tu cuenta está suspendida hasta el ${fecha}.` : 'Tu cuenta está suspendida temporalmente.';
+    clearAccountSession();
+    if (ui.room) leaveToLobby(false);
+    showToast(permanente ? 'Cuenta bloqueada' : 'Cuenta suspendida',
+      `${detalle} Puedes seguir jugando como invitado con este dispositivo.`,
+      'error', 9000);
   });
 
   // Fase 8: la mesa fue cerrada por el servidor (sin jugadores humanos); regresar a la portada.
@@ -2045,6 +2081,68 @@
     ui.slotsRaf = requestAnimationFrame(step);
   }
 
+  // ---------- Rueda de la Fortuna: giro y aterrizaje ----------
+  // La geometría y el marcado viven en /fortune-wheel.js (FortuneWheel), para
+  // que todos los clientes dibujen la misma rueda y el ángulo sea verificable.
+  function fortuneWheel() {
+    return window.FortuneWheel || null;
+  }
+  function resetFortuneWheel() {
+    if (ui.fortuneTimer) clearTimeout(ui.fortuneTimer);
+    ui.fortuneTimer = null;
+    ui.fortuneSpin = null;
+    ui.fortuneLanded = null;
+  }
+  // El servidor ya publicó el sector: se dan cuatro vueltas y se frena justo en
+  // su centro, bajo la flecha.
+  function startFortuneLanding(value) {
+    const wheel = fortuneWheel();
+    const rotor = document.querySelector('[data-fortune-rotor]');
+    if (!wheel || !rotor || ui.fortuneSpin) return;
+    if (ui.fortuneLanded === value) return;
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const from = wheel.normalizeAngle(ui.fortuneAngle);
+    const to = wheel.landingAngle(value, from, reduce ? 1 : 4);
+    const finish = () => {
+      if (!ui.fortuneSpin || ui.fortuneSpin.value !== value) return;
+      if (ui.fortuneTimer) clearTimeout(ui.fortuneTimer);
+      ui.fortuneTimer = null;
+      ui.fortuneSpin = null;
+      ui.fortuneAngle = wheel.normalizeAngle(to);
+      ui.fortuneLanded = value;
+      ui.lastGameSignature = ''; // el estado del servidor no cambió: repintamos el aterrizaje
+      renderRoom();
+      playTone('notice');
+      // Avisos retenidos (resultado, premios): se muestran con la flecha ya fija.
+      flushResultQueue();
+    };
+    ui.fortuneSpin = { value, from, to, finish };
+    rotor.style.transition = 'none';
+    rotor.style.transform = `rotate(${from}deg)`;
+    // Se fuerza un fotograma con el ángulo inicial para que la transición
+    // arranque de verdad (y no como un salto instantáneo).
+    requestAnimationFrame(() => {
+      if (!ui.fortuneSpin || ui.fortuneSpin.value !== value) return;
+      rotor.style.transition = reduce ? 'none' : 'transform 3.1s cubic-bezier(.16,.72,.06,1)';
+      rotor.style.transform = `rotate(${to}deg)`;
+      if (reduce) { finish(); return; }
+      rotor.addEventListener('transitionend', finish, { once: true });
+      // Respaldo: si la pestaña estuvo oculta, la transición puede no dispararse.
+      ui.fortuneTimer = setTimeout(finish, 3400);
+    });
+  }
+  // Se llama tras cada pintado de la mesa: decide si toca girar o ya quedó fijo.
+  function syncFortuneWheel(room) {
+    if (!room || room.game !== 'fortune') return;
+    const value = room.quickResult && [1, 2, 5, 10, 20, 40].includes(room.quickResult.value) ? room.quickResult.value : null;
+    if (room.phase !== 'results' || value == null) {
+      if (ui.fortuneSpin) return; // el giro sigue en curso
+      ui.fortuneLanded = null;
+      return;
+    }
+    if (ui.fortuneLanded === value) return;
+    startFortuneLanding(value);
+  }
   function quickSeat(player, index) {
     const room = ui.room;
     const result = room.results?.find(item => item.id === player.id);
@@ -2076,8 +2174,25 @@
       return `<small>TRAGAMONEDAS MONTECRISTO · RESULTADO AUTORITATIVO</small><div class="slot-machine"><div class="slot-window">${[0,1,2].map(i => `<div class="slot-reel"><div class="slot-strip" id="slot-strip-${i}">${slotStripHtml()}</div></div>`).join('')}</div>${paytable}</div>${spinning ? '<button type="button" class="game-btn slots-skip" data-slots-skip>Saltar animación</button>' : ''}${label}`;
     }
     if (room.game === 'fortune') {
-      const value = result && [1,2,5,10,20,40].includes(result.value) ? result.value : null;
-      return `<small>RUEDA DE LA FORTUNA · RESULTADO DEL SERVIDOR</small><div class="fortune-wheel ${rolling}" aria-label="Rueda de 54 sectores"><span>${value == null ? '✺' : value}</span></div>${value == null ? '' : `<div class="quick-result-label">Sector ${value}</div>`}<p class="fortune-note">54 sectores: 25 de 1, 15 de 2, 7 de 5, 4 de 10, 2 de 20 y 1 de 40 · Pagos totales x2, x3, x6, x11, x21 y x41</p>`;
+      const wheel = fortuneWheel();
+      const value = result && [1, 2, 5, 10, 20, 40].includes(result.value) ? result.value : null;
+      // El sector propio sale de la mesa (lo que se apostó de verdad); si aún
+      // no hay apuesta, se usa lo que la persona tiene elegido en el panel.
+      const me = room.players.find(player => player.id === (ui.me?.id || room.viewerId)) || ui.me;
+      const candidate = me?.quickChoice || ui.quickChoice;
+      const choice = candidate && [1, 2, 5, 10, 20, 40].includes(Number(candidate)) ? String(candidate) : null;
+      const landed = value != null && ui.fortuneLanded === value;
+      const mine = landed ? room.results?.find(row => row.id === (ui.me?.id || room.viewerId)) : null;
+      const label = mine ? `${mine.label} ${mine.amount > 0 ? '+' : mine.amount < 0 ? '−' : ''}${formatChips(Math.abs(mine.amount))} fichas` : '';
+      // Mientras la rueda gira no se revela el sector: el centro muestra la
+      // apuesta y el valor aparece cuando la flecha queda fija.
+      const shown = landed ? value : null;
+      // Sectores en juego: los que la mesa tiene elegidos, para verlos en la rueda.
+      const winning = [...new Set(room.players.map(player => Number(player.quickChoice)).filter(number => wheel.VALUES.includes(number)))];
+      return `<small>RUEDA DE LA FORTUNA · 54 SECTORES · RESULTADO DEL SERVIDOR</small>
+        ${wheel.markup({ value: shown, phase: room.phase, choice: landed ? null : choice, angle: wheel.normalizeAngle(ui.fortuneAngle), landed, label, winning })}
+        ${wheel.legend({ choice, value: landed ? value : null })}
+        <p class="fortune-note">Fichas virtuales · el pago incluye tu apuesta · la flecha dorada marca el sector donde se detuvo la rueda</p>`;
     }
     if (room.game === 'dice') {
       const face = result ? ['⚀','⚁','⚂','⚃','⚄','⚅'][result.value - 1] : '⚄';
@@ -2092,6 +2207,7 @@
     els.tableWrap.innerHTML = `<div class="quick-table-shell ${room.game}"><div class="quick-game-core">${quickCore(room)}</div><div class="quick-bets-around">${seats}</div></div>`;
     if (room.game === 'roulette') ensureRouletteLoop();
     if (room.game === 'slots') ensureSlotsLoop();
+    if (room.game === 'fortune') syncFortuneWheel(room);
   }
   function renderTable() {
     if (ui.room.game === 'poker') renderPokerTable();
@@ -2214,7 +2330,14 @@
     return eligible ? `<button class="game-btn insurance-btn" data-event="blackjack_insurance" title="Cuesta la mitad de tu apuesta y paga 2:1 si la casa tiene blackjack">🛡 Seguro (${formatChips(Math.ceil(me.bet / 2))})</button>` : '';
   }
   function quickChoiceButtons(game) {
-    if (game === 'fortune') return ['1','2','5','10','20','40'].map(value => `<button class="quick-choice" type="button" data-quick-choice="${value}" title="Pago total x${Number(value)+1} si aciertas">${value} <small>x${Number(value)+1}</small></button>`).join('');
+    if (game === 'fortune') {
+      const wheel = fortuneWheel();
+      return wheel.VALUES.map(value => {
+        const tier = wheel.tierFor(value);
+        const count = wheel.COUNTS[value];
+        return `<button class="quick-choice fortune-choice" type="button" data-quick-choice="${value}" data-fortune-tier="${value}" style="--tier-face:${tier.face};--tier-edge:${tier.edge};--tier-ring:${tier.ring};--tier-ink:${tier.ink}" title="Sector ${value}: ${count} ${count === 1 ? 'casilla' : 'casillas'} en la rueda · pago total x${wheel.payout(value)}"><b>${value}</b><small>x${wheel.payout(value)}</small><em>${count} ${count === 1 ? 'casilla' : 'casillas'}</em></button>`;
+      }).join('');
+    }
     // La ruleta usa su propio paño completo (rouletteFeltHtml).
     const options = game === 'dice' ? [['low','Bajo · 1–3'],['high','Alto · 4–6']] : [['heads','Cara'],['tails','Cruz']];
     const simplePayout = 'Pago total x2 si aciertas';
@@ -2251,6 +2374,10 @@
     }
     if (room.game === 'roulette' && ui.rouletteSpin) {
       els.actionPanel.innerHTML = '<div class="action-bar"><div class="waiting-copy"><b>La pelota está girando</b><span>El resultado se revelará cuando caiga en su casilla.</span></div><div class="action-buttons"><button type="button" class="game-btn" data-roulette-skip>Saltar animación</button></div></div>';
+      return;
+    }
+    if (room.game === 'fortune' && ui.fortuneSpin) {
+      els.actionPanel.innerHTML = '<div class="action-bar"><div class="waiting-copy"><b>La rueda está frenando</b><span>La flecha dorada marcará el sector donde se detuvo.</span></div><div class="action-buttons"><button type="button" class="game-btn" data-fortune-skip>Ver el resultado ya</button></div></div>';
       return;
     }
     if (room.game === 'slots' && ui.slotsSpin) {
@@ -2472,10 +2599,10 @@
   // juegos (y fuera de estas dos mesas) se muestran de inmediato, como siempre.
   function quickResultHold() {
     const room = ui.room;
-    if (!room || (room.game !== 'roulette' && room.game !== 'slots')) return false;
+    if (!room || (room.game !== 'roulette' && room.game !== 'slots' && room.game !== 'fortune')) return false;
     // Fase 'rolling': los eventos de resultado llegan justo ANTES de la
     // room_state que arranca la animación, así que la retención ya aplica.
-    return Boolean(ui.rouletteSpin || ui.slotsSpin) || room.phase === 'rolling';
+    return Boolean(ui.rouletteSpin || ui.slotsSpin || ui.fortuneSpin) || room.phase === 'rolling';
   }
   function announceGameResult(announce) {
     if (typeof announce !== 'function') return;
@@ -3854,6 +3981,7 @@
     if (notifyServer && ui.room) await emitAck('leave_room');
     clearInterval(ui.clockTimer); clearSession(); ui.room = null; ui.me = null; ui.activeCode = null; ui.spectating = false;
     ui.rouletteSpin = null; ui.rouletteAngle = 0; ui.slotsSpin = null; ui.resultQueue = [];
+    resetFortuneWheel(); ui.fortuneAngle = 0;
     ui.lastGameSignature = ''; ui.lastChatSignature = ''; ui.previousRanks = new Map(); ui.previousChips = new Map(); ui.lastMeChips = null;
     els.roomApp.classList.add('exiting');
     setTimeout(() => {

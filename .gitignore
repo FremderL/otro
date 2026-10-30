@@ -22,6 +22,12 @@ data/football.json
 data/community.json
 # Calendario, inscripciones y brackets de torneos relámpago del lobby
 data/lobby-tournaments.json
+# Ronda compartida de la Lotería mexicana (se crea sola al arrancar)
+data/loteria.json
+data/loteria.json.tmp
+# Diario de la Rueda de la Fortuna (apuestas y pagos; se crea solo al arrancar)
+data/fortune-ledger.json
+data/fortune-ledger.json.tmp
 # Creatividades de La Previa (imágenes subidas): nunca se versionan.
 data/promotion-media/
 
