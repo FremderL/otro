@@ -30,6 +30,7 @@
       serverFlags.passport = data?.passportEnabled === true;
       // Gachapón de cartas: solo se muestra si healthz lo confirma de forma explícita.
       serverFlags.cardGacha = data?.cardGachaEnabled === true;
+      setFortuneAvailability(data?.fortuneEnabled === true);
       document.getElementById('profile-section-album')?.classList.toggle('hidden', !serverFlags.cardGacha);
       document.getElementById('profile-tab-album')?.classList.toggle('hidden', !serverFlags.cardGacha);
       if (!serverFlags.cardGacha && ui.profileSection === 'album') jumpToProfileSection('overview');
@@ -50,6 +51,11 @@
       if (ui.room) renderRoom();
       else if (ui.profileOpen) renderProfileModal();
     });
+  function setFortuneAvailability(available) {
+    document.querySelectorAll('[data-game="fortune"], [data-select-game="fortune"]').forEach(button => { button.disabled = !available; });
+    const caption = document.querySelector('[data-game="fortune"] span');
+    if (caption) caption.textContent = available ? 'Elegir mi sector' : 'Rueda en desarrollo';
+  }
   function accountSessionsAvailable() { return serverFlags.accountSessions !== false; }
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
@@ -173,6 +179,7 @@
     poker: { icon: '♠', name: 'TEXAS HOLD’EM' }, blackjack: { icon: '◆', name: 'BLACKJACK' },
     roulette: { icon: '◉', name: 'RULETA NOVA' }, dice: { icon: '⚄', name: 'DADOS CÓSMICOS' },
     coinflip: { icon: '◐', name: 'CARA O CRUZ' }, slots: { icon: '🎰', name: 'TRAGAMONEDAS' },
+    fortune: { icon: '✺', name: 'RUEDA DE LA FORTUNA' },
     // Estadio MonteCristo (Fase E4, §16 fila 14): solo meta de visualización para
     // el panel «Historial por juego» y el icono del modal. NO agrega fútbol a los
     // juegos jugables ni a los retos (AVAILABLE_GAMES/CHALLENGE_GAMES lo excluyen, C6).
@@ -238,7 +245,7 @@
   const ACCOUNT_SESSION_FIELDS = [
     'accountId', 'username', 'name', 'avatar', 'chips', 'stats', 'achievements', 'gamesPlayed',
     'featuredAchievements', 'allAchievements', 'challenges', 'dailyChallenges', 'weeklyChallenges',
-    'gameStats', 'balanceHistory', 'medals', 'championBanner', 'dailyBonusClaimed', 'dailyBonusAvailableAt', 'passport', 'collection', 'cardAlbum'
+    'gameStats', 'balanceHistory', 'medals', 'championBanner', 'dailyBonusClaimed', 'dailyBonusAvailableAt', 'passport', 'collection', 'cardAlbum', 'fanPin'
   ];
   const ui = {
     accountMode: 'login',
@@ -592,6 +599,10 @@
     const item = passport?.equipped?.title;
     if (!item) return '';
     return `<span class="passport-nameplate" title="Título del Pasaporte · ${escapeHtml(item.seasonLabel)}">${escapeHtml(item.icon)} ${escapeHtml(item.name)}</span>`;
+  }
+  function fanPinMarkup(pin) {
+    if (!pin || !/^(FAR|RMD|ATC|MUN|LVP|ARS|BAY|BDO|JUV|PSG|RSU|RDB|WHM|NAB|CDC|BEN)$/.test(pin.abbr || '') || !['club-pin','fan-1','fan-2','fan-3'].includes(pin.pin)) return '';
+    return `<img class="fan-pin fan-pin-${pin.pin}" src="/assets/escudos/${pin.abbr}.svg" alt="" title="Pin de ${escapeHtml(pin.clubName || 'afición')}" />`;
   }
   function cosmeticFrameClass(collection) {
     const style = collection?.equipped?.frame?.style;
@@ -1583,7 +1594,7 @@
     const previous = ui.lastMeChips;
     const delta = previous == null ? 0 : chips - previous;
     els.profileCard.innerHTML = `${equippedAvatarMarkup(ui.me, 'profile-avatar')}
-      <div class="profile-info"><small>TU PERFIL · ${formatChips(stats.wins || 0)} VICTORIAS</small><b>${escapeHtml(ui.me.name)}${passportBadgeMarkup(ui.me.passport)}</b>${passportTitleMarkup(ui.me.passport)}<span><strong>◆</strong> ${formatChips(chips)} fichas ${delta > 0 ? `<em class="chip-delta">+${formatChips(delta)}</em>` : ''}</span></div>`;
+      <div class="profile-info"><small>TU PERFIL · ${formatChips(stats.wins || 0)} VICTORIAS</small><b>${escapeHtml(ui.me.name)}${passportBadgeMarkup(ui.me.passport)}${fanPinMarkup(ui.me.fanPin)}</b>${passportTitleMarkup(ui.me.passport)}<span><strong>◆</strong> ${formatChips(chips)} fichas ${delta > 0 ? `<em class="chip-delta">+${formatChips(delta)}</em>` : ''}</span></div>`;
     if (delta > 0) {
       els.profileCard.classList.remove('chips-received');
       requestAnimationFrame(() => els.profileCard.classList.add('chips-received'));
@@ -1614,7 +1625,7 @@
       return `<div class="player-row ${player.isBot ? 'bot-player' : ''} ${isTurn ? 'turn' : ''} ${botThinking ? 'bot-thinking' : ''} ${rank === 1 ? 'rank-leader' : ''} ${chipsClass}">
         <span class="player-rank ${rank === 1 ? 'top' : ''}">${rank === 1 ? '♛' : '#' + rank}</span>
         ${avatarMarkup(player)}
-        <div class="player-meta"><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${botBadge} ${player.id === ui.me?.id ? '<small>(tú)</small>' : ''}</b>${passportTitleMarkup(player.passport)}${botDescriptor}<span>${escapeHtml(status)}</span>${bet ? `<span class="player-bet-mini">◆ ${formatChips(bet)} en juego</span>` : ''}</div>
+        <div class="player-meta"><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${fanPinMarkup(player.fanPin)}${botBadge} ${player.id === ui.me?.id ? '<small>(tú)</small>' : ''}</b>${passportTitleMarkup(player.passport)}${botDescriptor}<span>${escapeHtml(status)}</span>${bet ? `<span class="player-bet-mini">◆ ${formatChips(bet)} en juego</span>` : ''}</div>
         <span class="rank-change ${rankClass}">${rankCopy}</span>
         ${player.isHost ? '<span class="host-crown" title="Anfitrión">♛</span>' : ''}${removeControl}
       </div>`;
@@ -1716,7 +1727,7 @@
     const status = seatStatus(player, room);
     return `<div class="table-seat seat-${index} ${classes}"><div class="seat-cards">${cards}</div><div class="seat-head">
       ${equippedAvatarMarkup(player, 'seat-avatar')}
-      <div class="seat-info"><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}</b>${passportTitleMarkup(player.passport)}<span>◆ ${formatChips(player.chips)}</span></div>
+      <div class="seat-info"><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${fanPinMarkup(player.fanPin)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}</b>${passportTitleMarkup(player.passport)}<span>◆ ${formatChips(player.chips)}</span></div>
       ${index === room.dealerIndex ? '<i class="dealer-button">D</i>' : ''}${status ? `<span class="seat-status">${escapeHtml(status)}</span>` : ''}
       </div>${bet}</div>`;
   }
@@ -1746,7 +1757,7 @@
       ? `${player.id === ui.me?.id ? 'TU TURNO' : 'EN TURNO'}${player.split ? ` · MANO ${player.split.active === 'split' ? '2' : '1'}` : ''}`
       : result?.label || (player.status === 'blackjack' ? 'BLACKJACK' : '');
     return `<div class="table-seat blackjack-seat seat-${index} ${classes}"><div class="seat-cards ${player.split && mainActive ? 'active-hand' : ''}">${cards}</div>${splitRow}<div class="seat-head">
-      ${equippedAvatarMarkup(player, 'seat-avatar')}<div class="seat-info"><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}${insuranceBadge}</b>${passportTitleMarkup(player.passport)}<span>◆ ${formatChips(player.chips)}</span></div>
+      ${equippedAvatarMarkup(player, 'seat-avatar')}<div class="seat-info"><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${fanPinMarkup(player.fanPin)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}${insuranceBadge}</b>${passportTitleMarkup(player.passport)}<span>◆ ${formatChips(player.chips)}</span></div>
       ${score !== '' ? `<i class="hand-total">${score}</i>` : ''}${status ? `<span class="seat-status">${escapeHtml(status)}</span>` : ''}
       </div>${bet}</div>`;
   }
@@ -1760,6 +1771,7 @@
   }
   function quickChoiceLabel(game, choice) {
     if (!choice) return '';
+    if (game === 'fortune') return `Sector ${choice}`;
     const labels = {
       red: 'Rojo', black: 'Negro', even: 'Par', odd: 'Impar',
       low: game === 'dice' ? 'Bajo 1–3' : 'Bajo 1–18', high: game === 'dice' ? 'Alto 4–6' : 'Alto 19–36',
@@ -2040,7 +2052,7 @@
     const suspense = (room.game === 'roulette' && ui.rouletteSpin) || (room.game === 'slots' && ui.slotsSpin); // sin brillo de ganador hasta que termine la animación
     return `<div class="quick-bet-seat ${player.bot?.thinking ? 'bot-thinking' : ''} ${!suspense && result?.amount > 0 ? 'winner' : ''}" style="--seat:${index}">
       ${equippedAvatarMarkup(player, 'seat-avatar')}
-      <div><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}</b>${passportTitleMarkup(player.passport)}<span>${player.bot?.thinking ? 'Pensando…' : player.bet ? `◆ ${formatChips(player.bet)} · ${escapeHtml(choice)}` : `${formatChips(player.chips)} fichas`}</span></div>
+      <div><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${fanPinMarkup(player.fanPin)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}</b>${passportTitleMarkup(player.passport)}<span>${player.bot?.thinking ? 'Pensando…' : player.bet ? `◆ ${formatChips(player.bet)} · ${escapeHtml(choice)}` : `${formatChips(player.chips)} fichas`}</span></div>
     </div>`;
   }
   function quickCore(room) {
@@ -2062,6 +2074,10 @@
         : reels ? `<div class="quick-result-label">${reels.map(id => SLOT_META[id]?.label || id).join(' · ')}</div>` : '';
       const paytable = `<div class="slot-paytable" aria-label="Tabla de pagos">${['monte','gem','bell','clover','cherry'].map(id => `<span title="Tres ${SLOT_META[id].label}: pago total x${SLOT_META[id].pay}">${SLOT_META[id].glyph}×3 <b>x${SLOT_META[id].pay}</b></span>`).join('')}<span title="Dos símbolos iguales: recuperas tu apuesta">Par <b>x1</b></span></div>`;
       return `<small>TRAGAMONEDAS MONTECRISTO · RESULTADO AUTORITATIVO</small><div class="slot-machine"><div class="slot-window">${[0,1,2].map(i => `<div class="slot-reel"><div class="slot-strip" id="slot-strip-${i}">${slotStripHtml()}</div></div>`).join('')}</div>${paytable}</div>${spinning ? '<button type="button" class="game-btn slots-skip" data-slots-skip>Saltar animación</button>' : ''}${label}`;
+    }
+    if (room.game === 'fortune') {
+      const value = result && [1,2,5,10,20,40].includes(result.value) ? result.value : null;
+      return `<small>RUEDA DE LA FORTUNA · RESULTADO DEL SERVIDOR</small><div class="fortune-wheel ${rolling}" aria-label="Rueda de 54 sectores"><span>${value == null ? '✺' : value}</span></div>${value == null ? '' : `<div class="quick-result-label">Sector ${value}</div>`}<p class="fortune-note">54 sectores: 25 de 1, 15 de 2, 7 de 5, 4 de 10, 2 de 20 y 1 de 40 · Pagos totales x2, x3, x6, x11, x21 y x41</p>`;
     }
     if (room.game === 'dice') {
       const face = result ? ['⚀','⚁','⚂','⚃','⚄','⚅'][result.value - 1] : '⚄';
@@ -2198,7 +2214,8 @@
     return eligible ? `<button class="game-btn insurance-btn" data-event="blackjack_insurance" title="Cuesta la mitad de tu apuesta y paga 2:1 si la casa tiene blackjack">🛡 Seguro (${formatChips(Math.ceil(me.bet / 2))})</button>` : '';
   }
   function quickChoiceButtons(game) {
-    // La ruleta usa su propio paño completo (rouletteFeltHtml); aquí solo dados y moneda.
+    if (game === 'fortune') return ['1','2','5','10','20','40'].map(value => `<button class="quick-choice" type="button" data-quick-choice="${value}" title="Pago total x${Number(value)+1} si aciertas">${value} <small>x${Number(value)+1}</small></button>`).join('');
+    // La ruleta usa su propio paño completo (rouletteFeltHtml).
     const options = game === 'dice' ? [['low','Bajo · 1–3'],['high','Alto · 4–6']] : [['heads','Cara'],['tails','Cruz']];
     const simplePayout = 'Pago total x2 si aciertas';
     let html = options.map(([value, label]) => `<button class="quick-choice ${value}" type="button" data-quick-choice="${value}" title="${simplePayout}">${label}</button>`).join('');
@@ -2208,7 +2225,7 @@
   function renderQuickActions(room, me) {
     if (ui.quickGame !== room.game) {
       ui.quickGame = room.game;
-      ui.quickChoice = room.game === 'coinflip' ? 'heads' : room.game === 'slots' ? 'spin' : 'low';
+      ui.quickChoice = room.game === 'coinflip' ? 'heads' : room.game === 'slots' ? 'spin' : room.game === 'fortune' ? '1' : 'low';
     }
     if (room.phase === 'betting') {
       const hostLaunch = me.isHost ? '<button class="game-btn primary" data-event="quick_resolve">Lanzar ronda</button>' : '';
@@ -2782,6 +2799,7 @@
       const passportEquipped = serverFlags.passport === true ? profile.passport?.equipped || {} : {};
       if (passportEquipped.title) chips.push(`<span class="profile-badge passport-equipped-title" title="Título del Pasaporte · ${escapeHtml(passportEquipped.title.seasonLabel)}">${escapeHtml(passportEquipped.title.icon)} ${escapeHtml(passportEquipped.title.name)}</span>`);
       if (passportEquipped.badge) chips.push(`<span class="profile-badge passport-equipped-badge" title="Insignia del Pasaporte · ${escapeHtml(passportEquipped.badge.seasonLabel)}">${escapeHtml(passportEquipped.badge.icon)} ${escapeHtml(passportEquipped.badge.name)}</span>`);
+      if (profile.fanPin) chips.push(fanPinMarkup(profile.fanPin));
       if (profile.championBanner) chips.push('<span class="profile-badge badge-champion" title="Banner dorado de por vida: fue líder de una temporada">🎖️ Banner dorado</span>');
       if (profile.medals) chips.push(`<span class="profile-badge badge-medals" title="${profile.medals} temporada${profile.medals === 1 ? '' : 's'} ganada${profile.medals === 1 ? '' : 's'}">🥇 ×${profile.medals}</span>`);
       els.profileBadges.innerHTML = chips.join('');

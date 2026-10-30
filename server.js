@@ -16,6 +16,7 @@ const { buildBettingLeaderboard, createBettingLeaderboard } = require('./lib/bet
 const { seatIdentity } = require('./lib/seat-identity');
 const { equipPassportCosmetic, publicPassportIdentity } = require('./lib/passport');
 const { equipCosmetic, publicCollectionIdentity } = require('./lib/cosmetics');
+const { publicFanPin } = require('./lib/football/fan-club-profile');
 const { LobbyTournamentManager, placementLabel } = require('./lib/lobby-tournaments');
 const { createLobbyTournamentStore } = require('./lib/lobby-tournament-store');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
@@ -178,7 +179,7 @@ installSeasonalThemeRoutes(app, {
 // imágenes del lobby (tienen nombre estable; si se reemplazan, cambiar el nombre del archivo).
 app.use(compression());
 app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: '7d', immutable: false }));
-const revalidateAppShell = new Set(['index.html', 'app.js', 'styles.css', 'chat-format.js', 'estadio-banner.js']);
+const revalidateAppShell = new Set(['index.html', 'app.js', 'styles.css', 'chat-format.js', 'estadio-banner.js', 'estadio.html', 'estadio.js', 'estadio.css']);
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: '5m',
   setHeaders(res, filePath) {
@@ -204,6 +205,7 @@ app.get('/healthz', (_req, res) => {
     accountSessionsEnabled: adminConfig.accountSessionsEnabled,
     passportEnabled: passportConfig.enabled,
     cardGachaEnabled,
+    fortuneEnabled: fortunePreviewAvailable(),
     promotionsEnabled: footballConfig.enabled && adminConfig.enabled && adminConfig.accountSessionsEnabled,
     // Estadio MonteCristo (§15.8): bloque de salud del motor. Con el flag apagado
     // (o antes de bootstrap) queda reducido a { enabled: false }; footballHealth
@@ -523,6 +525,11 @@ function newPlayer(id, socket, name, avatar) {
   });
   return player;
 }
+// Hasta integrar diario transaccional y recuperación, solo se permite una
+// demostración local con archivo; jamás abrir Rueda en producción o PostgreSQL.
+function fortunePreviewAvailable() {
+  return process.env.NODE_ENV !== 'production' && process.env.FORTUNE_PREVIEW_UNSAFE === 'on' && profiles?.backend === 'file';
+}
 function createRoom(game, host, socket, requestedName) {
   const code = makeCode();
   const fallbackNames = {
@@ -531,7 +538,8 @@ function createRoom(game, host, socket, requestedName) {
     roulette: `Ruleta de ${host.name}`,
     dice: `Dados de ${host.name}`,
     coinflip: `Duelo de ${host.name}`,
-    slots: `Tragamonedas de ${host.name}`
+    slots: `Tragamonedas de ${host.name}`,
+    fortune: `Rueda de ${host.name}`
   };
   const quick = isQuickGame(game);
   const room = {
@@ -561,7 +569,7 @@ function createRoom(game, host, socket, requestedName) {
     spectators: [], // Fase 8: espectadores (modo observador con chat)
     lobbyTournamentMatch: null, // Torneo relámpago del lobby; no comparte entrada/premio del Sit & Go
     tournament: null, // Fase 8.1: torneo sit & go (solo póker)
-    specialEvent: quick ? rollSpecialEvent() : null,
+    specialEvent: quick && game !== 'fortune' ? rollSpecialEvent() : null,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -632,6 +640,7 @@ function publicRoom(room, viewerId) {
         ? publicPassportIdentity(p._profile)
         : { equipped: { frame: null, title: null, badge: null } },
       collection: p._profile ? publicCollectionIdentity(p._profile) : { equipped: { avatar: null, frame: null, chips: null, felt: null, cards: null } },
+      fanPin: p._profile ? publicFanPin(p._profile) : null,
       chips: p.chips,
       stats: p._profile ? publicProgress(p._profile).stats : null,
       connected: p.connected,
@@ -1806,7 +1815,7 @@ function resetQuickRound(room, announce = true) {
   room.phase = 'betting';
   room.results = [];
   room.quickResult = null;
-  room.specialEvent = rollSpecialEvent();
+  room.specialEvent = room.game === 'fortune' ? null : rollSpecialEvent();
   for (const player of room.players) {
     player.bet = 0;
     player.quickChoice = null;
@@ -1855,7 +1864,7 @@ function executeQuickBet(room, player, { amount, choice } = {}) {
   choice = normalizeChoice(room.game, choice);
   if (!choice) return actionError('Elige una opción válida.');
   if (player.bet > 0) return actionError('Ya confirmaste tu apuesta para esta ronda.');
-  if (!Number.isFinite(amount) || amount < 10 || amount > player.chips) return actionError('Apuesta entre 10 y tus fichas disponibles.');
+  if (!Number.isSafeInteger(amount) || amount < 10 || amount > player.chips || (room.game === 'fortune' && (!Number.isSafeInteger(player.chips) || amount > Math.floor((Number.MAX_SAFE_INTEGER - player.chips) / 40)))) return actionError('Apuesta entre 10 y tus fichas disponibles, dentro del límite permitido.');
   player.chips -= amount;
   player.bet = amount;
   player.quickChoice = choice;
@@ -2318,6 +2327,7 @@ io.on('connection', socket => {
   socket.on('create_room', ({ name, roomName, game, token, avatar, tos } = {}, ack) => {
     name = cleanName(name);
     game = ['poker', 'blackjack', ...Object.keys(QUICK_GAMES)].includes(game) ? game : 'poker';
+    if (game === 'fortune' && !fortunePreviewAvailable()) return ackError(ack, 'La Rueda aún no está disponible: falta validar recuperación y persistencia.');
     if (!name) return ackError(ack, 'Escribe tu nombre.');
     if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
     const seatId = seatIdFor(socket, token);
@@ -3226,6 +3236,10 @@ async function initFootball() {
   //    nombres) y verifyTosAcceptance. La identidad se resuelve SOLO en subscribe.
   footballSockets = registerFootballSockets(io, {
     betting: footballBetting, engine: footballEngine, store: footballStore, profiles,
+    onFanChanged: profile => {
+      for (const room of rooms.values()) if (room.players.some(player => player._profile === profile)) broadcast(room);
+      io.to(`account:${profile.id}`).emit('profile_event', { events:[], profile:publicProgress(profile, true) });
+    },
     ballonDorMarket: footballBallonDorMarket, accountSessionsEnabled: adminConfig.accountSessionsEnabled,
     config: footballConfig.sockets, log: footballLog, now: () => Date.now(),
     ackOk,

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 280" role="img" aria-labelledby="title desc">
+<title id="title">Escudo original de Atleti-comedia FC</title><desc id="desc">Insignia ilustrada con un símbolo de mask; diseño ficticio original.</desc>
+<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#596cbc"/><stop offset="1" stop-color="#202b61"/></linearGradient><clipPath id="cut"><path d="M120 14 Q175 14 216 39 L211 155 Q208 224 120 270 Q32 224 29 155 L24 39 Q65 14 120 14Z"/></clipPath></defs>
+<path d="M120 14 Q175 14 216 39 L211 155 Q208 224 120 270 Q32 224 29 155 L24 39 Q65 14 120 14Z" fill="#f2dca8"/><g transform="translate(120 140) scale(.96) translate(-120 -140)"><path d="M120 14 Q175 14 216 39 L211 155 Q208 224 120 270 Q32 224 29 155 L24 39 Q65 14 120 14Z" fill="url(#g)"/>
+<g clip-path="url(#cut)" fill="none" stroke="#f2dca8" stroke-width="4" opacity=".12"><path d="M35 0 V270 M70 0 V270 M170 0 V270 M205 0 V270"/></g>
+<path d="M120 14 Q175 14 216 39 L211 155 Q208 224 120 270 Q32 224 29 155 L24 39 Q65 14 120 14Z" fill="none" stroke="#f2dca8" stroke-width="3" opacity=".8"/>
+<path d="M49 76 Q120 65 191 76" fill="none" stroke="#f2dca8" stroke-width="2" opacity=".65"/>
+<text x="120" y="60" text-anchor="middle" fill="#f2dca8" font-family="Arial, sans-serif" font-size="21" font-weight="900" letter-spacing="5">ATC</text>
+<circle cx="120" cy="132" r="57" fill="#202b61" opacity=".45"/><circle cx="120" cy="132" r="56" fill="none" stroke="#f2dca8" stroke-width="2" opacity=".75"/>
+<g transform="translate(70 82)" style="color:#f2dca8" fill="none" stroke="currentColor" stroke-width="4.3" stroke-linecap="round" stroke-linejoin="round"><path d="M24 29 Q50 37 76 29 L73 57 Q70 73 50 79 Q30 73 27 57Z"/><path d="M34 46 Q39 42 44 46 M56 46 Q61 42 66 46 M38 58 Q50 70 62 58"/><path d="M18 25 L23 20 M82 25 L77 20"/></g>
+<path d="M69 205 Q120 219 171 205 M77 213 Q120 225 163 213" fill="none" stroke="#f2dca8" stroke-width="2" opacity=".8"/>
+<circle cx="58" cy="202" r="3" fill="#f2dca8"/><circle cx="182" cy="202" r="3" fill="#f2dca8"/>
+<text x="120" y="232" text-anchor="middle" fill="#f2dca8" font-family="Arial, sans-serif" font-size="8" font-weight="bold" letter-spacing="1.5">ESTADIO MC</text></g></svg>

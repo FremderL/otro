@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 280" role="img" aria-labelledby="title desc">
+<title id="title">Escudo original de Liverpulpo FC</title><desc id="desc">Insignia ilustrada con un símbolo de octopus; diseño ficticio original.</desc>
+<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#3c936d"/><stop offset="1" stop-color="#173e30"/></linearGradient><clipPath id="cut"><path d="M120 13 Q165 13 218 31 L218 151 Q218 225 120 271 Q22 225 22 151 L22 31 Q75 13 120 13Z"/></clipPath></defs>
+<path d="M120 13 Q165 13 218 31 L218 151 Q218 225 120 271 Q22 225 22 151 L22 31 Q75 13 120 13Z" fill="#ede1b2"/><g transform="translate(120 140) scale(.96) translate(-120 -140)"><path d="M120 13 Q165 13 218 31 L218 151 Q218 225 120 271 Q22 225 22 151 L22 31 Q75 13 120 13Z" fill="url(#g)"/>
+<g clip-path="url(#cut)" fill="none" stroke="#ede1b2" stroke-width="4" opacity=".12"><path d="M-8 44 L200 252 M25 14 L230 219 M-25 82 L160 267"/></g>
+<path d="M120 13 Q165 13 218 31 L218 151 Q218 225 120 271 Q22 225 22 151 L22 31 Q75 13 120 13Z" fill="none" stroke="#ede1b2" stroke-width="3" opacity=".8"/>
+<path d="M49 76 Q120 65 191 76" fill="none" stroke="#ede1b2" stroke-width="2" opacity=".65"/>
+<text x="120" y="60" text-anchor="middle" fill="#ede1b2" font-family="Arial, sans-serif" font-size="21" font-weight="900" letter-spacing="5">LVP</text>
+<circle cx="120" cy="132" r="57" fill="#173e30" opacity=".45"/><circle cx="120" cy="132" r="56" fill="none" stroke="#ede1b2" stroke-width="2" opacity=".75"/>
+<g transform="translate(70 82)" style="color:#ede1b2" fill="none" stroke="currentColor" stroke-width="4.3" stroke-linecap="round" stroke-linejoin="round"><path d="M32 49 Q29 24 50 22 Q71 24 68 49 Q72 58 78 57 M32 49 Q28 58 22 57 M38 53 Q36 72 25 70 Q20 69 21 64 M45 55 Q44 77 36 78 Q32 78 32 74 M55 55 Q56 77 64 78 Q68 78 68 74 M62 53 Q64 72 75 70 Q80 69 79 64"/><circle cx="43" cy="42" r="2" fill="currentColor" stroke="none"/><circle cx="57" cy="42" r="2" fill="currentColor" stroke="none"/><path d="M45 50 Q50 54 55 50"/></g>
+<path d="M69 205 Q120 219 171 205 M77 213 Q120 225 163 213" fill="none" stroke="#ede1b2" stroke-width="2" opacity=".8"/>
+<circle cx="58" cy="202" r="3" fill="#ede1b2"/><circle cx="182" cy="202" r="3" fill="#ede1b2"/>
+<text x="120" y="232" text-anchor="middle" fill="#ede1b2" font-family="Arial, sans-serif" font-size="8" font-weight="bold" letter-spacing="1.5">ESTADIO MC</text></g></svg>

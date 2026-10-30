@@ -698,3 +698,78 @@ test('Mi Once acepta solo la sesión verificada, guarda sin fichas y permite rev
     assert.equal(res.fantasy.ranking.length,0);
   } finally { ctx.cleanup(); }
 });
+
+test('Mi afición guarda en el perfil, exige confirmación y no expone identidad en ranking', async () => {
+  let clock = Date.now();
+  const ctx = setup({ accountSessionsEnabled:true, now:() => clock });
+  try {
+    const socket = ctx.io.connect();
+    subscribe(ctx, socket, { name:'Invitado' });
+    assert.equal(socket._fire('football:fan_get', {}).code, 'no_identity');
+    const account = ctx.profiles.getOrCreate('cuenta-aficion', 'Aficionado');
+    socket.data.accountProfileId = account.id;
+    const act = (event, payload) => new Promise(resolve => socket._fire(event, payload, resolve));
+    let result = await act('football:fan_select', { clubId:'united_vanguard', currentClubId:null, tos:TOS, profileId:'victima' });
+    assert.equal(result.ok,true); assert.equal(result.fan.clubId,'united_vanguard'); assert.equal(account.chips,1000);
+    result = await act('football:fan_equip', { pin:'fan-3', currentClubId:'united_vanguard' });
+    assert.equal(result.code,'pin_locked');
+    result = await act('football:fan_equip', { pin:'club-pin', currentClubId:'united_vanguard' });
+    assert.equal(result.ok,true); assert.equal(result.fanPin.abbr,'FAR');
+    assert.equal(account.footballFanClub.equippedPin,'club-pin');
+    result = await act('football:fan_ranking_opt', { enabled:true, currentClubId:'united_vanguard' });
+    assert.equal(result.ok,true); assert.equal(result.fan.ranking.length,1);
+    assert.doesNotMatch(JSON.stringify(result.fan.ranking),/cuenta-aficion|Aficionado/);
+    result = await act('football:fan_select', { clubId:'sporting_almar', currentClubId:'united_vanguard', tos:TOS });
+    assert.equal(result.code,'confirmation_required'); assert.equal(account.footballFanClub.clubId,'united_vanguard');
+    clock++;
+    result = await act('football:fan_select', { clubId:'sporting_almar', currentClubId:'united_vanguard', confirmed:true, tos:TOS });
+    assert.equal(result.ok,true); assert.equal(result.fan.rankingOptIn,false); assert.equal(result.fan.wins,0); assert.equal(account.footballFanClub.equippedPin,null);
+    const restarted = new ProfileStore(path.join(ctx.dir, 'profiles.json'));
+    try { assert.equal(restarted.getProfile(account.id).footballFanClub.clubId,'sporting_almar'); } finally { clearTimeout(restarted.saveTimer); }
+    result = await act('football:fan_select', { clubId:'united_vanguard', currentClubId:'united_vanguard', confirmed:true, tos:TOS });
+    assert.equal(result.code,'club_changed'); assert.equal(account.footballFanClub.clubId,'sporting_almar');
+  } finally { ctx.cleanup(); }
+});
+
+test('mercado de traspasos se revela a partir del día 15 y exige suscripción', t => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  const s = ctx.io.connect();
+  assert.equal(s._fire('football:transfers_get',{}).code,'no_identity');
+  assert.equal(subscribe(ctx,s,{name:'Mercado'}).ok,true);
+  const result=s._fire('football:transfers_get',{});
+  assert.equal(result.ok,true);
+  assert.ok(['scheduled','announced','effective'].includes(result.transfers.status));
+  if (result.transfers.status==='scheduled') assert.equal(result.transfers.moves.length,0);
+  else assert.equal(result.transfers.moves.length,4);
+});
+
+test('Quiniela consulta partidos reales sin permitir inscripciones todavía', t => {
+  const ctx=setup(); t.after(ctx.cleanup); const s=ctx.io.connect();
+  assert.equal(s._fire('football:quiniela_get',{}).code,'no_identity');
+  assert.equal(subscribe(ctx,s,{name:'Quiniela'}).ok,true);
+  const result=s._fire('football:quiniela_get',{}); assert.equal(result.ok,true);
+  assert.equal(result.quiniela.available,false);
+  assert.ok(result.quiniela.matches.length===8 || result.quiniela.matches.length===0);
+  assert.ok(result.quiniela.matches.every(m=>m.homeId&&m.awayId));
+});
+
+test('destacados no se filtran antes del final y viajan con el resultado asentado', t=>{
+ const ctx=setup();t.after(ctx.cleanup);const s=ctx.io.connect();const match=ctx.scheduled;
+ match.highlights={goals:[],moments:[],star:null};
+ const before=subscribe(ctx,s,{scope:'match',matchId:match.id,name:'Resumen'});assert.equal(before.matchState.match.highlights,null);
+ match.status='settled';match.result={home:0,away:0,winner:'draw'};ctx.engine.emit('football:status',{matchId:match.id,code:'full_time'});
+ const sent=ctx.io.lastTo(matchRoom(match.id),'football:status');assert.deepEqual(sent.highlights,match.highlights);assert.deepEqual(sent.result,match.result);
+ const after=subscribe(ctx,s,{scope:'match',matchId:match.id,name:'Resumen'});assert.deepEqual(after.matchState.match.highlights,match.highlights);
+});
+
+test('sesión verificada prevalece en Estadio y una cuenta no se suplanta con su ID', t=>{
+ const ctx=setup({accountSessionsEnabled:true});t.after(ctx.cleanup);const victim=ctx.profiles.getOrCreate('victima','Víctima');victim.username='victima';
+ const attacker=ctx.io.connect();const rejected=subscribe(ctx,attacker,{token:'victima',name:'Impostor'});assert.equal(rejected.code,'account_auth_required');assert.equal(attacker.data.football,undefined);
+ const owner=ctx.io.connect();owner.data.accountProfileId=victim.id;const ok=subscribe(ctx,owner,{token:'otro-token',name:'Otro'});assert.equal(ok.ok,true);assert.equal(ok.profile.id,'victima');assert.equal(owner.data.football.profileId,'victima');assert.equal(ctx.profiles.getProfile('otro-token'),null);
+});
+
+test('Estadio bloquea una cuenta suspendida incluso en conexiones ya abiertas', t=>{
+ const ctx=setup({accountSessionsEnabled:true});t.after(ctx.cleanup);const profile=ctx.profiles.getOrCreate('moderada','Moderada');profile.username='moderada';const s=ctx.io.connect();s.data.accountProfileId=profile.id;
+ assert.equal(subscribe(ctx,s,{name:'Moderada'}).ok,true);profile.moderation={status:'banned'};
+ assert.equal(subscribe(ctx,s,{name:'Moderada'}).code,'account_banned');assert.equal(s._fire('football:fan_get',{}).code,'no_identity');
+});

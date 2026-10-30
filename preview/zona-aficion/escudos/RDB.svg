@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 280" role="img" aria-labelledby="title desc">
+<title id="title">Escudo original de Roma de la Broma</title><desc id="desc">Insignia ilustrada con un símbolo de smile; diseño ficticio original.</desc>
+<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#5b6cac"/><stop offset="1" stop-color="#232c59"/></linearGradient><clipPath id="cut"><path d="M120 12 Q167 12 216 35 L211 162 Q202 231 120 270 Q38 231 29 162 L24 35 Q73 12 120 12Z"/></clipPath></defs>
+<path d="M120 12 Q167 12 216 35 L211 162 Q202 231 120 270 Q38 231 29 162 L24 35 Q73 12 120 12Z" fill="#e8dfba"/><g transform="translate(120 140) scale(.96) translate(-120 -140)"><path d="M120 12 Q167 12 216 35 L211 162 Q202 231 120 270 Q38 231 29 162 L24 35 Q73 12 120 12Z" fill="url(#g)"/>
+<g clip-path="url(#cut)" fill="none" stroke="#e8dfba" stroke-width="4" opacity=".12"><path d="M0 194 L125 5 M40 250 L200 5 M110 280 L240 75"/></g>
+<path d="M120 12 Q167 12 216 35 L211 162 Q202 231 120 270 Q38 231 29 162 L24 35 Q73 12 120 12Z" fill="none" stroke="#e8dfba" stroke-width="3" opacity=".8"/>
+<path d="M49 76 Q120 65 191 76" fill="none" stroke="#e8dfba" stroke-width="2" opacity=".65"/>
+<text x="120" y="60" text-anchor="middle" fill="#e8dfba" font-family="Arial, sans-serif" font-size="21" font-weight="900" letter-spacing="5">RDB</text>
+<circle cx="120" cy="132" r="57" fill="#232c59" opacity=".45"/><circle cx="120" cy="132" r="56" fill="none" stroke="#e8dfba" stroke-width="2" opacity=".75"/>
+<g transform="translate(70 82)" style="color:#e8dfba" fill="none" stroke="currentColor" stroke-width="4.3" stroke-linecap="round" stroke-linejoin="round"><path d="M23 30 Q50 22 77 30 L75 58 Q71 74 50 80 Q29 74 25 58Z"/><path d="M34 46 Q39 41 44 46 M56 46 Q61 41 66 46 M36 57 Q50 72 64 57"/><path d="M25 24 Q50 16 75 24"/></g>
+<path d="M69 205 Q120 219 171 205 M77 213 Q120 225 163 213" fill="none" stroke="#e8dfba" stroke-width="2" opacity=".8"/>
+<circle cx="58" cy="202" r="3" fill="#e8dfba"/><circle cx="182" cy="202" r="3" fill="#e8dfba"/>
+<text x="120" y="232" text-anchor="middle" fill="#e8dfba" font-family="Arial, sans-serif" font-size="8" font-weight="bold" letter-spacing="1.5">ESTADIO MC</text></g></svg>

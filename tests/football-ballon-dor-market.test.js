@@ -198,6 +198,7 @@ test('la ceremonia pública se verifica con el resultado persistido y solo expon
   assert.doesNotMatch(JSON.stringify(first.ceremony), /profile-private|ticket-private/);
   assert.doesNotMatch(JSON.stringify(service.getArchive()), /profile-private|ticket-private/);
   assert.equal(service.getArchive()[0].winner.playerName, 'Delantero 1');
+  assert.equal(service.getArchive()[0].winner.clubId, candidates[0].clubId);
   assert.equal(service.getArchive()[0].ceremony.paidVirtualChips, 500);
 
   predictions[1].payoutApplied = true;

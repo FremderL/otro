@@ -101,9 +101,14 @@ test('T25: el reto de variedad es inalcanzable jugando solo al Estadio', () => {
   assert.ok(daily.rounds >= 30, 'las rondas sí se cuentan (solo la variedad de juegos se filtra)');
 });
 
-test('C6: CHALLENGE_GAMES es exactamente AVAILABLE_GAMES', () => {
+test('C6: los retos incluyen Rueda, sin agregar Estadio ni modificar los juegos originales', () => {
   assert.ok(P.CHALLENGE_GAMES instanceof Set);
-  assert.deepStrictEqual([...P.CHALLENGE_GAMES].sort(), [...P.AVAILABLE_GAMES].sort());
+  assert.deepStrictEqual([...P.CHALLENGE_GAMES].sort(), [...P.AVAILABLE_GAMES, 'fortune'].sort());
+  assert.equal(P.AVAILABLE_GAMES.includes('fortune'), false);
+  const profile = blankProfile(1000);
+  P.recordOutcome(profile, { game: 'fortune', net: -10 });
+  assert.ok(profile.rotatingChallenges.daily.games.includes('fortune'));
+  assert.equal(profile.gameStats.fortune.rounds, 1);
   assert.strictEqual(P.CHALLENGE_GAMES.has('football'), false);
 });
 

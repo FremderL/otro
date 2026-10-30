@@ -36,3 +36,20 @@ Las pruebas viven en `tests/security-csp.test.js`.
   Conviene no commitear cambios de esa semilla por accidente.
 - Las creatividades se guardan en disco local (`PROMOTION_MEDIA_DIR`). Con varias instancias,
   deben compartir almacenamiento (ya señalado antes).
+
+
+## Identidad y moderación de Estadio
+
+Con sesiones habilitadas, un socket autenticado usa el perfil verificado y no el
+ID enviado en el payload. Un invitado no puede ocupar un perfil con nombre de
+cuenta mediante su ID; una cuenta suspendida o bloqueada no puede suscribirse
+al Estadio y los handlers vuelven a verificar el estado. El modo legado sin
+sesiones conserva el riesgo de suplantación por token y multicuentas. No se ha
+migrado la identidad por hash, de acuerdo con el alcance de bajo riesgo.
+
+La migración aditiva `001_moderacion_cuentas.sql` se probó en una base PostgreSQL
+aislada: sesiones, reporte, evidencia, acción, auditoría y revocación. Para
+instalarla en otro entorno debe ejecutarse `npm run migrate:db`; el commit no la
+ejecuta ni activa la administración. Activarla requiere su configuración segura
+y verificación operativa. Esta prueba no demuestra seguridad entre múltiples
+instancias del saldo general.

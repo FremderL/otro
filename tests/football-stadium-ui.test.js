@@ -98,11 +98,12 @@ function createHarness(options = {}) {
   };
   teams.home.style = 'possession';
   teams.away.style = 'pressing';
+  Object.assign(teams, options.extraTeams || {});
   const kickoffAt = options.kickoffAt == null
     ? nowMs + (options.kickoffOffsetMs == null ? 60000 : options.kickoffOffsetMs)
     : options.kickoffAt;
   const match = {
-    id: 'ui-match', homeId: 'home', awayId: 'away', status: 'scheduled',
+    id: 'ui-match', homeId: options.homeId || 'home', awayId: options.awayId || 'away', status: 'scheduled',
     scheduledKickoffAt: kickoffAt, jornada: 1, block: 'matutino'
   };
   const players = [
@@ -147,6 +148,12 @@ function createHarness(options = {}) {
     on(event, handler) { handlers[event] = handler; },
     emit(event, payload, ack) {
       socketEmitted.push({ event, payload });
+      if (event === 'football:quiniela_get' && options.onQuinielaGet) { ack(options.onQuinielaGet(payload)); return; }
+      if (event === 'football:transfers_get' && options.onTransfersGet) { ack(options.onTransfersGet(payload)); return; }
+      if (event === 'football:fan_equip' && options.onFanEquip) { ack(options.onFanEquip(payload)); return; }
+      if (event === 'football:fan_get' && options.onFanGet) { ack(options.onFanGet(payload)); return; }
+      if (event === 'football:fan_select' && options.onFanSelect) { ack(options.onFanSelect(payload)); return; }
+      if (event === 'football:fan_ranking_opt' && options.onFanOpt) { ack(options.onFanOpt(payload)); return; }
       if (event === 'football:fantasy_get' && options.onFantasyGet) { ack(options.onFantasyGet(payload)); return; }
       if (event === 'football:fantasy_save' && options.onFantasySave) { ack(options.onFantasySave(payload)); return; }
       if (event === 'football:fantasy_ranking_opt' && options.onFantasyOpt) { ack(options.onFantasyOpt(payload)); return; }
@@ -2192,4 +2199,163 @@ test('Mi Once muestra once posiciones, guarda el equipo y muestra pines sin fich
     assert.equal(sent.players.length,11); assert.match(doc.getElementById('est-fantasy-feedback').textContent,/jornada 2/);
     assert.equal(form.querySelector('portero'),null); assert.match(doc.getElementById('est-fantasy-panel').textContent,/Sin fichas/);
   } finally { h.window.close(); }
+});
+
+test('Zona de afición separa Mi Once y muestra las funciones ausentes sin simularlas', async () => {
+  const players = [['GK', 1], ['DF', 4], ['MF', 4], ['FW', 2]].flatMap(([group, n]) =>
+    Array.from({ length: n }, (_, i) => ({ id: group + i, group, name: 'Jugador ' + i, clubName: 'Club', position: group })));
+  const data = { season: '2026-10', points: 0, next: { jornada: 2 }, selected: [], players, ranking: [], challenges: [], rankingOptIn: false };
+  const h = createHarness({ onFantasyGet: () => ({ ok: true, fantasy: data }) });
+  try {
+    await h.connectToMatch();
+    const doc = h.window.document, hub = doc.getElementById('est-hub'), open = doc.getElementById('est-hub-open');
+    assert.equal(hub.hidden, true);
+    assert.equal(doc.querySelector('.est-col-left #est-fantasy-panel'), null);
+    open.focus(); open.click();
+    assert.equal(hub.hidden, false);
+    assert.equal(doc.activeElement.id, 'est-hub-close');
+    assert.equal(hub.getAttribute('aria-modal'), 'true');
+    const first = hub.querySelector('[data-fantasy-slot="0"]');
+    first.value = players[0].id; first.dispatchEvent(new h.window.Event('change', { bubbles: true }));
+    for (const view of ['quiniela']) {
+      const button = hub.querySelector('[data-hub-view="' + view + '"]');
+      button.click();
+      const panel = hub.querySelector('[data-hub-panel="' + view + '"]');
+      assert.equal(button.getAttribute('aria-pressed'), 'true');
+      assert.equal(panel.hidden, false);
+      assert.match(panel.textContent, /no está disponible/i);
+      assert.equal(panel.querySelector('form'), null);
+      assert.equal(doc.getElementById('est-fantasy-panel').hidden, true);
+    }
+    hub.querySelector('[data-hub-view="once"]').click();
+    assert.equal(hub.querySelector('[data-fantasy-slot="0"]').value, players[0].id);
+    hub.querySelector('[data-fantasy-slot="0"]').focus();
+    doc.activeElement.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(hub.hidden, true);
+    assert.equal(doc.activeElement, open);
+    open.click(); // la actualización del servidor no pisa el borrador
+    assert.equal(hub.querySelector('[data-fantasy-slot="0"]').value, players[0].id);
+    const close = doc.getElementById('est-hub-close');
+    close.focus();
+    close.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+    assert.equal(doc.activeElement.id, 'est-fantasy-opt');
+    doc.activeElement.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    assert.equal(doc.activeElement, close);
+    close.click();
+    assert.equal(doc.activeElement, open);
+  } finally { h.window.close(); }
+});
+
+
+test('los escudos de los 16 clubes aparecen en posiciones, partidos, marcador y previa', async () => {
+  const { CLUBS } = require('../lib/football/teams');
+  const expected = { vantora_fc:'RMD', united_vanguard:'FAR', olympique_estevin:'ATC', atletico_solaris:'MUN', sporting_almar:'LVP', dynamo_kelvar:'ARS', cs_verdania:'BAY', halcyon_bay_fc:'BDO', athletic_ferrata:'JUV', royal_corvane:'PSG', sv_talbruck:'RSU', velmar_harbour_fc:'RDB', norvela_sporting:'WHM', ironvale_fc:'NAB', peregrine_rovers:'CDC', puerto_ambar:'BEN' };
+  const extraTeams = Object.fromEntries(CLUBS.map(club => [club.id, team(club.id, club.name, club.abbr, club.colors.primary, club.colors.secondary)]));
+  const standings = CLUBS.map(club => ({ teamId: club.id, played: 0, goalDiff: 0, points: 0 }));
+  const h = createHarness({ extraTeams, standings, homeId: 'united_vanguard', awayId: 'sporting_almar', kickoffOffsetMs: 60000 });
+  try {
+    await h.connectToMatch();
+    const doc = h.window.document;
+    const imgs = [...doc.querySelectorAll('#est-standings tbody img.est-club-crest')];
+    assert.equal(imgs.length, 16);
+    imgs.forEach((img, index) => {
+      const id = CLUBS[index].id;
+      const src = '/assets/escudos/' + expected[id] + '.svg';
+      assert.equal(img.getAttribute('src'), src);
+      assert.equal(img.getAttribute('alt'), '');
+      assert.ok(fs.existsSync(path.join(__dirname, '..', 'public', src.slice(1))));
+      assert.match(img.parentElement.textContent, new RegExp(CLUBS[index].name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    });
+    assert.equal(doc.querySelectorAll('#est-match-list img.est-match-crest').length, 2);
+    assert.match(doc.querySelector('#crest-home img').getAttribute('src'), /FAR\.svg$/);
+    assert.match(doc.querySelector('#crest-away img').getAttribute('src'), /LVP\.svg$/);
+    assert.equal(doc.querySelectorAll('.est-compare-club img.est-club-crest').length, 2);
+  } finally { h.window.close(); }
+});
+
+
+test('Mi afición real pide confirmación antes de cambiar y muestra el resultado del servidor', async () => {
+  let fan = { clubId:null, wins:0, level:0, rankingOptIn:false, ranking:[], rewards:[] };
+  const sent = [];
+  const extraTeams = { united_vanguard:team('united_vanguard','Farselona FC','FAR','#d32f2f','#1a1a1a'), sporting_almar:team('sporting_almar','Liverpulpo FC','LVP','#388e3c','#ffffff') };
+  const h = createHarness({ extraTeams, onFanGet:() => ({ok:true,fan}), onFanSelect:payload => { sent.push(payload); fan={...fan,clubId:payload.clubId,wins:0,level:0,rewards:[{title:'Pin del club',unlocked:true}]}; return {ok:true,fan}; } });
+  try {
+    await h.connectToMatch(); const doc=h.window.document;
+    doc.getElementById('est-hub-open').click(); doc.querySelector('[data-hub-view="aficion"]').click();
+    const select=doc.getElementById('est-fan-club'); select.value='united_vanguard'; select.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+    doc.getElementById('est-fan-choose').click();
+    assert.equal(sent.length,1); assert.equal(sent[0].confirmed,false); assert.match(doc.getElementById('est-fan-current').textContent,/Farselona/);
+    select.value='sporting_almar'; select.dispatchEvent(new h.window.Event('change',{bubbles:true})); doc.getElementById('est-fan-choose').click();
+    assert.equal(doc.getElementById('est-fan-confirm').hidden,false); assert.equal(sent.length,1);
+    assert.match(doc.getElementById('est-fan-confirm').textContent,/Perderás las victorias, el nivel y los pines/);
+    doc.getElementById('est-fan-confirm-no').click(); assert.equal(sent.length,1);
+    doc.getElementById('est-fan-choose').click(); doc.getElementById('est-fan-confirm-yes').click();
+    assert.equal(sent.length,2); assert.equal(sent[1].confirmed,true); assert.equal(sent[1].currentClubId,'united_vanguard');
+    assert.match(doc.getElementById('est-fan-current').textContent,/Liverpulpo/);
+  } finally { h.window.close(); }
+});
+
+
+test('Mercado muestra nombres de jugadores y escudos de ambos clubes', async () => {
+  const h=createHarness({ extraTeams:{ united_vanguard:team('united_vanguard','Farselona FC','FAR','#d32f2f','#111111'), sporting_almar:team('sporting_almar','Liverpulpo FC','LVP','#388e3c','#ffffff') }, onTransfersGet:()=>({ok:true,transfers:{status:'announced',effectiveSeason:'2026-11',moves:[{playerName:'<Jugador>',fromId:'united_vanguard',toId:'sporting_almar'}]}}) });
+  try {
+    await h.connectToMatch(); const doc=h.window.document; doc.getElementById('est-hub-open').click(); doc.querySelector('[data-hub-view="mercado"]').click();
+    const row=doc.querySelector('.est-transfer-list li'); assert.ok(row); assert.match(row.textContent,/<Jugador>/);
+    assert.equal(row.querySelector('jugador'),null); assert.equal(row.querySelectorAll('img').length,2);
+    assert.ok(row.querySelector('img[src="/assets/escudos/FAR.svg"]')); assert.ok(row.querySelector('img[src="/assets/escudos/LVP.svg"]'));
+  } finally {h.window.close();}
+});
+
+
+test('Mi afición permite equipar un pin desbloqueado y muestra el escudo', async () => {
+ let fan={clubId:'united_vanguard',wins:1,level:1,ranking:[],rankingOptIn:false,equippedPin:null,rewards:[{id:'fan-1',title:'Primera victoria',target:1,progress:1,unlocked:true,equipped:false}]};
+ let sent;
+ const h=createHarness({extraTeams:{united_vanguard:team('united_vanguard','Farselona FC','FAR','#d32f2f','#111111')},onFanGet:()=>({ok:true,fan}),onFanEquip:payload=>{sent=payload;fan={...fan,equippedPin:payload.pin,rewards:fan.rewards.map(r=>({...r,equipped:r.id===payload.pin}))};return {ok:true,fan};}});
+ try {await h.connectToMatch();const doc=h.window.document;doc.getElementById('est-hub-open').click();doc.querySelector('[data-hub-view="aficion"]').click();
+ assert.match(doc.getElementById('est-fan-rewards').textContent,/1\/1/);doc.querySelector('[data-fan-pin="fan-1"]').click();
+ assert.equal(sent.pin,'fan-1');assert.equal(doc.getElementById('est-active-fan-pin').hidden,false);assert.ok(doc.querySelector('#est-active-fan-pin img[src="/assets/escudos/FAR.svg"]'));
+ } finally {h.window.close();}
+});
+
+
+test('Quiniela muestra jornada real sin simular venta de boletos', async () => {
+ const h=createHarness({extraTeams:{united_vanguard:team('united_vanguard','Farselona FC','FAR','#d32f2f','#111111'),sporting_almar:team('sporting_almar','Liverpulpo FC','LVP','#388e3c','#ffffff')},onQuinielaGet:()=>({ok:true,quiniela:{available:false,jornada:7,matches:[{id:'m',homeId:'united_vanguard',awayId:'sporting_almar'}]}})});
+ try {await h.connectToMatch();const doc=h.window.document;doc.getElementById('est-hub-open').click();doc.querySelector('[data-hub-view="quiniela"]').click();const panel=doc.querySelector('[data-hub-panel="quiniela"]');assert.match(panel.textContent,/Jornada 7/);assert.match(panel.textContent,/Farselona FC/);assert.match(panel.textContent,/inscripción no está disponible/i);assert.ok(panel.querySelector('img[src="/assets/escudos/LVP.svg"]'));assert.equal(panel.querySelectorAll('button').length,0);}finally{h.window.close();}
+});
+
+test('escudos acompañan nombres en historial abierto, combinadas y cambio de afición', async t => {
+ const home='united_vanguard',away='sporting_almar'; const match={id:'ui-match',homeId:home,awayId:away,jornada:1,status:'scheduled'};
+ const teams={ [home]:team(home,'Farselona FC','FAR','#d32f2f','#111111'), [away]:team(away,'Liverpulpo FC','LVP','#388e3c','#ffffff') };
+ const entries=[{kind:'bet',id:'one',matchId:match.id,market:'1x2',selection:'home',stake:50,odds:2,status:'open',placedAt:1000,match}, {kind:'parlay',id:'combo',stake:50,odds:2,status:'open',placedAt:1000,legs:[{match,market:'1x2',selection:'home',odds:2,status:'open'}]}, {kind:'future',id:'future',market:'champion',selection:home,seasonMonth:'2026-10',stake:50,odds:2,status:'open',placedAt:1000}];
+ const fan={clubId:home,wins:0,level:0,ranking:[],rankingOptIn:false,rewards:[]};
+ const h=createHarness({homeId:home,awayId:away,extraTeams:teams,betHistory:{entries,summary:{total:3},totalEntries:3},onFanGet:()=>({ok:true,fan})});t.after(h.close);await h.connectToMatch();await h.flush();const doc=h.window.document;doc.getElementById('est-ledger-open').click();
+ const open=doc.querySelector('[data-kind="bet"] .est-ledger-row-match');assert.equal(open.querySelectorAll('img.est-club-crest').length,2);
+ const leg=doc.querySelector('[data-kind="parlay"] .est-ledger-leg-copy small');assert.equal(leg.querySelectorAll('img.est-club-crest').length,2);
+ assert.ok(doc.querySelector('[data-kind="future"] .est-ledger-pick img[src$="FAR.svg"]'));
+ assert.equal(doc.querySelectorAll('#est-ledger-only-match img').length,2);doc.getElementById('est-ledger-close').click();
+ doc.getElementById('est-hub-open').click();doc.querySelector('[data-hub-view="aficion"]').click();const select=doc.getElementById('est-fan-club');select.value=away;select.dispatchEvent(new h.window.Event('change',{bubbles:true}));assert.ok(doc.querySelector('#est-fan-selected-club img[src$="LVP.svg"]'));doc.getElementById('est-fan-choose').click();assert.equal(doc.querySelectorAll('#est-fan-confirm-copy img').length,2);
+});
+
+test('escudos reales aparecen en la inauguración, tabla y archivo del Balón de Oro', async t => {
+ const {CLUBS}=require('../lib/football/teams');const base=ballonDorMarket();const candidates=base.candidates.map((candidate,i)=>({...candidate,clubId:CLUBS[i].id,clubName:CLUBS[i].name,clubShort:CLUBS[i].abbr}));
+ const active=ballonDorMarket({candidates});const h=await createBallonDorHarness({path:'/balon-de-oro',ballonDorMarket:active});t.after(h.close);const doc=h.window.document;
+ assert.equal(doc.querySelectorAll('#est-bdo-candidates img.est-bdo-club-crest').length,16);h.advanceOpeningAudio(8.1);
+ assert.ok(doc.querySelector('#est-bdo-opening-kicker img[src$="RMD.svg"]'));assert.ok(doc.querySelector('#est-bdo-opening-card-monogram img') || doc.querySelector('.est-bdo-opening-card-monogram img[src$="RMD.svg"]'));
+ const result=settledBallonDorMarket({candidates});const archive=[{seasonMonth:'2026-10',status:'settled',winner:{clubId:CLUBS[0].id,clubName:CLUBS[0].name,playerName:candidates[0].playerName,score:30}}];
+ const h2=await createBallonDorHarness({path:'/balon-de-oro?seasonMonth=2026-10',openingCompleted:true,now:Date.UTC(2026,10,2,12),ballonDorMarket:result,ballonDorArchive:archive,reducedMotion:true});t.after(h2.close);const d2=h2.window.document;
+ assert.ok(d2.querySelector('#est-bdo-archive-list img[src$="RMD.svg"]'));assert.ok(d2.querySelector('#est-bdo-summary img[src$="RMD.svg"]'));d2.getElementById('est-bdo-ceremony-start').click();await h2.flush();
+ assert.equal(d2.querySelectorAll('#est-bdo-ceremony-nominees img.est-club-crest').length,16);
+ assert.equal(d2.querySelector('#est-bdo-ceremony-title img'),null,'no se revela ganador antes de tiempo');
+});
+
+test('cada club tiene un escudo SVG propio, autocontenido y asociado a su abreviatura', () => {
+ const {CLUBS}=require('../lib/football/teams'); const art=new Set();
+ for(const club of CLUBS) {const svg=fs.readFileSync(path.join(__dirname,'..','public','assets','escudos',club.abbr+'.svg'),'utf8');assert.match(svg,/^<svg\b/);assert.match(svg,/viewBox=/);assert.doesNotMatch(svg,/<script\b|<image\b|https?:\/\/(?!www\.w3\.org\/2000\/svg)/i);assert.ok(svg.includes(club.name));art.add(svg);}
+ assert.equal(art.size,16);
+});
+
+test('destacados se muestran solo al finalizar y pueden escucharse con voz es-MX', async t=>{
+ const h=createHarness({speechSynthesis:true});t.after(h.close);await h.connectToMatch();const doc=h.window.document,box=doc.getElementById('est-highlights');assert.equal(box.hidden,true);
+ h.handlers['football:status']({matchId:h.match.id,code:'full_time',result:{home:1,away:0},highlights:{goals:[{type:'goal',minute:12,side:'home',player:'<Jugador>',assist:'Pase'}],moments:[{type:'goal',minute:12,side:'home',player:'<Jugador>',assist:'Pase'}],star:{name:'<Jugador>',side:'home',goals:1,assists:0,minutes:90}}});
+ assert.equal(box.hidden,false);assert.match(box.textContent,/1–0/);assert.match(box.textContent,/<Jugador>/);assert.equal(box.querySelector('jugador'),null);assert.match(box.textContent,/Asistencia: Pase/);doc.getElementById('est-highlights-audio').click();assert.equal(h.speech.utterances.length,1);assert.equal(h.speech.utterances[0].lang,'es-MX');
 });

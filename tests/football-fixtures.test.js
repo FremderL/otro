@@ -10,7 +10,7 @@ const { hash32, mulberry32 } = require('../lib/football/prng');
 const { buildSeasonClubs } = require('../lib/football/teams');
 const {
   generateCalendar, daysInMonth, doubleRoundRobin, jornadasPorDia, asignarDias,
-  zonedTimeToMs, DEFAULT_BLOCKS, WAVE_OFFSET_MIN, JORNADAS
+  zonedTimeToMs, JORNADAS
 } = require('../lib/football/fixtures');
 const { CASINO_TIME_ZONE } = require('../lib/profile-store-shared');
 
@@ -143,50 +143,21 @@ test('T17: generateCalendar es válido para todos los meses probados', () => {
   }
 });
 
-test('los kickoff caen en la hora del bloque, en la zona del casino, con +35 min en la segunda oleada', () => {
-  const mes = '2026-02'; // tiene días dobles
-  const cal = generateCalendar(mes, clubsFor(mes));
-  const blockTime = Object.fromEntries(DEFAULT_BLOCKS.map(b => [b.id, b.time.split(':').map(Number)]));
-  for (const m of cal.matches) {
-    const [bh, bm] = blockTime[m.block];
-    const expectedMin = bh * 60 + bm + m.wave * WAVE_OFFSET_MIN;
-    const { hour, minute } = kickoffParts(m.scheduledKickoffAt);
-    assert.strictEqual(hour * 60 + minute, expectedMin,
-      `${m.id} (${m.block}, oleada ${m.wave}): ${hour}:${String(minute).padStart(2, '0')} esperado`);
-    // El día local del kickoff coincide con el día asignado.
-    const dayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: CASINO_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' })
-      .format(new Date(m.scheduledKickoffAt));
-    assert.strictEqual(dayLocal, `${mes}-${String(m.day).padStart(2, '0')}`);
-  }
-});
-
-test('en un día doble las dos oleadas van +35 min por bloque y no se solapan', () => {
-  const mes = '2026-02';
-  const cal = generateCalendar(mes, clubsFor(mes));
-  const MATCH_DURATION_MS = 17 * 60000; // ~17 min reales por partido (§5.4)
-  const byDay = new Map();
-  for (const j of cal.jornadas) {
-    if (!byDay.has(j.day)) byDay.set(j.day, []);
-    byDay.get(j.day).push(j);
-  }
-  const doubleDays = [...byDay.values()].filter(list => list.length === 2);
-  assert.ok(doubleDays.length >= 1, 'febrero tiene días dobles');
-  for (const list of doubleDays) {
-    const [a, b] = list.sort((x, y) => x.wave - y.wave);
-    assert.strictEqual(a.wave, 0); assert.strictEqual(b.wave, 1);
-    // Las dos jornadas son oleadas PARALELAS: mismos bloques, la segunda +35 min.
-    // Dentro de un bloque todos los partidos arrancan simultáneos (§5.3), así que
-    // lo que no debe solaparse es la oleada 1 de un bloque con la oleada 0 del
-    // mismo bloque (35 min > ~17 min de partido).
-    for (const blockId of ['matutino', 'vespertino', 'estelar']) {
-      const ka = a.matches.filter(m => m.block === blockId).map(m => m.scheduledKickoffAt);
-      const kb = b.matches.filter(m => m.block === blockId).map(m => m.scheduledKickoffAt);
-      assert.strictEqual(new Set(ka).size, 1, `${blockId} oleada 0: kickoff simultáneo`);
-      assert.strictEqual(new Set(kb).size, 1, `${blockId} oleada 1: kickoff simultáneo`);
-      const offset = kb[0] - ka[0];
-      assert.strictEqual(offset, WAVE_OFFSET_MIN * 60000, `${blockId}: desfase exacto de +35 min`);
-      assert.ok(offset >= MATCH_DURATION_MS, `${blockId}: el desfase excede la duración del partido`);
+test('jornadas simples y dobles respetan la parrilla horaria sin partidos simultáneos', () => {
+  for (const mes of ['2026-02','2026-04','2026-10']) {
+    const cal=generateCalendar(mes,clubsFor(mes));
+    const expected=[13*60,14*60,15*60,17*60,18*60,19*60,20*60+30,21*60+30];
+    const byDay=new Map();
+    for(const jornada of cal.jornadas) {
+      const minutes=jornada.matches.map(m=>{const {hour,minute}=kickoffParts(m.scheduledKickoffAt);return hour*60+minute;}).sort((a,b)=>a-b);
+      assert.deepStrictEqual(minutes,expected.map(n=>n+jornada.wave*30),`${mes} J${jornada.jornada}`);
+      const featured=jornada.matches.find(m=>m.featured);const part=kickoffParts(featured.scheduledKickoffAt);
+      assert.equal(part.hour*60+part.minute,21*60+30+jornada.wave*30);
+      for(const m of jornada.matches) {assert.equal(new Intl.DateTimeFormat('en-CA',{timeZone:CASINO_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(m.scheduledKickoffAt)),`${mes}-${String(m.day).padStart(2,'0')}`);}
+      if(!byDay.has(jornada.day)) byDay.set(jornada.day,[]);byDay.get(jornada.day).push(...jornada.matches.map(m=>m.scheduledKickoffAt));
     }
+    for(const times of byDay.values()) {times.sort((a,b)=>a-b);for(let i=1;i<times.length;i++) assert.ok(times[i]-times[i-1]>=30*60000,'sin empalme entre oleadas');}
+    const final=cal.jornadas.find(j=>j.jornada===30);assert.equal(final.wave,0);assert.equal(byDay.get(final.day).length,8,'J30 no comparte día con otra jornada');
   }
 });
 

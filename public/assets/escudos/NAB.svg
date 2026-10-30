@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 280" role="img" aria-labelledby="title desc">
+<title id="title">Escudo original de Nabo-li FC</title><desc id="desc">Insignia ilustrada con un símbolo de turnip; diseño ficticio original.</desc>
+<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#9b704e"/><stop offset="1" stop-color="#483124"/></linearGradient><clipPath id="cut"><path d="M120 10 L216 38 L216 153 Q214 225 120 271 Q26 225 24 153 L24 38Z"/></clipPath></defs>
+<path d="M120 10 L216 38 L216 153 Q214 225 120 271 Q26 225 24 153 L24 38Z" fill="#efdfb8"/><g transform="translate(120 140) scale(.96) translate(-120 -140)"><path d="M120 10 L216 38 L216 153 Q214 225 120 271 Q26 225 24 153 L24 38Z" fill="url(#g)"/>
+<g clip-path="url(#cut)" fill="none" stroke="#efdfb8" stroke-width="4" opacity=".12"><path d="M10 69 H230 M10 110 H230 M10 151 H230 M10 192 H230"/></g>
+<path d="M120 10 L216 38 L216 153 Q214 225 120 271 Q26 225 24 153 L24 38Z" fill="none" stroke="#efdfb8" stroke-width="3" opacity=".8"/>
+<path d="M49 76 Q120 65 191 76" fill="none" stroke="#efdfb8" stroke-width="2" opacity=".65"/>
+<text x="120" y="60" text-anchor="middle" fill="#efdfb8" font-family="Arial, sans-serif" font-size="21" font-weight="900" letter-spacing="5">NAB</text>
+<circle cx="120" cy="132" r="57" fill="#483124" opacity=".45"/><circle cx="120" cy="132" r="56" fill="none" stroke="#efdfb8" stroke-width="2" opacity=".75"/>
+<g transform="translate(70 82)" style="color:#efdfb8" fill="none" stroke="currentColor" stroke-width="4.3" stroke-linecap="round" stroke-linejoin="round"><path d="M29 43 Q50 34 71 43 Q72 64 50 80 Q28 64 29 43Z"/><path d="M50 39 Q48 22 37 18 Q36 31 50 39 M50 39 Q52 22 63 18 Q64 31 50 39 M37 52 Q50 56 63 52 M41 62 Q50 66 59 62"/></g>
+<path d="M69 205 Q120 219 171 205 M77 213 Q120 225 163 213" fill="none" stroke="#efdfb8" stroke-width="2" opacity=".8"/>
+<circle cx="58" cy="202" r="3" fill="#efdfb8"/><circle cx="182" cy="202" r="3" fill="#efdfb8"/>
+<text x="120" y="232" text-anchor="middle" fill="#efdfb8" font-family="Arial, sans-serif" font-size="8" font-weight="bold" letter-spacing="1.5">ESTADIO MC</text></g></svg>
