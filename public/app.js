@@ -30,7 +30,7 @@
       serverFlags.passport = data?.passportEnabled === true;
       // Gachapón de cartas: solo se muestra si healthz lo confirma de forma explícita.
       serverFlags.cardGacha = data?.cardGachaEnabled === true;
-      setFortuneAvailability(data?.fortuneEnabled === true);
+      setFortuneAvailability(data?.fortuneEnabled !== false);
       document.getElementById('profile-section-album')?.classList.toggle('hidden', !serverFlags.cardGacha);
       document.getElementById('profile-tab-album')?.classList.toggle('hidden', !serverFlags.cardGacha);
       if (!serverFlags.cardGacha && ui.profileSection === 'album') jumpToProfileSection('overview');
@@ -42,6 +42,9 @@
       else if (ui.profileOpen) renderProfileModal();
     })
     .catch(() => {
+      // Sin datos de salud no se ofrece la Rueda, pero el resto del lobby sigue
+      // igual que antes (la Rueda se habilita al recargar con el servidor sano).
+      setFortuneAvailability(false);
       serverFlags.accountSessions = true;
       serverFlags.passport = false;
       document.getElementById('passport-panel')?.classList.add('hidden');
@@ -52,9 +55,15 @@
       else if (ui.profileOpen) renderProfileModal();
     });
   function setFortuneAvailability(available) {
-    document.querySelectorAll('[data-game="fortune"], [data-select-game="fortune"]').forEach(button => { button.disabled = !available; });
+    // La Rueda está activa salvo que el servidor la apague (FORTUNE_ENABLED=off)
+    // o que su diario no haya podido iniciarse; el lobby refleja ese estado.
+    document.querySelectorAll('[data-game="fortune"], [data-select-game="fortune"]').forEach(button => {
+      button.disabled = !available;
+      if (!available) button.setAttribute('title', 'La Rueda no está disponible en este momento.');
+      else button.removeAttribute('title');
+    });
     const caption = document.querySelector('[data-game="fortune"] span');
-    if (caption) caption.textContent = available ? 'Elegir mi sector' : 'Rueda en desarrollo';
+    if (caption) caption.textContent = available ? 'Elegir mi sector' : 'Rueda no disponible';
   }
   function accountSessionsAvailable() { return serverFlags.accountSessions !== false; }
   const $ = selector => document.querySelector(selector);

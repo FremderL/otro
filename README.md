@@ -1,6 +1,6 @@
 # MonteCristo
 
-Casino social multijugador para jugar con amigos mediante una URL privada. Incluye **Texas Hold’em, Blackjack/21, Ruleta Nova, Dados Cósmicos, Cara o Cruz, Tragamonedas y la Lotería mexicana**.
+Casino social multijugador para jugar con amigos mediante una URL privada. Incluye **Texas Hold’em, Blackjack/21, Ruleta Nova, Rueda de la Fortuna, Dados Cósmicos, Cara o Cruz, Tragamonedas y la Lotería mexicana**.
 
 > Todas las fichas, apuestas, recompensas y jackpots son completamente virtuales. No hay dinero real, depósitos, retiros, pagos ni premios canjeables.
 
@@ -95,6 +95,13 @@ Apuesta inicial, pedir, plantarse, doblar y pago de Blackjack 3:2. Cada turno di
 - Si al cierre hay menos de dos cartones, la ronda se cancela, se devuelven las entradas y el acumulado previo se conserva.
 - Empate: reparto en fichas enteras iguales y el sobrante queda como acumulado de la siguiente ronda.
 - Pantalla propia en `/loteria` con cartón 4×4, últimas cartas cantadas, cartones en juego, cuenta atrás y resultado. La tarjeta del lobby enlaza directamente a la sala.
+
+### Rueda de la Fortuna
+
+- 54 sectores: 25 del 1, 15 del 2, 7 del 5, 4 del 10, 2 del 20 y uno del 40. Pago total (incluye la apuesta) de x2, x3, x6, x11, x21 y x41 respectivamente.
+- Se elige el sector antes de lanzar; el servidor decide y liquida. Sin eventos especiales ni bonificaciones adicionales.
+- Está **abierta a cualquier persona**, también en producción. Un diario en disco (`FORTUNE_STATE_PATH`) cobra y paga con operaciones idempotentes: al reiniciar se devuelve toda apuesta sin resultado y se paga el resultado ya confirmado, así que un despliegue no cuesta fichas. Ver `docs/rueda-fortuna.md`.
+- `FORTUNE_ENABLED=off` la apaga y el lobby lo refleja; `GET /healthz` publica `fortuneEnabled`.
 
 En los juegos rápidos, cada participante confirma una sola apuesta por ronda. Solo el anfitrión inicia el lanzamiento, pero **el servidor genera y liquida el resultado**. Las animaciones (incluidas la rueda de la ruleta y los rodillos de la tragamonedas) solo representan el estado autoritativo y nunca deciden el resultado.
 
@@ -196,6 +203,7 @@ Variables útiles para pruebas y despliegue:
 - `PROFILE_STORE_PATH`: ruta del archivo de perfiles (en Render, apúntalo al disco persistente, p. ej. `/var/data/profiles.json`). Se ignora si `DATABASE_URL` está definida.
 - `LOBBY_TOURNAMENT_STORE_PATH`: ruta del archivo persistente de calendario/inscripciones/brackets; por defecto `data/lobby-tournaments.json`. Se ignora si `DATABASE_URL` está definida.
 - `LOTERIA_STATE_PATH`: ruta del estado de la ronda compartida de la Lotería; por defecto `data/loteria.json` (en Render, `/var/data/loteria.json`). `LOTERIA_ENABLED=off` apaga la sala; `LOTERIA_REGISTRATION_MS`, `LOTERIA_CALL_INTERVAL_MS` y `LOTERIA_BREAK_MS` ajustan el ritmo y están pensadas para pruebas.
+- `FORTUNE_STATE_PATH`: ruta del diario de la Rueda de la Fortuna; por defecto `data/fortune-ledger.json` (en Render, `/var/data/fortune-ledger.json`). `FORTUNE_ENABLED=off` apaga la Rueda.
 - `DATABASE_URL`: cadena de conexión Postgres (Fase 10). Si está definida, los perfiles se guardan en Postgres en vez de en el archivo JSON — pensado para el free tier de Neon, que no requiere tarjeta. Ver «Persistencia de perfiles» abajo.
 - `CASINO_TIME_ZONE`: zona IANA del calendario mensual del ranking y de la rotación visual estacional. Por defecto `America/Mexico_City`; los cambios de temporada ocurren a medianoche local y no a las 00:00 UTC del servidor.
 - `SHUTDOWN_GRACE_MS`: milisegundos que espera el apagado ordenado a que termine el guardado final antes de forzar la salida (Fase 11.3). Por defecto 10000 con Postgres y 2500 con el archivo local; súbelo si tu plan de hosting da poco tiempo de gracia y Neon suele tardar más en responder.
@@ -257,6 +265,7 @@ lib/quick-games.js                Registro, reglas, cuotas y resultados de minij
 lib/loteria/game.js               Reglas puras de la Lotería (cartones, canto, reparto)
 lib/loteria/cards.js              Catálogo de las 54 cartas (nombre y emoji)
 lib/loteria/service.js            Sala común: cobros, premios idempotentes y recuperación
+lib/fortune/ledger.js             Diario de la Rueda: cobros, pagos, reembolsos y recuperación
 lib/special-events.js             Eventos temporales y bonificaciones
 public/index.html                 Lobby, mesas, panel de bots y componentes sociales
 public/styles.css                 Identidad visual y juegos temáticos (diseño solo escritorio)

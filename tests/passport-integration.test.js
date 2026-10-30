@@ -272,7 +272,8 @@ test('Rueda de la Fortuna crea una mesa y liquida el sector con pago total corre
   const child = spawn(process.execPath, ['server.js'], {
     cwd:path.resolve(__dirname, '..'),
     env:{ ...process.env, PORT:String(port), DATABASE_URL:'', PROFILE_STORE_PATH:path.join(tempDir,'profiles.json'),
-      ADMIN_FEATURE_ENABLED:'off', FOOTBALL_ENABLED:'off', AUTO_BOTS:'off', LOG_JSON:'off', FORTUNE_PREVIEW_UNSAFE:'on', NODE_ENV:'test' },
+      FORTUNE_STATE_PATH:path.join(tempDir,'fortune-ledger.json'),
+      ADMIN_FEATURE_ENABLED:'off', FOOTBALL_ENABLED:'off', AUTO_BOTS:'off', LOG_JSON:'off', NODE_ENV:'production' },
     stdio:['ignore','pipe','pipe']
   });
   let socket;
@@ -306,16 +307,20 @@ test('Rueda de la Fortuna crea una mesa y liquida el sector con pago total corre
   assert.equal(invalid.ok,false,'no se puede apostar después de liquidar');
 });
 
-async function assertFortuneIsPaused(t, databaseUrl, nodeEnv) {
+// La Rueda se apaga solo con una variable explícita: ya no depende de la
+// "vista previa insegura" ni del entorno, porque su diario transaccional
+// devuelve las apuestas sin resultado al reiniciar.
+async function startFortuneServer(t, env = {}) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-fortune-guard-'));
   const port = await reservePort();
   const output = { text: '' };
   const child = spawn(process.execPath, ['server.js'], {
     cwd: path.resolve(__dirname, '..'),
-    env: { ...process.env, PORT: String(port), DATABASE_URL: databaseUrl,
+    env: { ...process.env, PORT: String(port), DATABASE_URL: '',
       PROFILE_STORE_PATH: path.join(tempDir, 'profiles.json'),
+      FORTUNE_STATE_PATH: path.join(tempDir, 'fortune-ledger.json'),
       ADMIN_FEATURE_ENABLED: 'off', FOOTBALL_ENABLED: 'off', AUTO_BOTS: 'off', LOG_JSON: 'off',
-      FORTUNE_PREVIEW_UNSAFE: 'on', NODE_ENV: nodeEnv },
+      ...env },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   let socket;
@@ -331,23 +336,32 @@ async function assertFortuneIsPaused(t, databaseUrl, nodeEnv) {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
   await waitForServer(child, output);
-  const health = await fetch(`http://127.0.0.1:${port}/healthz`).then(response => response.json());
+  return { port, tempDir, attach: value => { socket = value; } };
+}
+
+test('Rueda permanece disponible en producción y con PostgreSQL configurado', {
+  timeout: 30000, skip: !process.env.FORTUNE_TEST_DATABASE_URL
+}, async t => {
+  const server = await startFortuneServer(t, { DATABASE_URL: process.env.FORTUNE_TEST_DATABASE_URL, NODE_ENV: 'production' });
+  const health = await fetch(`http://127.0.0.1:${server.port}/healthz`).then(response => response.json());
+  assert.equal(health.fortuneEnabled, true);
+  const token = `fortune-db-${Date.now()}`;
+  const socket = await connectSocket(server.port, token);
+  server.attach(socket);
+  const created = await emitWithAck(socket, 'create_room', { token, name: 'Rueda Prueba', game: 'fortune', tos: TOS_VERSION });
+  assert.equal(created.ok, true, JSON.stringify(created));
+});
+
+test('Rueda se apaga con FORTUNE_ENABLED=off y el lobby lo refleja', { timeout: 20000 }, async t => {
+  const server = await startFortuneServer(t, { FORTUNE_ENABLED: 'off', NODE_ENV: 'production' });
+  const health = await fetch(`http://127.0.0.1:${server.port}/healthz`).then(response => response.json());
   assert.equal(health.fortuneEnabled, false);
   const token = `fortune-pause-${Date.now()}`;
-  socket = await connectSocket(port, token);
+  const socket = await connectSocket(server.port, token);
+  server.attach(socket);
   const attempt = await emitWithAck(socket, 'create_room', { token, name: 'Rueda Prueba', game: 'fortune', tos: TOS_VERSION });
   assert.equal(attempt.ok, false);
   assert.match(attempt.error, /no está disponible/i);
-}
-
-test('Rueda permanece pausada en producción aun si se solicita la vista insegura', { timeout: 20000 }, async t => {
-  await assertFortuneIsPaused(t, '', 'production');
-});
-
-test('Rueda permanece pausada con PostgreSQL hasta integrar recuperación', {
-  timeout: 30000, skip: !process.env.FORTUNE_TEST_DATABASE_URL
-}, async t => {
-  await assertFortuneIsPaused(t, process.env.FORTUNE_TEST_DATABASE_URL, 'test');
 });
 
 test('Mi afición equipa y retira el escudo en una mesa real del Casino', { timeout:30000 }, async t => {
