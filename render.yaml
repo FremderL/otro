@@ -16,6 +16,10 @@ services:
         value: /var/data/profiles.json
       - key: LOBBY_TOURNAMENT_STORE_PATH
         value: /var/data/lobby-tournaments.json
+      # Diario de la partida compartida de lotería (cartones, canto y reembolsos
+      # pendientes) en el disco persistente, igual que el resto de estados.
+      - key: LOTERIA_STORE_PATH
+        value: /var/data/loteria.json
       - key: NODE_ENV
         value: production
       # Las temporadas cierran a medianoche de Ciudad de México, no a las 00:00 UTC.

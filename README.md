@@ -88,6 +88,14 @@ Apuesta inicial, pedir, plantarse, doblar y pago de Blackjack 3:2. Cada turno di
 
 En los juegos rápidos, cada participante confirma una sola apuesta por ronda. Solo el anfitrión inicia el lanzamiento, pero **el servidor genera y liquida el resultado**. Las animaciones (incluidas la rueda de la ruleta y los rodillos de la tragamonedas) solo representan el estado autoritativo y nunca deciden el resultado.
 
+### Lotería mexicana (partida compartida)
+
+- Una sola partida para todo el casino en el lobby: sin salas ni anfitrión; el ciclo abre y cierra partidas solo.
+- Entrada de 50 fichas virtuales, inscripción de 60 segundos y de 2 a 100 cartones privados de 16 figuras (baraja clásica de 54).
+- El servidor canta una carta cada 2 segundos con **marcado automático**; gana el cartón completo y el bote se reparte en fichas enteras (el sobrante pasa a la siguiente partida).
+- Desconectarse antes del cierre cancela y reembolsa la entrada; después del cierre, el cartón sigue participando y el premio se abona igual.
+- Los cobros y pagos pasan únicamente por el `ProfileStore` con claves idempotentes y un diario persistente, así que un reinicio no cobra ni paga dos veces y la partida se reanuda por reloj. Detalle en `docs/loteria.md`.
+
 ## Bots e IA autoritativa
 
 Solo el anfitrión puede abrir el panel de bots, agregar uno, completar los asientos libres o retirar bots. La capacidad total sigue siendo de seis participantes y el roster no puede alterarse durante una mano o lanzamiento activo.
@@ -185,6 +193,8 @@ Variables útiles para pruebas y despliegue:
 - `BOT_FORCE_DECISION_ERROR=1`: fuerza errores de estrategia para validar el fallback; no debe activarse normalmente.
 - `PROFILE_STORE_PATH`: ruta del archivo de perfiles (en Render, apúntalo al disco persistente, p. ej. `/var/data/profiles.json`). Se ignora si `DATABASE_URL` está definida.
 - `LOBBY_TOURNAMENT_STORE_PATH`: ruta del archivo persistente de calendario/inscripciones/brackets; por defecto `data/lobby-tournaments.json`. Se ignora si `DATABASE_URL` está definida.
+- `LOTERIA_STORE_PATH`: ruta del diario persistente de la partida compartida de lotería; por defecto `data/loteria.json`. Se ignora si `DATABASE_URL` está definida.
+- `LOTERIA_ENABLED=off`: apaga la Lotería mexicana por completo (servicio, sockets e interfaz). Por defecto está encendida.
 - `DATABASE_URL`: cadena de conexión Postgres (Fase 10). Si está definida, los perfiles se guardan en Postgres en vez de en el archivo JSON — pensado para el free tier de Neon, que no requiere tarjeta. Ver «Persistencia de perfiles» abajo.
 - `CASINO_TIME_ZONE`: zona IANA del calendario mensual del ranking y de la rotación visual estacional. Por defecto `America/Mexico_City`; los cambios de temporada ocurren a medianoche local y no a las 00:00 UTC del servidor.
 - `SHUTDOWN_GRACE_MS`: milisegundos que espera el apagado ordenado a que termine el guardado final antes de forzar la salida (Fase 11.3). Por defecto 10000 con Postgres y 2500 con el archivo local; súbelo si tu plan de hosting da poco tiempo de gracia y Neon suele tardar más en responder.
