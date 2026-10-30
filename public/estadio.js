@@ -174,7 +174,7 @@
       'est-bdo-archive', 'est-bdo-archive-status', 'est-bdo-archive-list',
       'est-bdo-ceremony', 'est-bdo-ceremony-dialog', 'est-bdo-ceremony-status', 'est-bdo-ceremony-stage',
       'est-bdo-ceremony-kicker', 'est-bdo-ceremony-title', 'est-bdo-ceremony-description',
-      'est-bdo-ceremony-podium', 'est-bdo-ceremony-breakdown', 'est-bdo-ceremony-payout', 'est-bdo-ceremony-caption',
+      'est-bdo-ceremony-nominees', 'est-bdo-ceremony-podium', 'est-bdo-ceremony-breakdown', 'est-bdo-ceremony-payout', 'est-bdo-ceremony-caption',
       'est-bdo-ceremony-progress', 'est-bdo-ceremony-progress-bar', 'est-bdo-ceremony-time',
       'est-bdo-ceremony-play', 'est-bdo-ceremony-music', 'est-bdo-ceremony-narration',
       'est-bdo-ceremony-replay', 'est-bdo-ceremony-close', 'est-bdo-ceremony-music-audio',
@@ -1137,6 +1137,42 @@
     });
   }
 
+  function renderBallonDorCeremonyNominees() {
+    var list = el['est-bdo-ceremony-nominees'];
+    var market = S.ballonDorMarket;
+    if (!list) return;
+    list.textContent = '';
+    var candidates = market && Array.isArray(market.candidates) ? market.candidates.slice() : [];
+    candidates.sort(function (a, b) {
+      var nameOrder = String(a && a.playerName || '').localeCompare(String(b && b.playerName || ''), 'es-MX');
+      return nameOrder || String(a && a.clubName || '').localeCompare(String(b && b.clubName || ''), 'es-MX');
+    });
+    candidates.forEach(function (candidate) {
+      var card = document.createElement('li');
+      card.className = 'est-bdo-ceremony-nominee';
+      card.setAttribute('aria-label', (candidate.playerName || 'Delantero') + ', ' + (candidate.clubName || 'club por confirmar'));
+      var avatar = document.createElement('img');
+      avatar.src = ballonDorAvatarUrl(candidate);
+      avatar.alt = '';
+      avatar.setAttribute('aria-hidden', 'true');
+      avatar.setAttribute('decoding', 'async');
+      avatar.setAttribute('width', '42');
+      avatar.setAttribute('height', '42');
+      var copy = document.createElement('span');
+      copy.className = 'est-bdo-ceremony-nominee-copy';
+      var name = document.createElement('b');
+      name.textContent = candidate.playerName || 'Delantero';
+      var club = document.createElement('span');
+      club.textContent = candidate.clubName || 'Club por confirmar';
+      copy.appendChild(name);
+      copy.appendChild(club);
+      card.appendChild(avatar);
+      card.appendChild(copy);
+      list.appendChild(card);
+    });
+    list.setAttribute('aria-label', 'Los ' + candidates.length + ' candidatos nominados, en orden alfabético y sin clasificación');
+  }
+
   function revealBallonDorCeremonyPlace(rank, reveal, winner) {
     var podium = el['est-bdo-ceremony-podium'];
     var row = S.ballonDorCeremonyRows[rank - 1];
@@ -1215,6 +1251,12 @@
           ? '¡' + row.candidate.playerName + ', del ' + row.candidate.clubName + ', gana el Balón de Oro MonteCristo!'
           : 'Y el Balón de Oro MonteCristo es para…';
       }
+    } else if (step.key === 'verification') {
+      scene = 'nominees';
+      kicker = 'PREVIA · NOMINADOS OFICIALES';
+      title = 'Dieciséis aspirantes. Un solo Balón de Oro.';
+      description = 'La clasificación oficial está verificada. Los nominados aparecen en orden alfabético; ningún puesto se revela antes de su anuncio.';
+      caption = 'Dieciséis nominados. El podio y la identidad del ganador siguen ocultos.';
     } else if (step.key === 'third-place') {
       scene = 'third-place';
       kicker = 'EL PODIO · TERCER LUGAR';
@@ -1250,6 +1292,12 @@
     S.ballonDorCeremonyScene = scene;
     stage.dataset.scene = scene;
     stage.dataset.motion = reduced.matches ? 'reduced' : 'full';
+    var nominees = el['est-bdo-ceremony-nominees'];
+    var podium = el['est-bdo-ceremony-podium'];
+    if (nominees) nominees.hidden = scene !== 'nominees';
+    if (podium) podium.hidden = scene === 'nominees';
+    if (el['est-bdo-ceremony-breakdown']) el['est-bdo-ceremony-breakdown'].hidden = scene === 'nominees';
+    if (el['est-bdo-ceremony-payout']) el['est-bdo-ceremony-payout'].hidden = scene === 'nominees';
     el['est-bdo-ceremony-kicker'].textContent = kicker;
     el['est-bdo-ceremony-title'].textContent = title;
     el['est-bdo-ceremony-description'].textContent = description;
@@ -1269,13 +1317,30 @@
     var copy = el['est-bdo-ceremony-transcript-copy'];
     if (!copy || !S.ballonDorCeremonyRows.length) return;
     var rows = S.ballonDorCeremonyRows;
-    copy.textContent = 'Después de treinta jornadas, la clasificación oficial de ' + ballonDorMonthLabel(S.ballonDorCeremonyMonth)
-      + ' está cerrada y verificada. En tercer lugar: ' + rows[2].candidate.playerName + ', de ' + rows[2].candidate.clubName
-      + ', con ' + fmt(rows[2].score) + ' puntos. En segundo lugar: ' + rows[1].candidate.playerName + ', de '
-      + rows[1].candidate.clubName + ', con ' + fmt(rows[1].score) + ' puntos. El Balón de Oro MonteCristo es para '
-      + rows[0].candidate.playerName + ', de ' + rows[0].candidate.clubName + ', con ' + fmt(rows[0].score) + ' puntos. '
-      + formatBallonDorCeremonyBreakdown(rows[0].candidate) + ' ' + ballonDorCeremonyPayoutText(S.ballonDorMarket)
-      + ' Puedes repetir esta ceremonia desde el archivo; el resultado oficial no cambia y los pagos no se vuelven a ejecutar.';
+    var revealed = S.ballonDorCeremonyRevealedRanks || Object.create(null);
+    var text = 'Ceremonia final de ' + ballonDorMonthLabel(S.ballonDorCeremonyMonth)
+      + '. La clasificación está verificada. La previa presenta a los dieciséis nominados sin orden de puntuación.';
+    if (revealed[3]) {
+      text += ' Tercer lugar: ' + rows[2].candidate.playerName + ', de ' + rows[2].candidate.clubName
+        + ', con ' + fmt(rows[2].score) + ' puntos.';
+    } else {
+      text += ' El tercer lugar se revelará primero, al anunciar el nombre.';
+    }
+    if (revealed[2]) {
+      text += ' Segundo lugar: ' + rows[1].candidate.playerName + ', de ' + rows[1].candidate.clubName
+        + ', con ' + fmt(rows[1].score) + ' puntos.';
+    } else {
+      text += ' El segundo lugar permanece oculto hasta su anuncio.';
+    }
+    if (revealed[1]) {
+      text += ' Balón de Oro MonteCristo: ' + rows[0].candidate.playerName + ', de ' + rows[0].candidate.clubName
+        + ', con ' + fmt(rows[0].score) + ' puntos. ' + formatBallonDorCeremonyBreakdown(rows[0].candidate)
+        + ' ' + ballonDorCeremonyPayoutText(S.ballonDorMarket);
+    } else {
+      text += ' El ganador se anunciará al final de la ceremonia.';
+    }
+    text += ' Puedes repetir esta ceremonia desde el archivo; el resultado oficial no cambia y los pagos no se vuelven a ejecutar.';
+    copy.textContent = text;
   }
 
   function formatBallonDorCeremonyTime(seconds) {
@@ -1396,18 +1461,19 @@
   function ballonDorCeremonySequence() {
     return [
       { type: 'cue', key: 'verification', fallbackMs: 2400 },
+      { type: 'hold', durationMs: 12000 },
       { type: 'cue', key: 'third-place', fallbackMs: 1500 },
       { type: 'name', rank: 3, fallbackMs: 1700 },
-      { type: 'hold', durationMs: 900 },
+      { type: 'hold', durationMs: 2200 },
       { type: 'cue', key: 'second-place', fallbackMs: 1500 },
       { type: 'name', rank: 2, fallbackMs: 1700 },
-      { type: 'hold', durationMs: 900 },
+      { type: 'hold', durationMs: 2200 },
       { type: 'cue', key: 'finalists', fallbackMs: 1800 },
       { type: 'cue', key: 'winner-intro', fallbackMs: 2700 },
-      { type: 'hold', durationMs: 1100 },
+      { type: 'hold', durationMs: 2500 },
       { type: 'name', rank: 1, fallbackMs: 1800 },
       { type: 'cue', key: 'winner-congratulations', fallbackMs: 2200 },
-      { type: 'hold', durationMs: 2200 }
+      { type: 'hold', durationMs: 3500 }
     ];
   }
 
@@ -1554,6 +1620,7 @@
     try { S.ballonDorCeremonyMusicMuted = localStorage.getItem(BALLON_DOR_CEREMONY_AUDIO_KEY + ':music') === 'off'; } catch (_) {}
     try { S.ballonDorCeremonyNarrationMuted = localStorage.getItem(BALLON_DOR_CEREMONY_AUDIO_KEY + ':narration') === 'off'; } catch (_) {}
     renderBallonDorCeremonyPodium();
+    renderBallonDorCeremonyNominees();
     overlay.hidden = false;
     overlay.setAttribute('aria-hidden', 'false');
     overlay.dataset.seasonMonth = market.seasonMonth || '';
