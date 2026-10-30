@@ -1250,13 +1250,38 @@
       }).format(new Date(timestamp));
     } catch (_) { return new Date(timestamp).toLocaleString('es-MX'); }
   }
+  function groupTournamentPrizes(prizeTable) {
+    const sorted = (Array.isArray(prizeTable) ? prizeTable : []).slice().sort((a, b) => a.place - b.place);
+    const groups = [];
+    sorted.forEach(prize => {
+      const previous = groups[groups.length - 1];
+      if (prize.place >= 3 && previous && previous.firstPlace >= 3
+        && previous.prize === prize.prize && prize.place === previous.lastPlace + 1) {
+        previous.lastPlace = prize.place;
+        previous.count++;
+      } else {
+        groups.push({ firstPlace: prize.place, lastPlace: prize.place, count: 1, prize: prize.prize });
+      }
+    });
+    return groups;
+  }
+  function tournamentPrizeGroupLabel(group) {
+    if (group.count === 1) return `${group.firstPlace}.º puesto`;
+    const stage = group.firstPlace === 3 ? 'semifinales' : group.firstPlace === 5 ? 'cuartos de final' : 'misma ronda';
+    return `${group.firstPlace}.º puesto compartido · ${stage}`;
+  }
+  function tournamentPlacementNote(capacity) {
+    return capacity === 8
+      ? 'Puestos compartidos por ronda: 3.º en semifinales y 5.º en cuartos. Cada premio de la tabla es por participante.'
+      : 'Puestos compartidos por ronda: 3.º en semifinales, 5.º en cuartos y 9.º en octavos. Cada premio de la tabla es por participante.';
+  }
   function renderTournamentBracket(event) {
     if (!ui.expandedTournamentBrackets.has(event.id)) return '';
     if (!event.rounds?.length) return '<div class="tournament-bracket"><div class="tournament-bracket-empty">El bracket se publicará al iniciar el torneo.</div></div>';
     return `<div class="tournament-bracket" role="list" aria-label="Bracket de ${escapeHtml(event.name)}">${event.rounds.map(round => `
       <section class="tournament-bracket-round" role="listitem"><h5>${escapeHtml(round.label)}</h5>
         ${round.matches.map(match => `<div class="tournament-match" aria-label="Encuentro ${match.number}">
-          ${(match.players || []).length ? match.players.map(player => `<span class="tournament-match-player ${player.winner ? 'winner' : ''} ${player.you ? 'you' : ''}"><span>${escapeHtml(player.name)}</span>${player.winner ? '<small>✓</small>' : ''}</span>`).join('') : '<span class="tournament-match-player">Por definir</span>'}
+          ${(match.players || []).length ? match.players.map(player => `<span class="tournament-match-player ${player.winner ? 'winner' : ''} ${player.you ? 'you' : ''}"><span>${escapeHtml(player.name)}</span>${player.placeLabel ? `<small>${escapeHtml(player.placeLabel)}</small>` : player.winner ? '<small>✓ Avanza</small>' : ''}</span>`).join('') : '<span class="tournament-match-player">Por definir</span>'}
           <small class="tournament-card-note">${match.status === 'playing' ? 'En partida' : match.status === 'completed' ? (match.forfeit ? 'Resuelto por incomparecencia' : 'Finalizado') : 'Pendiente'}</small>
         </div>`).join('')}
       </section>`).join('')}</div>`;
@@ -1269,7 +1294,10 @@
     const statusClass = `status-${String(event.status || '').replace(/[^a-z_]/g, '')}`;
     const prizeTable = Array.isArray(event.prizeSchedule) ? event.prizeSchedule : [];
     const firstPrize = prizeTable.find(prize => prize.place === 1)?.prize || 0;
-    const prizeRows = prizeTable.map(prize => `<tr><td>${prize.place === 1 ? '🥇' : prize.place === 2 ? '🥈' : prize.place <= 4 ? '🥉' : 'Top 8'} · ${prize.place}.º puesto</td><td>◆ ${formatChips(prize.prize)}</td></tr>`).join('');
+    const prizeRows = groupTournamentPrizes(prizeTable).map(group => {
+      const medal = group.firstPlace === 1 ? '🥇' : group.firstPlace === 2 ? '🥈' : group.firstPlace === 3 ? '🥉' : '🏅';
+      return `<tr><td>${medal} · ${escapeHtml(tournamentPrizeGroupLabel(group))}</td><td>◆ ${formatChips(group.prize)}${group.count > 1 ? ' c/u' : ''}</td></tr>`;
+    }).join('');
     const button = mayJoin
       ? `<button type="button" class="tournament-action" data-tournament-join="${escapeHtml(event.id)}">Inscribirme gratis</button>`
       : canWithdraw
@@ -1287,11 +1315,11 @@
       ${isFeatured ? '<p class="tournament-card-note">Final semanal destacada · domingo, 19:00 en la zona horaria del casino.</p>' : ''}
       <div class="tournament-card-stats"><span><b>${event.capacity}</b> participantes</span><span><b>${event.registeredCount}/${event.capacity}</b> inscritos</span><span>◆ <b>${formatChips(firstPrize)}</b> al 1.º</span></div>
       <div class="tournament-prize-line"><b>ENTRADA</b><span>Gratis · stack de torneo virtual independiente del saldo personal.</span></div>
-      <details class="tournament-prizes"><summary>Tabla fija de premios virtuales</summary><table class="tournament-prize-table"><tbody>${prizeRows}</tbody></table><small>Se abonan al saldo de fichas virtuales cuando termina el torneo.</small></details>
+      <details class="tournament-prizes"><summary>Tabla fija de premios virtuales</summary><table class="tournament-prize-table"><tbody>${prizeRows}</tbody></table><small>${tournamentPlacementNote(event.capacity)}</small><small>Se abonan al saldo de fichas virtuales cuando termina el torneo.</small></details>
       ${participantLine}
       <div class="tournament-card-actions">${button}<button type="button" class="tournament-bracket-toggle" data-tournament-bracket-toggle="${escapeHtml(event.id)}" aria-expanded="${ui.expandedTournamentBrackets.has(event.id)}">${ui.expandedTournamentBrackets.has(event.id) ? 'Ocultar bracket' : 'Ver bracket'}</button></div>
       ${event.cancellationReason ? `<p class="tournament-card-note">${event.cancellationReason === 'not_enough_players' ? 'No se llenaron las plazas; se canceló sin cobrar entrada.' : event.cancellationReason === 'players_offline' ? 'Se canceló porque faltaban participantes conectados.' : event.cancellationReason === 'server_restarted_before_start' ? 'El servidor se reinició antes del inicio; se canceló sin cobrar entrada.' : event.cancellationReason === 'stored_bracket_unavailable' ? 'No se pudo recuperar el bracket; el encuentro no se cobró ni se perdió el saldo personal.' : 'No se pudo iniciar porque un participante estaba ocupado en otra mesa.'}</p>` : ''}
-      ${event.isRegistered && event.myPlacement ? `<p class="tournament-card-note">Terminaste en el puesto ${event.myPlacement} · premio ◆ ${formatChips(event.myPrize || 0)}.</p>` : ''}
+      ${event.isRegistered && event.myPlacement ? `<p class="tournament-card-note">Terminaste en el ${escapeHtml(event.myPlacementLabel || `${event.myPlacement}.º puesto`)} · premio ◆ ${formatChips(event.myPrize || 0)}.</p>` : ''}
       ${renderTournamentBracket(event)}
     </article>`;
   }
@@ -2342,7 +2370,8 @@
           return;
         }
         if (event.type === 'lobby_tournament_prize') {
-          showToast('Premio de torneo relámpago', `Puesto ${event.place} · +${formatChips(event.reward)} fichas virtuales.`, 'reward', 6000, '🏆', true);
+          const placeLabel = event.placeLabel || `Puesto ${event.place}`;
+          showToast('Premio de torneo relámpago', `${placeLabel} · +${formatChips(event.reward)} fichas virtuales.`, 'reward', 6000, '🏆', true);
           playTone('win');
           return;
         }

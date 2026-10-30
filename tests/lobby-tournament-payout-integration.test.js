@@ -281,6 +281,16 @@ function prizeFor(event, place) {
   return event.prizeSchedule.find(item => item.place === place)?.prize || 0;
 }
 
+// Quienes caen en la misma ronda comparten puesto (3.º, 5.º, 9.º); el recibo
+// del saldo lo dice explícitamente y el premio sigue siendo individual.
+function placeLabelFor(place) {
+  return [3, 5, 9].includes(place) ? `${place}.º puesto compartido` : `${place}.º puesto`;
+}
+
+function receiptReasonFor(tournamentName, place) {
+  return `Premio virtual · ${tournamentName} · ${placeLabelFor(place)}`;
+}
+
 async function completeFullBracket(harness, { reconnectFirst = false } = {}) {
   const expectedPlacements = new Map();
   const rounds = Math.log2(harness.capacity);
@@ -345,6 +355,9 @@ async function verifyCompletedBracket(harness, expectedPlacements) {
     if (expectedPrize > 0) {
       assert.equal(tournamentRewards[0].reward, expectedPrize);
       assert.equal(tournamentRewards[0].place, expectedPlace);
+      assert.equal(tournamentRewards[0].placeLabel, placeLabelFor(expectedPlace),
+        `${token}: el aviso de premio indica si el puesto es compartido`);
+      assert.equal(event.myPlacementLabel, placeLabelFor(expectedPlace), `${token}: etiqueta del puesto final`);
     }
 
     const retry = await emitWithAck(harness.currentSockets.get(token), 'lobby_tournament_register', {
@@ -377,7 +390,7 @@ test('bracket de 8 completa las 7 partidas, reconecta un asiento y entrega premi
     assert.ok(profile.chips >= INITIAL_CHIPS + expectedPrize,
       `${token}: el premio no reduce el saldo virtual (${profile.chips} >= ${INITIAL_CHIPS + expectedPrize})`);
     const receipts = profile.transactions.filter(transaction =>
-      transaction.reason === `Premio virtual · ${harness.tournament.name} · puesto ${placements.get(token)}`);
+      transaction.reason === receiptReasonFor(harness.tournament.name, placements.get(token)));
     assert.equal(receipts.length, expectedPrize > 0 ? 1 : 0, `${token}: el premio se persiste una sola vez`);
     if (expectedPrize > 0) assert.equal(receipts[0].amount, expectedPrize);
   }
@@ -416,7 +429,7 @@ test('bracket de 16 completa las 15 partidas y asigna los ocho premios según el
     assert.ok(profile.chips >= INITIAL_CHIPS + expectedPrize,
       `${token}: el premio no reduce el saldo virtual (${profile.chips} >= ${INITIAL_CHIPS + expectedPrize})`);
     const receipts = profile.transactions.filter(transaction =>
-      transaction.reason === `Premio virtual · ${harness.tournament.name} · puesto ${placements.get(token)}`);
+      transaction.reason === receiptReasonFor(harness.tournament.name, placements.get(token)));
     assert.equal(receipts.length, expectedPrize > 0 ? 1 : 0, `${token}: el premio se persiste una sola vez`);
     if (expectedPrize > 0) assert.equal(receipts[0].amount, expectedPrize);
   }
@@ -427,7 +440,7 @@ test('el reinicio reintenta un payout pendiente sin duplicarlo si el perfil ya g
   const placements = await completeFullBracket(harness);
   const prizes = await verifyCompletedBracket(harness, placements);
   const championId = [...placements].find(([, place]) => place === 1)[0];
-  const reason = `Premio virtual · ${harness.tournament.name} · puesto 1`;
+  const reason = receiptReasonFor(harness.tournament.name, 1);
 
   await stopServer(harness.child);
   const before = new ProfileStore(harness.profilePath, { deferSeasonCheck: true }).getProfile(championId);
