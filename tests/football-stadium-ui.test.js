@@ -544,6 +544,8 @@ test('el CSS del evento conserva layouts móviles, movimiento reducido y sintaxi
   assert.match(STYLES, /@media\(max-width:760px\)[\s\S]*?\.est-bdo-opening-dialog/);
   assert.match(STYLES, /@media\(max-width:680px\)[\s\S]*?\.est-bdo-ceremony-panel/);
   assert.match(STYLES, /@media\(prefers-reduced-motion:\s*reduce\)[\s\S]*?animation:none !important/);
+  assert.match(STYLES, /\.est-bdo-ceremony-nominees/);
+  assert.match(STYLES, /@media\(max-width:680px\)[\s\S]*?\.est-bdo-ceremony-nominees \{ grid-template-columns:repeat\(2/);
   assert.match(STYLES, /\.est-bdo-opening-stage\[data-motion="reduced"\][^}]*animation:none !important/);
 
   let depth = 0;
@@ -1683,8 +1685,18 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
   await h.flush();
   const overlay = document.getElementById('est-bdo-ceremony');
   assert.equal(overlay.hidden, false);
-  assert.match(document.getElementById('est-bdo-ceremony-title').textContent, /La temporada ya tiene podio/);
-  assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="1"]').textContent, /Por revelar/);
+  assert.match(document.getElementById('est-bdo-ceremony-title').textContent, /Dieciséis aspirantes/);
+  const nominees = document.getElementById('est-bdo-ceremony-nominees');
+  const podium = document.getElementById('est-bdo-ceremony-podium');
+  assert.equal(nominees.hidden, false, 'la ceremonia abre con una previa visual de los nominados');
+  assert.equal(nominees.children.length, 16, 'se muestran los dieciséis candidatos en orden alfabético, sin posiciones');
+  const nomineeNames = Array.from(nominees.children, card => card.querySelector('b').textContent);
+  assert.deepEqual(nomineeNames, nomineeNames.slice().sort((a, b) => a.localeCompare(b, 'es-MX')));
+  assert.ok(Array.from(nominees.children).every(card => !/\bpuntos\b|\b\d+ goles\b/i.test(card.textContent)),
+    'la previa no publica puntuaciones ni estadísticas');
+  assert.equal(podium.hidden, true, 'el podio permanece oculto durante la presentación de candidatos');
+  assert.doesNotMatch(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /Tercer lugar: Delantero 3|Segundo lugar: Delantero 2|Balón de Oro MonteCristo: Delantero 1/,
+    'el guion accesible tampoco revela puestos antes de sus anuncios');
   assert.equal(document.querySelector('#est-bdo-ceremony-podium [data-place="3"] .est-bdo-ceremony-avatar').hidden, true);
   assert.deepEqual(h.ceremonyAudioCounts, { music: 1, narration: 1 });
   assert.ok(h.audioTelemetryAttempts.some(item => item.body.track === 'ceremony_music' && item.body.outcome === 'started'));
@@ -1692,7 +1704,12 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
   assert.equal(document.getElementById('est-bdo-ceremony-stage').dataset.motion, 'reduced');
 
   await h.finishCeremonyClip();
+  assert.equal(nominees.hidden, false, 'la previa de nominados permanece visible durante la presentación extendida');
+  assert.equal(podium.hidden, true);
+  h.advanceTime(12000);
   assert.match(document.getElementById('est-bdo-ceremony-stage').dataset.scene, /third-place/);
+  assert.equal(nominees.hidden, true, 'la lista de candidatos se retira antes de comenzar el podio');
+  assert.equal(podium.hidden, false);
   assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="3"]').textContent, /Por revelar/,
     'el puesto permanece oculto mientras se pronuncia la introducción');
   await h.finishCeremonyClip();
@@ -1703,9 +1720,11 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
   assert.match(third.querySelector('.est-bdo-ceremony-avatar').getAttribute('src'), /vrd_09\.svg$/);
   assert.match(h.ceremonyAudioSrcHistory.narration[2], /names\/vrd_09\.wav$/);
   assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="2"]').textContent, /Por revelar/);
+  assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="1"]').textContent, /Por revelar/);
+  assert.doesNotMatch(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /Segundo lugar: Delantero 2|Balón de Oro MonteCristo: Delantero 1/);
 
   await h.finishCeremonyClip();
-  h.advanceTime(900);
+  h.advanceTime(2200);
   assert.match(document.getElementById('est-bdo-ceremony-stage').dataset.scene, /second-place/);
   assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="2"]').textContent, /Por revelar/);
   await h.finishCeremonyClip();
@@ -1714,15 +1733,19 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
   assert.equal(second.querySelector('.est-bdo-ceremony-avatar').hidden, false);
   assert.match(second.querySelector('.est-bdo-ceremony-avatar').getAttribute('src'), /sol_17\.svg$/);
   assert.match(h.ceremonyAudioSrcHistory.narration[4], /names\/sol_17\.wav$/);
+  assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="1"]').textContent, /Por revelar/);
+  assert.doesNotMatch(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /Balón de Oro MonteCristo: Delantero 1/);
 
   await h.finishCeremonyClip();
-  h.advanceTime(900);
+  h.advanceTime(2200);
   assert.match(document.getElementById('est-bdo-ceremony-stage').dataset.scene, /finalists/);
   assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="1"]').textContent, /Por revelar/);
   await h.finishCeremonyClip();
   assert.match(document.getElementById('est-bdo-ceremony-stage').dataset.scene, /winner-reveal/);
+  assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="1"]').textContent, /Por revelar/);
+  assert.doesNotMatch(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /Balón de Oro MonteCristo: Delantero 1/);
   await h.finishCeremonyClip();
-  h.advanceTime(1100);
+  h.advanceTime(2500);
   const winner = document.querySelector('#est-bdo-ceremony-podium [data-place="1"]');
   assert.match(winner.textContent, /Delantero 1/);
   assert.equal(winner.querySelector('.est-bdo-ceremony-avatar').hidden, false);
@@ -1735,9 +1758,9 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
   await h.finishCeremonyClip();
   assert.match(document.getElementById('est-bdo-ceremony-title').textContent, /gana el Balón de Oro/);
   await h.finishCeremonyClip();
-  h.advanceTime(2200);
+  h.advanceTime(3500);
   assert.equal(document.getElementById('est-bdo-ceremony-progress').getAttribute('aria-valuenow'), '100');
-  assert.match(document.getElementById('est-bdo-ceremony-time').textContent, /13\/13/);
+  assert.match(document.getElementById('est-bdo-ceremony-time').textContent, /14\/14/);
 
   const music = document.getElementById('est-bdo-ceremony-music');
   music.click();
@@ -1751,7 +1774,7 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
     'la voz es silenciable independientemente de la música');
   document.getElementById('est-bdo-ceremony-replay').click();
   assert.equal(overlay.hidden, false, 'el replay vuelve a iniciar desde la misma instantánea oficial');
-  assert.match(document.getElementById('est-bdo-ceremony-title').textContent, /La temporada ya tiene podio/);
+  assert.match(document.getElementById('est-bdo-ceremony-title').textContent, /Dieciséis aspirantes/);
   assert.equal(h.ceremonyAudioCounts.music, 2);
   assert.equal(h.ceremonyAudioSrcHistory.narration.at(-1), '/assets/ballon-dor-ceremony/cues/verification.wav');
   assert.equal(h.ballonDorSocketAttempts.length, 0);
@@ -1776,12 +1799,15 @@ test('la ceremonia sigue con subtítulos si el navegador bloquea tanto música c
   await h.flush();
   assert.equal(document.getElementById('est-bdo-ceremony').hidden, false,
     'la reproducción visual no depende del permiso de audio');
+  assert.equal(document.getElementById('est-bdo-ceremony-nominees').children.length, 16,
+    'la previa de nominados también se entiende sin audio');
   assert.match(document.getElementById('est-bdo-ceremony-status').textContent, /Audio no disponible/);
   assert.ok(h.audioTelemetryAttempts.some(item => item.body.track === 'ceremony_music' && item.body.outcome === 'blocked'));
   assert.ok(h.audioTelemetryAttempts.some(item => item.body.track === 'ceremony_narration' && item.body.outcome === 'blocked'));
-  assert.match(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /la clasificación oficial/i);
+  assert.match(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /la clasificación está verificada/i);
   assert.equal(document.getElementById('est-bdo-ceremony-stage').dataset.motion, 'reduced');
-  h.advanceTime(6000);
+  h.advanceTime(2500);
+  h.advanceTime(12000);
   assert.match(document.getElementById('est-bdo-ceremony-stage').dataset.scene, /third-place/);
   assert.equal(h.ballonDorSocketAttempts.length, 0);
   assert.equal(h.ballonDorHttpAttempts.length, 0);
