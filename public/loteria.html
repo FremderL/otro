@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#060b0d" />
+  <meta name="description" content="Lotería mexicana MonteCristo: sala común con cartón de 16 cartas, canto automático y bote compartido en fichas 100% virtuales." />
+  <title>Lotería mexicana — MonteCristo</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/loteria.css" />
+  <script src="/gate.js"></script>
+</head>
+<body class="loteria-body">
+  <div class="desktop-gate" role="alert" aria-live="assertive">
+    <span class="brand-mark"><span>♠</span></span>
+    <h1>MonteCristo es para computadoras</h1>
+    <p>La Lotería está diseñada para jugarse en una computadora de escritorio o laptop, con una ventana de al menos 1024 píxeles de ancho. Amplía la ventana o vuelve desde tu computadora.</p>
+    <button type="button" class="gate-bypass-btn">Entrar de todos modos →</button>
+  </div>
+  <a class="skip-link" href="#loteria-main">Ir a la Lotería</a>
+  <div class="noise" aria-hidden="true"></div>
+  <div class="ambient-grid" aria-hidden="true"></div>
+
+  <header class="loteria-topbar">
+    <a class="brand brand-small" href="/" aria-label="MonteCristo, inicio">
+      <span class="brand-mark"><span>♠</span></span>
+      <span class="brand-copy"><b>MONTECRISTO</b><em>LOTERÍA</em></span>
+    </a>
+    <div class="loteria-topbar-actions">
+      <span id="loteria-connection" class="connection-badge connecting"><i></i><span>Conectando</span></span>
+      <span id="loteria-balance" class="loteria-balance" title="Tus fichas virtuales">◆ — fichas</span>
+      <a class="btn btn-ghost btn-small" href="/">← Volver al casino</a>
+    </div>
+  </header>
+
+  <main id="loteria-main" class="loteria-shell">
+    <section class="loteria-hero" aria-labelledby="loteria-title">
+      <div class="loteria-hero-copy">
+        <span class="kicker">SALA COMÚN · FICHAS 100% VIRTUALES</span>
+        <h1 id="loteria-title">Lotería <em>MonteCristo</em></h1>
+        <p>Una sola ronda para todo el casino: entra con 50 fichas, recibe un cartón de 16 cartas y espera el canto automático cada dos segundos. Gana quien complete el cartón. Si hay empate, el bote se reparte en fichas enteras y el sobrante queda acumulado para la siguiente ronda.</p>
+        <ul class="loteria-hero-facts">
+          <li><b>54</b><span>cartas en el mazo</span></li>
+          <li><b>16</b><span>cartas por cartón</span></li>
+          <li><b>2–100</b><span>personas por ronda</span></li>
+          <li><b>50</b><span>fichas de entrada</span></li>
+        </ul>
+      </div>
+
+      <div class="loteria-status-card" aria-live="polite">
+        <div class="loteria-status-head">
+          <span id="loteria-phase" class="loteria-phase">Preparando la ronda…</span>
+          <span id="loteria-clock" class="loteria-clock">—</span>
+        </div>
+        <div class="loteria-pot">
+          <small>BOTE DE LA RONDA</small>
+          <b id="loteria-pot">0</b>
+          <span id="loteria-carry" class="loteria-carry">Acumulado previo: 0</span>
+        </div>
+        <div class="loteria-status-meta">
+          <span><i>◆</i> Entrada <b id="loteria-entry">50</b></span>
+          <span><i>◎</i> Cartones <b id="loteria-count">0</b></span>
+          <span><i>✦</i> Cantadas <b id="loteria-called-progress">0/54</b></span>
+        </div>
+
+        <div class="loteria-actions">
+          <button id="loteria-join" class="btn btn-primary" type="button">Entrar por 50 fichas →</button>
+          <button id="loteria-leave" class="btn btn-ghost" type="button" hidden>Salir y recuperar 50</button>
+        </div>
+        <p id="loteria-help" class="loteria-help" role="status">Conectando con la sala…</p>
+        <button id="loteria-invite" class="loteria-invite" type="button">🔗 Copiar enlace para invitar</button>
+
+        <form id="loteria-identity" class="loteria-identity" hidden>
+          <p>Necesitamos tu apodo y la aceptación de los Términos y Condiciones para sentarte.</p>
+          <label class="loteria-field">
+            <span>Tu apodo</span>
+            <input id="loteria-name" name="name" maxlength="18" minlength="1" autocomplete="nickname" placeholder="Cómo te verán en la sala" required />
+          </label>
+          <label class="loteria-field">
+            <span>Tu avatar</span>
+            <select id="loteria-avatar" name="avatar">
+              <option value="fox">🦊 Zorro</option>
+              <option value="tiger">🐯 Tigre</option>
+              <option value="panda">🐼 Panda</option>
+              <option value="owl">🦉 Búho</option>
+              <option value="alien">👽 Alien</option>
+              <option value="robot">🤖 Robot</option>
+              <option value="crown">👑 Corona</option>
+              <option value="diamond">💎 Diamante</option>
+            </select>
+          </label>
+          <label class="loteria-tos">
+            <input id="loteria-tos" type="checkbox" />
+            <span>Acepto los <a href="/terminos" target="_blank" rel="noopener">Términos y Condiciones</a> y el Aviso de Privacidad.</span>
+          </label>
+          <div class="loteria-identity-actions">
+            <button id="loteria-identity-save" class="btn btn-primary" type="submit">Guardar y entrar</button>
+            <button id="loteria-identity-cancel" class="btn btn-ghost" type="button">Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="loteria-table" aria-label="Cartón y cartas cantadas">
+      <div class="loteria-board-card">
+        <header class="loteria-panel-head">
+          <div><span class="kicker">TU CARTÓN</span><h2 id="loteria-board-title">Sin cartón en esta ronda</h2></div>
+          <span id="loteria-board-progress" class="loteria-board-progress">0/16</span>
+        </header>
+        <div id="loteria-board" class="loteria-board" role="grid" aria-label="Cartón de 16 cartas" aria-rowcount="4" aria-colcount="4"></div>
+        <p class="loteria-board-note">El marcado es automático: el servidor decide qué cartas se cantan y quién completa el cartón primero. Tu cartón solo lo ves tú.</p>
+      </div>
+
+      <aside class="loteria-side">
+        <section class="loteria-panel" aria-labelledby="loteria-called-title">
+          <header class="loteria-panel-head">
+            <div><span class="kicker">CANTADAS</span><h2 id="loteria-called-title">Últimas cartas</h2></div>
+            <span id="loteria-called-count" class="loteria-badge">0</span>
+          </header>
+          <div id="loteria-called" class="loteria-called-list" role="log" aria-live="polite" aria-relevant="additions"></div>
+        </section>
+
+        <section class="loteria-panel" aria-labelledby="loteria-players-title">
+          <header class="loteria-panel-head">
+            <div><span class="kicker">EN LA SALA</span><h2 id="loteria-players-title">Cartones en juego</h2></div>
+            <span id="loteria-players-count" class="loteria-badge">0</span>
+          </header>
+          <ul id="loteria-players" class="loteria-players-list" aria-live="polite"></ul>
+        </section>
+      </aside>
+    </section>
+
+    <section id="loteria-result" class="loteria-result" hidden aria-live="polite" aria-labelledby="loteria-result-title"></section>
+
+    <section class="loteria-rules" aria-labelledby="loteria-rules-title">
+      <h2 id="loteria-rules-title">Reglas de la sala</h2>
+      <ul>
+        <li><b>Entrada:</b> 50 fichas virtuales por ronda, sin recompras ni apuestas adicionales.</li>
+        <li><b>Inscripción:</b> 60 segundos. Puedes salir antes del cierre y recuperar tus 50 fichas.</li>
+        <li><b>Canto:</b> una carta cada 2 segundos, siempre desde el servidor y en orden aleatorio del mazo de 54.</li>
+        <li><b>Victoria:</b> el primer cartón con sus 16 cartas cantadas. Si varios completan a la vez, se reparten el bote en partes iguales.</li>
+        <li><b>Sobrante:</b> las fichas que no se pueden repartir en partes enteras se acumulan para la siguiente ronda.</li>
+        <li><b>Cancelación:</b> si al cierre hay menos de dos cartones, se devuelven las entradas y el acumulado se conserva.</li>
+      </ul>
+      <p class="loteria-tip">¿Estás probando solo? Abre este mismo enlace en otra ventana o en una ventana de incógnito y entra con otro apodo: se necesitan al menos dos cartones para que la ronda se juegue.</p>
+      <p class="loteria-legal">Todas las fichas son virtuales: no hay depósitos, retiros ni premios canjeables. Solo entretenimiento social para mayores de 18 años.</p>
+    </section>
+  </main>
+
+  <div id="loteria-toast" class="loteria-toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/loteria.js"></script>
+</body>
+</html>

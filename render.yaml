@@ -14,6 +14,10 @@ services:
     envVars:
       - key: PROFILE_STORE_PATH
         value: /var/data/profiles.json
+      # Estado de la ronda compartida de la Lotería mexicana (entradas, cantos y
+      # pagos pendientes). Vive en el disco persistente para sobrevivir despliegues.
+      - key: LOTERIA_STATE_PATH
+        value: /var/data/loteria.json
       - key: LOBBY_TOURNAMENT_STORE_PATH
         value: /var/data/lobby-tournaments.json
       - key: NODE_ENV
