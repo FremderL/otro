@@ -112,6 +112,7 @@
   var S = {
     socket: null, token: null, name: null, avatar: null, tosVersion: TOS_FALLBACK,
     teams: {}, profile: null, chips: 0,
+    fantasy: null, fantasyDraft: [], fantasyDirty: false, fantasySeq: 0, fantasyBusy: false,
     lobby: null, standings: [], countdownTo: null, lobbyServerNow: null, lobbyReceivedAt: null,
     preshowDataMatchId: null, preshowDataStandings: null, teamIndicators: [],
     showcaseItems: [], showcaseIndex: 0, showcaseRotationId: null, sponsoredPromotions: [],
@@ -154,7 +155,8 @@
 
   var el = {};
   function cacheEls() {
-    ['est-connection', 'est-chips', 'est-sound', 'est-music', 'est-ads', 'est-ads-open', 'est-countdown', 'est-match-list', 'est-standings',
+    ['est-fantasy-summary', 'est-fantasy-form', 'est-fantasy-players', 'est-fantasy-save', 'est-fantasy-feedback', 'est-fantasy-opt', 'est-fantasy-challenges', 'est-fantasy-ranking',
+      'est-connection', 'est-chips', 'est-sound', 'est-music', 'est-ads', 'est-ads-open', 'est-countdown', 'est-match-list', 'est-standings',
       'est-preshow', 'est-preshow-status', 'est-preshow-timer', 'est-showcase', 'est-showcase-track',
       'est-compare-home', 'est-compare-away', 'est-showcase-count', 'est-showcase-prev', 'est-showcase-next', 'est-showcase-dots', 'est-preshow-promo', 'est-promo-image', 'est-promo-label', 'est-promo-text', 'est-promo-link',
       'est-promo-compose', 'est-promo-auth', 'est-promo-login', 'est-promo-refresh', 'est-promo-form',
@@ -443,7 +445,7 @@
       if (S.betRankingSubscribed && ledgerOpen() && S.ledgerView === 'ranking') S.socket.emit('bet_ranking_get');
       renderBetRanking();
     });
-    S.socket.on('disconnect', function () { setConn('error'); startBallonDorPolling(); renderBetRanking(); });
+    S.socket.on('disconnect', function () { S.fantasySeq++; S.fantasyBusy = false; setConn('error'); startBallonDorPolling(); renderBetRanking(); });
     S.socket.on('connect_error', function () { setConn('error'); startBallonDorPolling(); });
     S.socket.on('football:lobby', function (lobby) { renderLobby(lobby); });
     S.socket.on('football:ballon_dor_market', function (payload) {
@@ -480,6 +482,7 @@
       if (!res || !res.ok) return onSubError(res);
       S.teams = res.teams || S.teams;
       if (res.profile) { S.profile = res.profile; S.chips = res.profile.chips; updateChips(); }
+      refreshFantasy();
       renderBallonDorMarket();
       renderLobby(res.lobby);
       // Al entrar (también si el partido ya terminó) se trae el historial y pagos.
@@ -3002,6 +3005,70 @@
     renderStandings();
     renderPreshow(currentServerTime());
   }
+  var FANTASY_SLOTS = ['GK','DF','DF','DF','DF','MF','MF','MF','MF','FW','FW'];
+  var FANTASY_LABELS = { GK:'Portero', DF:'Defensa', MF:'Medio', FW:'Delantero' };
+  function refreshFantasy() {
+    if (!el['est-fantasy-form'] || !S.socket || !S.socket.connected || S.fantasyBusy) return;
+    var seq = ++S.fantasySeq;
+    S.socket.emit('football:fantasy_get', {}, function (res) {
+      if (seq !== S.fantasySeq) return;
+      if (!res || !res.ok || !res.fantasy) { el['est-fantasy-summary'].textContent = res && res.error || 'Mi Once no está disponible.'; return; }
+      applyFantasy(res.fantasy, false);
+    });
+  }
+  function applyFantasy(data, resetDraft) {
+    var seasonChanged = !S.fantasy || S.fantasy.season !== data.season;
+    S.fantasy = data;
+    if (resetDraft || seasonChanged || !S.fantasyDirty) {
+      var counts = { GK:0, DF:0, MF:0, FW:0 };
+      S.fantasyDraft = FANTASY_SLOTS.map(function (group) {
+        var picks = (data.selected || []).filter(function (id) { return (data.players || []).some(function (p) { return p.id === id && p.group === group; }); });
+        return picks[counts[group]++] || '';
+      });
+      S.fantasyDirty = false;
+    }
+    renderFantasy();
+  }
+  function renderFantasy() {
+    var data = S.fantasy; if (!data) return;
+    var next = data.next ? 'Los cambios empiezan en la jornada ' + data.next.jornada + '.' : 'No hay una jornada abierta para cambios.';
+    el['est-fantasy-summary'].textContent = fmt(data.points) + ' puntos · ' + next + (data.missingMatches ? ' Sin datos para ' + data.missingMatches + ' partidos anteriores.' : '') + (data.rank ? ' Tu puesto anónimo: ' + data.rank + '.' : '');
+    el['est-fantasy-players'].innerHTML = FANTASY_SLOTS.map(function (group, i) {
+      var options = (data.players || []).filter(function (p) { return p.group === group; }).map(function (p) {
+        return '<option value="' + esc(p.id) + '"' + (S.fantasyDraft[i] === p.id ? ' selected' : '') + '>' + esc(p.name) + ' · ' + esc(p.clubName) + ' (' + esc(p.position) + ')</option>';
+      }).join('');
+      return '<label>' + FANTASY_LABELS[group] + ' ' + (i + 1) + '<select data-fantasy-slot="' + i + '" required' + (!data.next || S.fantasyBusy ? ' disabled' : '') + '><option value="">Elegir…</option>' + options + '</select></label>';
+    }).join('');
+    el['est-fantasy-save'].disabled = !data.next || S.fantasyBusy;
+    el['est-fantasy-opt'].disabled = S.fantasyBusy;
+    el['est-fantasy-opt'].checked = Boolean(data.rankingOptIn);
+    el['est-fantasy-challenges'].innerHTML = (data.challenges || []).map(function (c) { return '<li>' + (c.completed ? esc(c.icon) + ' Pin desbloqueado · ' : '') + '<strong>' + esc(c.title) + '</strong>: ' + esc(c.description) + ' (' + c.progress + '/' + c.target + ')</li>'; }).join('') || '<li>Arma tu once para empezar.</li>';
+    el['est-fantasy-ranking'].innerHTML = (data.ranking || []).map(function (row) { return '<li value="' + Number(row.rank) + '">Once anónimo · ' + Number(row.points) + ' puntos</li>'; }).join('') || '<li>Aún no hay participantes.</li>';
+  }
+  function saveFantasy(event) {
+    event.preventDefault(); var data = S.fantasy;
+    if (!data || !data.next || S.fantasyBusy || !S.socket || !S.socket.connected) return;
+    if (S.fantasyDraft.length !== 11 || S.fantasyDraft.some(function (id) { return !id; }) || new Set(S.fantasyDraft).size !== 11) { el['est-fantasy-feedback'].textContent = 'Elige 11 jugadores distintos.'; return; }
+    S.fantasyBusy = true; var seq = ++S.fantasySeq; renderFantasy();
+    el['est-fantasy-feedback'].textContent = 'Guardando…';
+    S.socket.emit('football:fantasy_save', { season:data.season, players:S.fantasyDraft.slice(), tos:S.tosVersion }, function (res) {
+      if (seq !== S.fantasySeq) return;
+      S.fantasyBusy = false;
+      if (res && res.ok && res.fantasy) { applyFantasy(res.fantasy, true); el['est-fantasy-feedback'].textContent = 'Guardado desde la jornada ' + res.appliedJornada + '.'; }
+      else { el['est-fantasy-feedback'].textContent = res && res.error || 'No se pudo confirmar. Consulta de nuevo.'; renderFantasy(); }
+    });
+  }
+  function optFantasy() {
+    if (!S.fantasy || S.fantasyBusy || !S.socket || !S.socket.connected) return;
+    var enabled = el['est-fantasy-opt'].checked;
+    S.fantasyBusy = true; var seq = ++S.fantasySeq; renderFantasy();
+    S.socket.emit('football:fantasy_ranking_opt', { enabled:enabled }, function (res) {
+      if (seq !== S.fantasySeq) return;
+      S.fantasyBusy = false;
+      if (res && res.ok && res.fantasy) { applyFantasy(res.fantasy, false); el['est-fantasy-feedback'].textContent = enabled ? 'Participas en el ranking anónimo.' : 'Ya no participas en el ranking.'; }
+      else { renderFantasy(); el['est-fantasy-feedback'].textContent = res && res.error || 'No se pudo guardar la preferencia.'; }
+    });
+  }
   function blockLabel(b) { return ({ matutino: 'Matutino', vespertino: 'Vespertino', estelar: 'Estelar' })[b] || b; }
   // Los horarios de partido son de la zona del casino (America/Mexico_City), no
   // de la del navegador: un aficionado en otra zona debe ver la misma hora.
@@ -5030,6 +5097,14 @@
 
   // ===== UI: enlaces, atajos, TOS =====
   function bindUI() {
+    if (el['est-fantasy-form']) {
+      el['est-fantasy-form'].addEventListener('submit', saveFantasy);
+      el['est-fantasy-players'].addEventListener('change', function (event) {
+        if (event.target && event.target.dataset.fantasySlot != null) { S.fantasyDraft[Number(event.target.dataset.fantasySlot)] = event.target.value; S.fantasyDirty = true; }
+      });
+      el['est-fantasy-opt'].addEventListener('change', optFantasy);
+    }
+
     el['est-tos-accept'].addEventListener('click', function () {
       localStorage.setItem(TOS_KEY, S.tosVersion); el['est-tos'].hidden = true;
       renderBallonDorMarket();
@@ -5189,6 +5264,7 @@
     el['est-help-close'].addEventListener('click', function () { el['est-help'].hidden = true; });
     document.addEventListener('keydown', onKey);
     setInterval(tickCountdown, 1000); tickCountdown();
+    setInterval(refreshFantasy, 30000);
   }
   // Música de ambiente de estadio: un solo bucle, solo con el sonido activado por el usuario.
   var music = null;

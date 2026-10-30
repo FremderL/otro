@@ -147,6 +147,9 @@ function createHarness(options = {}) {
     on(event, handler) { handlers[event] = handler; },
     emit(event, payload, ack) {
       socketEmitted.push({ event, payload });
+      if (event === 'football:fantasy_get' && options.onFantasyGet) { ack(options.onFantasyGet(payload)); return; }
+      if (event === 'football:fantasy_save' && options.onFantasySave) { ack(options.onFantasySave(payload)); return; }
+      if (event === 'football:fantasy_ranking_opt' && options.onFantasyOpt) { ack(options.onFantasyOpt(payload)); return; }
       if (event === 'football:ballon_dor_market') {
         if (typeof ack === 'function') ack({ ok: true, market: currentBallonDorMarket });
         return;
@@ -2172,4 +2175,21 @@ test('Balón de Oro no habilita apuestas hasta aceptar la versión vigente de T�
   assert.ok(document.querySelector('[data-bdo-select="bdo-club-1"]'));
   chooseBallonDorCandidate(h, 'bdo-club-1', 100);
   assert.equal(document.getElementById('est-bdo-review').disabled, false);
+});
+
+
+test('Mi Once muestra once posiciones, guarda el equipo y muestra pines sin fichas', async () => {
+  const groups=[['GK',1],['DF',4],['MF',4],['FW',2]];
+  const players=groups.flatMap(([group,n])=>Array.from({length:n},(_,i)=>({id:group+i,group,name: group==='GK'?'<Portero>':'Jugador '+i,clubName:'Club',position:group})));
+  let data={season:'2026-10',points:0,next:{jornada:2,closesAt:Date.now()+60000},selected:[],players,ranking:[],challenges:[],rankingOptIn:false};
+  let sent;
+  const h=createHarness({onFantasyGet:()=>({ok:true,fantasy:data}),onFantasySave:payload=>{sent=payload;data={...data,selected:payload.players};return {ok:true,fantasy:data,appliedJornada:2};}});
+  try {
+    await h.connectToMatch(); const doc=h.window.document, form=doc.getElementById('est-fantasy-form');
+    const selects=[...form.querySelectorAll('select')]; assert.equal(selects.length,11);
+    for (const [i,select] of selects.entries()) { select.value=players[i].id; select.dispatchEvent(new h.window.Event('change',{bubbles:true})); }
+    form.dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));
+    assert.equal(sent.players.length,11); assert.match(doc.getElementById('est-fantasy-feedback').textContent,/jornada 2/);
+    assert.equal(form.querySelector('portero'),null); assert.match(doc.getElementById('est-fantasy-panel').textContent,/Sin fichas/);
+  } finally { h.window.close(); }
 });

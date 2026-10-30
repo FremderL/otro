@@ -2016,3 +2016,13 @@ body.est-ledger-open { overflow: hidden; }
   .est-bdo-ceremony-aura,.est-bdo-ceremony-card,.est-bdo-ceremony-avatar { animation:none !important; transition:none !important; }
 }
 .est-bdo-ceremony-stage[data-motion="reduced"] .est-bdo-ceremony-aura,.est-bdo-ceremony-stage[data-motion="reduced"] .est-bdo-ceremony-card { animation:none !important; }
+
+.est-fantasy-players { display:grid; gap:5px; }
+.est-fantasy-players label { display:grid; grid-template-columns: 5.5rem minmax(0,1fr); align-items:center; gap:5px; font-size:.7rem; }
+.est-fantasy-players select { min-width:0; width:100%; font-size:.7rem; }
+.est-fantasy-list { padding-left:1.2rem; font-size:.72rem; line-height:1.5; }
+#est-fantasy-save { margin-top:8px; width:100%; }
+#est-fantasy-feedback { font-size:.74rem; line-height:1.4; }
+
+.est-fantasy-subtitle { font-size:.75rem; margin:12px 0 5px; }
+.est-fantasy-opt { display:flex; align-items:center; gap:5px; font-size:.72rem; }

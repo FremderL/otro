@@ -113,7 +113,7 @@ function setup(opts = {}) {
   const betPlacements = [];
   const sockets = registerFootballSockets(io.io, {
     betting, engine, store, profiles,
-    ballonDorMarket: opts.ballonDorMarket || null,
+    ballonDorMarket: opts.ballonDorMarket || null, accountSessionsEnabled: opts.accountSessionsEnabled || false,
     onBetPlaced: details => { betPlacements.push(details); opts.onBetPlaced?.(details); },
     config: opts.config || { matchCapacity: opts.matchCap || 40, lobbyCapacity: 200 },
     log: () => {}, now: typeof nowVal === 'function' ? nowVal : () => nowVal,
@@ -674,4 +674,27 @@ test('socket BDO usa identidad suscrita, devuelve mercado público y descarta cu
     selection: 'candidate-test', stake: 100, idempotencyKey: 'socket-bdo-key-001'
   });
   assert.equal(ctx.betPlacements.at(-1).kind, 'future');
+});
+
+
+test('Mi Once acepta solo la sesión verificada, guarda sin fichas y permite revocar ranking', async () => {
+  let clock = Date.now();
+  const ctx = setup({ accountSessionsEnabled: true, now: () => clock });
+  try {
+    const { playersOf } = require('../lib/football/fantasy');
+    const day = ctx.store.getMatches(ctx.month).filter(match => match.jornada === 1 && !match.desempate);
+    clock = Math.min(...day.map(match => match.scheduledKickoffAt)) - 10000;
+    const socket = ctx.io.connect();
+    subscribe(ctx, socket, { name:'Alicia' });
+    let res = socket._fire('football:fantasy_get', {}); assert.equal(res.code,'no_identity');
+    const account=ctx.profiles.getOrCreate('cuenta-real','Beto'); socket.data.accountProfileId=account.id;
+    const players=playersOf(ctx.store.getLeague(ctx.month));
+    const selected=[['GK',1],['DF',4],['MF',4],['FW',2]].flatMap(([group,n])=>players.filter(p=>p.group===group).slice(0,n).map(p=>p.id));
+    res=await new Promise(resolve=>socket._fire('football:fantasy_save',{season:ctx.month,players:selected,tos:TOS,profileId:'victima'},resolve));
+    assert.equal(res.ok,true); assert.deepEqual(account.footballFantasy.lineups[0].players,selected); assert.equal(account.chips,1000);
+    res=await new Promise(resolve=>socket._fire('football:fantasy_ranking_opt',{enabled:true},resolve));
+    assert.equal(res.ok,true); assert.equal(res.fantasy.rank,1); assert.doesNotMatch(JSON.stringify(res.fantasy.ranking),/cuenta-real|Beto/);
+    res=await new Promise(resolve=>socket._fire('football:fantasy_ranking_opt',{enabled:false},resolve));
+    assert.equal(res.fantasy.ranking.length,0);
+  } finally { ctx.cleanup(); }
 });

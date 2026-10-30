@@ -57,6 +57,22 @@
         <div id="est-countdown" class="est-countdown" aria-live="off">—</div>
         <ul id="est-match-list" class="est-match-list" aria-label="Partidos de hoy"></ul>
       </section>
+      <section class="est-panel est-fantasy" id="est-fantasy-panel" aria-labelledby="est-fantasy-title">
+        <h2 class="est-panel-title" id="est-fantasy-title">Mi Once · 4-4-2</h2>
+        <p class="est-muted">Sin fichas: +2 por participar, +5 por gol, +3 por asistencia y −1 por roja. Cuenta la liga regular.</p>
+        <p id="est-fantasy-summary" role="status" class="est-muted">Conecta al Estadio para armar tu once.</p>
+        <form id="est-fantasy-form">
+          <div id="est-fantasy-players" class="est-fantasy-players"></div>
+          <button type="submit" id="est-fantasy-save" disabled>Guardar Mi Once</button>
+        </form>
+        <p id="est-fantasy-feedback" role="status" aria-live="polite"></p>
+        <p class="est-muted">Los cambios aplican desde la primera jornada que aún no inicia y se mantienen hasta el siguiente cambio. No se inventan datos de partidos anteriores.</p>
+        <h3 class="est-fantasy-subtitle">Retos y pines</h3>
+        <ul id="est-fantasy-challenges" class="est-fantasy-list"><li>Aún no hay puntos.</li></ul>
+        <label class="est-fantasy-opt"><input id="est-fantasy-opt" type="checkbox" disabled> Participar en la clasificación anónima</label>
+        <p class="est-muted">Opcional y revocable; se publican solamente puestos y puntos, sin nombres ni identificadores. Los pines se muestran durante esta temporada.</p>
+        <ol id="est-fantasy-ranking" class="est-fantasy-list" aria-label="Clasificación anónima de Mi Once"></ol>
+      </section>
       <section class="est-panel" id="est-standings-panel">
         <h2 class="est-panel-title">Posiciones</h2>
         <div class="est-table-wrap">

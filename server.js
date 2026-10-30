@@ -3226,7 +3226,7 @@ async function initFootball() {
   //    nombres) y verifyTosAcceptance. La identidad se resuelve SOLO en subscribe.
   footballSockets = registerFootballSockets(io, {
     betting: footballBetting, engine: footballEngine, store: footballStore, profiles,
-    ballonDorMarket: footballBallonDorMarket,
+    ballonDorMarket: footballBallonDorMarket, accountSessionsEnabled: adminConfig.accountSessionsEnabled,
     config: footballConfig.sockets, log: footballLog, now: () => Date.now(),
     ackOk,
     ackError: (ack, message, code) => ackResult(ack, actionError(message, code || 'invalid')),
