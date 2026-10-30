@@ -4,7 +4,7 @@ const http = require('http');
 const { randomUUID } = require('node:crypto');
 const path = require('path');
 const { Server } = require('socket.io');
-const { AVATARS, avatarInfo } = require('./lib/profile-store');
+const { AVATARS } = require('./lib/profile-store');
 // Fase 10.2: DATABASE_URL activa el backend de Postgres (Neon free); sin ella,
 // se mantiene el ProfileStore de archivo JSON de siempre. Ver lib/profile-store-factory.js.
 const { createProfileStore } = require('./lib/profile-store-factory');
@@ -1105,13 +1105,6 @@ function ackResult(ack, result) {
 }
 function ackError(ack, message) { return ackResult(ack, actionError(message)); }
 function ackOk(ack, extra = {}) { return ackResult(ack, actionOk(extra)); }
-function requireTurn(room, player, ack) {
-  if (room.turnId !== player.id) {
-    ackError(ack, 'Aún no es tu turno.');
-    return false;
-  }
-  return true;
-}
 function nextConnectedHost(room) {
   // La autoridad de la mesa siempre prefiere personas reales conectadas.
   const next = room.players.find(p => p.connected && !p.isBot) || room.players.find(p => p.connected);
@@ -1166,9 +1159,6 @@ function blackjackScore(hand) {
   }
   while (value > 21 && aces > 0) { value -= 10; aces--; }
   return { value, soft: aces > 0 };
-}
-function activeBlackjackPlayers(room) {
-  return room.players.filter(p => p.bet > 0 && ['playing', 'blackjack'].includes(p.status));
 }
 function nextBlackjackTurn(room, afterId) {
   const start = room.players.findIndex(p => p.id === afterId);

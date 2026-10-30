@@ -204,6 +204,7 @@ Variables útiles para pruebas y despliegue:
 - `PROFILE_STORE_PATH`: ruta del archivo de perfiles (en Render, apúntalo al disco persistente, p. ej. `/var/data/profiles.json`). Se ignora si `DATABASE_URL` está definida.
 - `LOBBY_TOURNAMENT_STORE_PATH`: ruta del archivo persistente de calendario/inscripciones/brackets; por defecto `data/lobby-tournaments.json`. Se ignora si `DATABASE_URL` está definida.
 - `LOTERIA_STATE_PATH`: ruta del estado de la ronda compartida de la Lotería; por defecto `data/loteria.json` (en Render, `/var/data/loteria.json`). `LOTERIA_ENABLED=off` apaga la sala; `LOTERIA_REGISTRATION_MS`, `LOTERIA_CALL_INTERVAL_MS` y `LOTERIA_BREAK_MS` ajustan el ritmo y están pensadas para pruebas.
+- Auditoría de código inerte (piezas que existen y no hacen nada, con su arreglo): `docs/auditoria-codigo-inerte.md`.
 - `FORTUNE_STATE_PATH`: ruta del diario de la Rueda de la Fortuna; por defecto `data/fortune-ledger.json` (en Render, `/var/data/fortune-ledger.json`). `FORTUNE_ENABLED=off` apaga la Rueda.
 - `DATABASE_URL`: cadena de conexión Postgres (Fase 10). Si está definida, los perfiles se guardan en Postgres en vez de en el archivo JSON — pensado para el free tier de Neon, que no requiere tarjeta. Ver «Persistencia de perfiles» abajo.
 - `CASINO_TIME_ZONE`: zona IANA del calendario mensual del ranking y de la rotación visual estacional. Por defecto `America/Mexico_City`; los cambios de temporada ocurren a medianoche local y no a las 00:00 UTC del servidor.

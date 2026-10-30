@@ -576,10 +576,6 @@
     sessionStorage.setItem('montecristo-session', JSON.stringify({ code: ui.activeCode, name: ui.playerName, avatar: ui.selectedAvatar, spectate: ui.spectating }));
   }
   function clearSession() { sessionStorage.removeItem('montecristo-session'); }
-  function initials(name) {
-    const chunks = String(name || '?').trim().split(/\s+/).filter(Boolean);
-    return (chunks[0]?.[0] || '?') + (chunks.length > 1 ? chunks[chunks.length - 1][0] : '');
-  }
   function avatarEmoji(id) { return AVATARS.find(item => item.id === id)?.emoji || '🦊'; }
   function passportFrameClasses(passport) {
     if (serverFlags.passport !== true) return '';

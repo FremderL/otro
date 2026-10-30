@@ -161,7 +161,8 @@ test('reschedule requiere sesión admin con football:manage y rechaza a moderado
 const { installAdminRoutes } = require('../lib/admin-auth-http');
 
 async function runCasino({ adminEnabled = true, role = 'admin' } = {}) {
-  const profiles = new Map([['admin1', makeProfile('admin1', 'admin')]]);
+  // `role` sí decide el perfil: antes se ignoraba y toda prueba corría como admin.
+  const profiles = new Map([['admin1', makeProfile('admin1', role)]]);
   const session = makeSession('admin1');
   const TOKEN = 'tok-casino';
   const config = { enabled: adminEnabled, appOrigin: ORIGIN, sessionPepper: PEPPER };
