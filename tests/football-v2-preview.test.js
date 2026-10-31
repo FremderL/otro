@@ -61,7 +61,8 @@ test('vista aislada ejecuta el Estadio real con V2 y entrega frames por websocke
   const publicState = await (await fetch(`${base}/api/estadio/matches/${match.id}`)).json();
   assert.equal(publicState.matchState.match.engine, 'v2');
   assert.ok(publicState.matchState.state.players.length >= 22);
-  assert.ok(publicState.matchState.markets['1x2']);
+  assert.ok(publicState.matchState.markets['1x2'] || publicState.matchState.suspended,
+    'el mercado se muestra en juego y se suspende durante una pausa real');
   assert.doesNotMatch(JSON.stringify(publicState), /privateSeed|rootSeed|matchEnd/);
 
   const socket = io(base, { transports: ['websocket'], reconnection: false, timeout: 5000 });

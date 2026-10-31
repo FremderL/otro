@@ -285,6 +285,13 @@ En día de doble jornada, la segunda oleada arranca con **+35 min** de desfase (
 Máximo de partidos simultáneos: **3** (6 en día doble). El techo configurado del motor es 12, así
 que hay margen para eventos especiales (copa de fin de semana, amistosos de pretemporada).
 
+> **Nota de cambio (octubre 2026).** La parrilla vigente es la de
+> [`docs/estadio-calendario-mensual.md`](estadio-calendario-mensual.md): los bloques usan franjas de
+> una hora dentro de tres bandas (13:00–15:00, 17:00–19:00, 20:00–21:00) y la segunda oleada de un día
+> doble entra con **+30 min**. El bloque Estelar pasó de 21:30 a **20:00** (destacado **21:00**) para
+> que el último kickoff del día sea 21:30 y el partido termine (21:45) antes de la clausura del Balón
+> de Oro de las 22:00. Máximo de partidos simultáneos: **1**.
+
 El partido destacado se muestra en grande en el encabezado de `/estadio` con marcador, reloj y
 relato; los demás aparecen en una franja lateral de «otros partidos en vivo» con marcador compacto,
 igual que hoy se listan las salas abiertas.
@@ -796,6 +803,24 @@ leen el mismo relato, y el partido es reproducible en auditoría):
 | --- | --- | --- | --- |
 | `narrador` | Play-by-play | Exclamativo, presente, frases cortas | Cada evento relevante, goles con intensidad |
 | `analista` | Táctica y contexto | Sobrio, con datos, segunda voz | ~35 % de los eventos, siempre tras goles/expulsiones y en el descanso |
+
+**Tiempo agregado.** El cuarto árbitro anuncia el agregado de cada mitad y el relato lo dice en
+voz alta. El motor sortea `s1`/`s2` en `[1, 4]` minutos (`STOPPAGE_MIN`/`STOPPAGE_MAX`), los mete en
+`clock` y emite un evento `stoppage_start` (`added`, `half`) justo antes del descanso y del pitazo
+final; por eso viaja en la línea de tiempo, se retransmite por socket y queda archivado con el
+resultado. `eventVars()` y `buildVars()` exponen `{agregado}`, y las plantillas de `stoppage_start`
+(narrador + analista, que siempre habla) dicen los minutos exactos. El mismo dato pinta el reloj
+como `45+4'` / `90+3'` y se limpia al cambiar de mitad. Sin `{agregado}` no se genera relato: mejor
+silencio que inventar el número.
+
+**Voz de la mesa.** Los dos comentaristas del partido son voces masculinas cuando el navegador las
+ofrece: la Web Speech API no expone género, así que se infiere del nombre de la voz (`Jorge`,
+`Raúl`, `Diego`, `Pablo`…) y se prefieren sobre las femeninas aunque estas sean `es-MX`; a igualdad
+de género gana `es-MX` y después el orden del navegador. Si solo hay voces femeninas o sin nombre
+reconocible se conserva la voz y se baja el `pitch` (0,88 / 0,80) como respaldo, de modo que la mesa
+nunca se queda muda. Este criterio es solo del relato: la **inauguración del Balón de Oro** y la
+**ceremonia final** siguen con sus pistas pregrabadas en **voz femenina** (`ballon-dor-opening-es-mx.mp3`
+y los cues de la ceremonia), que no pasan por el sintetizador del navegador.
 
 Generación por plantillas con variables `{jugador}`, `{equipo}`, `{rival}`, `{minuto}`,
 `{marcador}`, `{estadística}`, `{racha}`:

@@ -23,7 +23,7 @@
 
 ## Experiencia audiovisual congelada para el MVP
 
-La inauguración reutiliza la identidad de la entrada al Estadio (túnel, luz dorada y tarjetas dinámicas) y dura unos **45 s**. La ceremonia final añade un escenario de podio propio y una secuencia de **13 pasos** guiada por clips, de aproximadamente **20–21 s** según la duración de los nombres; en ambas, captions y transcripción permiten entenderlo todo sin audio. La inauguración se abre automáticamente una vez por ciclo, incluso con llegada tardía; permite pausar/reanudar la primera vista, pero no repetirla después de completarla. La ceremonia final, a diferencia de la apertura, conserva pausa y replay, y se habilita con gesto únicamente desde el resultado persistido y verificado, después de las **10:00 p. m.** en `America/Mexico_City`. La narración es-MX y el fondo instrumental cinematográfico sutil son capas opcionales, controlables por separado.
+La inauguración reutiliza la identidad de la entrada al Estadio (túnel, luz dorada y tarjetas dinámicas) y dura **1:48** (108 s): antes eran 45 s y cada candidato aparecía 2 s, así que se sentía apurada. La narración grabada (≈49,5 s) abre la presentación y, al terminar, entra el tema instrumental del Balón de Oro para la segunda mitad; ningún tramo queda en silencio. La ceremonia final añade un escenario de podio propio y una secuencia de **13 pasos** guiada por clips, de aproximadamente **20–21 s** según la duración de los nombres; en ambas, captions y transcripción permiten entenderlo todo sin audio. La inauguración se abre automáticamente una vez por ciclo, incluso con llegada tardía; permite pausar/reanudar la primera vista, pero no repetirla después de completarla. La ceremonia final, a diferencia de la apertura, conserva pausa y replay, y se habilita con gesto únicamente desde el resultado persistido y verificado, después de las **10:00 p. m.** en `America/Mexico_City`. La narración es-MX y el fondo instrumental cinematográfico sutil son capas opcionales, controlables por separado.
 
 **Límite de producción actual:** no hay generador nativo de video ni `ffmpeg` instalado; no se promete un MP4. Sí se puede producir voz sintética para líneas fijas e ilustraciones y programar movimiento de cámara simulado, transiciones, luces y tarjetas dinámicas con CSS/Canvas. Un MP4 aportado después podrá integrarse, pero no hace falta para el MVP.
 
@@ -68,7 +68,7 @@ Esta fase quedó cerrada con reglas de MVP concretas. Los límites de stake y la
 - Margen objetivo 10 %, cuota decimal máxima 51.0; el redondeo debe conservar el margen mínimo de los mercados del Estadio y evitar arbitraje. La interfaz muestra cuota, probabilidad implícita, stake y pago potencial. El servidor ignora cuotas recibidas desde el cliente y congela la cuota del boleto al aceptarlo.
 - Boleto correcto: paga `floor(stake × cuota aceptada)`, sujeto al tope de pago. Incorrecto: stake perdido. Mercado cancelado: reembolso exacto del stake. Sin cash-out ni apuestas múltiples a otros candidatos.
 
-#### 1.4 Storyboard y guion de inauguración (45 s objetivo)
+#### 1.4 Storyboard y guion de inauguración (1:48 objetivo)
 
 | Tiempo | Imagen/acción | Locución fija |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ Esta fase quedó cerrada con reglas de MVP concretas. Los límites de stake y la
 | 5–11 s | Título y escudos/colores de los 16 clubes. | “Dieciséis clubes. Dieciséis delanteros. Un solo ganador.” |
 | 11–29 s | Cuatro revelaciones consecutivas, cuatro candidatos por escena; cada tarjeta muestra nombre, club, dorsal y atributos iniciales. | “Un representante por club. Cada gol, cada asistencia y cada aparición suman. Las tarjetas restan; el rendimiento del equipo también puede inclinar la balanza.” |
 | 29–38 s | Fórmula breve aparece en pantalla; animación de fichas virtuales y reloj hasta J20. | “Tus predicciones se juegan solo con fichas virtuales y cierran al terminar la jornada veinte.” |
-| 38–45 s | Luces a pleno, CTA “Ver candidatos / Hacer mi predicción”. | “Observa a los candidatos. Elige tu pronóstico. Que comience la temporada.” |
+| 1:33–1:48 | Luces a pleno, CTA “Ver candidatos / Hacer mi predicción”. | “Observa a los candidatos. Elige tu pronóstico. Que comience la temporada.” |
 
 Los nombres cambian por temporada: se muestran como texto/títulos dinámicos en las cuatro revelaciones; no se incrustan en la pista fija. El guion completo estará disponible como subtítulos/transcripción.
 
@@ -189,10 +189,15 @@ Los seis cues y 16 clips de nombres son WAV locales; el mismo flujo ofrece capti
 5. La escena final ofrece el CTA **Ver candidatos y hacer mi predicción**.
 
 **Implementado**
-- Audición y selección de una voz narradora femenina `es-MX`, tono de relato claro/cinematográfico. Se generó la pista fija `public/assets/ballon-dor-opening-es-mx.mp3` (44.54 s) con el guion definido; el texto idéntico está disponible como transcripción.
+- Audición y selección de una voz narradora femenina `es-MX`, tono de relato claro/cinematográfico.
+  Esta elección es **firme** y no se extiende a los comentaristas: la inauguración y la ceremonia
+  final conservan voz femenina (pista fija y cues pregrabados), mientras que la mesa que relata los
+  partidos en el Estadio usa voces masculinas. Al no hornear nombres de jugador ni clubes en la toma
+  fija, un traspaso del delantero estrella no invalida ni la locución ni los clips por `playerId`. Se generó la pista fija `public/assets/ballon-dor-opening-es-mx.mp3` (44,54 s) con el guion definido; el texto idéntico está disponible como transcripción.
+  La toma se **regrabó** el 2026-10-30 con una voz femenina `es-MX` de mejor calidad (49,54 s, guion idéntico, sin nombres ni clubes dentro de la pista). Como la duración total la fija el reloj de pared y no el MP3, el cambio no toca el reparto en actos ni la entrada del tema instrumental.
 - Se reutiliza `public/assets/estadio-tunnel.jpg` —ya disponible— como fondo; CSS añade dolly, luces, transiciones y tarjetas dinámicas con colores de club. No se generan retratos por temporada.
 - La página dedicada `/balon-de-oro` abre automáticamente la primera inauguración de cada ciclo, incluso con llegada tardía; la clave local distingue `started` de `completed`, de modo que una vista interrumpida se completa al volver. Tras completarla se ocultan los accesos de inicio/reproducción y no puede repetirse durante ese ciclo.
-- Los subtítulos accesibles siguen el progreso del audio y la secuencia de 45 s muestra 16 tarjetas individuales —una por ST existente— con nombre, club/colores, dorsal, atributos y estadísticas del ciclo. Se quitaron las cajas de fórmula y no se cambió la fórmula subyacente.
+- Los subtítulos accesibles siguen el progreso de la presentación y la secuencia de 1:48 muestra 16 tarjetas individuales —una por ST existente— con nombre, club/colores, dorsal, atributos y estadísticas del ciclo. Se quitaron las cajas de fórmula y no se cambió la fórmula subyacente.
 - La primera presentación conserva controles de pausa/reanudación y silencio, pero cerrar, omitir o usar Escape queda bloqueado hasta terminar. Después solo se ofrecen cierre y CTA; el replay de la ceremonia final no cambia y es independiente. El guion completo y el foco accesible están disponibles.
 - Si el navegador bloquea el audio automático, la inauguración continúa con subtítulos y movimiento compatible; se ofrece un gesto **Activar narración** para volver a intentar el audio. `prefers-reduced-motion` elimina el dolly y las entradas animadas.
 - El Estadio general conserva una tarjeta de entrada al evento. La página `/balon-de-oro` oculta el lobby y las columnas ajenas, y concentra clasificación, predicción virtual, anuncio final y archivo. El aviso de cierre toma la fecha del último partido de J30 (o del desempate oficial si existe) y comunica **10:00 p. m., hora de Ciudad de México**, después de ese partido; la ceremonia final queda detallada en la Fase 7.
@@ -285,5 +290,34 @@ Los seis cues y 16 clips de nombres son WAV locales; el mismo flujo ofrece capti
 - **Repetir stats al reintentar asentados:** se resuelve y prueba en Fase 3 antes de abrir predicciones.
 - **Pagar dos veces o exponer cuotas manipulables:** mercado server-side y liquidación idempotente en Fase 4.
 - **Spoilear al ganador antes del cierre:** la ceremonia solo lee resultado persistido, después de bloquear el mercado.
-- **Accesibilidad audiovisual:** la inauguración dura 45 s y permite pausa/reanudación sin repetición; la ceremonia final dura aproximadamente 20–21 s, según el clip de nombre, y sí permite replay. Ambas ofrecen captions/transcripción y movimiento reducido; la música y la narración no son requisito para entender los datos.
+- **Accesibilidad audiovisual:** la inauguración dura 1:48 (bloque narrado + bloque instrumental) y permite pausa/reanudación sin repetición; la ceremonia final dura aproximadamente 20–21 s, según el clip de nombre, y sí permite replay. Ambas ofrecen captions/transcripción y movimiento reducido; la música y la narración no son requisito para entender los datos.
 - **Escalar costos de media:** el piloto usa imágenes estáticas animadas y audio comprimido, no streaming ni video por Socket.IO.
+
+---
+
+## Nota de la ronda actual: la inauguración ya no se siente apurada
+
+La presentación pasa de **45 s a 1:48** y se reparte por actos, no por umbrales
+fijos en el código:
+
+| Acto | Duración (108 s) | Qué pasa |
+| --- | --- | --- |
+| Apertura | 0–7 s | Título de la edición y túnel. |
+| Alineación | 7–17 s | Los 16 escudos de los clubes. |
+| Presentaciones | 17–93 s | Los 16 candidatos, **4,7 s cada uno** (antes 2 s). |
+| Cierre | 93–108 s | Reglas, mercado y llamada a la acción. |
+
+El reparto se deriva de la duración total (`ballonDorOpeningPlan`), así que
+alargarla o acortarla no obliga a tocar los umbrales de cada escena. El reloj de
+la presentación es de pared y ya no se desprende de `audio.currentTime`: antes la
+duración total quedaba atada al MP3. La narración grabada (≈49,5 s) cubre el primer
+bloque —termina alrededor de la octava presentación— y en ese punto entra el tema
+instrumental del Balón de Oro, en bucle y a volumen bajo, hasta el cierre. Pausa,
+reanudación y silencio siguen funcionando y afectan a las dos capas.
+
+Pruebas: `tests/football-stadium-ui.test.js` recorre la presentación con el reloj,
+comprueba que los 16 candidatos aparecen en orden, que **cada uno está al menos
+3 s** en pantalla, que la voz no cierra la inauguración y que el tema instrumental
+entra al terminar la narración. La prueba de la conferencia de prensa del mercado
+está en `tests/football-player-value.test.js` y en la prueba de interfaz del panel
+de mercado.

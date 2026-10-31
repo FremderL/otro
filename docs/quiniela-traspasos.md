@@ -12,9 +12,32 @@ club conserva 18 jugadores, dorsales sin repetir y sus delanteros originales.
 Si falta una temporada previa consecutiva y válida, no se inventan traspasos.
 Las 16 identidades se sirven con sus escudos en la vista de mercado.
 
-Pruebas: generación, fechas, no mutación, identidad, JSON, socket, interfaz y
-una prueba aislada que guarda y recarga temporadas en PostgreSQL real. No se ha
-validado la concurrencia entre varias instancias ni un despliegue real.
+### Conferencia de prensa del mercado
+
+La vista de mercado del Estadio es una conferencia de prensa: cada acuerdo se
+presenta con los escudos de los dos clubes, la posición del jugador y su
+**valoración de mercado** (`lib/football/player-value.js`). La cifra sale de los
+atributos que ya deciden quién marca, asiste y defiende, más la posición, y es de
+**solo lectura**: no mueve fichas, no altera cuotas, apuestas ni premios. Se
+calcula al consultar (no se guarda), así que un cambio de criterio no obliga a
+migrar datos, y el jugador conserva su valor al cambiar de club porque la
+valoración es del jugador, no del escudo.
+
+### Candidatos del Balón de Oro y traspasos
+
+El mercado mueve mediocampistas, y los 16 candidatos del Balón de Oro son los
+delanteros `ST`, así que un traspaso nunca deja a un candidato con el club
+equivocado. Además, el orden de generación de temporada es
+`buildSeasonClubs → applyTransfers → createBallonDorEvent`: la lista de candidatos
+se elige de las plantillas **ya** traspasadas. `tests/football-player-value.test.js`
+lo comprueba en la temporada siguiente: el traspasado no figura en su club de
+origen, no aparece como candidato y cada tarjeta apunta al club donde el jugador
+juega de verdad.
+
+Pruebas: generación, fechas, no mutación, identidad, JSON, socket, interfaz,
+valoraciones y candidatos tras los traspasos, y una prueba aislada que guarda y
+recarga temporadas en PostgreSQL real. No se ha validado la concurrencia entre
+varias instancias ni un despliegue real.
 
 ## Quiniela
 

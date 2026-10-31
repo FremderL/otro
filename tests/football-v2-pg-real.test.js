@@ -611,3 +611,82 @@ test('PostgreSQL: V2 oficial progresiva conserva política, futuros, cuotas y pa
     assert.equal(store.getBet(bet.bet.id).oddsAtPlacement, bet.bet.oddsAtPlacement);
     assert.equal(store.getFuture(future.future.id).odds, future.future.odds);
   });
+
+test('PostgreSQL: mercados nuevos V2 conservan boleto y resultado al reiniciar',
+  { skip: !URL, timeout: 45000 }, async t => {
+    const { createOfficialV2 } = require('../lib/football/v2/official');
+    const { commitmentId } = require('../lib/football/v2/commitment');
+    const { outcome } = require('../lib/football/ratings');
+    const O = require('../lib/football/odds');
+    const schema = `v2_catalog_${randomUUID().replace(/-/g, '')}`;
+    const admin = new Pool({ connectionString: URL });
+    await admin.query(`CREATE SCHEMA ${schema}`);
+    class ScopedPool extends Pool { constructor(options) { super({ ...options, options: `-c search_path=${schema}` }); } }
+    let store, profiles;
+    const start = async () => {
+      store = new PgFootballStore(URL, { pool: new ScopedPool({ connectionString: URL }) });
+      profiles = new PgProfileStore(URL, { Pool: ScopedPool, deferSeasonCheck: true });
+      await Promise.all([store.ready, profiles.ready]);
+    };
+    const stop = async () => {
+      if (store) { await store.close(); await store.pool.end(); store = null; }
+      if (profiles) { await profiles.close(); profiles = null; }
+    };
+    t.after(async () => { await stop(); await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end(); });
+    await start();
+    const league = store.generateSeason('2026-11'), match = league.calendar.matches[0];
+    const now = Math.min(...league.calendar.matches.map(item => item.scheduledKickoffAt)) - 60000;
+    const officialV2 = createOfficialV2({ store, now: () => now });
+    assert.ok((await officialV2.prepareMatch(match)).ok);
+    let betting = createBettingService({ store, profiles, officialV2, now: () => now });
+    let engine = new FootballEngine(store, { officialV2 });
+    const replay = engine._ensureTimeline(match);
+    const halftime = O.halfTimeScoreFromTimeline(replay.timeline);
+    const firstScorer = O.firstScorerFromTimeline(replay.timeline);
+    const scorerMarket = betting.getMarket(match, 'first_scorer');
+    const offered = scorerMarket.selections.map(item => item.key);
+    const scorer = firstScorer ? (offered.includes(firstScorer.id) ? firstScorer.id : 'other') : 'none';
+    const htft = `${outcome(halftime.home, halftime.away)}_${outcome(replay.score.home, replay.score.away)}`;
+    const bets = [];
+    for (const [index, [market, selection]] of [['first_scorer', scorer], ['ht_ft', htft]].entries()) {
+      const profile = profiles.getOrCreate(`catalog-player-${index}`, `Jugador ${index}`);
+      profile.chips = 1000;
+      profile.achievements = P.ACHIEVEMENTS.map(item => item.id);
+      profile.challenges = Object.fromEntries(P.CHALLENGES.map(item => [item.id, { completedAt: 1, reward: item.reward }]));
+      P.recordOutcome(profile, { game: 'dice', net: 0, eligible: false });
+      profile.rotatingChallenges.daily.completed = true; profile.rotatingChallenges.weekly.completed = true;
+      assert.ok(await profiles.persistProfile(profile));
+      const placed = await betting.placeBet({ profile, matchId: match.id, market, selection, stake: 100,
+        idempotencyKey: `pg-catalog-${index}`, placedAt: now });
+      assert.ok(placed.ok, placed.code);
+      bets.push({ id: placed.bet.id, profileId: profile.id, payout: placed.bet.potentialPayout,
+        simulationId: placed.bet.simulationId, scorers: placed.bet.firstScorerIds });
+    }
+    assert.ok(bets[0].scorers.length > 0);
+    await stop(); await start();
+    const loaded = store.getMatch(match.id, '2026-11');
+    assert.equal(commitmentId(loaded.simulation), bets[0].simulationId);
+    assert.deepEqual(store.getBet(bets[0].id).firstScorerIds, bets[0].scorers);
+    const restoredV2 = createOfficialV2({ store, now: () => now });
+    betting = createBettingService({ store, profiles, officialV2: restoredV2, now: () => now });
+    engine = new FootballEngine(store, { officialV2: restoredV2,
+      settleBets: (fixture, score) => betting.settleMatchBets(fixture, score) });
+    const restoredReplay = engine._ensureTimeline(loaded);
+    assert.deepEqual(restoredReplay.score, replay.score);
+    assert.ok(engine.startMatch(loaded, loaded.scheduledKickoffAt));
+    assert.ok(engine.advance(loaded, loaded.scheduledKickoffAt + restoredReplay.clock.matchEnd * 15000 + 1).ended);
+    await Promise.all([...betting.ticketPayouts.values()]);
+    assert.ok(await store.saveStrict());
+    await stop(); await start();
+    const final = store.getMatch(match.id, '2026-11');
+    assert.deepEqual(final.result.halftime, halftime);
+    assert.deepEqual(final.result.firstScorer, firstScorer);
+    for (const bet of bets) {
+      assert.equal(store.getBet(bet.id).status, 'won');
+      assert.equal(store.getBet(bet.id).payoutApplied, true);
+      assert.equal(profiles.getProfile(bet.profileId).chips, 900 + bet.payout);
+    }
+    betting = createBettingService({ store, profiles });
+    betting.reconcileEscrow();
+    for (const bet of bets) assert.equal(profiles.getProfile(bet.profileId).chips, 900 + bet.payout);
+  });

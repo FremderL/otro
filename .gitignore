@@ -37,3 +37,5 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+# Scratch local (repros y tiendas temporales)
+.tmpwork/

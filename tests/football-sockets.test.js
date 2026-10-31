@@ -457,6 +457,71 @@ test('evento del motor: difunde football:event público + comentario + anillo', 
   assert.ok(!JSON.stringify(ev).includes('seedInterno'), 'publicEvent recorta campos internos');
 });
 
+test('el lobby publica las cuentas regresivas: fin de temporada y ceremonia del Balón de Oro', (t) => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const s = ctx.io.connect();
+  const res = subscribe(ctx, s, { name: 'Relojes' });
+  assert.equal(res.ok, true);
+  const lobby = res.lobby;
+  assert.ok(lobby && lobby.countdowns, 'el lobby lleva el bloque countdowns');
+  const casino = lobby.countdowns.casino;
+  assert.equal(casino.seasonMonth, ctx.month);
+  const ends = new Date(casino.endsAt);
+  assert.equal(ends.getUTCDate() <= 2, true, 'endsAt es el inicio del mes siguiente en hora local del casino');
+  assert.equal(typeof casino.resetDeferred, 'boolean');
+  assert.equal(casino.chipsResetAt, casino.endsAt, 'el reinicio de fichas usa el mismo instante');
+
+  const bdo = lobby.countdowns.ballonDor;
+  assert.ok(bdo, 'el ciclo del Balón de Oro viaja con su reloj');
+  assert.equal(bdo.seasonMonth, ctx.month);
+  assert.ok(bdo.ceremonyAt > 0, 'hay hora de ceremonia');
+  const ceremony = new Date(bdo.ceremonyAt).toLocaleTimeString('es-MX', {
+    hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Mexico_City'
+  });
+  assert.equal(ceremony, '22:00', 'la ceremonia es a las 22:00 locales');
+  // Y el último partido termina antes de esa hora.
+  const lastKickoff = Math.max(...ctx.store.getMatches(ctx.month).map(m => m.scheduledKickoffAt));
+  assert.ok(lastKickoff + 15.75 * 60 * 1000 <= bdo.ceremonyAt, 'ningún partido pisa la clausura');
+});
+
+test('la grada vota: sin partido en juego no se abre y con mayoría se publican los insultos', (t) => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const s1 = ctx.io.connect();
+  subscribe(ctx, s1, { scope: 'match', matchId: ctx.scheduled.id, name: 'Votante1' });
+  const early = s1._fire('football:stands_open', { matchId: ctx.scheduled.id });
+  assert.equal(early.ok, false);
+  assert.equal(early.code, 'not_live', 'la votación se abre con el partido en juego');
+
+  ctx.scheduled.status = 'live';
+  const votes = [s1];
+  for (const name of ['Votante2', 'Votante3']) {
+    const s = ctx.io.connect();
+    subscribe(ctx, s, { scope: 'match', matchId: ctx.scheduled.id, name });
+    votes.push(s);
+  }
+  assert.equal(votes[0]._fire('football:stands_open', { matchId: ctx.scheduled.id }).ok, true);
+  assert.equal(votes[1]._fire('football:stands_vote', { matchId: ctx.scheduled.id, allow: true }).ok, true);
+  const passed = votes[2]._fire('football:stands_vote', { matchId: ctx.scheduled.id, allow: true });
+  assert.equal(passed.ok, true);
+  assert.equal(passed.stands.allowsInsults, true, 'tres votos a favor habilitan la grada picante');
+
+  const repeated = votes[1]._fire('football:stands_vote', { matchId: ctx.scheduled.id, allow: false });
+  assert.equal(repeated.ok, false, 'la votación ya cerró con la mayoría a favor');
+  assert.equal(votes[1]._fire('football:stands_state', { matchId: ctx.scheduled.id }).stands.allowsInsults, true);
+
+  // Con la grada habilitada el mensaje se publica sin censura y marcado.
+  assert.equal(votes[0]._fire('football:chat', { matchId: ctx.scheduled.id, text: 'hola' }).ok, true);
+  const chat = ctx.io.lastTo(matchRoom(ctx.scheduled.id), 'football:chat');
+  assert.equal(chat.soft, true);
+  assert.ok(chat.id, 'cada comentario lleva id propio para su botón de quitar');
+
+  const state = votes[0]._fire('football:stands_state', { matchId: ctx.scheduled.id });
+  assert.equal(state.ok, true);
+  assert.equal(state.stands.status, 'allowed');
+});
+
 test('status del motor: avisa a la sala del partido Y refresca el lobby', (t) => {
   const ctx = setup();
   t.after(ctx.cleanup);
@@ -794,4 +859,44 @@ test('Estadio bloquea una cuenta suspendida incluso en conexiones ya abiertas', 
  const ctx=setup({accountSessionsEnabled:true});t.after(ctx.cleanup);const profile=ctx.profiles.getOrCreate('moderada','Moderada');profile.username='moderada';const s=ctx.io.connect();s.data.accountProfileId=profile.id;
  assert.equal(subscribe(ctx,s,{name:'Moderada'}).ok,true);profile.moderation={status:'banned'};
  assert.equal(subscribe(ctx,s,{name:'Moderada'}).code,'account_banned');assert.equal(s._fire('football:fan_get',{}).code,'no_identity');
+});
+
+test('la grada V2 no caduca con el reloj V1 y se cierra al terminar el partido', t => {
+  let at = 0;
+  const ctx = setup({ now: () => at });
+  t.after(ctx.cleanup);
+  const match = ctx.scheduled;
+  match.simulation = { version: 'v2-test' }; // el motor falso no necesita el replay privado
+  match.status = 'live';
+  at = match.scheduledKickoffAt + 20 * 60 * 1000; // después de los 15:45 de V1, pero V2 aún juega
+  const voters = ['V2Grada1', 'V2Grada2', 'V2Grada3'].map(name => {
+    const socket = ctx.io.connect();
+    subscribe(ctx, socket, { scope: 'match', matchId: match.id, name });
+    return socket;
+  });
+  assert.equal(voters[0]._fire('football:stands_open', { matchId: match.id }).ok, true);
+  assert.equal(voters[1]._fire('football:stands_vote', { matchId: match.id, allow: true }).ok, true);
+  assert.equal(voters[2]._fire('football:stands_vote', { matchId: match.id, allow: true }).stands.allowsInsults, true);
+  assert.equal(voters[0]._fire('football:chat', { matchId: match.id, text: 'hola' }).ok, true);
+  assert.equal(ctx.io.lastTo(matchRoom(match.id), 'football:chat').soft, true);
+  match.status = 'settled';
+  ctx.engine.emit('football:status', { matchId: match.id, code: 'full_time' });
+  assert.equal(voters[0]._fire('football:stands_state', { matchId: match.id }).stands, null);
+  assert.equal(voters[1]._fire('football:stands_vote', { matchId: match.id, allow: true }).code, 'not_live');
+  assert.equal(voters[0]._fire('football:chat', { matchId: match.id, text: 'hola' }).ok, true);
+  assert.equal(ctx.io.lastTo(matchRoom(match.id), 'football:chat').soft, false);
+});
+
+test('el reloj de cierre del Balón de Oro usa el ritmo público V2 y lo identifica como estimado', t => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const j20 = ctx.store.getMatches(ctx.month).filter(match => match.jornada === 20);
+  const lastKickoff = Math.max(...j20.map(match => match.scheduledKickoffAt));
+  for (const match of j20) if (match.scheduledKickoffAt === lastKickoff) match.simulation = { version: 'v2-test' };
+  const socket = ctx.io.connect();
+  const subscribed = subscribe(ctx, socket, { name: 'RelojV2' });
+  assert.equal(subscribed.ok, true);
+  const bdo = subscribed.lobby.countdowns.ballonDor;
+  assert.equal(bdo.betsCloseAt, lastKickoff + 90 * 15 * 1000);
+  assert.equal(bdo.betsCloseEstimated, true);
 });

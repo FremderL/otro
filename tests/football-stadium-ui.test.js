@@ -248,6 +248,7 @@ function createHarness(options = {}) {
     window.localStorage.setItem('montecristo-bdo-opening-v2:' + currentBallonDorMarket.seasonMonth, 'completed');
   }
   let openingAudioTime = 0, openingAudioPaused = true, openingAudioMuted = false, openingAudioPlayCount = 0;
+  let openingClockSeconds = 0;
   const openingAudio = window.document.getElementById('est-bdo-opening-audio');
   Object.defineProperties(openingAudio, {
     currentTime: { configurable: true, get: () => openingAudioTime, set: value => { openingAudioTime = Number(value) || 0; } },
@@ -262,6 +263,17 @@ function createHarness(options = {}) {
     return Promise.resolve();
   };
   openingAudio.pause = () => { openingAudioPaused = true; };
+  // Tema instrumental de la segunda mitad: el arnés lo mide aparte de la voz.
+  let openingBedPaused = true, openingBedPlayCount = 0;
+  const openingBed = window.document.getElementById('est-bdo-opening-bed');
+  Object.defineProperties(openingBed, {
+    currentTime: { configurable: true, get: () => 0, set: () => {} },
+    volume: { configurable: true, get: () => 1, set: () => {} },
+    muted: { configurable: true, get: () => false, set: () => {} },
+    paused: { configurable: true, get: () => openingBedPaused }
+  });
+  openingBed.play = () => { openingBedPlayCount++; openingBedPaused = false; return Promise.resolve(); };
+  openingBed.pause = () => { openingBedPaused = true; };
   const ceremonyAudioCounts = { music: 0, narration: 0 };
   const ceremonyAudioSrcHistory = { music: [], narration: [] };
   const ceremonyAudioState = {};
@@ -409,6 +421,7 @@ function createHarness(options = {}) {
       }
     } : null,
     get openingAudioPlayCount() { return openingAudioPlayCount; },
+    get openingBedPlayCount() { return openingBedPlayCount; },
     get ceremonyAudioCounts() { return { ...ceremonyAudioCounts }; },
     get ceremonyAudioSrcHistory() { return { music: ceremonyAudioSrcHistory.music.slice(), narration: ceremonyAudioSrcHistory.narration.slice() }; },
     async finishCeremonyClip() {
@@ -418,9 +431,15 @@ function createHarness(options = {}) {
       item.audio.dispatchEvent(new window.Event('ended'));
       await this.flush();
     },
+    // La inauguración avanza con el reloj de la página (no con el del MP3): este
+    // atajo mueve las dos cosas para que las pruebas puedan pedir «segundo 18».
     advanceOpeningAudio(seconds) {
-      openingAudioTime = Number(seconds) || 0;
+      const target = Math.max(0, Number(seconds) || 0);
+      const delta = Math.max(0, target - openingClockSeconds);
+      openingClockSeconds = target;
+      openingAudioTime = target;
       openingAudio.dispatchEvent(new window.Event('timeupdate'));
+      if (delta > 0) this.advanceTime(delta * 1000);
     },
     get submittedPromotion() { return submittedPromotion; },
     setBallonDorMarket(nextMarket) { currentBallonDorMarket = nextMarket; },
@@ -1654,35 +1673,50 @@ test('la página del evento presenta automáticamente y una sola vez a los 16 ju
   document.querySelector('.est-bdo-opening-dialog').dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   assert.equal(overlay.hidden, false);
 
+  // La presentación se recorre con el reloj de la página: 16 candidatos, cada uno
+  // con su tiempo (no los 2 s de antes) y en el orden de la lista.
+  const revealSeconds = new Map();
   const candidateIds = [];
-  for (let index = 0; index < 16; index++) {
-    h.advanceOpeningAudio(8 + index * 2 + 0.1);
-    const cards = document.querySelectorAll('#est-bdo-opening-cards .est-bdo-opening-card');
+  let firstReveal = true;
+  for (let second = 0.5; second < 108; second += 0.5) {
+    h.advanceOpeningAudio(second);
+    const container = document.getElementById('est-bdo-opening-cards');
+    const cards = container.querySelectorAll('.est-bdo-opening-card');
+    if (!cards.length || container.hidden) continue;
     assert.equal(cards.length, 1, 'se enfoca un solo jugador en cada revelación');
-    assert.equal(h.window.getComputedStyle(document.getElementById('est-bdo-opening-cards')).display, 'grid');
     const card = cards[0];
-    assert.equal(card.dataset.candidateId, 'bdo-club-' + (index + 1));
-    assert.match(card.textContent, /Delantero/);
-    assert.match(card.textContent, /Goles/);
-    assert.match(card.textContent, /Asistencias/);
-    assert.match(card.textContent, /Apariciones/);
-    assert.match(card.textContent, /Puntos/);
-    assert.match(card.textContent, /Tiro/);
-    assert.match(card.textContent, /Ritmo/);
-    assert.match(stage.dataset.scene, new RegExp('^reveal-' + (index + 1) + '$'));
-    if (index === 0) {
+    const id = card.dataset.candidateId;
+    if (!revealSeconds.has(id)) candidateIds.push(id);
+    revealSeconds.set(id, (revealSeconds.get(id) || 0) + 0.5);
+    assert.match(stage.dataset.scene, /^reveal-(\d+)$/);
+    if (firstReveal) {
+      firstReveal = false;
+      assert.equal(h.window.getComputedStyle(document.getElementById('est-bdo-opening-cards')).display, 'grid');
+      assert.equal(card.dataset.candidateId, 'bdo-club-1');
+      assert.match(card.textContent, /Delantero/);
+      assert.match(card.textContent, /Goles/);
+      assert.match(card.textContent, /Asistencias/);
+      assert.match(card.textContent, /Apariciones/);
+      assert.match(card.textContent, /Puntos/);
+      assert.match(card.textContent, /Tiro/);
+      assert.match(card.textContent, /Ritmo/);
       assert.equal(card.querySelector('.est-bdo-opening-card-monogram').textContent, 'CL1');
       assert.equal(card.querySelector('.est-bdo-opening-card-number').textContent, '#9');
       assert.equal(card.querySelector('[aria-label="Tiro"]').getAttribute('aria-valuenow'), '70');
     }
-    candidateIds.push(card.dataset.candidateId);
   }
   assert.equal(new Set(candidateIds).size, 16, 'cada ST existente aparece individualmente');
+  assert.deepEqual(candidateIds, Array.from({ length: 16 }, (_, i) => 'bdo-club-' + (i + 1)),
+    'los candidatos se presentan en el orden de la lista');
+  // «Que no se sienta apurada»: cada jugador tiene al menos 3 s en pantalla.
+  for (const [id, seconds] of revealSeconds) {
+    assert.ok(seconds >= 3, id + ' permanece al menos 3 s en pantalla (tiene ' + seconds + ' s)');
+  }
   assert.equal(document.getElementById('est-bdo-opening-rules'), null,
     'se retiraron los cuadros genéricos de puntos de la inauguración');
   assert.doesNotMatch(document.querySelector('.est-bdo-opening-dialog').textContent, /\+\s*[135]|−\s*[13]/);
 
-  h.advanceOpeningAudio(45);
+  h.advanceOpeningAudio(108);
   assert.equal(localStorage.getItem('montecristo-bdo-opening-v2:2026-10'), 'completed');
   assert.equal(document.getElementById('est-bdo-opening-close').hidden, false);
   assert.equal(document.getElementById('est-bdo-opening-skip').hidden, true);
@@ -1932,12 +1966,38 @@ test('la inauguración de una llegada tardía no muestra puntos ni estadísticas
   const { document } = h.window;
   assert.equal(document.getElementById('est-bdo-opening').hidden, false,
     'se conserva la inauguración obligatoria aunque se llegue tarde al ciclo');
-  h.advanceOpeningAudio(8.1);
+  h.advanceOpeningAudio(20);
   const card = document.querySelector('#est-bdo-opening-cards .est-bdo-opening-card');
   assert.ok(card);
   assert.doesNotMatch(card.textContent, /Goles|Asistencias|Apariciones|Puntos/);
   assert.match(card.querySelector('.est-bdo-opening-card-signature').textContent, /revelarán en la ceremonia/);
   assert.equal(document.getElementById('est-bdo-ceremony-start').disabled, true);
+});
+
+test('la inauguración dura 1:48: la voz abre y el tema instrumental cubre la segunda mitad', async t => {
+  const h = await createBallonDorHarness({ path: '/balon-de-oro', reducedMotion: true });
+  t.after(h.close);
+  const { document } = h.window;
+  const overlay = document.getElementById('est-bdo-opening');
+  const status = document.getElementById('est-bdo-opening-status');
+  assert.equal(overlay.hidden, false);
+  assert.equal(document.getElementById('est-bdo-opening-time').textContent, '0:00 / 1:48',
+    'la presentación anuncia su duración real, no 45 s');
+
+  // La narración grabada termina hacia el segundo 51: la presentación no se cierra
+  // ahí, entra el tema instrumental y sigue hasta el final.
+  h.advanceOpeningAudio(52);
+  document.getElementById('est-bdo-opening-audio').dispatchEvent(new h.window.Event('ended'));
+  await h.flush();
+  assert.equal(h.openingBedPlayCount, 1, 'al terminar la voz empieza el tema instrumental');
+  assert.equal(overlay.hidden, false, 'que acabe la voz no cierra la inauguración');
+  assert.match(status.textContent, /Tema instrumental/);
+
+  h.advanceOpeningAudio(107);
+  assert.equal(overlay.hidden, false, 'a los 1:47 la presentación sigue en el cierre');
+  h.advanceOpeningAudio(108);
+  assert.equal(document.getElementById('est-bdo-opening-time').textContent, '1:48 / 1:48');
+  assert.match(status.textContent, /Inauguración completada/);
 });
 
 test('el piloto registra inicio y final de audio de inauguración sin enviar identidad', async t => {
@@ -1969,7 +2029,7 @@ test('la inauguración ofrece fallback visual y un control para activar audio si
   assert.match(document.querySelector('.est-bdo-opening-transcript').textContent, /Balón de Oro/);
   const enableAudio = document.getElementById('est-bdo-opening-enable-audio');
   assert.equal(enableAudio.hidden, false, 'hay un gesto explícito para intentar activar la voz');
-  h.advanceTime(9000);
+  h.advanceTime(20000);
   assert.equal(document.getElementById('est-bdo-opening-stage').dataset.scene, 'reveal-1');
   enableAudio.click();
   await h.flush();
@@ -2359,13 +2419,18 @@ test('Mi afición real pide confirmación antes de cambiar y muestra el resultad
 });
 
 
-test('Mercado muestra nombres de jugadores y escudos de ambos clubes', async () => {
-  const h=createHarness({ extraTeams:{ united_vanguard:team('united_vanguard','Farselona FC','FAR','#d32f2f','#111111'), sporting_almar:team('sporting_almar','Liverpulpo FC','LVP','#388e3c','#ffffff') }, onTransfersGet:()=>({ok:true,transfers:{status:'announced',effectiveSeason:'2026-11',moves:[{playerName:'<Jugador>',fromId:'united_vanguard',toId:'sporting_almar'}]}}) });
+test('la conferencia de prensa del mercado muestra traspasos, escudos y valoraciones', async () => {
+  const h=createHarness({ extraTeams:{ united_vanguard:team('united_vanguard','Farselona FC','FAR','#d32f2f','#111111'), sporting_almar:team('sporting_almar','Liverpulpo FC','LVP','#388e3c','#ffffff') }, onTransfersGet:()=>({ok:true,transfers:{status:'announced',effectiveSeason:'2026-11',moves:[{playerName:'<Jugador>',fromId:'united_vanguard',toId:'sporting_almar',position:'CM',playerValue:17.5}]}}) });
   try {
     await h.connectToMatch(); const doc=h.window.document; doc.getElementById('est-hub-open').click(); doc.querySelector('[data-hub-view="mercado"]').click();
     const row=doc.querySelector('.est-transfer-list li'); assert.ok(row); assert.match(row.textContent,/<Jugador>/);
     assert.equal(row.querySelector('jugador'),null); assert.equal(row.querySelectorAll('img').length,2);
     assert.ok(row.querySelector('img[src="/assets/escudos/FAR.svg"]')); assert.ok(row.querySelector('img[src="/assets/escudos/LVP.svg"]'));
+    // La valoración sale del servidor y se lee como precio de mercado, no como ficha.
+    assert.match(row.textContent,/CM/);
+    assert.match(row.querySelector('.est-transfer-value').textContent,/Valoración 17,5 M/);
+    assert.match(doc.getElementById('est-transfers-list').textContent,/Acuerdos anunciados/);
+    assert.match(doc.getElementById('est-transfers-list').textContent,/2026-11/);
   } finally {h.window.close();}
 });
 
@@ -2402,7 +2467,7 @@ test('escudos acompañan nombres en historial abierto, combinadas y cambio de af
 test('escudos reales aparecen en la inauguración, tabla y archivo del Balón de Oro', async t => {
  const {CLUBS}=require('../lib/football/teams');const base=ballonDorMarket();const candidates=base.candidates.map((candidate,i)=>({...candidate,clubId:CLUBS[i].id,clubName:CLUBS[i].name,clubShort:CLUBS[i].abbr}));
  const active=ballonDorMarket({candidates});const h=await createBallonDorHarness({path:'/balon-de-oro',ballonDorMarket:active});t.after(h.close);const doc=h.window.document;
- assert.equal(doc.querySelectorAll('#est-bdo-candidates img.est-bdo-club-crest').length,16);h.advanceOpeningAudio(8.1);
+ assert.equal(doc.querySelectorAll('#est-bdo-candidates img.est-bdo-club-crest').length,16);h.advanceOpeningAudio(20);
  assert.ok(doc.querySelector('#est-bdo-opening-kicker img[src$="RMD.svg"]'));assert.ok(doc.querySelector('#est-bdo-opening-card-monogram img') || doc.querySelector('.est-bdo-opening-card-monogram img[src$="RMD.svg"]'));
  const result=settledBallonDorMarket({candidates});const archive=[{seasonMonth:'2026-10',status:'settled',winner:{clubId:CLUBS[0].id,clubName:CLUBS[0].name,playerName:candidates[0].playerName,score:30}}];
  const h2=await createBallonDorHarness({path:'/balon-de-oro?seasonMonth=2026-10',openingCompleted:true,now:Date.UTC(2026,10,2,12),ballonDorMarket:result,ballonDorArchive:archive,reducedMotion:true});t.after(h2.close);const d2=h2.window.document;
@@ -2501,4 +2566,145 @@ test('la tanda V2 muestra el marcador de penales sin cambiar los goles del parti
     phase: 'shootout', marcadorTanda: '2-2', scored: true } });
   assert.match(doc.getElementById('est-clock').textContent, /Penales 2–2/);
   assert.match(doc.getElementById('est-text-state').textContent, /Penales 2–2/);
+});
+
+test('reloj — el agregado del árbitro se muestra como 45+4 y 90+3, y se limpia al cambiar de mitad', async t => {
+  const h = createHarness({ reducedMotion: true });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const id = match.id;
+  const clock = () => window.document.getElementById('est-clock').textContent;
+  const fireEvent = event => handlers['football:event']({ matchId: id, event });
+
+  handlers['football:status']({ matchId: id, code: 'live', minute: 45 });
+  fireEvent({ type: 'stoppage_start', half: 1, added: 4, minute: 45, phase: 'set_piece', playStopped: true, ball: { x: .5, y: .5 } });
+  assert.match(clock(), /45\+4'/, 'el tablero dice 45+4, igual que el relato');
+
+  // El agregado no se «gasta»: mientras corre sigue en 45+4 y no salta a 47.
+  handlers['football:tick']({
+    matchId: id, minute: 47, displayMinute: 47, phase: 'first_half', playStopped: false,
+    score: { home: 0, away: 0 }, ball: { x: .5, y: .5 }
+  });
+  assert.match(clock(), /45\+4'/, 'se mantiene el tablero del árbitro durante el agregado');
+
+  // El descanso limpia el tablero.
+  fireEvent({ type: 'halftime', minute: 45, phase: 'halftime', playStopped: true, ball: { x: .5, y: .5 } });
+  assert.ok(!/\+/.test(clock()), 'sin agregado activo el reloj vuelve al minuto normal');
+
+  // Segundo tiempo: 90+3.
+  handlers['football:status']({ matchId: id, code: 'live', minute: 90 });
+  fireEvent({ type: 'stoppage_start', half: 2, added: 3, minute: 90, phase: 'set_piece', playStopped: true, ball: { x: .5, y: .5 } });
+  assert.match(clock(), /90\+3'/, 'el segundo tablero dice 90+3');
+
+  handlers['football:status']({ matchId: id, code: 'full_time', minute: 90 });
+  assert.equal(clock(), 'Final', 'al terminar manda el estado del partido');
+});
+
+test('voces — se prefieren comentaristas masculinos en español (narrador y analista)', async t => {
+  const h = createHarness({
+    speechSynthesis: true,
+    speechVoices: [
+      { name: 'Microsoft Sabina', lang: 'es-MX' },
+      { name: 'Microsoft Raúl', lang: 'es-MX' },
+      { name: 'Google español', lang: 'es' }
+    ]
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match, speech } = h;
+  window.document.getElementById('est-commentary-voice').click();
+
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: '¡Se acerca el gol!' });
+  handlers['football:commentary']({ matchId: match.id, voice: 'analista', text: 'La defensa quedó muy abierta.' });
+  assert.equal(speech.utterances.length, 1);
+  assert.equal(speech.utterances[0].voice.name, 'Microsoft Raúl', 'el narrador toma la voz masculina aunque haya una femenina mexicana');
+  assert.ok(speech.utterances[0].pitch >= .95, 'una voz masculina no necesita retoque de tono');
+
+  speech.finish(0);
+  h.advanceTime(500);
+  assert.equal(speech.utterances.length, 2);
+  assert.notEqual(speech.utterances[1].voice.name, 'Microsoft Sabina', 'el analista no cae en la voz femenina si hay alternativa');
+  assert.ok(speech.utterances[1].pitch < .95, 'la segunda voz se mantiene en el registro masculino');
+});
+
+test('voces — si el navegador solo ofrece voces femeninas se conservan y se baja el tono', async t => {
+  const h = createHarness({
+    speechSynthesis: true,
+    speechVoices: [
+      { name: 'Microsoft Sabina', lang: 'es-MX' },
+      { name: 'Microsoft Helena', lang: 'es-MX' }
+    ]
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match, speech } = h;
+  window.document.getElementById('est-commentary-voice').click();
+
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: 'Saque de meta.' });
+  handlers['football:commentary']({ matchId: match.id, voice: 'analista', text: 'Sin alternativas masculinas.' });
+  assert.equal(speech.utterances[0].voice.name, 'Microsoft Sabina', 'nunca se queda sin voz');
+  assert.ok(speech.utterances[0].pitch <= .9, 'se baja el tono como respaldo');
+  speech.finish(0);
+  h.advanceTime(500);
+  assert.equal(speech.utterances[1].voice.name, 'Microsoft Helena', 'la segunda voz sigue siendo otra voz');
+  assert.ok(speech.utterances[1].pitch < speech.utterances[0].pitch, 'el analista queda más grave');
+});
+
+// La pista fija de la inauguración se regrabó (voz femenina es-MX, misma
+// transcripción). Este test evita que el asset se rompa o cambie de duración sin
+// que nadie lo note: el reloj de pared manda, pero la locución tiene que caber en
+// el primer bloque de 1:48 (termina antes de las presentaciones finales).
+function mp3DurationSeconds(filePath) {
+  const bytes = fs.readFileSync(filePath);
+  let offset = 0;
+  if (bytes.slice(0, 3).toString() === 'ID3') {
+    offset = 10 + (((bytes[6] & 0x7f) << 21) | ((bytes[7] & 0x7f) << 14) | ((bytes[8] & 0x7f) << 7) | (bytes[9] & 0x7f));
+  }
+  while (offset + 4 <= bytes.length && !(bytes[offset] === 0xff && (bytes[offset + 1] & 0xe0) === 0xe0)) offset++;
+  const version = (bytes[offset + 1] >> 3) & 3;   // 3 = MPEG1, 2 = MPEG2, 0 = MPEG2.5
+  const sampleRateIndex = (bytes[offset + 2] >> 2) & 3;
+  const sampleRate = version === 3 ? [44100, 48000, 32000][sampleRateIndex]
+    : version === 2 ? [22050, 24000, 16000][sampleRateIndex]
+      : [11025, 12000, 8000][sampleRateIndex];
+  const samplesPerFrame = version === 3 ? 1152 : 576;
+  const tag = bytes.indexOf('Info');
+  const xing = tag >= 0 ? tag : bytes.indexOf('Xing');
+  assert.ok(xing > 0, 'la pista trae cabecera de conteo de frames (Xing/Info)');
+  const frames = bytes.readUInt32BE(xing + 8);
+  return (frames * samplesPerFrame) / sampleRate;
+}
+
+test('inauguración — la pista fija sigue siendo un MP3 válido de voz que cabe en el primer bloque', () => {
+  const asset = path.join(__dirname, '..', 'public', 'assets', 'ballon-dor-opening-es-mx.mp3');
+  assert.ok(fs.existsSync(asset), 'existe la pista fija de la inauguración');
+  const size = fs.statSync(asset).size;
+  assert.ok(size > 100 * 1024, 'la pista no está vacía ni truncada (' + size + ' bytes)');
+  const seconds = mp3DurationSeconds(asset);
+  assert.ok(seconds > 35 && seconds < 60, 'la locución dura ~49,5 s (' + seconds.toFixed(2) + ')');
+  // Cabe en el primer bloque: con presentaciones de ~4,7 s desde el segundo 17,
+  // una locución de menos de 60 s termina antes del cierre y entra el tema.
+  assert.ok(seconds < 60, 'termina antes del cierre para que entre el tema instrumental');
+});
+
+
+test('los mercados muestran nombres inequívocos también para lectores de pantalla', async t => {
+  const h = createHarness();
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const publish = (name, selections) => handlers['football:odds']({ matchId: match.id, market: name, selections });
+  publish('correct_score', [market('other', 5)]);
+  publish('first_scorer', [{ ...market('h9', 8), label: 'Jugadora Nueve' }, market('other', 3)]);
+  publish('double_chance', [market('1X', 1.3), market('12', 1.4), market('X2', 1.5)]);
+  const buttons = Array.from(window.document.querySelectorAll('#est-markets .est-sel'));
+  const names = buttons.map(button => button.querySelector('.est-sel-key').textContent);
+  assert.ok(names.includes('Otro resultado'));
+  assert.ok(names.includes('Otro jugador'));
+  assert.ok(names.includes('Local o Empate'));
+  assert.ok(names.includes('Local o Visita'));
+  assert.ok(names.includes('Empate o Visita'));
+  const scorer = buttons.find(button => button.textContent.includes('Jugadora Nueve'));
+  assert.ok(scorer);
+  assert.match(scorer.getAttribute('aria-label'), /Jugadora Nueve/);
 });

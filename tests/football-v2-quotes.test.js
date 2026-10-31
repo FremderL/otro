@@ -97,3 +97,17 @@ test('un compromiso no acepta precios marcados para otro simulador aunque el has
   assert.equal(Q.validModel(record.pricing), true, 'el modelo internamente es coherente');
   assert.equal(verifyCommitment(record, match), false, 'la versión de precio debe ser la del partido');
 });
+
+
+test('primer goleador no omite jugadores si eso cambiaría la selección otro', () => {
+  const { input, matchKey, training, holdout } = setup();
+  // Caso extremo: el protector rechaza al goleador casi seguro. No debe dejar
+  // «otro» con la probabilidad antigua y convertir ese goleador en ganador.
+  const counts = { '15-0': 2048 };
+  const model = Q.createQuoteModel(input, matchKey, { ...training, counts }, { ...holdout, counts });
+  const lineups = { home: { players: [{ id: 'star', name: 'Star', pos: 'ST', initialStatus: 'active' }] },
+    away: { players: [] } };
+  const raw = O.buildPreMatchMarkets(C.scoreMatrix(model.training), { lineups }).first_scorer;
+  assert.ok(raw.selections.some(selection => selection.key === 'star'));
+  assert.equal(Q.preMatchMarkets(model, { lineups }).first_scorer, null);
+});
