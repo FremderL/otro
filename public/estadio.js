@@ -3065,7 +3065,16 @@
       li.className = 'est-match-item' + (live ? ' live' : '') + (m.id === S.currentMatchId ? ' active' : '');
       li.tabIndex = 0; li.setAttribute('role', 'button');
       li.setAttribute('aria-label', teamFull(m.homeId) + ' contra ' + teamFull(m.awayId) + ', ' + (STATUS_LABEL[m.status] || m.status));
-      var score = (m.status === 'settled' || m.status === 'finished' || live) && m.result ? (m.result.score ? m.result.score.home + '–' + m.result.score.away : '') : (m.minute != null ? '' : kickoffTime(m.scheduledKickoffAt));
+      // El marcador final sale del resultado ASENTADO del partido (home/away), que
+      // es el mismo que pinta la ficha, la tabla y el boleto. Antes solo se leía
+      // m.result.score, una forma que el servidor no envía, así que los partidos
+      // cerrados aparecían sin marcador en la lista.
+      var finalScore = m.result && (m.result.score || (m.result.home != null && m.result.away != null))
+        ? (m.result.score
+          ? Number(m.result.score.home) + '–' + Number(m.result.score.away)
+          : Number(m.result.home) + '–' + Number(m.result.away))
+        : '';
+      var score = finalScore || (m.minute != null ? '' : kickoffTime(m.scheduledKickoffAt));
       li.innerHTML =
         '<div><div class="est-match-teams">' + clubCrestMarkup(m.homeId, 'est-match-crest') + '<span style="color:' + preshowTeamColor(m.homeId) + '">' + esc(teamName(m.homeId)) + '</span> vs ' + clubCrestMarkup(m.awayId, 'est-match-crest') + '<span style="color:' + preshowTeamColor(m.awayId) + '">' + esc(teamName(m.awayId)) + '</span>' + (m.featured ? ' ★' : '') + '</div>' +
         '<div class="est-match-meta">' + esc(blockLabel(m.block)) + ' · J' + m.jornada + '</div></div>' +
