@@ -1,5 +1,5 @@
 previews:
-  generation: automatic
+  generation: manual
   expireAfterDays: 3
 
 services:
@@ -37,6 +37,9 @@ services:
       # Persistencia de calendario, boletos y resultados del Estadio en el disco del servicio.
       - key: FOOTBALL_STORE_PATH
         value: /var/data/football.json
+      # Espera una breve ventana a que termine la instancia anterior al desplegar.
+      - key: FOOTBALL_WRITER_WAIT_MS
+        value: "45000"
       # Creatividades de La Previa (imágenes aprobadas): en el disco persistente.
       - key: PROMOTION_MEDIA_DIR
         value: /var/data/promotion-media

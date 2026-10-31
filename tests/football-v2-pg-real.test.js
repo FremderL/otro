@@ -241,7 +241,7 @@ test('PostgreSQL: la exclusión se comparte entre procesos Node independientes',
       })();`;
     const run = () => spawnSync(process.execPath, ['-e', script], {
       cwd: require('node:path').resolve(__dirname, '..'), encoding: 'utf8', timeout: 15000,
-      env: { ...process.env, TEST_URL: URL, TEST_SCHEMA: schema }
+      env: { ...process.env, TEST_URL: URL, TEST_SCHEMA: schema, FOOTBALL_WRITER_WAIT_MS: '0' }
     });
     const blocked = run();
     assert.equal(blocked.status, 0, blocked.stderr);
