@@ -8,6 +8,7 @@ const { AVATARS } = require('./lib/profile-store');
 // Fase 10.2: DATABASE_URL activa el backend de Postgres (Neon free); sin ella,
 // se mantiene el ProfileStore de archivo JSON de siempre. Ver lib/profile-store-factory.js.
 const { createProfileStore } = require('./lib/profile-store-factory');
+const { ensureRuntimeDirs } = require('./lib/runtime-dirs');
 const {
   HISTORY_LIMITS, INACTIVITY_LIMIT_MS, CASINO_TIME_ZONE, monthKey, normalizeDisplayName
 } = require('./lib/profile-store-shared');
@@ -3684,6 +3685,21 @@ async function initFootball() {
 // y solo cuando está listo se abre el puerto; así ningún socket puede llegar
 // antes de que los perfiles existan en memoria.
 async function bootstrap() {
+  // 0. Carpetas de estado: en el despliegue el árbol viene limpio y solo existe
+  //    lo versionado, así que toda ruta declarada por configuración (discos
+  //    persistentes de Render, overrides locales) se prepara de una vez ANTES de
+  //    abrir el puerto. Así una ruta mal escrita o un disco de solo lectura se
+  //    descubre al arrancar —con un mensaje que nombra la ruta— y no a mitad de
+  //    un guardado, que es donde costaría fichas o fotos.
+  ensureRuntimeDirs([
+    process.env.PROFILE_STORE_PATH,
+    process.env.FOOTBALL_STORE_PATH,
+    process.env.LOTERIA_STATE_PATH,
+    process.env.FORTUNE_STATE_PATH,
+    process.env.LOBBY_TOURNAMENT_STORE_PATH,
+    process.env.COMMUNITY_STORE_PATH,
+    process.env.PROMOTION_MEDIA_DIR
+  ], { label: 'estado de MonteCristo' });
   // Fase F (A12): deferSeasonCheck pospone la comprobación de temporada del casino.
   // Sin esto, createProfileStore cerraría el mes y reiniciaría TODOS los saldos dentro
   // de su constructor (archivo) o de _init (Postgres), antes de que exista el store de

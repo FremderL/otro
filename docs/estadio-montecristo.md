@@ -2471,6 +2471,13 @@ del proceso (compatible con poolers transaccionales tipo Neon), más una tabla d
 `PgProfileStore._init()` (`lib/profile-store-pg.js`) cuando `footballSingleWriter` está activo, y
 `withWriterFence()` la exige en cada escritura puntual.
 
+> **Intento descartado (PR #45).** El primer arreglo añadió una ventana de espera a `acquireFootballWriter`
+> implementada **bloqueando**: reintentaba el lock en un bucle `await delay()` dentro de `bootstrap()`,
+> es decir *antes* de `server.listen()`. En un despliegue rolling eso no puede funcionar: mientras el
+> proceso espera no hay puerto que Render pueda considerar sano y el deploy caduca igual (~30 s de
+> gracia). Esperar es correcto; esperar **bloqueando el arranque**, no. La versión que se conserva
+> espera en segundo plano con el servidor ya escuchando.
+
 Un detalle la hacía **fatal en producción**: el error `otra instancia ya controla el Estadio en esta
 base de datos` se lanzaba al instante. En un despliegue *rolling* de Render la instancia nueva
 arranca y debe pasar `GET /healthz` **antes** de que Render detenga la vieja, así que durante unos
@@ -2495,9 +2502,17 @@ Corrección (`acquireFootballWriterWithWait`), activada por `FOOTBALL_WRITER_WAI
 4. Si el margen se agota sin conseguirla, se dispara `onLost` (en `server.js`: log + `exit(1)`), el
    mismo final fail-closed que antes, pero sin matar un despliegue que solo estaba solapándose.
 
-Por eso también `render.yaml` fija `previews.generation: off`: un *preview* de PR hereda el
+Por eso también `render.yaml` fija `previews: generation: off`: un *preview* de PR hereda el
 `DATABASE_URL` del servicio (vive en el dashboard) y competiría por la misma concesión que
-producción. Cubierto por `tests/pg-single-writer.test.js` (pool simulado) y, con base real, por
+producción. (`manual` no basta: con esa política un PR etiquetado `render-preview` —o con `[render
+preview]` en el título— vuelve a crear uno; `off` es la única política que no crea nada.)
+
+Y como el despliegue parte de un árbol limpio, donde **solo existe lo versionado**, `bootstrap()`
+ejecuta antes de abrir el puerto el preflight `ensureRuntimeDirs()` (`lib/runtime-dirs.js`): crea de
+una vez las carpetas de `PROFILE_STORE_PATH`, `FOOTBALL_STORE_PATH`, `LOTERIA_STATE_PATH`,
+`FORTUNE_STATE_PATH`, `LOBBY_TOURNAMENT_STORE_PATH`, `COMMUNITY_STORE_PATH` y `PROMOTION_MEDIA_DIR`, y
+si alguna no se puede crear falla al arrancar nombrando la ruta exacta, en vez de descubrirlo a mitad
+de un guardado. Cubierto por `tests/pg-single-writer.test.js` (pool simulado) y, con base real, por
 `tests/football-v2-pg-real.test.js`.
 
 ---
