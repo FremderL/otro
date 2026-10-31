@@ -1917,6 +1917,7 @@ body.est-ledger-open { overflow: hidden; }
 .est-bdo-opening-card-facts div { min-width:0; padding:6px 7px; border:1px solid rgba(255,255,255,.1); border-radius:7px; background:rgba(255,255,255,.045); }
 .est-bdo-opening-card-facts dt { color:rgba(239,245,239,.55); font-size:8px; }
 .est-bdo-opening-card-facts dd { margin:2px 0 0; color:#fff; font:850 15px var(--display); font-variant-numeric:tabular-nums; }
+.est-bdo-opening-card-window { margin:0 0 2px; color:rgba(239,245,239,.55); font-size:8px; line-height:1.35; }
 .est-bdo-opening-card-skills { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
 .est-bdo-opening-card-skill { display:grid; grid-template-columns:auto minmax(35px,1fr) auto; align-items:center; gap:6px; color:rgba(239,245,239,.75); font-size:8px; }
 .est-bdo-opening-card-skill b { color:#fff; font-size:9px; font-variant-numeric:tabular-nums; }

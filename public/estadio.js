@@ -1917,6 +1917,13 @@
         facts.appendChild(item);
       });
       content.appendChild(facts);
+      // La ficha es el acumulado de la temporada del premio, no lo que el
+      // jugador hizo en este partido: sin la aclaración, el acumulado (2 goles)
+      // parece contradecir al resumen del partido (1 gol).
+      var factsWindow = document.createElement('p');
+      factsWindow.className = 'est-bdo-opening-card-window';
+      factsWindow.textContent = 'Acumulado de la temporada, no de este partido.';
+      content.appendChild(factsWindow);
     }
 
     var skillSet = document.createElement('div');
@@ -3343,7 +3350,7 @@
     $('est-highlights-goals').innerHTML=(data.goals || []).map(line).join('') || '<li>No hubo goles.</li>';
     $('est-highlights-moments').innerHTML=(data.moments || []).map(line).join('') || '<li>No hubo jugadas destacadas registradas.</li>';
     var star=data.star, club=star && sideId(star.side);
-    $('est-highlights-star').innerHTML=star ? '<b>Figura estadística:</b> ' + esc(star.name) + ' · ' + clubCrestMarkup(club,'est-inline-crest') + esc(teamName(club)) + ' · ' + Number(star.goals) + ' goles · ' + Number(star.assists) + ' asistencias' : 'Figura estadística no disponible.';
+    $('est-highlights-star').innerHTML=star ? '<b>Figura estadística del partido:</b> ' + esc(star.name) + ' · ' + clubCrestMarkup(club,'est-inline-crest') + esc(teamName(club)) + ' · ' + Number(star.goals) + ' goles · ' + Number(star.assists) + ' asistencias' : 'Figura estadística no disponible.';
   }
 
   function applyMatchState(ms) {
