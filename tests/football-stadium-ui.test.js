@@ -2483,3 +2483,22 @@ test('el cartel de gol no se duplica y sigue sirviendo de respaldo', async t => 
   h.handlers['football:goal']({ matchId: h.match.id, event: { type: 'goal', minute: 30, marcador: '2-0' } });
   assert.equal(bannerTimers(), 2, 'football:goal funciona como respaldo visual');
 });
+
+test('la tanda V2 muestra el marcador de penales sin cambiar los goles del partido', async t => {
+  const h = createHarness({ reducedMotion: true });
+  t.after(h.close);
+  h.match.engine = 'v2'; h.match.status = 'shootout';
+  await h.connectToMatch();
+  const id = h.match.id;
+  h.handlers['football:status']({ matchId: id, code: 'shootout', minute: 123 });
+  h.handlers['football:tick']({ matchId: id, minute: 123, clockLabel: 'PEN', phase: 'shootout',
+    score: { home: 1, away: 1 }, shootout: { home: 2, away: 1 }, playStopped: true });
+  const doc = h.window.document;
+  assert.equal(doc.getElementById('score-home').textContent, '1');
+  assert.equal(doc.getElementById('score-away').textContent, '1');
+  assert.match(doc.getElementById('est-clock').textContent, /Penales 2–1/);
+  h.handlers['football:event']({ matchId: id, event: { type: 'shootout_kick', team: 'away',
+    phase: 'shootout', marcadorTanda: '2-2', scored: true } });
+  assert.match(doc.getElementById('est-clock').textContent, /Penales 2–2/);
+  assert.match(doc.getElementById('est-text-state').textContent, /Penales 2–2/);
+});

@@ -523,3 +523,91 @@ test('PostgreSQL: preparación atómica con cuotas conserva el compromiso ante r
     assert.equal(verifyCommitment(recovered.simulation, recovered), true);
     assert.equal(new FootballEngine(store)._ensureTimeline(recovered).version, VERSION);
   });
+
+test('PostgreSQL: V2 oficial progresiva conserva política, futuros, cuotas y pago tras COMMIT incierto',
+  { skip: !URL, timeout: 30000 }, async t => {
+    const { createOfficialV2 } = require('../lib/football/v2/official');
+    const { verifyPolicy, matchKey } = require('../lib/football/v2/season-policy');
+    const { commitmentId } = require('../lib/football/v2/commitment');
+    const schema = `v2_auto_${randomUUID().replace(/-/g, '')}`;
+    const admin = new Pool({ connectionString: URL });
+    await admin.query(`CREATE SCHEMA ${schema}`);
+    class ScopedPool extends Pool { constructor(options) { super({ ...options, options: `-c search_path=${schema}` }); } }
+    let store, profiles;
+    const start = async () => {
+      store = new PgFootballStore(URL, { pool: new ScopedPool({ connectionString: URL }) });
+      profiles = new PgProfileStore(URL, { Pool: ScopedPool, deferSeasonCheck: true });
+      await Promise.all([store.ready, profiles.ready]);
+    };
+    const stop = async () => {
+      if (store) { await store.close(); await store.pool.end(); store = null; }
+      if (profiles) { await profiles.close(); profiles = null; }
+    };
+    t.after(async () => { await stop(); await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end(); });
+    await start();
+    const october = store.generateSeason('2026-10');
+    const old = october.calendar.matches[0];
+    assert.ok(store.settleMatch(old.id, { home: 4, away: 1 }, { seasonMonth: '2026-10',
+      now: old.scheduledKickoffAt + 1800000 }).ok);
+    store.closeSeason('2026-10');
+    const league = store.generateSeason('2026-11');
+    const match = league.calendar.matches[0], now = Math.min(...league.calendar.matches.map(item => item.scheduledKickoffAt)) - 60000;
+    assert.equal(await store.saveStrict(), true);
+    const profile = profiles.getOrCreate('official-v2', 'Jugador');
+    profile.chips = 1000; profile.achievements = P.ACHIEVEMENTS.map(item => item.id);
+    profile.challenges = Object.fromEntries(P.CHALLENGES.map(item => [item.id, { completedAt: 1, reward: item.reward }]));
+    P.recordOutcome(profile, { game: 'dice', net: 0, eligible: false });
+    profile.rotatingChallenges.daily.completed = true; profile.rotatingChallenges.weekly.completed = true;
+    assert.ok(await profiles.persistProfile(profile));
+    let v2 = createOfficialV2({ store, now: () => now });
+    assert.ok((await v2.ensureSeason('2026-11')).ok);
+    let betting = createBettingService({ store, profiles, officialV2: v2, now: () => now });
+    const quote = betting.futureMarket.getMarket().markets.champion[0];
+    const future = await betting.placeFuture({ profile, seasonMonth: '2026-11', market: 'champion', selection: quote.selection,
+      stake: 100, placedAt: now, idempotencyKey: 'official-future-pg' });
+    assert.ok(future.ok, future.code);
+    assert.equal(future.future.simulationPolicyId, league.simulationPolicy.id);
+    while (store._saving) await store._savingPromise;
+    const write = store._writeSnapshot.bind(store);
+    let loseResponse = true;
+    store._writeSnapshot = async () => {
+      await write();
+      if (loseResponse) { loseResponse = false; throw new Error('respuesta perdida'); }
+    };
+    const pending = await v2.prepareMatch(match);
+    assert.equal(pending.reason, 'persistencia_pendiente');
+    const id = commitmentId(match.simulation), key = match.simulation.privateSeed;
+    assert.equal(match.simulation.inputs.source.previousSeason, '2026-10');
+    assert.equal(match.simulationUnconfirmed, true);
+    store._writeSnapshot = write;
+    await stop();
+    await start();
+    const loaded = store.getMatch(match.id, '2026-11'), restoredPolicy = store.getLeague('2026-11').simulationPolicy;
+    assert.ok(verifyPolicy(restoredPolicy, '2026-11'));
+    assert.equal(commitmentId(loaded.simulation), id);
+    assert.equal(loaded.simulation.privateSeed, key);
+    assert.equal(key, matchKey(restoredPolicy, loaded));
+    assert.equal(loaded.simulation.pricing.version, 'v2-estimated-1');
+    assert.equal(store.getFuture(future.future.id).simulationPolicyId, restoredPolicy.id);
+    const recovered = profiles.getProfile(profile.id);
+    assert.equal(recovered.chips, 900);
+    v2 = createOfficialV2({ store, now: () => now });
+    betting = createBettingService({ store, profiles, officialV2: v2, now: () => now });
+    const engine = new FootballEngine(store, { officialV2: v2, settleBets: (m, score) => betting.settleMatchBets(m, score) });
+    const replay = engine._ensureTimeline(loaded);
+    const selection = replay.score.home > replay.score.away ? 'home' : replay.score.home < replay.score.away ? 'away' : 'draw';
+    const bet = await betting.placeBet({ profile: recovered, matchId: loaded.id, market: '1x2', selection,
+      stake: 100, placedAt: now, idempotencyKey: 'official-single-pg' });
+    assert.ok(bet.ok, bet.code);
+    assert.equal(bet.bet.simulationId, id);
+    assert.equal(engine.startMatch(loaded, loaded.scheduledKickoffAt), true);
+    assert.equal(engine.advance(loaded, loaded.scheduledKickoffAt + replay.clock.matchEnd * 15000 + 1).ended, true);
+    await Promise.all([...betting.ticketPayouts.values()]);
+    assert.equal(recovered.chips, 800 + bet.bet.potentialPayout);
+    assert.equal(store.getBet(bet.bet.id).payoutApplied, true);
+    assert.equal(await store.saveStrict(), true);
+    await stop(); await start();
+    assert.equal(profiles.getProfile(profile.id).chips, 800 + bet.bet.potentialPayout);
+    assert.equal(store.getBet(bet.bet.id).oddsAtPlacement, bet.bet.oddsAtPlacement);
+    assert.equal(store.getFuture(future.future.id).odds, future.future.odds);
+  });

@@ -150,7 +150,7 @@
     ball: { x: .5, y: .5 }, ballStart: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 },
     ballT0: 0, ballDur: 800, playerT0: 0, playerDur: 1900,
     serverMinute: 0, minuteReceivedAt: 0,
-    minute: 0, clockLabel: null, phase: 'pre', score: { home: 0, away: 0 }, possession: { home: .5, away: .5 },
+    minute: 0, clockLabel: null, phase: 'pre', score: { home: 0, away: 0 }, shootout: null, possession: { home: .5, away: .5 },
     goalFlashUntil: 0, goalAnimUntil: 0, goalCueAt: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false,
     crowdLastSentAt: 0
   };
@@ -3350,6 +3350,7 @@
     S.clockLabel = ms.state && ms.state.clockLabel != null ? String(ms.state.clockLabel) : null;
     S.phase = ms.state ? ms.state.phase : 'pre';
     S.score = ms.state ? ms.state.score : { home: 0, away: 0 };
+    S.shootout = ms.state && ms.state.shootout ? ms.state.shootout : null;
     S.possession = ms.state && ms.state.possession ? ms.state.possession : { home: .5, away: .5 };
     S.possessionTeam = ms.state && ms.state.possessionTeam ? ms.state.possessionTeam : 'home';
     S.ballCarrierId = ms.state ? ms.state.ballCarrierId : null;
@@ -3745,9 +3746,11 @@
     el['score-home'].textContent = S.score.home; el['score-away'].textContent = S.score.away;
     var live = ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0;
     var clockMinute = S.match.engine === 'v2' && S.clockLabel != null ? S.clockLabel : S.minute;
-    el['est-clock'].textContent = live ? clockMinute + "' " + phaseLabel(S.phase) : (STATUS_LABEL[S.match.status] || '—');
+    var shootoutLabel = S.shootout ? 'Penales ' + Number(S.shootout.home) + '–' + Number(S.shootout.away) : null;
+    el['est-clock'].textContent = shootoutLabel && (S.phase === 'shootout' || !live) ? shootoutLabel
+      : live ? clockMinute + (clockMinute === 'PEN' ? ' ' : "' ") + phaseLabel(S.phase) : (STATUS_LABEL[S.match.status] || '—');
     el['est-market-phase'].textContent = live ? 'En vivo' : 'Pre-partido';
-    el['est-pitch'].setAttribute('aria-label', 'Cancha cenital. ' + teamFull(S.match.homeId) + ' ' + S.score.home + ' – ' + S.score.away + ' ' + teamFull(S.match.awayId) + '. Minuto ' + clockMinute + ', ' + phaseLabel(S.phase) + '.');
+    el['est-pitch'].setAttribute('aria-label', 'Cancha cenital. ' + teamFull(S.match.homeId) + ' ' + S.score.home + ' – ' + S.score.away + ' ' + teamFull(S.match.awayId) + '. Minuto ' + clockMinute + ', ' + phaseLabel(S.phase) + (shootoutLabel ? '. ' + shootoutLabel : '') + '.');
   }
 
   // ===== Relato hablado =====
@@ -3975,6 +3978,7 @@
     if (st.clockLabel != null) S.clockLabel = String(st.clockLabel);
     if (st.phase) S.phase = st.phase;
     if (st.score) S.score = st.score;
+    if (st.shootout) S.shootout = st.shootout;
     if (st.possession) S.possession = st.possession;
     if (Object.prototype.hasOwnProperty.call(st, 'possessionTeam')) S.possessionTeam = st.possessionTeam;
     if (Object.prototype.hasOwnProperty.call(st, 'ballCarrierId')) S.ballCarrierId = st.ballCarrierId;
@@ -4044,6 +4048,10 @@
     if (Object.prototype.hasOwnProperty.call(ev, 'playStopped')) S.playStopped = Boolean(ev.playStopped);
     if (ev.phase) S.phase = ev.phase;
     if (ev.clockLabel != null) S.clockLabel = String(ev.clockLabel);
+    if (/^\d+-\d+$/.test(String(ev.marcadorTanda || ''))) {
+      var shootoutParts = String(ev.marcadorTanda).split('-');
+      S.shootout = { home: Number(shootoutParts[0]), away: Number(shootoutParts[1]) };
+    }
     if (ev.minute != null && Number.isFinite(Number(ev.minute))) {
       S.serverMinute = Number(ev.minute);
       S.minuteReceivedAt = performance.now();
@@ -5184,6 +5192,7 @@
   function updateTextFallback() {
     if (!S.match) { el['est-text-state'].textContent = 'Sin partido seleccionado.'; return; }
     el['est-text-state'].textContent = teamFull(S.match.homeId) + ' ' + S.score.home + ' – ' + S.score.away + ' ' + teamFull(S.match.awayId) +
+      (S.shootout ? '. Penales ' + Number(S.shootout.home) + '–' + Number(S.shootout.away) : '') +
       '. Minuto ' + S.minute + ' (' + phaseLabel(S.phase) + '). Posesión ' + pct(S.possession.home) + ' local. Estado: ' + (STATUS_LABEL[S.match.status] || S.match.status) + '.';
   }
 

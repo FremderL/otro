@@ -78,6 +78,8 @@ const { loadFootballConfig } = require('./lib/football-config');
 const { createFootballStore } = require('./lib/football-store-factory');
 const { FootballEngine } = require('./lib/football/engine');
 const { FootballScheduler } = require('./lib/football/scheduler');
+const { createOfficialV2 } = require('./lib/football/v2/official');
+const { publicProjectionState } = require('./lib/football/v2/projection');
 const { createBettingService } = require('./lib/football/betting');
 const { BallonDorMarketService } = require('./lib/football/ballon-dor-market');
 const {
@@ -3495,10 +3497,17 @@ async function initFootball() {
     }
   };
 
+  // La política y los partidos próximos deben estar persistidos ANTES de
+  // reconciliar encuentros o aceptar apuestas. Una obligación antigua real se
+  // conserva; no se usa para imponer V1 a partidos nuevos sin obligaciones.
+  const officialV2 = createOfficialV2({ store: footballStore, log: footballLog, now: () => Date.now() });
+  const ready = await officialV2.prepareUpcoming(Date.now());
+  if (!ready.ok && !ready.legacy) throw new Error(`No se pudo preparar V2: ${ready.reason}`);
+
   // 3. Flujo de apostadores simulados (invisible, §11.6) + servicio de apuestas.
   const simulatedFlow = new SimulatedFlow({ log: footballLog });
   footballBetting = createBettingService({
-    store: footballStore, profiles, simulatedFlow, log: footballLog, now: () => Date.now()
+    store: footballStore, profiles, simulatedFlow, officialV2, log: footballLog, now: () => Date.now()
   });
   footballBallonDorMarket = new BallonDorMarketService({
     store: footballStore, betting: footballBetting, now: () => Date.now(), log: footballLog
@@ -3507,6 +3516,7 @@ async function initFootball() {
   // 4. Motor determinista con los hooks de apuestas cableados (Fase D) y el gate de
   //    temporada (A7). El motor emite eventos que la capa de socket difunde.
   footballEngine = new FootballEngine(footballStore, {
+    officialV2,
     logEvent: footballLog,
     settleBets: (match, score) => footballBetting.settleMatchBets(match, score),
     refundBets: (match, reason) => footballBetting.refundMatchBets(match, reason),
@@ -3516,6 +3526,10 @@ async function initFootball() {
     countOpenBets: () => footballBetting.countOpenBets(),
     countEscrow: () => footballBetting.countEscrow()
   });
+
+  // Los futuros pueden seguir cotizándose durante V2 usando solo el marcador,
+  // tarjetas y goleadores YA revelados, sin leer resultados futuros privados.
+  footballBetting.futureMarket.getLiveState = (match, at) => publicProjectionState(footballEngine, match, at);
 
   // 5. Reconciliación de arranque (§15.6): reconstruye el estado de los partidos no
   //    terminales desde (seed, now) y cuadra el escrow. ANTES de aceptar tráfico.
@@ -3551,7 +3565,7 @@ async function initFootball() {
 
   // 7. Scheduler: sweeps de kickoff, avance, partidos atascados y temporada (§15).
   footballScheduler = new FootballScheduler(footballEngine, {
-    ballonDorService: footballBallonDorMarket, logEvent: footballLog
+    officialV2, ballonDorService: footballBallonDorMarket, logEvent: footballLog
   });
   footballScheduler.start();
 
