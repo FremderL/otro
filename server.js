@@ -49,6 +49,9 @@ const { sanitizeLogValue, securityHeaders } = require('./lib/security-hardening'
 const { createIdempotencyStore } = require('./lib/idempotency-store-factory');
 const { createCommunityStore } = require('./lib/community-store');
 const { installCommunityRoutes } = require('./lib/community-http');
+const Community = require('./lib/community');
+const { FriendInviteService } = require('./lib/friend-invites');
+const { presenceFor } = require('./lib/friend-presence');
 const { installSeasonalThemeRoutes } = require('./lib/seasonal-theme-http');
 const { LoteriaService } = require('./lib/loteria/service');
 const { CARDS: LOTERIA_CARDS } = require('./lib/loteria/cards');
@@ -130,6 +133,14 @@ process.on('unhandledRejection', reason => {
 // ACCOUNT_SESSIONS_ENABLED y resuelven stores cargados por bootstrap().
 let accountAuth = null;
 let communityStore = null;
+// Invitaciones de amistades a mesas privadas: efímeras y en memoria. La
+// amistad se valida contra el store de comunidad en el momento de invitar.
+const friendInvites = new FriendInviteService({
+  isFriend: (fromId, toId) => {
+    const state = communityStore?.getState?.();
+    return Boolean(state?.friendships && Community.friendshipExists(state, fromId, toId));
+  }
+});
 accountAuth = installAccountAuthRoutes(app, {
   config: adminConfig,
   getProfiles: () => profiles,
@@ -512,6 +523,63 @@ function roomOfProfile(profile) {
     if ((room.spectators || []).some(s => s._profile === profile)) return room;
   }
   return null;
+}
+// ---------------- INVITACIONES ENTRE AMISTADES ----------------
+// La identidad de cuenta (cookie verificada en io.use) es la única fuente de
+// quién invita y quién recibe: nunca se acepta un id de remitente del payload.
+function accountProfileForSocket(socket) {
+  const id = socket?.data?.accountProfileId;
+  return id ? profiles.getProfile(id) : null;
+}
+// Resumen mínimo de la mesa para una invitación (sin manos, apuestas ni
+// perfiles completos): solo lo necesario para decidir si entrar.
+function inviteRoomSummary(room) {
+  return {
+    code: room.code,
+    name: room.name,
+    game: room.game,
+    players: room.players.filter(player => player.connected && !player.isBot).length,
+    capacity: room.lobbyTournamentMatch ? 2 : ROOM_CAPACITY
+  };
+}
+function presenceRoomSummary(room, spectating) {
+  return {
+    code: room.code,
+    name: room.name,
+    game: room.game,
+    players: room.players.filter(player => player.connected).length,
+    capacity: room.lobbyTournamentMatch ? 2 : ROOM_CAPACITY,
+    spectating: Boolean(spectating)
+  };
+}
+// Solo se comparten mesas de amistades: el llamador ya validó la relación.
+function friendPresenceFor(friendIds = []) {
+  const online = new Set();
+  for (const socket of io.of('/').sockets.values()) {
+    const id = socket.data?.accountProfileId;
+    if (id) online.add(id);
+  }
+  const tables = new Map();
+  for (const room of rooms.values()) {
+    for (const player of room.players) {
+      const id = player._profile?.id;
+      if (id && player.connected && !tables.has(id)) tables.set(id, presenceRoomSummary(room, false));
+    }
+    for (const spectator of room.spectators || []) {
+      const id = spectator._profile?.id;
+      if (id && spectator.connected && !tables.has(id)) tables.set(id, presenceRoomSummary(room, true));
+    }
+  }
+  return presenceFor(friendIds, { online, tables });
+}
+function notifyInviteJoined(invite, room, player) {
+  if (!invite?.from?.id || !room) return;
+  io.to(`account:${invite.from.id}`).emit('friend_invite_accepted', {
+    inviteId: invite.id,
+    joined: true,
+    room: { code: room.code, name: room.name, game: room.game },
+    to: { id: player.id, name: player.name, avatar: player.avatar || 'fox' }
+  });
 }
 function duplicateMessageWithinWindow(socket, channel, text) {
   const now = Date.now();
@@ -1064,6 +1132,8 @@ function destroyRoom(code) {
   closeFortuneRoom(room, 'room_closed');
   clearRoomTasks(room);
   rooms.delete(code);
+  // Una invitación a una mesa que ya cerró solo generaría un callejón sin salida.
+  friendInvites.dropRoom(code);
   // Fase 8: avisar a espectadores (y a cualquier socket rezagado) que la mesa cerró.
   io.to(code).emit('room_closed', { code });
   if (room.lobbyTournamentMatch) {
@@ -2633,6 +2703,85 @@ io.on('connection', socket => {
     broadcastLobbyTournaments();
   });
 
+  // ---- Invitaciones entre amistades a mesas privadas ----
+  // Cada persona con cuenta tiene su propia sala `account:<id>` (io.use), así
+  // que invitar es un emit dirigido: llega a todas sus pestañas conectadas.
+  socket.on('friend_presence_get', ({ profileIds } = {}, ack) => {
+    const actor = accountProfileForSocket(socket);
+    if (!actor) return ackResult(ack, actionError('Inicia sesión con tu cuenta para ver a tus amistades.', 'account_required'));
+    const state = communityStore?.getState?.();
+    if (!state?.friendships?.length) return ackOk(ack, { presence: {} });
+    const requested = Array.isArray(profileIds) ? profileIds.slice(0, 120).map(id => String(id).slice(0, 80)) : [];
+    const friendIds = requested.length
+      ? requested.filter(id => Community.friendshipExists(state, actor.id, id))
+      : state.friendships
+        .filter(item => item.profileA === actor.id || item.profileB === actor.id)
+        .map(item => (item.profileA === actor.id ? item.profileB : item.profileA));
+    return ackOk(ack, { presence: friendPresenceFor(friendIds) });
+  });
+
+  socket.on('friend_invite_send', ({ profileId, code } = {}, ack) => {
+    const actor = accountProfileForSocket(socket);
+    if (!actor) return ackResult(ack, actionError('Inicia sesión con tu cuenta para invitar a tus amistades.', 'account_required'));
+    const room = roomOfProfile(actor);
+    const seated = room?.players.some(player => player._profile?.id === actor.id && player.connected);
+    if (!room || !seated) return ackResult(ack, actionError('Toma asiento en una mesa antes de invitar a alguien.', 'room_required'));
+    if (room.lobbyTournamentMatch) return ackResult(ack, actionError('Los encuentros del torneo del lobby no admiten invitaciones.', 'tournament_room'));
+    const askedCode = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+    if (askedCode && askedCode !== room.code) return ackResult(ack, actionError('Solo puedes invitar a la mesa en la que estás sentado.', 'room_mismatch'));
+    const target = profiles.getProfile(String(profileId || '').slice(0, 80));
+    if (!target?.username) return ackResult(ack, actionError('Esa cuenta ya no está disponible.', 'target_not_found'));
+    const alreadyThere = room.players.some(player => player._profile?.id === target.id)
+      || (room.spectators || []).some(spectator => spectator._profile?.id === target.id);
+    if (alreadyThere) return ackResult(ack, actionError(`${target.name} ya está en esta mesa.`, 'already_in_room'));
+    const outcome = friendInvites.send({ from: actor, toId: target.id, room: inviteRoomSummary(room) });
+    if (!outcome.ok) return ackResult(ack, actionError(outcome.error, outcome.code));
+    // Si la persona no está conectada, la invitación queda en su bandeja y se
+    // entrega en cuanto abra el casino (friend_invites_get al conectar).
+    io.to(`account:${target.id}`).emit('friend_invite_received', { invite: outcome.invite });
+    const presence = friendPresenceFor([target.id])[target.id];
+    addSystem(room, `✉ ${actor.name} invitó a ${target.name} a la mesa.`);
+    broadcast(room);
+    logEvent('friend_invite_sent', { room: room.code, game: room.game, from: actor.id, to: target.id, duplicate: Boolean(outcome.duplicate) });
+    return ackOk(ack, {
+      code: outcome.code,
+      invite: outcome.invite,
+      online: Boolean(presence?.online),
+      duplicate: Boolean(outcome.duplicate)
+    });
+  });
+
+  socket.on('friend_invites_get', (_payload = {}, ack) => {
+    const actor = accountProfileForSocket(socket);
+    if (!actor) return ackOk(ack, { invites: [] });
+    // Las mesas que ya cerraron no dejan invitaciones fantasma.
+    const invites = friendInvites.pendingFor(actor.id).filter(invite => rooms.has(invite.room.code));
+    return ackOk(ack, { invites });
+  });
+
+  socket.on('friend_invite_accept', ({ inviteId } = {}, ack) => {
+    const actor = accountProfileForSocket(socket);
+    if (!actor) return ackResult(ack, actionError('Inicia sesión con tu cuenta para aceptar la invitación.', 'account_required'));
+    const invite = friendInvites.accept(actor.id, inviteId);
+    if (!invite) return ackResult(ack, actionError('Esa invitación ya expiró. Pide otra o entra con el enlace.', 'invite_not_found'));
+    const room = rooms.get(invite.room.code);
+    if (!room) return ackResult(ack, actionError('Esa mesa ya cerró.', 'room_closed'));
+    io.to(`account:${invite.from.id}`).emit('friend_invite_accepted', {
+      inviteId: invite.id,
+      joined: false,
+      room: { code: room.code, name: room.name, game: room.game },
+      to: { id: actor.id, name: actor.name, avatar: actor.avatar || 'fox' }
+    });
+    return ackOk(ack, { code: room.code, room: inviteRoomSummary(room) });
+  });
+
+  socket.on('friend_invite_dismiss', ({ inviteId } = {}, ack) => {
+    const actor = accountProfileForSocket(socket);
+    if (!actor) return ackResult(ack, actionError('Inicia sesión con tu cuenta para gestionar invitaciones.', 'account_required'));
+    friendInvites.dismiss(actor.id, inviteId);
+    return ackOk(ack);
+  });
+
   socket.on('create_room', ({ name, roomName, game, token, avatar, tos } = {}, ack) => {
     name = cleanName(name);
     game = ['poker', 'blackjack', ...Object.keys(QUICK_GAMES)].includes(game) ? game : 'poker';
@@ -2726,6 +2875,13 @@ io.on('connection', socket => {
     if (!room.hostId || room.players.find(item => item.id === room.hostId)?.isBot) room.hostId = player.id;
     scheduleRoomCleanup(room);
     autoFillBots(room);
+    // La invitación de amistad se consume al entrar (por el botón o por el
+    // enlace) para no repetir el aviso y confirmarle a quien invitó que llegó.
+    const inviteUsed = socket.data.accountProfileId ? friendInvites.takeForRoom(socket.data.accountProfileId, code) : null;
+    if (inviteUsed) {
+      addSystem(room, `✉ ${player.name} llegó por la invitación de ${inviteUsed.from.name}.`);
+      notifyInviteJoined(inviteUsed, room, player);
+    }
     ackOk(ack, { code, game: room.game });
     logEvent('player_joined', { room: code, game: room.game, player: player.name });
     gameEvent(room, 'joined', `${player.name} se unió a la sala.`);

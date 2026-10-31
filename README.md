@@ -14,6 +14,7 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Clasificación de la sala por saldo y señal visual de cambios de posición.
 - Chat libre, mensajes rápidos y reacciones (`🔥`, `👏`, `😂`, `🍀`, `😱`, `💎`).
 - Comunidad de cuentas: búsqueda segura, amistades y solicitudes; clubes públicos o privados con aprobación, gestión de miembros y persistencia JSON/Postgres.
+- Invitaciones entre amistades a mesas privadas: la cabecera de la mesa y la lista de amistades muestran quién está en línea y en qué mesa juega; invitar o entrar es un clic, sin copiar códigos. La invitación llega al instante a todas las pestañas de la cuenta (o se conserva hasta 10 minutos), se acepta desde un aviso flotante y avisa a quien invitó cuando la persona entra.
 - Calendario visual estacional: 12 diseños originales (uno por mes) que rotan automáticamente, editables por separado con animación e intensidad; zona `CASINO_TIME_ZONE`, activación global opcional y control solo para administradores con MFA.
 - Historial reciente de ganadores y celebraciones breves para grandes resultados.
 - Retos, logros, recompensas por explorar juegos y bono diario.
@@ -171,6 +172,8 @@ En Estadio → Mercado se consultan los acuerdos anunciados y sus valoraciones i
 ## Comunidad y ambientación estacional
 
 El botón **Comunidad** permite buscar cuentas, enviar/aceptar/retirar solicitudes y gestionar amistades. Los clubes pueden ser públicos o privados; los privados requieren aprobación de quien los fundó. Cada club admite hasta 30 integrantes, una cuenta puede pertenecer a tres clubes y cada cuenta puede fundar uno. Las búsquedas y escrituras usan sesión segura, protección de origen/CSRF y límites de uso.
+
+Con amistades ya aceptadas, jugar juntos deja de depender del código. Dentro de la mesa, la barra lateral muestra a tus amistades con su presencia y un botón **Invitar** por persona, y el botón **Invitar** de la cabecera abre el panel completo: quién está en el lobby, quién juega y en qué mesa, y un botón **Invitar** por persona. La invitación viaja por socket a la cuenta destino (aunque tenga el casino abierto en otra pestaña o esté en otra mesa), aparece como aviso flotante con **Entrar** y se conserva hasta 10 minutos si la persona estaba desconectada. Aceptar entra directo a la sala, sin formulario ni código; quien invitó recibe la confirmación cuando la persona llega. Desde la lista de amistades también se puede **Unirse** a la mesa pública por enlace de una amistad con un clic y, cuando nadie tiene mesa, **Jugar** prepara la creación de una sala y envía la invitación en cuanto se abre. Las invitaciones viven solo en memoria: no se guardan códigos de salas privadas en disco, caducan con la mesa o el tiempo y el servidor revalida la amistad y que quien invita esté sentado en esa mesa antes de entregarlas.
 
 Las funciones sociales requieren habilitar `ACCOUNT_SESSIONS_ENABLED` con la configuración segura de cuentas ya definida en el panel de administración (`DATABASE_URL`, `APP_ORIGIN` HTTPS, `SESSION_PEPPER` y proxy de confianza cuando aplique). No se habilitan de forma insegura si faltan sus requisitos. El estado social se guarda en `data/community.json` o en Postgres cuando existe `DATABASE_URL`; `COMMUNITY_STORE_PATH` permite cambiar la ruta local.
 
