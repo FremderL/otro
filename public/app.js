@@ -184,6 +184,8 @@
     inviteLink: $('#invite-link'), inviteCopyLink: $('#invite-copy-link'), inviteGuestNote: $('#invite-guest-note'),
     inviteLogin: $('#invite-login'), inviteFriendsSection: $('#invite-friends-section'), inviteFriendsList: $('#invite-friends-list'),
     inviteFriendsSubtitle: $('#invite-friends-subtitle'), inviteStatus: $('#invite-status'),
+    roomFriendsSection: $('#room-friends-section'), roomFriendsStrip: $('#room-friends-strip'),
+    roomFriendsCount: $('#room-friends-count'), roomFriendsRefresh: $('#room-friends-refresh'), roomFriendsOpen: $('#room-friends-open'),
     accountOpenBtn: $('#account-open-btn'), accountModal: $('#account-modal'), accountForm: $('#account-form'),
     accountModalTitle: $('#account-modal-title'), accountModalCopy: $('#account-modal-copy'),
     accountUsername: $('#account-username'), accountPassword: $('#account-password'), accountError: $('#account-error'),
@@ -897,7 +899,7 @@
     // si falla.
     if (ui.accountSession) refreshAccountProfile();
     // Invitaciones que llegaron mientras la pestaña estaba cerrada o sin red.
-    if (ui.accountSession) { syncFriendInvites(); requestFriendPresence(true); }
+    if (ui.accountSession) { syncFriendInvites(); requestFriendPresence(true); if (ui.room) loadRoomFriends(); }
     if (ui.shouldResume && ui.activeCode && ui.playerName) {
       ui.shouldResume = false;
       ui.joining = true;
@@ -1507,7 +1509,8 @@
       ui.invites = ui.invites.filter(invite => invite.room?.code !== room.code);
       renderInviteInbox();
     }
-    if (ui.inviteModalOpen) { renderInviteRoom(); renderInviteFriends(); requestFriendPresence(); }
+    if (ui.inviteModalOpen) { renderInviteRoom(); renderInviteFriends(); }
+    if (ui.accountSession?.accountId) requestFriendPresence();
   });
 
   // Cuenta moderada desde el panel: el servidor avisa y cierra la sesión 250 ms
@@ -1535,6 +1538,8 @@
 
   function enterRoom() {
     closeModal();
+    // La barra lateral de la mesa tiene su propia lista de amistades.
+    if (ui.accountSession?.accountId) loadRoomFriends();
     setLobbyChatOpen(false);
     els.lobbyChatWidget?.classList.add('in-room');
     els.landing.classList.add('leaving');
@@ -3650,6 +3655,7 @@
       clubRanking: ui.communityData?.clubRanking || []
     };
     renderCommunityFriends();
+    renderRoomFriends();
     return response.friends || [];
   }
   // La presencia recorre sockets y mesas del servidor: se pide al abrir los
@@ -3664,12 +3670,14 @@
   }
   async function refreshFriendPresence() {
     if (!socket.connected || !ui.accountSession?.accountId) return;
+    lastPresenceRefresh = Date.now();
     const friends = ui.communityData?.friends;
     if (!Array.isArray(friends)) return;
     const response = await emitAck('friend_presence_get', { profileIds: friends.map(friend => friend.id) });
     if (!response.ok) return;
     ui.friendPresence = response.presence || {};
     renderCommunityFriends();
+    renderRoomFriends();
     if (ui.inviteModalOpen) renderInviteFriends();
   }
   function renderInviteFriends() {
@@ -3735,6 +3743,51 @@
     els.inviteModal?.setAttribute('aria-hidden', 'true');
     if (!$$('.modal.open').length) document.body.classList.remove('modal-open');
   }
+  // ---------- Amistades dentro de la sala ----------
+  // La barra lateral de la mesa muestra a las amistades con su presencia y un
+  // botón para invitar sin abrir ningún panel. Se ordenan: primero quien ya
+  // está en esta mesa, luego quien está en línea y al final quien no.
+  function renderRoomFriends() {
+    const section = els.roomFriendsSection;
+    if (!section) return;
+    const friends = ui.communityData?.friends;
+    if (!ui.room || !ui.accountSession?.accountId || !Array.isArray(friends)) {
+      section.classList.add('hidden');
+      return;
+    }
+    section.classList.remove('hidden');
+    const online = friends.filter(friend => currentFriendPresence(friend.id)?.online).length;
+    if (els.roomFriendsCount) els.roomFriendsCount.textContent = `${online} en línea`;
+    const strip = els.roomFriendsStrip;
+    if (!strip) return;
+    if (!friends.length) {
+      strip.innerHTML = '<p class="room-friends-empty">Aún no tienes amistades.<br><button type="button" data-room-friends-circle>Abrir mi círculo</button></p>';
+      return;
+    }
+    const rank = friend => {
+      const presence = currentFriendPresence(friend.id);
+      if (presence?.room?.code && presence.room.code === ui.room?.code) return 0;
+      return presence?.online ? 1 : 2;
+    };
+    const now = Date.now();
+    strip.innerHTML = [...friends].sort((a, b) => rank(a) - rank(b)).slice(0, 4).map(friend => {
+      const presence = currentFriendPresence(friend.id);
+      const inThisRoom = Boolean(presence?.room?.code && presence.room.code === ui.room?.code);
+      const cooling = (ui.inviteCooldowns.get(`${friend.id}:${ui.room?.code}`) || 0) > now;
+      const detail = inThisRoom ? 'En esta mesa' : (friendStatusText(presence) || 'Comprobando…');
+      const action = inThisRoom
+        ? '<span class="room-friend-mark" title="Ya está en la mesa" aria-label="Ya está en la mesa">✓</span>'
+        : `<button type="button" class="room-friend-invite ${cooling ? 'is-sent' : ''}" data-room-invite="${escapeHtml(friend.id)}" ${cooling ? 'disabled' : ''} title="Invitar a ${escapeHtml(friend.name || friend.username)} a esta mesa">${cooling ? 'Enviada ✓' : 'Invitar'}</button>`;
+      return `<article class="room-friend-row"><i class="room-friend-avatar ${presence?.online ? 'is-online' : ''}" style="background:${avatarColor(friend.id)}">${avatarEmoji(friend.avatar)}</i><span class="room-friend-copy"><b>${escapeHtml(friend.name || friend.username)}</b><small>${escapeHtml(detail)}</small></span>${action}</article>`;
+    }).join('');
+  }
+  async function loadRoomFriends() {
+    if (!ui.room || !ui.accountSession?.accountId) { renderRoomFriends(); return; }
+    const friends = await ensureCommunityFriends();
+    renderRoomFriends();
+    if (friends !== null && friends.length) await refreshFriendPresence();
+    renderRoomFriends();
+  }
   // Un clic desde el lobby: prepara la creación de la mesa y deja la
   // invitación en cola; al crearla, se envía automáticamente.
   function startTableWithFriend(profileId, displayName = '') {
@@ -3774,6 +3827,7 @@
       : `${name} la verá si vuelve en los próximos 10 minutos.`;
     setInviteStatus(response.duplicate ? 'Ya le habías enviado esta invitación.' : message, 'success');
     if (ui.inviteModalOpen) renderInviteFriends();
+    renderRoomFriends();
     showToast(response.duplicate ? 'Invitación repetida' : 'Invitación enviada', message, 'notice', 4200, '✉');
     playTone('notice');
   }
@@ -3876,6 +3930,13 @@
   els.inviteCopyLink?.addEventListener('click', () => copyRoomLink(els.inviteCopyLink));
   els.inviteLink?.addEventListener('focus', event => event.target.select());
   els.inviteLink?.addEventListener('click', event => event.target.select());
+  els.roomFriendsOpen?.addEventListener('click', openInviteModal);
+  els.roomFriendsRefresh?.addEventListener('click', () => { loadRoomFriends(); });
+  els.roomFriendsStrip?.addEventListener('click', event => {
+    const invite = event.target.closest('[data-room-invite]');
+    if (invite) { sendFriendInvite(invite.dataset.roomInvite, invite); return; }
+    if (event.target.closest('[data-room-friends-circle]')) openCommunityModal();
+  });
   els.inviteFriendsList?.addEventListener('click', event => {
     const openCircle = event.target.closest('[data-invite-open-community]');
     if (openCircle) { closeInviteModal(); openCommunityModal(); return; }

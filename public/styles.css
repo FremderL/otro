@@ -2151,3 +2151,25 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
   .invite-card-accept { padding:0 9px; font-size:8.5px; }
   .invite-inbox { left:10px; bottom:10px; width:calc(100vw - 20px); }
 }
+
+/* ---------- Amistades dentro de la sala (barra lateral) ---------- */
+.room-friends-section { flex:none; margin-top:9px; border-top:1px solid var(--line); padding-top:2px; }
+.room-friends-tools { display:flex; align-items:center; gap:6px; }
+.room-friends-tools b { color:var(--muted); font-size:8.5px; font-weight:600; letter-spacing:.02em; }
+.room-friends-tools button { width:20px; height:20px; border:1px solid var(--line); border-radius:6px; color:var(--muted-2); background:rgba(255,255,255,.02); font-size:10px; line-height:1; }
+.room-friends-tools button:hover { color:var(--mint); border-color:rgba(82,224,174,.32); }
+.room-friends-strip { display:grid; gap:4px; max-height:106px; overflow-y:auto; padding-right:2px; scrollbar-width:thin; }
+.room-friend-row { min-height:33px; display:flex; align-items:center; gap:7px; padding:3px 5px; border:1px solid rgba(255,255,255,.05); border-radius:8px; background:rgba(255,255,255,.018); }
+.room-friend-avatar { position:relative; width:25px; height:25px; flex:none; display:grid; place-items:center; border:1px solid rgba(255,255,255,.12); border-radius:50%; font-size:12px; font-style:normal; }
+.room-friend-avatar.is-online::after { content:''; position:absolute; right:-1px; bottom:-1px; width:7px; height:7px; border:1.5px solid #0b1517; border-radius:50%; background:var(--mint); box-shadow:0 0 6px rgba(82,224,174,.7); }
+.room-friend-copy { min-width:0; flex:1; display:grid; gap:1px; }
+.room-friend-copy b { overflow:hidden; color:#e7efeb; font-size:9.5px; text-overflow:ellipsis; white-space:nowrap; }
+.room-friend-copy small { overflow:hidden; color:var(--muted-2); font-size:8px; text-overflow:ellipsis; white-space:nowrap; }
+.room-friend-invite { min-height:22px; flex:none; padding:0 7px; border:1px solid rgba(82,224,174,.28); border-radius:6px; color:var(--mint-2); background:rgba(82,224,174,.07); font-size:7.5px; font-weight:850; transition:background .15s,border-color .15s; }
+.room-friend-invite:hover:not(:disabled) { border-color:rgba(82,224,174,.55); background:rgba(82,224,174,.16); }
+.room-friend-invite.is-sent,.room-friend-invite:disabled { border-color:rgba(255,255,255,.08); color:#7d8c8d; background:rgba(255,255,255,.02); cursor:default; }
+.room-friend-mark { width:22px; height:22px; flex:none; display:grid; place-items:center; border-radius:6px; color:var(--mint); background:rgba(82,224,174,.08); font-size:10px; font-weight:900; }
+.room-friends-empty { margin:2px 0 5px; padding:8px; border:1px dashed rgba(255,255,255,.1); border-radius:8px; color:var(--muted-2); font-size:8.5px; line-height:1.5; text-align:center; }
+.room-friends-empty button { margin-top:3px; border:0; color:var(--mint-2); background:transparent; font-size:8.5px; font-weight:800; text-decoration:underline; }
+.room-friends-open { width:100%; min-height:25px; margin:5px 0 2px; border:1px solid var(--line); border-radius:7px; color:var(--muted); background:rgba(255,255,255,.02); font-size:8px; font-weight:800; transition:.15s; }
+.room-friends-open:hover { color:var(--mint-2); border-color:rgba(82,224,174,.3); background:rgba(82,224,174,.05); }

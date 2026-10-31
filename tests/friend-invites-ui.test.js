@@ -173,6 +173,26 @@ test('una invitación recibida se acepta desde cualquier vista y entra a la sala
   assert.equal(join.payload.code, 'ABC12');
 });
 
+test('dentro de la sala, la barra lateral lista amistades e invita con un clic', async t => {
+  const { handlers, emitted, document } = await createPage(t);
+  handlers.room_state(roomFixture());
+  await sleep(160);
+  const section = document.getElementById('room-friends-section');
+  assert.equal(section.classList.contains('hidden'), false, 'la mesa muestra su sección de amigos');
+  const strip = document.getElementById('room-friends-strip');
+  assert.match(strip.textContent, /Roberto/);
+  assert.match(strip.textContent, /Jugando texas hold’em/, 'la presencia se ve sin abrir ningún panel');
+  const invite = strip.querySelector('[data-room-invite="bob-id"]');
+  assert.ok(invite, 'cada amistad tiene su botón de invitar dentro de la sala');
+  invite.click();
+  await sleep(60);
+  const sent = emitted.filter(item => item.event === 'friend_invite_send').at(-1);
+  assert.ok(sent, 'invitar desde la barra lateral usa el mismo envío seguro');
+  assert.equal(sent.payload.profileId, 'bob-id');
+  assert.equal(sent.payload.code, 'MY123');
+  assert.match(document.getElementById('room-friends-strip').textContent, /Enviada/);
+});
+
 test('desde el lobby, «Jugar» crea la mesa y envía la invitación sola', async t => {
   const { window, emitted, document } = await createPage(t, {
     presenceMap: { 'bob-id': { online: true, status: 'lobby', room: null } }
