@@ -107,6 +107,7 @@ test('el chat compartido publica la respuesta BOT, conserva sus guardas y reserv
       DATABASE_URL: '',
       PROFILE_STORE_PATH: path.join(tempDir, 'profiles.json'),
       ADMIN_FEATURE_ENABLED: 'off',
+      ACCOUNT_SESSIONS_ENABLED: 'off',
       FOOTBALL_ENABLED: 'off',
       LOG_JSON: 'off'
     },
@@ -183,4 +184,42 @@ test('el chat compartido publica la respuesta BOT, conserva sus guardas y reserv
   });
   assert.equal(reserved.ok, false);
   assert.match(reserved.error, /reservado para el asistente BOT/);
+
+  // Una cuenta abierta desde otro dispositivo no debe confundirse con el
+  // perfil invitado de ese dispositivo, ni basta con enviar el id de cuenta.
+  const signup = await emitWithAck(socket, 'account_signup', {
+    token, name: 'Prueba', username: 'prueba_chat', password: 'secreto-de-prueba', tos: TOS_VERSION
+  });
+  assert.equal(signup.ok, true);
+  const otherToken = `otro-dispositivo-${Date.now()}`;
+  const impersonation = await emitWithAck(otherSocket, 'lobby_chat_join', {
+    token: otherToken, accountId: token, name: 'Prueba', tos: TOS_VERSION
+  });
+  assert.equal(impersonation.ok, false, 'un id enviado por el cliente no autentica la cuenta');
+  assert.match(impersonation.error, /inicia sesión/i);
+  const wrongLogin = await emitWithAck(otherSocket, 'account_login', { username: 'prueba_chat', password: 'incorrecta' });
+  assert.equal(wrongLogin.ok, false);
+  const denied = await emitWithAck(otherSocket, 'lobby_chat_join', { token: otherToken, name: 'Prueba', tos: TOS_VERSION });
+  assert.equal(denied.ok, false);
+  const login = await emitWithAck(otherSocket, 'account_login', { username: 'prueba_chat', password: 'secreto-de-prueba' });
+  assert.equal(login.ok, true);
+  const rejoin = await emitWithAck(otherSocket, 'lobby_chat_join', {
+    token: otherToken, name: 'Nombre antiguo', tos: TOS_VERSION
+  });
+  assert.equal(rejoin.ok, true);
+  assert.equal(rejoin.name, 'Prueba', 'una caché vieja no renombra el perfil de cuenta');
+  const accountMessage = waitForMessage(socket, message => message.text === 'Hola desde otro dispositivo');
+  assert.equal((await emitWithAck(otherSocket, 'lobby_chat', { text: 'Hola desde otro dispositivo' })).ok, true);
+  const sent = await accountMessage;
+  assert.equal(sent.playerId, token);
+  assert.equal(sent.username, 'prueba_chat');
+  assert.equal(sent.name, 'Prueba');
+
+  // El login legado está asociado a esta conexión, no sobrevive a una nueva.
+  const reconnected = await connectSocket(port);
+  sockets.push(reconnected);
+  const withoutLogin = await emitWithAck(reconnected, 'lobby_chat_join', {
+    token: otherToken, name: 'Prueba', tos: TOS_VERSION
+  });
+  assert.equal(withoutLogin.ok, false);
 });

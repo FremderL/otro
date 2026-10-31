@@ -764,7 +764,7 @@
         els.lobbyChatProfile?.classList.remove('hidden');
         els.lobbyChatContent?.classList.add('hidden');
         els.lobbyChatTos.checked = tosAccepted();
-        els.lobbyChatName.value = ui.playerName || localStorage.getItem('montecristo-lobby-name') || '';
+        els.lobbyChatName.value = ui.accountSession?.name || ui.playerName || localStorage.getItem('montecristo-lobby-name') || '';
         setTimeout(() => els.lobbyChatName?.focus(), 0);
       } else els.lobbyChatInput?.focus();
     }
@@ -836,7 +836,7 @@
     // `montecristo-name` es la identidad canónica y se actualiza al guardar el
     // perfil. La clave histórica del chat puede contener un apodo anterior;
     // usarla primero hacía que el autoingreso renombrara el perfil hacia atrás.
-    const savedName = ui.playerName || localStorage.getItem('montecristo-lobby-name');
+    const savedName = ui.accountSession?.name || ui.playerName || localStorage.getItem('montecristo-lobby-name');
     if (!savedName || !tosAccepted() || ui.room || routeCode) return;
     joinLobbyChat(savedName, true, true);
   }
@@ -912,6 +912,8 @@
   });
   socket.on('disconnect', () => {
     setConnection('disconnected');
+    ui.lobbyChat.joined = false;
+    renderLobbyChat();
     renderBettingRanking();
     if (ui.room) showToast('Conexión interrumpida', 'Intentaremos devolverte a la mesa automáticamente.', 'error', 5000);
   });
@@ -3803,6 +3805,7 @@
       // que adopte la nueva sesión sin enviar token alguno desde JavaScript.
       if (secureLogin) ui.csrfToken = response.csrfToken || null;
       if (secureLogin && socket.connected) socket.disconnect().connect();
+      else if (!secureLogin && socket.connected) tryAutoJoinLobbyChat();
       showToast('Sesión iniciada', `Bienvenido de nuevo, ${response.profile.name || username}. Tus datos públicos están disponibles en Perfil.`, 'notice', 3800, '👤');
       closeAccountModal();
       els.accountPassword.value = '';
@@ -3832,6 +3835,7 @@
       if (secureSignupLogin.status !== 404) ui.csrfToken = secureSignupLogin.csrfToken || null;
       saveAccountSession(activeProfile);
       if (secureSignupLogin.status !== 404 && socket.connected) socket.disconnect().connect();
+      else if (socket.connected) tryAutoJoinLobbyChat();
       showToast('Cuenta creada', `Ya puedes iniciar sesión como @${activeProfile.username || username} desde cualquier otra computadora.`, 'notice', 4200, '👤');
       closeAccountModal();
       els.accountPassword.value = '';

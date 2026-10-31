@@ -3182,6 +3182,7 @@
   function setHubView(view) {
     var hub = $('est-hub');
     if (!hub) return;
+    if (view !== 'mercado') leaveTransfersNews();
     Array.prototype.forEach.call(hub.querySelectorAll('[data-hub-view]'), function (button) {
       button.setAttribute('aria-pressed', String(button.getAttribute('data-hub-view') === view));
     });
@@ -3202,6 +3203,7 @@
   function closeHub() {
     var hub = $('est-hub');
     if (!hubOpen()) return;
+    leaveTransfersNews();
     hub.hidden = true;
     document.body.classList.remove('est-hub-open');
     if (hubTrigger && hubTrigger.isConnected) hubTrigger.focus();
@@ -3304,122 +3306,175 @@
     if (!Number.isFinite(n) || n <= 0) return '—';
     return n.toFixed(1).replace('.', ',') + ' M';
   }
-  // Lista habitual de la conferencia de prensa del mercado.
-  function renderTransfersList(list, market) {
-    if (market.status === 'scheduled') { list.textContent = 'Los traspasos se anunciarán el día 15 de este mes.'; return; }
-    if (!Array.isArray(market.moves) || !market.moves.length) { list.textContent = 'No hay acuerdos disponibles para esta temporada.'; return; }
-    var stage = market.status === 'effective'
-      ? 'Acuerdos en vigor desde la temporada ' + market.effectiveSeason + '.'
-      : 'Acuerdos anunciados; se hacen efectivos en la temporada ' + market.effectiveSeason + '.';
-    list.innerHTML = '<p>' + esc(stage) + '</p><ul class="est-transfer-list">' + market.moves.map(function (move) {
-      var position = move.position ? ' · ' + esc(move.position) : '';
-      return '<li><b>' + esc(move.playerName) + '</b>' + position +
-        '<span>' + clubCrestMarkup(move.fromId, 'est-inline-crest') + esc(teamName(move.fromId)) + ' → ' +
-        clubCrestMarkup(move.toId, 'est-inline-crest') + esc(teamName(move.toId)) + '</span>' +
-        '<span class="est-transfer-value">Valoración ' + esc(transferValueLabel(move.playerValue)) + '</span></li>';
-    }).join('') + '</ul>';
+  // Retratos del podio cuando existen; los demás son ilustraciones deterministas
+  // (no fotografías) basadas en el id estable, incluso después de un fichaje.
+  var transferPodiumIds = ['alm_17', 'amb_17', 'crv_09', 'est_17', 'frr_09', 'hlc_09', 'irn_09', 'klv_17', 'nvl_09', 'prg_09', 'sol_17', 'tlb_17', 'vlm_17', 'vng_17', 'vrd_09', 'vtr_17'];
+  function transferAvatarUrl(move) {
+    var id = String(move.playerId || '');
+    if (transferPodiumIds.indexOf(id) >= 0) return ballonDorAvatarUrl(move);
+    var seed = 2166136261;
+    String(id || move.playerName || 'jugador').split('').forEach(function (c) { seed = Math.imul(seed ^ c.charCodeAt(0), 16777619) >>> 0; });
+    var skins = ['#e5a87f', '#c7875f', '#9d654b', '#714735', '#f0c09c'];
+    var hairs = ['#25201d', '#44291e', '#161e1d', '#765037', '#30262b'];
+    var shirts = ['#275950', '#385477', '#6a3d4c', '#635633', '#304d43'];
+    var skin = skins[seed % skins.length], hair = hairs[(seed >>> 4) % hairs.length], shirt = shirts[(seed >>> 8) % shirts.length];
+    var hairPath = (seed & 1) ? 'M46 58 Q45 18 80 19 Q116 19 114 58 Q104 42 96 43 Q73 51 46 58Z' : 'M45 58 Q42 21 79 20 Q118 19 115 59 L105 46 Q86 35 58 48Z';
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160"><rect width="160" height="160" rx="20" fill="#162e2b"/><circle cx="80" cy="80" r="68" fill="' + shirt + '" opacity=".48"/><path d="M20 160 Q27 112 62 108 L98 108 Q133 112 140 160" fill="' + shirt + '"/><path d="M65 101 L65 119 Q80 132 95 119 L95 101" fill="' + skin + '"/><ellipse cx="80" cy="69" rx="35" ry="43" fill="' + skin + '"/><path d="' + hairPath + '" fill="' + hair + '"/><path d="M59 68h9 M92 68h9" stroke="' + hair + '" stroke-width="3" stroke-linecap="round"/><circle cx="64" cy="74" r="2.5" fill="#241d1a"/><circle cx="96" cy="74" r="2.5" fill="#241d1a"/><path d="M72 91 Q80 96 88 91" fill="none" stroke="#704439" stroke-width="2" stroke-linecap="round"/><path d="M65 119 L80 133 L95 119" fill="none" stroke="#e4c27f" stroke-width="2"/></svg>';
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }
-  // Guion del narrador de MonteCristo News para los traspasos anunciados.
+  function transferPortrait(move, extraClass) {
+    return '<img class="est-transfer-portrait ' + (extraClass || '') + '" src="' + esc(transferAvatarUrl(move)) + '" alt="" aria-hidden="true" width="112" height="112">';
+  }
+  function transferRoute(move) {
+    return '<div class="est-transfer-route"><span class="est-transfer-club">' + clubCrestMarkup(move.fromId, 'est-inline-crest') + '<span><small>SALE DE</small><b>' + esc(teamName(move.fromId)) + '</b></span></span>' +
+      '<span class="est-transfer-arrow" aria-label="a">→</span><span class="est-transfer-club">' + clubCrestMarkup(move.toId, 'est-inline-crest') + '<span><small>LLEGA A</small><b>' + esc(teamName(move.toId)) + '</b></span></span></div>';
+  }
+  function renderTransfersList(list, market) {
+    if (market.status === 'scheduled') { list.innerHTML = '<div class="est-market-empty"><span>◷</span><h3>La ventana aún no abre</h3><p>Los traspasos se anunciarán el día 15 de este mes.</p></div>'; return; }
+    if (!Array.isArray(market.moves) || !market.moves.length) { list.innerHTML = '<div class="est-market-empty"><span>⇄</span><h3>Sin movimientos por ahora</h3><p>No hay acuerdos disponibles para esta temporada.</p></div>'; return; }
+    var stage = market.status === 'effective'
+      ? 'Acuerdos en vigor desde la temporada ' + (market.effectiveSeason || '—') + '.'
+      : 'Acuerdos anunciados; se hacen efectivos en la temporada ' + (market.effectiveSeason || '—') + '.';
+    list.innerHTML = '<div class="est-market-heading"><div><p class="est-market-eyebrow">EL TABLERO / ' + esc(market.seasonMonth || 'TEMPORADA') + '</p><h3>Fichajes confirmados <span>' + market.moves.length + '</span></h3><p>' + esc(stage) + '</p></div>' +
+      '<button type="button" class="est-market-replay">▶ Ver conferencia</button></div>' +
+      '<ul class="est-transfer-list">' + market.moves.map(function (move, index) {
+        return '<li><div class="est-transfer-card-top"><div class="est-transfer-portrait-wrap">' + transferPortrait(move) + '<span class="est-transfer-number">' + String(index + 1).padStart(2, '0') + '</span></div>' +
+          '<div class="est-transfer-player"><span class="est-transfer-tag">TRASPASO CONFIRMADO</span><b>' + esc(move.playerName || 'Jugador') + '</b><small>' + esc(move.position || 'JUGADOR') + '</small></div></div>' +
+          transferRoute(move) + '<div class="est-transfer-card-footer"><span class="est-transfer-value">Valoración ' + esc(transferValueLabel(move.playerValue)) + '</span><span>FICHAS · ESTIMADA</span></div></li>';
+      }).join('') + '</ul><p class="est-market-footnote">✦ Retratos ilustrados · Valoraciones en millones de fichas virtuales</p>';
+    list.querySelector('.est-market-replay').addEventListener('click', function () { renderTransfersNews(list, market); });
+  }
   function transfersNewsScript(market) {
-    var lines = ['Bienvenidos a MonteCristo News. Estas son las noticias del mercado de traspasos de la temporada ' + (market.seasonMonth || '') + '.'];
-    (market.moves || []).forEach(function (move) {
-      lines.push(String(move.playerName || '') + (move.position ? ', ' + move.position : '') + ', deja ' + teamName(move.fromId) +
-        ' y firma por ' + teamName(move.toId) + '. Valoración de mercado: ' + transferValueLabel(move.playerValue) + '.');
+    var lines = [{ role: 'narrador', text: 'Bienvenidos a MonteCristo News. Estas son las noticias del mercado de traspasos de la temporada ' + (market.seasonMonth || '') + '.' }];
+    (market.moves || []).forEach(function (move, index) {
+      var value = Number(move.playerValue);
+      var spokenValue = Number.isFinite(value) && value > 0 ? value.toFixed(1).replace('.', ',') + ' millones de fichas' : 'no disponible';
+      lines.push({ role: index % 2 ? 'analista' : 'narrador', move: move, text: String(move.playerName || 'Jugador') + (move.position ? ', ' + move.position : '') + ', deja ' + teamName(move.fromId) +
+        ' y firma por ' + teamName(move.toId) + '. Valoración de mercado: ' + spokenValue + '.' });
     });
-    if (market.status === 'effective') lines.push('Los fichajes ya están en vigor desde la temporada ' + (market.effectiveSeason || '') + '.');
-    else lines.push('Los acuerdos se harán efectivos en la temporada ' + (market.effectiveSeason || '') + '.');
-    lines.push('La valoración es informativa: no altera partidos, cuotas, apuestas ni premios. Esto fue MonteCristo News.');
+    lines.push({ role: 'analista', text: market.status === 'effective' ? 'Los fichajes ya están en vigor desde la temporada ' + (market.effectiveSeason || '') + '.' : 'Los acuerdos se harán efectivos en la temporada ' + (market.effectiveSeason || '') + '.' });
+    lines.push({ role: 'narrador', text: 'La valoración es informativa: no altera partidos, cuotas, apuestas ni premios. Esto fue MonteCristo News.' });
     return lines;
   }
-  // Cola mínima de voz para la transmisión (independiente del relato del partido).
-  var newsSpeech = { queue: [], active: false };
-  function speakNewsLine(text) {
-    if (!S.commentaryVoiceOn || S.muted || !commentarySpeechSupported()) return;
-    newsSpeech.queue.push(String(text));
-    if (newsSpeech.active) return;
-    var next = function () {
-      var line = newsSpeech.queue.shift();
-      if (line == null) { newsSpeech.active = false; return; }
-      var voice = commentarySpeech.voices.narrador;
-      var utterance;
-      try { utterance = new window.SpeechSynthesisUtterance(line); } catch (_) { setTimeout(next, 0); return; }
-      utterance.lang = voice && voice.lang || 'es-MX';
-      utterance.rate = 1.03;
-      utterance.pitch = commentaryVoicePitch('narrador', voice);
-      utterance.volume = 1;
-      if (voice) utterance.voice = voice;
-      var done = function () { setTimeout(next, 160); };
-      utterance.onend = done; utterance.onerror = done;
-      try { window.speechSynthesis.speak(utterance); } catch (_) { done(); }
-    };
-    newsSpeech.active = true;
-    next();
-  }
+  var newsSpeech = { enabled: false, active: false, token: 0 };
   var newsTimers = [];
+  var activeNews = null;
   function clearNewsTimers() {
     newsTimers.forEach(clearTimeout); newsTimers = [];
-    newsSpeech.queue.length = 0; newsSpeech.active = false;
-    if (window.speechSynthesis && typeof window.speechSynthesis.cancel === 'function') { try { window.speechSynthesis.cancel(); } catch (_) {} }
+    newsSpeech.token++;
+    var wasEnabled = newsSpeech.enabled;
+    var wasActive = newsSpeech.active;
+    newsSpeech.enabled = false; newsSpeech.active = false;
+    if (wasActive && window.speechSynthesis && typeof window.speechSynthesis.cancel === 'function') { try { window.speechSynthesis.cancel(); } catch (_) {} }
+    if (wasEnabled) runNextCommentaryTurn();
   }
-  // Transmisión "sintonizando el canal": bumper MONTECRISTO NEWS + narrador que
-  // explica cada traspaso y su valoración; al terminar (o con "Saltar") aparece
-  // la lista habitual. Solo ocurre la primera vez que se ven los traspasos.
+  function leaveTransfersNews() {
+    if (!activeNews) return;
+    var current = activeNews;
+    activeNews = null;
+    clearNewsTimers();
+    if (current.list.isConnected) renderTransfersList(current.list, current.market);
+  }
+  // El navegador exige una interacción para hablar: la conferencia empieza en
+  // subtítulos y el botón inicia o reinicia la locución desde la primera línea.
   function renderTransfersNews(list, market) {
     clearNewsTimers();
+    activeNews = { list: list, market: market };
     list.innerHTML = '';
     var overlay = document.createElement('div');
     overlay.className = 'est-news';
-    overlay.setAttribute('role', 'status');
     overlay.innerHTML =
-      '<div class="est-news-bumper"><div class="est-news-logo">MONTECRISTO <em>NEWS</em></div>' +
+      '<div class="est-news-bumper"><span class="est-news-bumper-label">UNA PRODUCCIÓN DEL ESTADIO</span><div class="est-news-logo">MONTECRISTO <em>NEWS</em></div>' +
       '<div class="est-news-tuning">SINTONIZANDO CANAL…</div></div>' +
-      '<div class="est-news-studio" hidden>' +
-      '<div class="est-news-header"><span class="est-news-live">● EN DIRECTO</span><span class="est-news-channel">MONTECRISTO NEWS</span></div>' +
-      '<div class="est-news-screen"><p class="est-news-kicker">MERCADO DE TRASPASOS · TEMPORADA ' + esc(market.seasonMonth || '') + '</p>' +
-      '<div class="est-news-lines"></div></div>' +
-      '<div class="est-news-lower"><span class="est-news-narrador">NARRADOR</span><span class="est-news-ticker"></span></div></div>' +
-      '<button type="button" class="est-news-skip">Saltar la transmisión →</button>';
+      '<div class="est-news-studio" hidden><div class="est-news-header"><span class="est-news-live">● EN DIRECTO</span><span class="est-news-channel">MONTECRISTO <b>NEWS</b></span></div>' +
+      '<div class="est-news-screen"><div class="est-news-feature"><div class="est-news-feature-art"><span>⇄</span></div><div><p class="est-news-kicker">CONFERENCIA DE PRENSA · ' + esc(market.seasonMonth || '') + '</p><h3 class="est-news-headline">El mercado está en marcha</h3><div class="est-news-route">La actualidad de los traspasos</div></div></div>' +
+      '<div class="est-news-lines" aria-live="polite"></div></div>' +
+      '<div class="est-news-lower"><span class="est-news-narrador">NARRADOR</span><span class="est-news-ticker">Bienvenidos a MonteCristo News</span></div></div>' +
+      '<div class="est-news-controls"><button type="button" class="est-news-voice">▶ Escuchar conferencia</button><button type="button" class="est-news-skip">Ver fichajes →</button></div>' +
+      '<p class="est-news-audio-status" role="status">Subtítulos activos. Pulsa escuchar para activar las voces.</p>';
     list.appendChild(overlay);
-    var bumper = overlay.querySelector('.est-news-bumper');
-    var studio = overlay.querySelector('.est-news-studio');
-    var ticker = overlay.querySelector('.est-news-ticker');
-    var linesBox = overlay.querySelector('.est-news-lines');
-    var skip = overlay.querySelector('.est-news-skip');
-    var lines = transfersNewsScript(market);
-    var idx = 0;
-    function alive() { return overlay.isConnected; }
-    function finish() {
-      if (!alive()) return;
-      clearNewsTimers();
-      renderTransfersList(list, market);
-    }
+    var bumper = overlay.querySelector('.est-news-bumper'), studio = overlay.querySelector('.est-news-studio');
+    var ticker = overlay.querySelector('.est-news-ticker'), linesBox = overlay.querySelector('.est-news-lines');
+    var featureArt = overlay.querySelector('.est-news-feature-art'), headline = overlay.querySelector('.est-news-headline');
+    var route = overlay.querySelector('.est-news-route'), speaker = overlay.querySelector('.est-news-narrador');
+    var voiceButton = overlay.querySelector('.est-news-voice'), status = overlay.querySelector('.est-news-audio-status');
+    var lines = transfersNewsScript(market), idx = 0;
+    function alive() { return overlay.isConnected && hubOpen() && !overlay.closest('[data-hub-panel]').hidden; }
+    function later(fn, ms) { newsTimers.push(setTimeout(fn, ms)); }
+    function finish() { if (!alive()) return; leaveTransfersNews(); }
     function showNext() {
-      if (!alive()) { clearNewsTimers(); return; }
-      if (idx >= lines.length) { newsTimers.push(setTimeout(finish, 3400)); return; }
+      if (!alive()) { leaveTransfersNews(); return; }
+      if (idx >= lines.length) { later(finish, 2800); return; }
       var line = lines[idx++];
-      ticker.textContent = line;
-      var p = document.createElement('p');
-      p.className = 'est-news-line';
-      p.textContent = line;
-      linesBox.appendChild(p);
-      while (linesBox.children.length > 6) linesBox.removeChild(linesBox.firstChild);
-      speakNewsLine(line);
-      newsTimers.push(setTimeout(showNext, Math.max(2800, line.length * 42)));
+      speaker.textContent = line.role === 'analista' ? 'ANALISTA' : 'NARRADOR';
+      ticker.textContent = line.text;
+      linesBox.textContent = line.text;
+      if (line.move) {
+        featureArt.innerHTML = transferPortrait(line.move, 'est-news-portrait');
+        headline.textContent = line.move.playerName || 'Nuevo fichaje';
+        route.innerHTML = transferRoute(line.move) + '<span class="est-news-value">VALORACIÓN ' + esc(transferValueLabel(line.move.playerValue)) + '</span>';
+      } else {
+        featureArt.innerHTML = '<span>⇄</span>';
+        headline.textContent = idx === 1 ? 'El mercado está en marcha' : 'La próxima temporada';
+        route.textContent = 'La actualidad de los traspasos';
+      }
+      if (!newsSpeech.enabled) { later(showNext, Math.max(3600, line.text.length * 65)); return; }
+      var token = newsSpeech.token, utterance;
+      try { utterance = new window.SpeechSynthesisUtterance(line.text); }
+      catch (_) { voiceFailed(); return; }
+      var voice = commentarySpeech.voices[line.role];
+      utterance.lang = voice && voice.lang || 'es-MX';
+      utterance.rate = line.role === 'analista' ? .97 : 1.03;
+      utterance.pitch = commentaryVoicePitch(line.role, voice);
+      if (voice) utterance.voice = voice;
+      newsSpeech.active = true;
+      var settled = false;
+      var watchdog = setTimeout(function () { if (!settled && token === newsSpeech.token) voiceFailed(); }, Math.max(10000, line.text.length * 180));
+      newsTimers.push(watchdog);
+      utterance.onend = function () {
+        if (settled || token !== newsSpeech.token) return;
+        settled = true; clearTimeout(watchdog); newsSpeech.active = false;
+        later(showNext, 250);
+      };
+      utterance.onerror = function () { if (!settled && token === newsSpeech.token) { settled = true; clearTimeout(watchdog); voiceFailed(); } };
+      try { window.speechSynthesis.speak(utterance); } catch (_) { clearTimeout(watchdog); voiceFailed(); }
     }
-    skip.addEventListener('click', finish);
-    newsTimers.push(setTimeout(function () {
-      if (!alive()) { clearNewsTimers(); return; }
-      bumper.hidden = true;
-      studio.hidden = false;
-      showNext();
-    }, 1900));
+    function voiceFailed() {
+      clearNewsTimers();
+      voiceButton.textContent = '▶ Reintentar voz';
+      voiceButton.setAttribute('aria-pressed', 'false');
+      status.textContent = 'No se pudo reproducir la voz. Puedes reintentar o seguir con subtítulos.';
+      later(showNext, Math.max(3600, (lines[idx - 1] || { text: '' }).text.length * 65));
+    }
+    voiceButton.disabled = !commentarySpeechSupported();
+    voiceButton.setAttribute('aria-pressed', 'false');
+    if (voiceButton.disabled) status.textContent = 'La voz no está disponible en este navegador. Puedes seguir la conferencia con subtítulos.';
+    voiceButton.addEventListener('click', function () {
+      if (newsSpeech.enabled) {
+        clearNewsTimers(); voiceButton.textContent = '▶ Escuchar conferencia'; voiceButton.setAttribute('aria-pressed', 'false');
+        status.textContent = 'Voces desactivadas. Continúa con subtítulos.'; later(showNext, 1500); return;
+      }
+      clearNewsTimers();
+      cancelCommentarySpeech(); // Web Speech es global: evita mezclar partido y conferencia.
+      refreshCommentaryVoices();
+      newsSpeech.enabled = true;
+      voiceButton.textContent = '◼ Silenciar conferencia'; voiceButton.setAttribute('aria-pressed', 'true');
+      status.textContent = 'Voces activas · narrador y analista por turnos.';
+      bumper.hidden = true; studio.hidden = false; idx = 0;
+      try { window.speechSynthesis.resume(); } catch (_) {}
+      showNext(); // speak dentro del gesto del usuario, sin depender del sonido del partido.
+    });
+    overlay.querySelector('.est-news-skip').addEventListener('click', finish);
+    later(function () { if (!alive()) { leaveTransfersNews(); return; } bumper.hidden = true; studio.hidden = false; showNext(); }, 1900);
   }
   function refreshTransfers() {
     var list = $('est-transfers-list');
     if (!list) return;
+    leaveTransfersNews();
     if (!S.socket || !S.socket.connected) { list.textContent = 'Conéctate para consultar el mercado.'; return; }
     list.textContent = 'Consultando el mercado…';
     S.socket.emit('football:transfers_get', {}, function (res) {
+      if (!hubOpen() || list.closest('[data-hub-panel]').hidden) return;
       if (!res || !res.ok || !res.transfers) { list.textContent = res && res.error || 'No se pudo consultar el mercado.'; return; }
       var market = res.transfers;
       if (res.firstView && market.status !== 'scheduled' && Array.isArray(market.moves) && market.moves.length) {
@@ -4240,7 +4295,7 @@
     commentarySpeech.activeCard = null;
     setCommentaryMusicDuck(false);
     var api = window.speechSynthesis;
-    if (api && typeof api.cancel === 'function') {
+    if (!newsSpeech.enabled && api && typeof api.cancel === 'function') {
       try { api.cancel(); } catch (_) {}
     }
   }
@@ -4265,7 +4320,7 @@
     return true;
   }
   function queueCommentarySpeech(message, card) {
-    if (!S.commentaryVoiceOn || S.muted || !commentarySpeechSupported()) return;
+    if (newsSpeech.enabled || !S.commentaryVoiceOn || S.muted || !commentarySpeechSupported()) return;
     var text = String(message && message.text || '').trim();
     if (!text) return;
     var item = {
@@ -4283,7 +4338,7 @@
   }
   function runNextCommentaryTurn() {
     var api = window.speechSynthesis;
-    if (!S.commentaryVoiceOn || S.muted || !commentarySpeechSupported() || commentarySpeech.active || commentarySpeech.timer) return;
+    if (newsSpeech.enabled || !S.commentaryVoiceOn || S.muted || !commentarySpeechSupported() || commentarySpeech.active || commentarySpeech.timer) return;
     while (commentarySpeech.queue.length && commentarySpeech.queue[0].matchId !== S.currentMatchId) commentarySpeech.queue.shift();
     if (!commentarySpeech.queue.length) return;
     var item = commentarySpeech.queue.shift();

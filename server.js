@@ -14,7 +14,7 @@ const {
 } = require('./lib/profile-store-shared');
 const { credit, recordWager, recordOutcome, claimDailyBonus, openCardCapsule, publicProgress } = require('./lib/progression');
 const { buildBettingLeaderboard, createBettingLeaderboard } = require('./lib/betting-leaderboard');
-const { seatIdentity } = require('./lib/seat-identity');
+const { seatIdentity, lobbyChatIdentity } = require('./lib/seat-identity');
 const { equipPassportCosmetic, publicPassportIdentity } = require('./lib/passport');
 const { equipCosmetic, publicCollectionIdentity } = require('./lib/cosmetics');
 const { publicFanPin } = require('./lib/football/fan-club-profile');
@@ -2801,8 +2801,21 @@ io.on('connection', socket => {
   // Chat único del casino. Solo recibe mensajes quien se identificó explícitamente
   // con el token de dispositivo y aceptó los mismos Términos vigentes que las mesas.
   socket.on('lobby_chat_join', ({ token, name, tos } = {}, ack) => {
-    const id = String(token || '').slice(0, 80);
-    name = cleanName(name);
+    // La cuenta verificada pertenece al socket, no al id que mande el cliente.
+    // En el modo legado solo se confía en un login con contraseña realizado en
+    // esta conexión; al reconectar habrá que autenticarse otra vez.
+    const identity = lobbyChatIdentity({
+      accountSessionsEnabled: adminConfig.accountSessionsEnabled,
+      accountProfileId: socket.data.accountProfileId,
+      legacyChatProfileId: socket.data.legacyChatProfileId,
+      token
+    });
+    const id = identity.id;
+    const accountProfile = identity.authenticated ? profiles.getProfile(id) : null;
+    if (identity.authenticated && !accountProfile) return ackError(ack, 'No se pudo confirmar tu cuenta. Vuelve a iniciar sesión.');
+    // No renombrar una cuenta al reingresar con un nombre local obsoleto.
+    // Para cambiarlo se usa la edición del perfil.
+    name = accountProfile ? cleanName(accountProfile.name) : cleanName(name);
     if (!id) return ackError(ack, 'No se pudo identificar este dispositivo.');
     if (!name) return ackError(ack, 'Elige un apodo para entrar al chat del casino.');
     // El apodo del chat es la identidad de quien habla: ni ofensivo ni igual
@@ -2814,7 +2827,7 @@ io.on('connection', socket => {
     }
     const chatProfile = profiles.profiles.get(id);
     const lobbyIssue = nameIssue(name, { room: roomOfProfile(chatProfile), exceptId: id });
-    if (lobbyIssue) return ackError(ack, lobbyIssue);
+    if (lobbyIssue) return ackError(ack, `${lobbyIssue} Si es tu nombre, inicia sesión con tu cuenta y vuelve a intentarlo.`);
     const profile = profiles.getOrCreate(id, name);
     if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
     profiles.update(profile, { name });
@@ -3081,6 +3094,7 @@ io.on('connection', socket => {
     if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
     const result = profiles.registerAccount(profile, username, password);
     if (!result.ok) return ackError(ack, result.error);
+    if (!adminConfig.accountSessionsEnabled) socket.data.legacyChatProfileId = profile.id;
     logEvent('account_created', { profileId: profile.id, username: profile.username });
     ackOk(ack, { profile: publicProgress(profile, true) });
   });
@@ -3091,6 +3105,7 @@ io.on('connection', socket => {
     }
     const result = profiles.authenticate(username, password);
     if (!result.ok) return ackError(ack, result.error);
+    socket.data.legacyChatProfileId = result.profile.id;
     logEvent('account_login', { profileId: result.profile.id, username: result.profile.username });
     ackOk(ack, { token: result.profile.id, profile: publicProgress(result.profile, true) });
   });

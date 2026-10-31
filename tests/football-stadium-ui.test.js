@@ -2425,7 +2425,8 @@ test('la conferencia de prensa del mercado muestra traspasos, escudos y valoraci
   try {
     await h.connectToMatch(); const doc=h.window.document; doc.getElementById('est-hub-open').click(); doc.querySelector('[data-hub-view="mercado"]').click();
     const row=doc.querySelector('.est-transfer-list li'); assert.ok(row); assert.match(row.textContent,/<Jugador>/);
-    assert.equal(row.querySelector('jugador'),null); assert.equal(row.querySelectorAll('img').length,2);
+    assert.equal(row.querySelector('jugador'),null); assert.equal(row.querySelectorAll('img').length,3);
+    assert.match(row.querySelector('.est-transfer-portrait').getAttribute('src'), /^data:image\/svg\+xml/);
     assert.ok(row.querySelector('img[src="/assets/escudos/FAR.svg"]')); assert.ok(row.querySelector('img[src="/assets/escudos/LVP.svg"]'));
     // La valoración sale del servidor y se lee como precio de mercado, no como ficha.
     assert.match(row.textContent,/CM/);
@@ -2471,6 +2472,85 @@ test('sin primera vista no hay bumper: el mercado muestra la lista directo', asy
   } finally {h.window.close();}
 });
 
+
+
+test('la conferencia permite escuchar desde el inicio, alterna voces y detiene el audio al salir', async t => {
+  const moves = [
+    { playerId: 'frr_09', playerName: 'Jugador Uno', fromId: 'home', toId: 'away', position: 'ST', playerValue: 17.5 },
+    { playerId: 'otro_10', playerName: 'Jugador Dos', fromId: 'away', toId: 'home', position: 'CM', playerValue: 9.2 }
+  ];
+  const market = { status: 'announced', seasonMonth: '2026-10', effectiveSeason: '2026-11', moves };
+  const h = createHarness({ speechSynthesis: true, onTransfersGet: () => ({ ok: true, transfers: market, firstView: true }) });
+  t.after(h.close); await h.connectToMatch();
+  const doc = h.window.document;
+  doc.getElementById('est-hub-open').click(); doc.querySelector('[data-hub-view="mercado"]').click();
+  const news = doc.querySelector('.est-news');
+  h.advanceTime(1900);
+  assert.equal(h.speech.utterances.length, 0, 'no se fuerza audio sin interacción');
+  const voice = news.querySelector('.est-news-voice');
+  voice.click();
+  assert.equal(voice.getAttribute('aria-pressed'), 'true');
+  assert.equal(h.speech.utterances.length, 1, 'comienza en el gesto, sin activar el relato del partido');
+  assert.match(h.speech.utterances[0].text, /Bienvenidos a MonteCristo News/);
+  assert.equal(h.speech.utterances[0].lang, 'es-MX');
+  h.speech.finish(0); h.advanceTime(250);
+  assert.equal(h.speech.utterances.length, 2);
+  assert.match(h.speech.utterances[1].text, /Jugador Uno/);
+  assert.match(h.speech.utterances[1].text, /17,5 millones de fichas/);
+  assert.ok(news.querySelector('img[src="/assets/ballon-dor-avatars/frr_09.svg"]'));
+  h.speech.finish(1); h.advanceTime(250);
+  assert.equal(h.speech.utterances.length, 3);
+  assert.match(h.speech.utterances[2].text, /Jugador Dos/);
+  assert.notEqual(h.speech.utterances[2].voice, h.speech.utterances[1].voice, 'el analista usa la segunda voz disponible');
+  assert.equal(news.querySelector('.est-news-narrador').textContent, 'ANALISTA');
+  assert.equal(h.speech.overlapCount, 0);
+  doc.getElementById('est-commentary-voice').click();
+  h.handlers['football:commentary']({ matchId: h.match.id, voice: 'narrador', text: 'Jugada en curso.' });
+  assert.equal(h.speech.utterances.length, 3, 'el relato del partido no interrumpe la conferencia');
+  const before = h.speech.cancelCount;
+  doc.querySelector('[data-hub-view="quiniela"]').click();
+  assert.ok(h.speech.cancelCount > before, 'se cancela al cambiar de vista');
+  h.speech.finish(2); h.advanceTime(30000);
+  assert.equal(h.speech.utterances.length, 3, 'un callback tardío no reinicia la voz');
+  assert.ok(doc.querySelector('.est-transfer-list'));
+});
+
+test('la voz bloqueada se puede reintentar; hay repetición y subtítulos si no existe voz', async t => {
+  const market = { status: 'announced', seasonMonth: '2026-10', effectiveSeason: '2026-11', moves: [
+    { playerId: 'frr_09', playerName: 'Uno', fromId: 'home', toId: 'away', playerValue: 2 },
+    { playerId: 'jugador_02', playerName: 'Dos', fromId: 'away', toId: 'home', playerValue: 3 },
+    { playerId: 'jugador_03', playerName: 'Tres', fromId: 'home', toId: 'away', playerValue: 4 }
+  ] };
+  const h = createHarness({ speechSynthesis: true, onTransfersGet: () => ({ ok: true, transfers: market, firstView: false }) });
+  t.after(h.close); await h.connectToMatch();
+  const doc = h.window.document;
+  doc.getElementById('est-hub-open').click(); doc.querySelector('[data-hub-view="mercado"]').click();
+  const portraits = doc.querySelectorAll('.est-transfer-portrait');
+  assert.equal(portraits[0].getAttribute('src'), '/assets/ballon-dor-avatars/frr_09.svg');
+  assert.notEqual(portraits[1].getAttribute('src'), portraits[2].getAttribute('src'));
+  const saved = portraits[1].getAttribute('src');
+  doc.querySelector('.est-market-replay').click();
+  let news = doc.querySelector('.est-news');
+  news.querySelector('.est-news-voice').click();
+  h.speech.utterances[0].onerror({ error: 'not-allowed' });
+  assert.match(news.querySelector('.est-news-audio-status').textContent, /No se pudo reproducir/);
+  assert.match(news.querySelector('.est-news-voice').textContent, /Reintentar/);
+  news.querySelector('.est-news-voice').click();
+  assert.equal(h.speech.utterances.length, 2);
+  assert.match(h.speech.utterances[1].text, /Bienvenidos/);
+  news.querySelector('.est-news-skip').click();
+  assert.equal(doc.querySelectorAll('.est-transfer-portrait')[1].getAttribute('src'), saved, 'el retrato es estable');
+
+  const without = createHarness({ onTransfersGet: () => ({ ok: true, transfers: market, firstView: true }) });
+  t.after(without.close); await without.connectToMatch();
+  const other = without.window.document;
+  other.getElementById('est-hub-open').click(); other.querySelector('[data-hub-view="mercado"]').click();
+  news = other.querySelector('.est-news');
+  assert.equal(news.querySelector('.est-news-voice').disabled, true);
+  assert.match(news.querySelector('.est-news-audio-status').textContent, /subtítulos/i);
+  without.advanceTime(1900);
+  assert.match(news.querySelector('.est-news-lines').textContent, /Bienvenidos/);
+});
 
 test('Mi afición permite equipar un pin desbloqueado y muestra el escudo', async () => {
  let fan={clubId:'united_vanguard',wins:1,level:1,ranking:[],rankingOptIn:false,equippedPin:null,rewards:[{id:'fan-1',title:'Primera victoria',target:1,progress:1,unlocked:true,equipped:false}]};

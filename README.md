@@ -164,6 +164,10 @@ Se sortean al abrir rondas. Solo entregan fichas cuando existe una ganancia posi
 - **Ganancia x2:** duplica la ganancia neta positiva.
 - **Ronda bonus:** +75 fichas al ganador.
 
+## Mercado de traspasos
+
+En Estadio → Mercado se consultan los acuerdos anunciados y sus valoraciones informativas. **Ver conferencia** permite repetir MonteCristo News. La transmisión empieza con subtítulos; pulsa **Escuchar conferencia** para iniciar las voces desde el principio. Usa la síntesis de voz del navegador (las voces disponibles pueden variar) y no requiere activar la narración del partido. Si el navegador bloquea o no admite voz, se mantienen los subtítulos. Los retratos reutilizan los avatares del Balón de Oro cuando existen; los demás son ilustraciones generadas de forma estable para cada jugador.
+
 ## Comunidad y ambientación estacional
 
 El botón **Comunidad** permite buscar cuentas, enviar/aceptar/retirar solicitudes y gestionar amistades. Los clubes pueden ser públicos o privados; los privados requieren aprobación de quien los fundó. Cada club admite hasta 30 integrantes, una cuenta puede pertenecer a tres clubes y cada cuenta puede fundar uno. Las búsquedas y escrituras usan sesión segura, protección de origen/CSRF y límites de uso.
