@@ -2258,30 +2258,54 @@ body.est-hub-open { overflow:hidden; }
 .est-fan-confirm button+button { color:#f3edd9; background:#49422e; }
 #est-fan-feedback { color:#aaf1c9; font-size:12px; }
 
-.est-transfer-list { list-style:none; display:grid; gap:10px; padding:0; margin:12px 0; }
-.est-transfer-list li { display:grid; gap:6px; padding:12px; border:1px solid var(--line); border-radius:10px; background:rgba(255,255,255,.035); }
-.est-transfer-list li span { display:flex; align-items:center; flex-wrap:wrap; gap:5px; }
-.est-transfer-list .est-transfer-value { font-size:11px; letter-spacing:.02em; color:var(--gold, #ceb574); text-transform:uppercase; }
+/* Mercado: un tablero editorial con protagonistas, clubes y valoración. */
+.est-market { min-width:0; color:#eef5ee; }
+.est-market-hero { position:relative; overflow:hidden; display:flex; align-items:center; justify-content:space-between; gap:24px; min-height:210px; padding:30px 34px; border:1px solid #826d45; border-radius:17px; background:radial-gradient(ellipse at 82% 25%,rgba(214,183,112,.20),transparent 36%),linear-gradient(125deg,#173e34 0%,#102820 55%,#111a19 100%); }
+.est-market-hero:after { content:''; position:absolute; right:-60px; bottom:-125px; width:300px; height:300px; border:1px solid rgba(216,192,136,.16); border-radius:50%; box-shadow:0 0 0 35px rgba(216,192,136,.035),0 0 0 70px rgba(216,192,136,.025); pointer-events:none; }
+.est-market-eyebrow { margin:0; color:#dbbf80; font-size:10px; font-weight:800; letter-spacing:.17em; text-transform:uppercase; }
+.est-market-eyebrow > span { display:inline-block; width:7px; height:7px; margin-right:7px; border-radius:50%; background:#a4e2bd; }
+.est-market-hero h2 { margin:14px 0 11px; color:#f4f3e7; font:800 clamp(32px,4vw,51px)/.98 var(--display); letter-spacing:-.035em; }
+.est-market-hero h2 em { display:block; color:#d9c18a; font-style:normal; }
+.est-market-hero p:last-child { max-width:43ch; margin:0; color:#c1d2c6; font-size:13px; line-height:1.55; }
+.est-market-hero-mark { z-index:1; flex:none; display:grid; place-items:center; width:110px; height:125px; padding:12px; border:1px solid rgba(224,199,147,.42); border-radius:60px 60px 12px 12px; color:#e6d2a3; background:rgba(6,19,16,.4); }
+.est-market-hero-mark strong { font:700 46px/1 var(--display); }.est-market-hero-mark span,.est-market-hero-mark small { font-size:8px; letter-spacing:.18em; }
+.est-market-notice { display:flex; gap:11px; align-items:flex-start; margin:14px 0 25px; padding:13px 15px; border:1px solid rgba(214,186,117,.19); border-radius:9px; background:#17251f; }
+.est-market-notice>span { color:#e1c180; }.est-market-notice p { margin:0; color:#b9cbbd; font-size:11px; line-height:1.55; }
+.est-market-heading { display:flex; justify-content:space-between; align-items:end; gap:15px; margin:0 0 15px; }
+.est-market-heading h3 { margin:7px 0; color:#f1f5eb; font:800 24px/1.1 var(--display); }
+.est-market-heading h3 span { display:inline-flex; align-items:center; justify-content:center; vertical-align:middle; min-width:25px; height:25px; margin-left:5px; border:1px solid #846e45; border-radius:50%; color:#e6c882; font:700 11px var(--sans); }
+.est-market-heading p:last-child { margin:0; color:#a9bcb0; font-size:11px; line-height:1.4; }
+.est-market-replay,.est-news-controls button { min-height:40px; padding:10px 15px; border:1px solid #a98b56; border-radius:8px; background:#d7bd80; color:#1c2118; font:800 11px var(--sans); cursor:pointer; }
+.est-market-replay:hover,.est-news-controls button:hover { background:#f0dca6; }.est-market-replay:focus-visible,.est-news-controls button:focus-visible { outline:3px solid #a6eac2; outline-offset:3px; }
+.est-transfer-list { list-style:none; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; padding:0; margin:0; }
+.est-transfer-list li { min-width:0; overflow:hidden; padding:16px; border:1px solid rgba(205,191,153,.2); border-radius:12px; background:linear-gradient(140deg,#1b3028,#101d19); box-shadow:0 8px 24px rgba(0,0,0,.12); }
+.est-transfer-card-top { display:flex; align-items:center; gap:14px; min-width:0; }
+.est-transfer-portrait-wrap { position:relative; flex:none; width:78px; height:78px; border:1px solid rgba(223,195,130,.35); border-radius:12px; background:#253e32; }
+.est-transfer-portrait { display:block; width:100%; height:100%; object-fit:cover; border-radius:inherit; }
+.est-transfer-number { position:absolute; right:-5px; bottom:-5px; padding:3px 5px; border-radius:3px; background:#d5bd86; color:#17251e; font:800 9px var(--sans); }
+.est-transfer-player { min-width:0; display:grid; gap:5px; }.est-transfer-player>b { overflow-wrap:anywhere; color:#f6f4e9; font:800 20px/1.1 var(--display); }.est-transfer-player>small { color:#afc4b6; font-size:10px; letter-spacing:.1em; }
+.est-transfer-tag { color:#d9be80; font-size:8px; font-weight:800; letter-spacing:.12em; }
+.est-transfer-route { display:flex; align-items:center; gap:9px; min-width:0; margin-top:15px; padding-top:13px; border-top:1px solid rgba(216,221,199,.12); }
+.est-transfer-club { display:flex; align-items:center; gap:5px; flex:1; min-width:0; }.est-transfer-club>span { display:grid; min-width:0; gap:3px; }.est-transfer-club small { color:#91a89a; font-size:8px; letter-spacing:.1em; }.est-transfer-club b { color:#e0eae1; font-size:11px; line-height:1.2; overflow-wrap:anywhere; }.est-transfer-club .est-inline-crest { flex:none; width:25px; height:30px; margin:0; object-fit:contain; }
+.est-transfer-arrow { flex:none; color:#e0c180; font-size:17px; }.est-transfer-card-footer { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:14px; padding-top:11px; border-top:1px solid rgba(216,221,199,.1); color:#92a99a; font-size:8px; letter-spacing:.08em; }.est-transfer-value { color:#e5c984; font-size:11px; font-weight:800; }
+.est-market-footnote { color:#9cafa1; font-size:10px; line-height:1.5; }.est-market-empty { padding:40px 20px; border:1px dashed #597364; border-radius:12px; background:#15271f; text-align:center; }.est-market-empty>span { color:#dfc485; font-size:30px; }.est-market-empty h3 { margin:10px 0 6px; font:800 21px var(--display); }.est-market-empty p { margin:0; color:#b7cabe; font-size:12px; }
 
-/* MonteCristo News: transmisión del mercado de traspasos (primera vez que se ve) */
-.est-news { margin:12px 0; border-radius:12px; overflow:hidden; background:#07101f; border:1px solid rgba(206,181,116,.4); }
-.est-news-bumper { padding:36px 18px; text-align:center; background:radial-gradient(ellipse at center, #12244d 0%, #07101f 70%); }
-.est-news-logo { font-size:26px; font-weight:800; letter-spacing:.18em; color:#fff; }
-.est-news-logo em { font-style:normal; color:var(--gold, #ceb574); }
-.est-news-tuning { margin-top:12px; font-size:11px; letter-spacing:.32em; color:#9fb4d8; animation:est-news-blink 1s steps(2) infinite; }
-.est-news-studio { padding:12px; }
-.est-news-header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.est-news-live { color:#ff5252; font-size:11px; font-weight:800; letter-spacing:.1em; }
-.est-news-channel { font-size:11px; font-weight:800; letter-spacing:.24em; color:var(--gold, #ceb574); }
-.est-news-screen { margin-top:10px; background:#0b1830; border:1px solid rgba(255,255,255,.09); border-radius:8px; padding:14px; min-height:118px; }
-.est-news-kicker { margin:0 0 8px; font-size:10px; letter-spacing:.26em; color:#9fb4d8; }
-.est-news-lines p { margin:6px 0; font-size:14px; line-height:1.45; color:#eef3ff; animation:est-news-line .35s ease; }
-.est-news-lower { display:flex; align-items:center; gap:8px; margin-top:10px; padding:8px 10px; border-radius:6px; background:rgba(206,181,116,.14); }
-.est-news-narrador { font-size:10px; font-weight:800; letter-spacing:.16em; color:var(--gold, #ceb574); white-space:nowrap; }
-.est-news-ticker { font-size:12px; color:#fff; }
-.est-news-skip { margin:10px 12px 12px; }
-@keyframes est-news-blink { 50% { opacity:.25; } }
-@keyframes est-news-line { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+/* MonteCristo News: escena editorial, control de voz y subtítulos siempre visibles. */
+.est-news { margin:12px 0; overflow:hidden; border:1px solid #806d4e; border-radius:14px; background:#101d1a; box-shadow:0 16px 45px rgba(0,0,0,.25); }
+.est-news [hidden] { display:none !important; }
+.est-news-bumper { padding:70px 20px; text-align:center; background:radial-gradient(ellipse at center,#285449 0%,#10221e 70%); }
+.est-news-bumper-label { color:#a9c1b1; font-size:9px; letter-spacing:.25em; }.est-news-logo { margin-top:14px; color:#f8f4e8; font:800 clamp(22px,4vw,36px) var(--display); letter-spacing:.08em; }.est-news-logo em { color:#e4c780; font-style:normal; }.est-news-tuning { margin-top:15px; color:#c3d4c8; font-size:10px; letter-spacing:.23em; animation:est-news-blink 1s steps(2) infinite; }
+.est-news-studio { padding:16px 16px 0; }.est-news-header { display:flex; align-items:center; justify-content:space-between; gap:8px; }.est-news-live { color:#ffc4b2; font-size:10px; font-weight:800; letter-spacing:.12em; }.est-news-channel { color:#edf1e6; font-size:10px; font-weight:800; letter-spacing:.14em; }.est-news-channel b { color:#e6c779; }
+.est-news-screen { margin-top:12px; overflow:hidden; border:1px solid rgba(228,202,143,.2); border-radius:10px; background:radial-gradient(ellipse at 15% 20%,#315d4a,#172e27 65%); }
+.est-news-feature { display:grid; grid-template-columns:150px minmax(0,1fr); align-items:center; gap:20px; min-height:186px; padding:20px; }.est-news-feature-art { display:grid; place-items:center; width:150px; height:150px; overflow:hidden; border:1px solid rgba(224,195,129,.35); border-radius:12px; color:#e0c783; background:#203e32; font-size:65px; }.est-news-kicker { margin:0 0 9px; color:#d9c184; font-size:9px; font-weight:800; letter-spacing:.15em; }.est-news-headline { margin:0; color:#f5f5e9; font:800 clamp(21px,3vw,31px)/1.08 var(--display); overflow-wrap:anywhere; }.est-news-route { color:#b8cabd; font-size:11px; }.est-news-route>.est-transfer-route { margin-top:10px; padding-top:9px; }.est-news-value { display:block; margin-top:10px; color:#e8cc8c; font-size:10px; font-weight:800; }
+.est-news-lines { min-height:55px; padding:14px 20px; border-top:1px solid rgba(230,220,188,.16); background:rgba(7,17,14,.45); color:#f1f5ec; font-size:13px; line-height:1.55; }
+.est-news-lower { display:flex; align-items:center; gap:12px; min-height:46px; padding:9px 12px; background:#d3b978; color:#19251c; }.est-news-narrador { flex:none; font-size:9px; font-weight:900; letter-spacing:.13em; }.est-news-ticker { font-size:11px; line-height:1.4; }
+.est-news-controls { display:flex; gap:10px; flex-wrap:wrap; padding:15px 16px 5px; }.est-news-controls .est-news-skip { color:#e6d8af; background:transparent; }.est-news-controls .est-news-skip:hover { background:#2d3d32; }.est-news-controls button:disabled { opacity:.55; cursor:not-allowed; }
+.est-news-audio-status { margin:0; padding:4px 16px 16px; color:#b4c7b8; font-size:11px; line-height:1.4; }
+@keyframes est-news-blink { 50% { opacity:.35; } }
+@media (max-width:700px) { .est-transfer-list { grid-template-columns:1fr; } .est-market-hero { min-height:0; padding:24px 20px; }.est-market-hero-mark { width:70px; height:90px; }.est-market-hero-mark strong { font-size:32px; }.est-market-hero-mark span,.est-market-hero-mark small { font-size:7px; } .est-news-feature { grid-template-columns:92px minmax(0,1fr); gap:12px; padding:14px; }.est-news-feature-art { width:92px; height:92px; font-size:40px; } }
+@media (max-width:390px) { .est-market-hero-mark { display:none; }.est-market-heading { align-items:start; flex-direction:column; }.est-news-feature { grid-template-columns:1fr; }.est-news-feature-art { width:80px; height:80px; } }
+@media (prefers-reduced-motion:reduce) { .est-news-tuning { animation:none; } }
 
 /* Quiniela: lista de partidos con 1/X/2 y formulario de registro */
 .est-quiniela-head { margin:12px 0 4px; font-size:13px; }

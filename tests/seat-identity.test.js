@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { seatIdentity } = require('../lib/seat-identity');
+const { seatIdentity, lobbyChatIdentity } = require('../lib/seat-identity');
 
 test('con sesión de cuenta verificada, la persona se sienta con el perfil de su cuenta', () => {
   assert.equal(
@@ -26,4 +26,18 @@ test('en modo sin sesiones seguras, un accountId enviado por el navegador no sie
 test('los ids se recortan a 80 caracteres y un token vacío da cadena vacía', () => {
   assert.equal(seatIdentity({ token: 'x'.repeat(120) }).length, 80);
   assert.equal(seatIdentity({}), '');
+});
+
+test('el chat usa la cuenta verificada por cookie y no el dispositivo', () => {
+  assert.deepEqual(lobbyChatIdentity({ accountSessionsEnabled: true, accountProfileId: 'cuenta-A', token: 'dispositivo-B' }),
+    { id: 'cuenta-A', authenticated: true });
+  assert.deepEqual(lobbyChatIdentity({ accountSessionsEnabled: true, legacyChatProfileId: 'cuenta-A', token: 'dispositivo-B' }),
+    { id: 'dispositivo-B', authenticated: false }, 'el login legado no sustituye una cookie');
+});
+
+test('el chat legado usa solo la cuenta autenticada en esta conexión', () => {
+  assert.deepEqual(lobbyChatIdentity({ legacyChatProfileId: 'cuenta-A', token: 'dispositivo-B' }),
+    { id: 'cuenta-A', authenticated: true });
+  assert.deepEqual(lobbyChatIdentity({ accountProfileId: 'cuenta-A', token: 'dispositivo-B' }),
+    { id: 'dispositivo-B', authenticated: false });
 });
