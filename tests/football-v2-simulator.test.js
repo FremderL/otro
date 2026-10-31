@@ -207,7 +207,7 @@ test('el corpus exploratorio evita partidos bloqueados o marcadores sistemática
 });
 
 test('un 0–0 es un partido válido que termina sin reintentar ni retrasar', () => {
-  const match = createMatch({ seed: 1 });
+  const match = createMatch({ seed: 14 });
   const { state, events } = finish(match);
   assert.deepEqual(state.score, { home: 0, away: 0 });
   assert.equal(state.time, state.clock.matchEnd * 60);

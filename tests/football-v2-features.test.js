@@ -101,3 +101,29 @@ test('los compromisos de la versión experimental anterior se reproducen con su 
     assert.deepEqual(demo.snapshot().score, { home: 2, away: 1 });
   } finally { h.close(); }
 });
+
+test('la versión v2-causal-2 y sus cuotas siguen siendo reproducibles tras introducir Elo y contexto', () => {
+  const { causal2 } = require('../lib/football/v2/versions');
+  const { cleanCommitment } = require('../lib/football/v2/commitment');
+  const C = require('../lib/football/v2/calibration');
+  const h = setup();
+  try {
+    const input = { ...h.input, version: causal2.VERSION };
+    // Registros de v2-causal-2 anteriores a este cambio no incluían contexto.
+    delete input.context;
+    const key = '9a'.repeat(32), inputHash = C.hashInputs(input);
+    const sample = { version: C.VERSION, simulatorVersion: causal2.VERSION, inputHash, samples: 2048,
+      counts: { '0-0': 400, '1-0': 500, '0-1': 360, '1-1': 420, '2-0': 150, '2-1': 130, '1-2': 88 }, liveByState: [] };
+    const record = makeCommitment(input, key, h.match.scheduledKickoffAt - 1, {
+      training: { ...sample, keyCommitment: 'aa'.repeat(32) }, holdout: { ...sample, keyCommitment: 'bb'.repeat(32) }
+    });
+    const restored = cleanCommitment(JSON.parse(JSON.stringify(record)), h.match);
+    assert.equal(verifyCommitment(restored, h.match), true);
+    const replay = generateReplay(restored.inputs, restored.privateSeed);
+    const original = causal2.createMatch({ ...input, random: secureRandom(key, 'game') });
+    while (!original.snapshot().ended) original.step(10000);
+    assert.deepEqual(replay.score, original.snapshot().score);
+    assert.equal(replay.version, causal2.VERSION);
+    assert.equal(restored.pricing.simulatorVersion, causal2.VERSION);
+  } finally { h.close(); }
+});

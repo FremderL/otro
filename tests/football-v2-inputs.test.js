@@ -93,3 +93,58 @@ test('los ratings del equipo influyen en una simulación con los mismos jugadore
   assert.deepEqual(before.snapshot().players, after.snapshot().players);
   assert.notDeepEqual(before.step(1000), after.step(1000));
 });
+
+test('congela la media de goles de la liga actual y da menos peso a la temporada previa con más partidos', () => {
+  const { match, current, prev, now } = leagues();
+  for (const game of prev.calendar.matches) game.result = { home: 2, away: 2 };
+  const first = prepareMatchInputs({ league: current, previousLeague: prev, match, asOf: now, seed: 1 });
+  assert.equal(first.context.previousSample, 10);
+  assert.ok(first.context.previousWeight > 0);
+  assert.ok(first.context.leagueAvg > 1.35 && first.context.leagueAvg < 1.85);
+  current.calendar.matches.push({ ...match, id: 'final', status: 'settled', settledAt: now - 1, result: { home: 2, away: 1 } });
+  const next = prepareMatchInputs({ league: current, previousLeague: prev, match, asOf: now, seed: 1 });
+  assert.ok(next.context.previousWeight < first.context.previousWeight);
+  const snapshot = first.context.leagueAvg;
+  prev.calendar.matches[0].result.home = 10;
+  assert.equal(first.context.leagueAvg, snapshot, 'una preparación confirmada no cambia con la liga mutable');
+  prev.calendar.matches[0].result.home = -1;
+  assert.throws(() => prepareMatchInputs({ league: current, previousLeague: prev, match, asOf: now, seed: 1 }), /resultado histórico inválido/);
+});
+
+test('Elo y media de goles influyen en las jugadas sin fijar el marcador', () => {
+  const { match, current, prev, now } = leagues();
+  const original = prepareMatchInputs({ league: current, previousLeague: prev, match, asOf: now, seed: 12 });
+  const base = JSON.parse(JSON.stringify(original));
+  base.home.ratings.elo = 1500; base.away.ratings.elo = 1500; base.context.leagueAvg = 1.35;
+  const stronger = JSON.parse(JSON.stringify(base));
+  stronger.home.ratings.elo = 1700; stronger.away.ratings.elo = 1300;
+  const scoring = JSON.parse(JSON.stringify(base));
+  scoring.context.leagueAvg = 1.85;
+  const baseSim = createMatch(base), eloSim = createMatch(stronger), avgSim = createMatch(scoring);
+  assert.deepEqual(baseSim.snapshot().score, { home: 0, away: 0 });
+  assert.deepEqual(eloSim.snapshot().score, { home: 0, away: 0 });
+  assert.notDeepEqual(eloSim.step(10000), baseSim.step(10000));
+  const sameBase = createMatch(base);
+  assert.notDeepEqual(avgSim.step(10000), sameBase.step(10000));
+});
+
+
+test('el promedio reciente ordena por kickoff reprogramado antes de elegir la ventana de 60', () => {
+  const { match, current, now } = leagues();
+  const records = Array.from({ length: 61 }, (_, i) => ({ ...match, id: `played-${i}`, status: 'settled',
+    scheduledKickoffAt: now - (61 - i) * 1000, settledAt: now - (61 - i) * 1000 + 500,
+    result: i === 60 ? { home: 7, away: 7 } : { home: 1, away: 1 } }));
+  // La jornada reprogramada es la más reciente aunque siga al principio del array.
+  current.calendar.matches = [match, records[60], ...records.slice(0, 60)];
+  const input = prepareMatchInputs({ league: current, match, asOf: now, seed: 0 });
+  assert.equal(input.context.sample, 60);
+  assert.equal(input.context.leagueAvg, 1.1);
+});
+
+test('la muestra histórica informada respeta la ventana de 60 partidos', () => {
+  const { match, current, prev, now } = leagues();
+  for (let i = 0; i < 61; i++) prev.calendar.matches.push({ ...prev.calendar.matches[0], settledAt: now - (20 + i) * 1000 });
+  const input = prepareMatchInputs({ league: current, previousLeague: prev, match, asOf: now, seed: 0 });
+  assert.equal(input.context.previousSample, 60);
+  assert.equal(input.context.sample, 0);
+});

@@ -83,3 +83,17 @@ test('se rechazan muestras pequeñas, iguales, de otra entrada o relacionadas co
   const secretHash = crypto.createHash('sha256').update(Buffer.from(matchKey, 'hex')).digest('hex');
   assert.throws(() => Q.createQuoteModel(input, matchKey, { ...training, keyCommitment: secretHash }, holdout), /clave del partido/);
 });
+
+test('un compromiso no acepta precios marcados para otro simulador aunque el hash de entrada coincida', () => {
+  const { input, matchKey, training, holdout } = setup();
+  const { makeCommitment, verifyCommitment } = require('../lib/football/v2/commitment');
+  const { causal2 } = require('../lib/football/v2/versions');
+  const record = JSON.parse(JSON.stringify(makeCommitment(input, matchKey, input.asOf, { training, holdout })));
+  const match = { homeId: input.home.id, awayId: input.away.id, seasonMonth: input.source.currentSeason };
+  assert.equal(verifyCommitment(record, match), true);
+  record.pricing.simulatorVersion = causal2.VERSION;
+  record.pricing.training.simulatorVersion = causal2.VERSION;
+  record.pricing.holdout.simulatorVersion = causal2.VERSION;
+  assert.equal(Q.validModel(record.pricing), true, 'el modelo internamente es coherente');
+  assert.equal(verifyCommitment(record, match), false, 'la versión de precio debe ser la del partido');
+});

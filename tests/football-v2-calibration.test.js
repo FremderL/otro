@@ -38,7 +38,7 @@ test('calibración empírica usa corrientes independientes y es repetible para l
 test('la calibración incluye goles del añadido y cuenta el resultado tras el pitido final', () => {
   const simulator = require('../lib/football/v2/simulator');
   const { derivedKey, secureRandom } = require('../lib/football/v2/secure-random');
-  const match = input(), key = '01'.repeat(32), samples = 4;
+  const match = input(), key = '02'.repeat(32), samples = 4;
   const actual = C.createCalibration(match, key, samples);
   const expected = {};
   let addedGoal = false;
@@ -94,4 +94,15 @@ test('la puerta estadística exige tamaño, entradas iguales y prueba separada',
   assert.equal(C.validateCalibration(base, { ...holdout, inputHash: 'different' }).reason, 'entradas_distintas');
   const biased = { ...holdout, counts: { '1-0': 1400, '0-0': 400, '0-1': 248 } };
   assert.equal(C.validateCalibration(base, biased).reason, 'desviacion');
+});
+
+test('la calibración despacha las versiones anteriores sin cambiar sus contratos', () => {
+  const { causal2, legacy } = require('../lib/football/v2/versions');
+  for (const simulator of [causal2, legacy]) {
+    const oldInput = { ...input(), version: simulator.VERSION };
+    delete oldInput.context;
+    const sample = C.createCalibration(oldInput, '51'.repeat(32), 2);
+    assert.equal(sample.simulatorVersion, simulator.VERSION);
+    assert.equal(Object.values(sample.counts).reduce((sum, count) => sum + count, 0), 2);
+  }
 });
