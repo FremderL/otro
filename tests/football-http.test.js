@@ -123,6 +123,20 @@ test('GET /estadio sirve estadio.html', (t) => {
   assert.equal(res.headers['Cache-Control'], 'no-store');
 });
 
+test('el laboratorio sirve una vista aislada y el módulo de prueba, sin crear perfiles', t => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  const page = ctx.app.run('GET', '/estadio-simulador');
+  const module = ctx.app.run('GET', '/estadio-simulador/motor.js');
+  assert.ok(page.sentFile && page.sentFile.endsWith('estadio-simulador.html'));
+  assert.equal(page.headers['Cache-Control'], 'no-store');
+  assert.ok(module.sentFile && module.sentFile.endsWith(path.join('football', 'v2', 'simulator.js')));
+  assert.equal(module.headers['Cache-Control'], 'no-cache, must-revalidate');
+  assert.equal(ctx.spy.getOrCreate, 0);
+  const disabled = setup({ enabled: () => false }); t.after(disabled.cleanup);
+  assert.equal(disabled.app.run('GET', '/estadio-simulador').statusCode, 404);
+  assert.equal(disabled.app.run('GET', '/estadio-simulador/motor.js').statusCode, 404);
+});
+
 test('GET /balon-de-oro sirve la página del evento dedicado', t => {
   const ctx = setup(); t.after(ctx.cleanup);
   const res = ctx.app.run('GET', '/balon-de-oro');

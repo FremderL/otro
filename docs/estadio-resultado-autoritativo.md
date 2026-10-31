@@ -2,6 +2,11 @@
 
 **Corrección de incidente · 31-oct-2026**
 
+> Este incidente y sus ejemplos corresponden al motor V1. Para partidos V2
+> desde noviembre de 2026 el marcador también es autoritativo, pero emerge de
+> la cronología causal comprometida y de sus insumos congelados, no de un
+> marcador elegido de antemano mediante Poisson.
+
 ## Lo que reportó el jugador
 
 - Apostó **500 fichas a Local (1X2)** en *Bayern Munchies vs Juventus de los Jubilados* (J30), cuota 2.05.

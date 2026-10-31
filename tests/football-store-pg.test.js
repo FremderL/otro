@@ -19,6 +19,8 @@ const { FootballStore } = require('../lib/football-store');
 const { monthKey } = require('../lib/football-store-shared');
 const { generateTimeline } = require('../lib/football/match-engine');
 const { mulberry32 } = require('../lib/football/prng');
+const { prepareMatchInputs } = require('../lib/football/v2/inputs');
+const { makeCommitment, verifyCommitment } = require('../lib/football/v2/commitment');
 
 // --- Pool simulado ---
 // `seed` trae filas por tabla (con `data` ya parseado, como devuelve node-pg un JSONB).
@@ -121,6 +123,56 @@ test('saveNow escribe ligas y partidos en una transacción con unnest', async (t
   // Y sí trae una columna por partido con su id.
   const matchIds = matchInserts[matchInserts.length - 1].params[0];
   assert.ok(Array.isArray(matchIds) && matchIds.length === store.getMatches(monthKey()).length, 'una fila por partido');
+});
+
+test('saveStrict serializa detrás del guardado anterior y reporta fallos de la base', async t => {
+  const pool = makeMockPool();
+  const store = new PgFootballStore('postgres://mock-host/mockdb', { pool });
+  t.after(() => store.close());
+  await store.ready;
+  const original = store._writeSnapshot.bind(store);
+  let unblock;
+  const gate = new Promise(resolve => { unblock = resolve; });
+  let active = 0, maxActive = 0, calls = 0;
+  store._writeSnapshot = async () => {
+    calls++;
+    active++;
+    maxActive = Math.max(maxActive, active);
+    if (calls === 1) await gate;
+    active--;
+  };
+  const earlier = store.saveNow();
+  const confirmed = store.saveStrict();
+  unblock();
+  await earlier;
+  assert.strictEqual(await confirmed, true);
+  assert.strictEqual(calls, 2, 'se escribe un snapshot posterior a la solicitud estricta');
+  assert.strictEqual(maxActive, 1, 'no se superponen los snapshots');
+  store._writeSnapshot = async () => { throw new Error('base inaccesible'); };
+  assert.strictEqual(await store.saveStrict(), false);
+  store._writeSnapshot = original;
+});
+
+test('compromiso V2 manual se conserva en JSONB y se rehidrata con PG simulado', async t => {
+  const seed = makeSeedRows();
+  t.after(seed.cleanup);
+  const match = seed.rows.matches[0].data;
+  const league = { ...seed.rows.leagues[0].data, calendar: { matches: seed.rows.matches.map(row => row.data) } };
+  const inputs = prepareMatchInputs({ league, match, asOf: Date.now(), seed: 9 });
+  match.simulation = makeCommitment(inputs, '67'.repeat(32), Date.now());
+  seed.rows.bets = []; // La prueba no abre apuestas V2.
+  const pool = makeMockPool(seed.rows);
+  const store = new PgFootballStore('postgres://mock-host/mockdb', { pool });
+  t.after(() => store.close());
+  await store.ready;
+  const loaded = store.getMatch(match.id, seed.month);
+  assert.ok(verifyCommitment(loaded.simulation, loaded), 'el compromiso se validó tras cargar JSONB');
+  assert.deepEqual(loaded.simulation, match.simulation);
+  await store.saveNow();
+  const insert = pool.insertsTo('football_matches').at(-1);
+  const index = insert.params[0].indexOf(match.id);
+  const saved = JSON.parse(insert.params[13][index]);
+  assert.deepEqual(JSON.parse(saved.simulation), match.simulation, 'la cadena conserva el orden de las entradas comprometidas');
 });
 
 test('transición del evento se persiste dentro del JSONB de la liga', async (t) => {

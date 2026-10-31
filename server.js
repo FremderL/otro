@@ -78,6 +78,8 @@ const { loadFootballConfig } = require('./lib/football-config');
 const { createFootballStore } = require('./lib/football-store-factory');
 const { FootballEngine } = require('./lib/football/engine');
 const { FootballScheduler } = require('./lib/football/scheduler');
+const { createOfficialV2 } = require('./lib/football/v2/official');
+const { publicProjectionState } = require('./lib/football/v2/projection');
 const { createBettingService } = require('./lib/football/betting');
 const { BallonDorMarketService } = require('./lib/football/ballon-dor-market');
 const {
@@ -200,7 +202,7 @@ installSeasonalThemeRoutes(app, {
 // imágenes del lobby (tienen nombre estable; si se reemplazan, cambiar el nombre del archivo).
 app.use(compression());
 app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: '7d', immutable: false }));
-const revalidateAppShell = new Set(['index.html', 'app.js', 'styles.css', 'chat-format.js', 'estadio-banner.js', 'estadio.html', 'estadio.js', 'estadio.css', 'loteria.html', 'loteria.js', 'loteria.css']);
+const revalidateAppShell = new Set(['index.html', 'app.js', 'styles.css', 'chat-format.js', 'estadio-banner.js', 'estadio.html', 'estadio.js', 'estadio.css', 'estadio-simulador.html', 'estadio-simulador.js', 'estadio-simulador.css', 'loteria.html', 'loteria.js', 'loteria.css']);
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: '5m',
   setHeaders(res, filePath) {
@@ -3463,7 +3465,8 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 async function initFootball() {
   // 1. Store (fábrica: archivo JSON o Postgres/Neon). La fábrica falla cerrada si
   //    DATABASE_URL está definida antes de la Fase F (backend PG del Estadio).
-  footballStore = await createFootballStore(footballConfig.storePath, process.env.DATABASE_URL);
+  footballStore = await createFootballStore(footballConfig.storePath, process.env.DATABASE_URL,
+    profiles.footballWriter ? { writerLease: profiles.footballWriter } : {});
   footballStore.ensureSeason(new Date());
 
   // 2. Log estructurado que ADEMÁS reenvía cada liquidación al socket del perfil
@@ -3494,10 +3497,17 @@ async function initFootball() {
     }
   };
 
+  // La política y los partidos próximos deben estar persistidos ANTES de
+  // reconciliar encuentros o aceptar apuestas. Una obligación antigua real se
+  // conserva; no se usa para imponer V1 a partidos nuevos sin obligaciones.
+  const officialV2 = createOfficialV2({ store: footballStore, log: footballLog, now: () => Date.now() });
+  const ready = await officialV2.prepareUpcoming(Date.now());
+  if (!ready.ok && !ready.legacy) throw new Error(`No se pudo preparar V2: ${ready.reason}`);
+
   // 3. Flujo de apostadores simulados (invisible, §11.6) + servicio de apuestas.
   const simulatedFlow = new SimulatedFlow({ log: footballLog });
   footballBetting = createBettingService({
-    store: footballStore, profiles, simulatedFlow, log: footballLog, now: () => Date.now()
+    store: footballStore, profiles, simulatedFlow, officialV2, log: footballLog, now: () => Date.now()
   });
   footballBallonDorMarket = new BallonDorMarketService({
     store: footballStore, betting: footballBetting, now: () => Date.now(), log: footballLog
@@ -3506,6 +3516,7 @@ async function initFootball() {
   // 4. Motor determinista con los hooks de apuestas cableados (Fase D) y el gate de
   //    temporada (A7). El motor emite eventos que la capa de socket difunde.
   footballEngine = new FootballEngine(footballStore, {
+    officialV2,
     logEvent: footballLog,
     settleBets: (match, score) => footballBetting.settleMatchBets(match, score),
     refundBets: (match, reason) => footballBetting.refundMatchBets(match, reason),
@@ -3515,6 +3526,10 @@ async function initFootball() {
     countOpenBets: () => footballBetting.countOpenBets(),
     countEscrow: () => footballBetting.countEscrow()
   });
+
+  // Los futuros pueden seguir cotizándose durante V2 usando solo el marcador,
+  // tarjetas y goleadores YA revelados, sin leer resultados futuros privados.
+  footballBetting.futureMarket.getLiveState = (match, at) => publicProjectionState(footballEngine, match, at);
 
   // 5. Reconciliación de arranque (§15.6): reconstruye el estado de los partidos no
   //    terminales desde (seed, now) y cuadra el escrow. ANTES de aceptar tráfico.
@@ -3595,7 +3610,7 @@ async function initFootball() {
 
   // 7. Scheduler: sweeps de kickoff, avance, partidos atascados y temporada (§15).
   footballScheduler = new FootballScheduler(footballEngine, {
-    ballonDorService: footballBallonDorMarket, logEvent: footballLog
+    officialV2, ballonDorService: footballBallonDorMarket, logEvent: footballLog
   });
   footballScheduler.start();
 
@@ -3615,7 +3630,14 @@ async function bootstrap() {
   // de su constructor (archivo) o de _init (Postgres), antes de que exista el store de
   // fútbol y antes de poder consultar si quedan apuestas abiertas. El cierre efectivo
   // se hace más abajo con profiles.ensureSeason(), ya con el gate cableado.
-  profiles = await createProfileStore(process.env.PROFILE_STORE_PATH, process.env.DATABASE_URL, { deferSeasonCheck: true });
+  profiles = await createProfileStore(process.env.PROFILE_STORE_PATH, process.env.DATABASE_URL, {
+    deferSeasonCheck: true,
+    footballSingleWriter: footballConfig.enabled,
+    onFootballWriterLost: error => {
+      console.error('Se perdió la exclusión de escritura del Estadio; cerrando el proceso:', error.message);
+      process.exit(1);
+    }
+  });
   accountSessionStore = createAccountSessionStore(adminConfig);
   auditStore = createAuditStore(adminConfig);
   moderationStore = createModerationStore(adminConfig);
@@ -3643,9 +3665,8 @@ async function bootstrap() {
     // reset mensual. ensureSeason() del casino lo consulta ANTES de cerrar la
     // temporada: si la temporada que va a cerrar aún tiene apuestas, combinadas o
     // futuros abiertos, devuelve {type:'deferred'} y no se reinician los saldos.
-    // Fallo abierto: si la consulta falla, se permite el cierre — el casino no puede
-    // quedar atascado por un error del gate (y ensureSeason lleva su propio tope de
-    // aplazamientos, SEASON_RESET_MAX_DEFERRALS).
+    // Si no se puede consultar el escrow, se aplaza el cierre para no borrar
+    // compromisos sin reconciliar; es necesario reparar el fallo de persistencia.
     profiles.onBeforeSeasonReset = ({ fromMonth, date }) => {
       // Intenta cerrar/resolver el ciclo que termina. El gancho existente es
       // síncrono; la promesa queda aislada para que un fallo del premio jamás
@@ -3661,9 +3682,9 @@ async function bootstrap() {
       try {
         return footballSeasonResetGate(footballStore, fromMonth);
       } catch (error) {
-        console.warn('Gate de reset de temporada: no se pudo consultar el fútbol; se permite el cierre:', error.message);
+        console.warn('Gate de reset de temporada: no se pudo consultar el fútbol; se aplaza el cierre:', error.message);
+        return { type: 'deferred', reason: 'escrow_de_futbol_no_disponible', requireSettlement: true };
       }
-      return null;
     };
     profiles.onAfterSeasonReset = ({ fromMonth, toMonth }) => {
       if (!footballBallonDorMarket) return;

@@ -1,6 +1,8 @@
 # Plan incremental: motor de partidos y comentarios V2
 
-**Estado:** propuesta de planificación; no autoriza todavía cambiar el motor activo.
+**Estado al 31 de octubre de 2026:** el código selecciona y prepara automáticamente V2 desde noviembre, conserva compromisos anteriores y opera con cuotas estimadas, por decisión expresa del usuario de usar la información disponible y mejorar gradualmente. `render.yaml` habilita el Estadio, pero este cambio en el repositorio **no equivale a un despliegue**. El estimador no ha demostrado exactitud ni rentabilidad; véanse alcance, pruebas y límites al final.
+
+Las secciones 1–9 conservan el plan y sus puertas de aceptación originales como contexto histórico. En particular, la exigencia de calibración previa a activar apuestas se sustituyó por la autorización posterior de cuotas aproximadas; no debe leerse como una certificación ya obtenida.
 
 **Fecha de auditoría:** 2026-10-10.
 
@@ -308,6 +310,50 @@ Si conserva un ejemplo del fallo de #18 (seed/minuto, captura o descripción exa
 
 Por ahora el plan conserva dos voces en español y el límite actual de 140 caracteres como valor por defecto. Cambiarlo sería una decisión editorial separada, no un prerrequisito para comenzar el prototipo.
 
-## 10. Cierre de esta sesión
+## 10. Cierre del análisis original (histórico)
 
-Esta sesión se mantiene en **análisis y planificación**. No se implementó ni modificó el motor, el generador de comentarios, el scheduler ni las cuotas. El siguiente paso de implementación sería la Fase 0 (reproducir el fallo y fijar la línea base) y luego los contratos del V2; no saltar directamente a reemplazar V1.
+La sesión inicial terminó en análisis y planificación. Los avances posteriores de implementación se describen a continuación; esta sección histórica no representa el estado actual.
+
+## Estado de implementación y riesgos abiertos — 31 de octubre de 2026
+
+### Implementado y comprobado
+
+- `v2-causal-3` genera goles desde jugadas e incorpora faltas, tarjetas, cambios, añadido y relato. `v2-knockout-1` continúa con prórroga y tanda física cuando corresponda; el ganador de penales no cambia el marcador de goles. La UI muestra los penales ya ejecutados, no los futuros. Se conservan las versiones anteriores para reproducir sus compromisos.
+- Desde noviembre el arranque, el scheduler y la admisión de apuestas preparan V2 automáticamente; el horizonte normal es de 24 horas y una apuesta anticipada prepara ese partido antes de aceptarse. La instantánea y las cuotas de cada encuentro se congelan en el momento de prepararlo. Una política durable de temporada fija las versiones y deriva la clave privada de cada encuentro. Un boleto o futuro V1 previo conserva sus obligaciones, sin migrarse silenciosamente.
+- `v2-estimated-1` usa un prior sintético de 2.048 partidos sobre 32 enfrentamientos, más ajustes acotados por ratings, Elo, atributos y media goleadora. Cotiza los mercados prepartido y 1X2 live; la prórroga y el cálculo live son aproximaciones. Los futuros de campeón, posiciones y goleador, y las proyecciones del Balón de Oro, usan información del V2; los futuros live solo incorporan hechos revelados.
+- Simples, combinadas, cash-out y futuros conservan la cuota aceptada y se liquidan contra el resultado oficial. El escrow recuperable registra débitos y pagos idempotentes. La preparación experimental de muestras en workers sigue disponible como ruta separada; no se confunde con la estimación oficial.
+- El replay completo y las claves son privados; los sockets y HTTP solo entregan el estado ya revelado. La protección del reset espera obligaciones pendientes y, si no pueden reconciliarse, puede requerir reparación manual.
+- En PostgreSQL, con Estadio habilitado, el servidor adquiere antes de leer perfiles una concesión de escritor único. Las escrituras de fútbol y perfiles conectadas a ella comprueban un token de *fencing* dentro de la transacción; si se pierde la concesión, el proceso termina. Una segunda instancia protegida no arranca hasta que la primera libera la concesión.
+
+### Datos históricos usados por el prototipo V2
+
+Al preparar un partido, `prepareMatchInputs()` consulta la temporada actual y la inmediatamente anterior desde el store. Solo admite resultados asentados con fecha no posterior a la preparación. El historial anterior influye mediante los ratings `elo`, `att` y `def` ya actualizados al asentar partidos; su peso decrece al acumular partidos de la temporada actual. El once, sus atributos y ratings se copian a una instantánea del encuentro. La media de goles de liga se calcula desde los últimos 60 resultados asentados ordenados por kickoff, con el mismo mínimo de muestra y los límites del contexto rodante; al inicio se mezcla con la media de la temporada previa, cuyo peso cae con más partidos actuales. No se modificó el cálculo de V1.
+
+Elo es una medida relativa de fuerza histórica: en `v2-causal-3` una diferencia de hasta 400 puntos aporta un ajuste limitado a pase, disparo, defensa y portería; se acota para no duplicar completamente los ratings de ataque/defensa. La media se expresa en goles **por equipo y partido**, no por encuentro completo, y ajusta de manera acotada la precisión de los tiros para reflejar si la liga es más o menos goleadora. Son señales de modelado, no garantizan realismo ni exactitud económica por sí mismas. La ventaja de local del contexto, rachas, lesiones y sanciones históricas aún no se incorporan explícitamente a V2.
+
+En la integración oficial el modelo estimado queda ligado al hash de esa misma instantánea y el boleto conserva la cuota aceptada. Los datos ayudan a estimar el encuentro y sus precios; no determinan el cobro, que se resuelve contra el resultado oficial del propio partido. **Decisión del usuario:** una vez preparado, ningún resultado posterior actualiza ese partido antes del kickoff. Esto protege la reproducibilidad y lo ya cotizado, pero deja de reflejar cambios ocurridos después de la preparación. No se ha inspeccionado la base de producción.
+
+Como comprobación exploratoria de direccionalidad, se simularon 128 partidos por escenario con un enfrentamiento sintético y semillas emparejadas. Al cambiar Elo de local 1300/visitante 1700 a local 1700/visitante 1300, la proporción de victorias locales observada pasó de **21,9 % a 30,5 %**; al pasar la media de liga de 0,95 a 1,85, los goles totales medios pasaron de **2,30 a 3,36**. Son muestras pequeñas de un solo enfrentamiento y no prueban calibración, sesgo ni margen económico.
+
+### Prueba económica exploratoria, no certificación
+
+`node scripts/calibrate-football-v2.js --demo --samples=2048` en `v2-causal-2` usó **dos grupos independientes de 2.048 partidos sintéticos**, para un único enfrentamiento, en **377,4 s**. El filtro agregado de cinco métricas pasó (diferencia máxima 2,54 puntos porcentuales). Con `v2-quotes-2`, 0 de 44 selecciones ofertadas tuvieron retorno positivo observado en ese grupo de control. La cobertura de estados observados con cotización live fue **62,18 %**. Una versión anterior de cuotas mostró 6 de 45 selecciones con retorno positivo; la comparación no valida todos los mercados ni justifica el despliegue. Los límites de Wilson no corrigen sesgos estructurales, información visible durante una jugada, cash-out, exposición ni futuros.
+
+Repetición con `v2-causal-3` y el mismo comando: dos grupos independientes de **2.048** partidos sintéticos tardaron **468,1 s** mientras corrían otras pruebas. El filtro agregado pasó (diferencia máxima **2,002 puntos porcentuales**); 0 de 44 selecciones ofertadas tuvieron retorno positivo observado en el grupo de control, pero la cobertura de estados live observados fue solo **61,18 %**. El worker evita bloquear el bucle principal, no hace desaparecer ese coste ni convierte la cobertura parcial en completa. Es un único enfrentamiento sintético y no certifica ninguna garantía económica.
+
+La calibración actual se realiza por enfrentamiento; el tiempo de esta muestra hace inviable ejecutar 240 enfrentamientos secuencialmente en el arranque sin un diseño de preparación y coste diferente. En otro ensayo exploratorio de siete enfrentamientos con plantillas de noviembre y 192 muestras por partido, por ejemplo, Celtic de Cómic–Real Suciedad produjo medias V2 de **1,203–1,906** goles frente a lambdas V1 de **1,501–1,256**. Una distribución agrupada, contrastada dejando fuera cada enfrentamiento y con margen del 15 %, llegó a un retorno observado de **+107,2 %** en un marcador 0–1. Las muestras son pequeñas: no demuestran ese retorno como propiedad estable, pero sí desaconsejan sustituir la calibración por las cuotas V1 o por una cohorte global sin más pruebas. Otros 32 enfrentamientos con 64 muestras cada uno se usaron para explorar ajustes, sin convertirlos en cuotas oficiales. No hay datos reales de octubre en este checkout: no se han inventado estadísticas de producción.
+
+### Alcance operativo y límites
+
+1. **Calidad económica:** el usuario aceptó estimaciones con los datos disponibles. El prior sintético y sus ajustes no son una calibración por enfrentamiento ni certifican márgenes, ausencia de arbitraje entre todos los mercados, exactitud live o beneficios. La proyección de prórroga/tanda y de temporada es aproximada. Se debe medir con observaciones reales y evolucionar por versiones, preservando siempre las versiones ligadas a boletos anteriores.
+2. **Disponibilidad:** los mercados prepartido se publican con la estimación; el mercado live expuesto en la interfaz es 1X2 y se suspende en pausas. Los futuros ordinarios cierran tras la jornada 20; Bota de Oro se omite si faltan datos necesarios y el guard previo sigue aplicando a un V1 histórico sin fuente live segura. Los cierres por reglas del producto, corrupción, persistencia o incompatibilidad no son cuotas garantizadas en cualquier estado.
+3. **Claves y privacidad:** a diferencia del plan inicial de crear el seed después del cierre prepartido, la clave raíz se crea y persiste **antes de aceptar futuros**, para comprometer la temporada sin congelar todas las entradas. Sus claves derivadas y el replay privado no se envían al cliente. Acceso al archivo o base, copias y secretos debe restringirse; una filtración permitiría reproducir resultados futuros.
+4. **Tanda:** no se fuerza artificialmente ningún gol tras una cantidad de rondas. El replay tiene un límite de recursos de 240 minutos simulados; una tanda patológica que lo exceda falla cerrada y requiere intervención, en vez de inventar un ganador.
+5. **Persistencia y concurrencia:** el guard y *fencing* de PostgreSQL cubren las rutas de perfil/fútbol conectadas en procesos nuevos con `FOOTBALL_ENABLED=on`. No protegen versiones anteriores, procesos con el flag apagado, otros stores de perfil ni múltiples escritores del archivo JSON. Hay que coordinar el primer despliegue para no solapar versiones. El guardado por archivo usa reemplazo atómico, pero no garantiza `fsync` ante pérdida de energía.
+6. **Producción:** activar `FOOTBALL_ENABLED` en el Blueprint versionado no despliega ni inspecciona la base o el disco de producción. No se han inventado estadísticas históricas reales; el arranque usa las que encuentre persistidas. Los compromisos JSONB antiguos cuyo orden ya cambió requieren recuperar el original o reparación explícita, no recalcular su hash silenciosamente.
+
+### Comprobaciones ejecutadas
+
+La validación completa del árbol actual pasó con PostgreSQL 18 temporal real: **520/520 unitarias y 229/229 de integración**, sin omisiones; lint y sintaxis de 249 archivos JavaScript también pasaron. El recorrido de servidor real pasa de octubre a noviembre, comprueba que la política y los próximos compromisos existen antes de abrir HTTP, consulta un partido público sin secretos y reinicia conservando las claves. Las pruebas focales cubren apuestas simples, combinadas, live, cash-out, futuros, desempate, tanda física sin gol forzado y persistencia/reinicio en JSON y PostgreSQL, incluida una respuesta perdida tras `COMMIT`.
+
+Las pruebas de concurrencia verifican la exclusión de una segunda instancia protegida, el cambio de dueño y el rechazo del token anterior. El diagnóstico anterior sin guard sí produjo dos apuestas de 500 con saldo persistido incorrecto de 500 en vez de 0. Ninguna de estas pruebas sustituye la validación económica del estimador ni cubre todas las configuraciones operativas posibles.

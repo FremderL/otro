@@ -9,6 +9,8 @@ const { FootballStore } = require('../lib/football-store');
 const { ProfileStore } = require('../lib/profile-store');
 const { ACHIEVEMENTS, CHALLENGES } = require('../lib/progression');
 const { FootballEngine } = require('../lib/football/engine');
+const { prepareV2Match } = require('../lib/football/v2/prepare');
+const { commitmentId } = require('../lib/football/v2/commitment');
 const { createBettingService } = require('../lib/football/betting');
 const {
   BALLON_DOR_MARKET, MAX_PAYOUT, OVERROUND, SIMULATIONS,
@@ -507,6 +509,40 @@ test('el premio pendiente sobrevive al reset mensual y se liquida una sola vez t
   assert.equal(restartedProfile.chips, 1000 + paid.payout, 'la recuperación y los barridos repetidos no duplican el pago');
 });
 
+test('BDO y la preparación V2 respetan el orden de admisión de compromisos', async () => {
+  for (const prepareFirst of [false, true]) {
+    const h = tempHarness({ createProfiles: true });
+    try {
+      await activateWithSnapshot(h);
+      const match = h.league.calendar.matches[0];
+      const betting = createBettingService({ store: h.store, profiles: h.profiles, now: () => openAt + 1000 });
+      const options = { store: h.store, match, asOf: openAt + 1000, keyFactory: () => 'cc'.repeat(32) };
+      if (prepareFirst) {
+        assert.equal((await prepareV2Match(options)).ok, true);
+        const placed = await betting.placeBallonDorBet({ profile: h.profile, selection: h.league.ballonDor.candidates[0].id,
+          stake: 100, idempotencyKey: 'v2-after-prepare' });
+        assert.equal(placed.ok, true, placed.code);
+        assert.ok(placed.future.simulationCommitments.some(item => item.matchId === match.id && item.id === commitmentId(match.simulation)));
+        assert.equal(new FootballEngine(h.store).startMatch(match, match.scheduledKickoffAt), true);
+      } else {
+        let entered, release;
+        const started = new Promise(resolve => { entered = resolve; });
+        const gate = new Promise(resolve => { release = resolve; });
+        const insert = h.store.insertBallonDorFuture.bind(h.store);
+        h.store.insertBallonDorFuture = async future => { entered(); await gate; return insert(future); };
+        const placing = betting.placeBallonDorBet({ profile: h.profile, selection: h.league.ballonDor.candidates[0].id,
+          stake: 100, idempotencyKey: 'v2-before-prepare' });
+        await started;
+        const preparing = prepareV2Match(options);
+        release();
+        assert.equal((await placing).ok, true);
+        assert.equal((await preparing).reason, 'compromisos_anteriores');
+        assert.equal(match.simulation, undefined);
+      }
+    } finally { h.cleanup(); }
+  }
+});
+
 test('el gate del reset conserva la protección de otras apuestas de fútbol', () => {
   const store = {
     hasOpenBets: () => false,
@@ -514,7 +550,7 @@ test('el gate del reset conserva la protección de otras apuestas de fútbol', (
     getOpenFutures: () => [{ market: 'football_champion' }]
   };
   assert.deepEqual(footballSeasonResetGate(store, SEASON), {
-    type: 'deferred', reason: 'apuestas_de_futbol_abiertas'
+    type: 'deferred', reason: 'apuestas_de_futbol_abiertas', requireSettlement: true
   });
 });
 

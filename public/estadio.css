@@ -2278,6 +2278,16 @@ body.est-hub-open { overflow:hidden; }
 .est-highlights ol { margin:0; padding-left:20px; font-size:13px; line-height:1.6; }.est-highlights button { padding:9px 12px; border:1px solid #90d5af; border-radius:7px; background:#1e5139; color:#fff; cursor:pointer; }
 .est-highlights-note { color:#aec7b7; font-size:11px; }
 
+/* Entrada claramente separada de los partidos oficiales y sus mercados. */
+.est-lab-launch{display:flex;flex-direction:column;align-items:flex-start;gap:7px;padding:17px 18px;text-decoration:none;color:#f0f5ec;border:1px solid rgba(218,196,137,.28);border-radius:14px;background:linear-gradient(135deg,rgba(43,40,27,.9),rgba(13,26,22,.96));}
+.est-lab-launch:hover{border-color:#e0c88f;background-color:#26382d;}
+.est-lab-launch:focus-visible{outline:3px solid #9cf2c0;outline-offset:3px;}
+.est-lab-kicker{color:#dcc991;font-size:9px;font-weight:850;letter-spacing:.13em;}
+.est-lab-launch strong{font-family:var(--display);font-size:18px;line-height:1.15;}
+.est-lab-launch strong span{color:#e6d59f;font-family:var(--sans);font-size:14px;}
+.est-lab-launch>span:not(.est-lab-kicker):not(.est-lab-action){color:#bfcfc2;font-size:12px;line-height:1.4;}
+.est-lab-launch .est-lab-action{margin-top:3px;color:#c7e7c8;font-size:11px;font-weight:800;}
+
 /* ===== Cuentas regresivas largas (DD:HH:MM:SS) =====
    Dos relojes del lobby: fin de temporada del casino (reinicio de fichas) y
    ciclo del Balón de Oro. Cifras tabulares para que no baile el ancho. */

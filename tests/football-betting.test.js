@@ -29,12 +29,12 @@ function setup({ chips = 1000, withSim = false } = {}) {
   const profile = profiles.getOrCreate('p1', 'Jugador', null);
   profile.chips = chips;
   profiles.saveNow();
+  const match = store.getMatches(month).find(m => m.status === 'scheduled');
   const betting = createBettingService({
-    store, profiles,
+    store, profiles, now: () => Math.min(...store.getMatches(month).map(item => item.scheduledKickoffAt)) - 60000,
     simulatedFlow: withSim ? new SimulatedFlow({ log: () => {} }) : null,
     log: () => {}
   });
-  const match = store.getMatches(month).find(m => m.status === 'scheduled');
   const cleanup = () => { try { store.close(); } catch (_) {} try { profiles.saveNow(); } catch (_) {} fs.rmSync(dir, { recursive: true, force: true }); };
   return { dir, store, profiles, profile, betting, match, month, footballPath, profilesPath, cleanup };
 }
@@ -50,6 +50,221 @@ function neuterProgression(profile) {
   profile.transactions.length = 0;
   profile.balanceHistory.length = 0;
 }
+
+test('la colocación interrumpida reembolsa solo el débito realmente persistido', async () => {
+  for (const kind of ['bet', 'parlay', 'future']) for (const wroteProfile of [false, true]) {
+    const h = setup({ chips: 1000 });
+    try {
+      const [m1, m2] = h.store.getMatches(h.month).filter(m => m.status === 'scheduled');
+      const persist = h.profiles.persistProfile.bind(h.profiles);
+      h.profiles.persistProfile = profile => { if (wroteProfile) persist(profile); return false; };
+      const result = kind === 'bet'
+        ? await h.betting.placeBet({ profile: h.profile, matchId: m1.id, market: '1x2', selection: 'home', stake: 100, placedAt: 1000 })
+        : kind === 'parlay' ? await h.betting.placeParlay({ profile: h.profile, legs: [
+          { matchId: m1.id, market: '1x2', selection: 'home' }, { matchId: m2.id, market: '1x2', selection: 'home' }
+        ], stake: 100, placedAt: 1000 })
+          : await h.betting.placeFuture({ profile: h.profile, seasonMonth: h.month, market: 'champion', selection: m1.homeId, odds: 5, stake: 100, placedAt: 1000 });
+      assert.strictEqual(result.code, 'persistencia_pendiente');
+      const store = new FootballStore(h.footballPath), profiles = new ProfileStore(h.profilesPath);
+      assert.strictEqual(profiles.getProfile('p1').chips, wroteProfile ? 900 : 1000);
+      const recovery = createBettingService({ store, profiles });
+      recovery.reconcileEscrow();
+      assert.strictEqual(profiles.getProfile('p1').chips, 1000, `${kind}/${wroteProfile}`);
+      const ticket = kind === 'bet' ? store.getBets({})[0] : kind === 'parlay' ? store.getParlays({})[0] : store.getFutures({})[0];
+      assert.strictEqual(ticket.status, 'void');
+      assert.strictEqual(ticket.payout, wroteProfile ? 100 : 0);
+      assert.strictEqual(ticket.payoutApplied, true);
+      recovery.reconcileEscrow();
+      assert.strictEqual(profiles.getProfile('p1').chips, 1000);
+    } finally { h.cleanup(); }
+  }
+});
+
+test('la reconciliación no anula colocaciones en curso y se puede reintentar una confirmación incierta', async () => {
+  const h = setup({ chips: 1000 });
+  try {
+    const strict = h.store.saveStrict.bind(h.store);
+    let unblock, entered;
+    const gate = new Promise(resolve => { unblock = resolve; });
+    const waiting = new Promise(resolve => { entered = resolve; });
+    let calls = 0;
+    h.store.saveStrict = async () => { calls++; if (calls === 1) { entered(); await gate; return strict(); } if (calls === 2) return false; return strict(); };
+    const args = { profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'home', stake: 100, placedAt: 1000 };
+    const placing = h.betting.placeBet(args);
+    await waiting;
+    assert.strictEqual(h.betting.cancelPendingBets({ onlyDurable: true }), 0);
+    assert.strictEqual(h.store.getBets({})[0].status, 'pending');
+    unblock();
+    assert.strictEqual((await placing).code, 'persistencia_pendiente');
+    assert.strictEqual(h.profile.chips, 900);
+    assert.strictEqual(h.store.getBets({})[0].status, 'open');
+    const retry = await h.betting.placeBet(args);
+    assert.strictEqual(retry.ok, true);
+    assert.strictEqual(retry.replayed, true);
+    assert.strictEqual(h.profile.chips, 900);
+  } finally { h.cleanup(); }
+});
+
+test('recupera pagos simples y combinadas después de una caída antes o después de guardar el perfil', async () => {
+  for (const mode of ['antes_perfil', 'despues_perfil']) {
+    const h = setup({ chips: 1000 });
+    try {
+      neuterProgression(h.profile);
+      h.profiles.saveNow();
+      const [m1, m2, m3] = h.store.getMatches(h.month).filter(m => m.status === 'scheduled');
+      const bet = await h.betting.placeBet({ profile: h.profile, matchId: m1.id, market: '1x2', selection: 'home', stake: 100, placedAt: 1000 });
+      const parlay = await h.betting.placeParlay({ profile: h.profile, legs: [
+        { matchId: m2.id, market: '1x2', selection: 'home' },
+        { matchId: m3.id, market: '1x2', selection: 'home' }
+      ], stake: 100, placedAt: 2000 });
+      assert.strictEqual(bet.ok, true, bet.code);
+      assert.strictEqual(parlay.ok, true, parlay.code);
+      const base = h.profile.chips;
+      const persist = h.profiles.persistProfile.bind(h.profiles);
+      h.profiles.persistProfile = profile => {
+        if (mode === 'despues_perfil') persist(profile); // simulación de respuesta perdida tras escribir
+        return false;
+      };
+      h.betting.settleMatchBets(m1, { home: 1, away: 0 });
+      h.betting.settleParlayLeg(parlay.parlay.id, m2.id, { home: 1, away: 0 }, []);
+      h.betting.settleParlayLeg(parlay.parlay.id, m3.id, { home: 1, away: 0 }, []);
+      assert.strictEqual(h.store.getBet(bet.bet.id).payoutApplied, false);
+      assert.strictEqual(h.store.getParlay(parlay.parlay.id).payoutApplied, false);
+      assert.strictEqual(h.betting.hasOpenBets(h.month), true, 'no se reinicia saldo con pagos pendientes');
+      const expected = base + h.store.getBet(bet.bet.id).payout + h.store.getParlay(parlay.parlay.id).payout;
+      const reloadedStore = new FootballStore(h.footballPath);
+      const reloadedProfiles = new ProfileStore(h.profilesPath);
+      const recovered = createBettingService({ store: reloadedStore, profiles: reloadedProfiles, log: () => {} });
+      recovered.reconcileEscrow();
+      assert.strictEqual(reloadedProfiles.getProfile('p1').chips, expected, mode);
+      assert.strictEqual(reloadedStore.getBet(bet.bet.id).payoutApplied, true);
+      assert.strictEqual(reloadedStore.getParlay(parlay.parlay.id).payoutApplied, true);
+      recovered.reconcileEscrow();
+      assert.strictEqual(reloadedProfiles.getProfile('p1').chips, expected, 'reintentar no paga dos veces');
+      const again = new ProfileStore(h.profilesPath);
+      assert.strictEqual(again.getProfile('p1').chips, expected, 'el saldo recuperado queda persistido');
+    } finally { h.cleanup(); }
+  }
+});
+
+test('la liquidación y el reembolso de futuros se recuperan sin pagar dos veces', async () => {
+  for (const refund of [false, true]) {
+    const h = setup({ chips: 1000 });
+    try {
+      neuterProgression(h.profile);
+      h.profiles.saveNow();
+      const future = await h.betting.placeFuture({ profile: h.profile, seasonMonth: h.month, market: 'champion',
+        selection: h.match.homeId, odds: 3, stake: 100, placedAt: 1000 });
+      assert.strictEqual(future.ok, true);
+      const persist = h.profiles.persistProfile.bind(h.profiles);
+      h.profiles.persistProfile = profile => { persist(profile); return false; };
+      if (refund) h.betting.refundFutures(h.month, 'temporada incompleta');
+      else h.betting.settleFutures(h.month, { championTeamId: h.match.homeId });
+      assert.strictEqual(h.store.getFuture(future.future.id).payoutApplied, false);
+      const expected = refund ? 1000 : 900 + future.future.potentialPayout;
+      const store = new FootballStore(h.footballPath), profiles = new ProfileStore(h.profilesPath);
+      const recovered = createBettingService({ store, profiles });
+      recovered.reconcileEscrow();
+      assert.strictEqual(profiles.getProfile('p1').chips, expected);
+      assert.strictEqual(store.getFuture(future.future.id).payoutApplied, true);
+      recovered.reconcileEscrow();
+      assert.strictEqual(profiles.getProfile('p1').chips, expected);
+    } finally { h.cleanup(); }
+  }
+});
+
+test('un cash-out pendiente se recupera y su reintento devuelve el mismo importe una sola vez', async () => {
+  const h = setup({ chips: 1000 });
+  try {
+    neuterProgression(h.profile);
+    h.profiles.saveNow();
+    const bet = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'home', stake: 100, placedAt: 1000 });
+    assert.strictEqual(bet.ok, true);
+    const persist = h.profiles.persistProfile.bind(h.profiles);
+    h.profiles.persistProfile = () => false;
+    const first = await h.betting.cashout(h.profile, bet.bet.id);
+    assert.strictEqual(first.ok, false);
+    const ticket = h.store.getBet(bet.bet.id);
+    assert.strictEqual(ticket.status, 'cashed');
+    assert.strictEqual(ticket.payoutApplied, false);
+    const once = h.profile.chips;
+    h.profiles.persistProfile = persist;
+    h.match.status = 'settled';
+    const retry = await h.betting.cashout(h.profile, bet.bet.id);
+    assert.strictEqual(retry.ok, true);
+    assert.strictEqual(retry.replayed, true);
+    assert.strictEqual(retry.cashout, ticket.payout);
+    assert.strictEqual(h.profile.chips, once);
+    assert.strictEqual(ticket.payoutApplied, true);
+    assert.strictEqual((await h.betting.cashout(h.profile, bet.bet.id)).cashout, ticket.payout);
+    assert.strictEqual(h.profile.chips, once);
+  } finally { h.cleanup(); }
+});
+
+test('un pago sin confirmar no se repite aunque se recorte el historial general del perfil', async () => {
+  const h = setup({ chips: 1000 });
+  try {
+    neuterProgression(h.profile);
+    h.profiles.saveNow();
+    const bet = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'home', stake: 100, placedAt: 1000 });
+    const persist = h.profiles.persistProfile.bind(h.profiles);
+    h.profiles.persistProfile = profile => { persist(profile); return false; };
+    h.betting.settleMatchBets(h.match, { home: 1, away: 0 });
+    const afterPayment = h.profile.chips;
+    const operationId = `football:bet:payout:${bet.bet.id}`;
+    assert.ok(h.profile.footballPendingPayments.includes(operationId));
+    h.profile.appliedChipOperations = [];
+    h.profile.transactions = [];
+    h.profiles.saveNow();
+    const store = new FootballStore(h.footballPath), profiles = new ProfileStore(h.profilesPath);
+    const recovery = createBettingService({ store, profiles });
+    recovery.reconcileEscrow();
+    assert.strictEqual(profiles.getProfile('p1').chips, afterPayment);
+    assert.strictEqual(store.getBet(bet.bet.id).payoutApplied, true);
+  } finally { h.cleanup(); }
+});
+
+test('si falla el guardado del boleto no se acredita hasta poder confirmar el registro', async () => {
+  const h = setup({ chips: 1000 });
+  try {
+    neuterProgression(h.profile);
+    h.profiles.saveNow();
+    const bet = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'home', stake: 100, placedAt: 1000 });
+    const before = h.profile.chips;
+    const strict = h.store.saveStrict.bind(h.store);
+    h.store.saveStrict = () => false;
+    h.betting.settleMatchBets(h.match, { home: 1, away: 0 });
+    assert.strictEqual(h.profile.chips, before);
+    assert.strictEqual(h.store.getBet(bet.bet.id).payoutApplied, false);
+    h.store.saveStrict = strict;
+    h.betting.reconcileEscrow();
+    assert.strictEqual(h.profile.chips, before + h.store.getBet(bet.bet.id).payout);
+    assert.strictEqual(h.store.getBet(bet.bet.id).payoutApplied, true);
+  } finally { h.cleanup(); }
+});
+
+test('recuperaciones asíncronas concurrentes comparten una única operación de pago', async () => {
+  const h = setup({ chips: 1000 });
+  try {
+    neuterProgression(h.profile);
+    h.profiles.saveNow();
+    const bet = await h.betting.placeBet({ profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'home', stake: 100, placedAt: 1000 });
+    const before = h.profile.chips;
+    const strict = h.store.saveStrict.bind(h.store);
+    let unblock, count = 0;
+    const gate = new Promise(resolve => { unblock = resolve; });
+    h.store.saveStrict = async () => { count++; if (count === 1) await gate; return strict(); };
+    h.betting.settleMatchBets(h.match, { home: 1, away: 0 });
+    h.betting.reconcileEscrow();
+    h.betting.reconcileEscrow();
+    const pending = h.betting.ticketPayouts.get(`bet:${bet.bet.id}`);
+    assert.ok(pending);
+    unblock();
+    assert.strictEqual((await pending).ok, true);
+    assert.strictEqual(h.profile.chips, before + h.store.getBet(bet.bet.id).payout);
+    assert.strictEqual(h.profile.transactions.filter(tx => tx.operationId === `football:bet:payout:${bet.bet.id}`).length, 1);
+  } finally { h.cleanup(); }
+});
 
 // --- Resolución de selecciones (puro) ---
 
@@ -77,6 +292,34 @@ test('resolveSelection resuelve cada mercado contra el marcador', () => {
   assert.strictEqual(resolveSelection('mercado_raro', 'x', s(1, 0)), 'void');
 });
 
+test('marcador exacto otros conserva las celdas pactadas en simples y combinadas, incluso tras reinicio', async () => {
+  const h = setup({ chips: 2000 });
+  const [m1, m2, m3] = h.store.getMatches(h.month).filter(m => m.status === 'scheduled');
+  const bet = await h.betting.placeBet({ profile: h.profile, matchId: m1.id, market: 'correct_score', selection: 'other', stake: 200, placedAt: 1000 });
+  const parlay = await h.betting.placeParlay({ profile: h.profile, legs: [
+    { matchId: m2.id, market: 'correct_score', selection: 'other' },
+    { matchId: m3.id, market: '1x2', selection: 'home' }
+  ], stake: 200, placedAt: 2000 });
+  assert.strictEqual(bet.ok, true, bet.code);
+  assert.strictEqual(parlay.ok, true, parlay.code);
+  const betCells = bet.bet.correctScoreCells;
+  const legCells = parlay.parlay.legs[0].correctScoreCells;
+  assert.ok(betCells.length > 0 && legCells.length > 0);
+  const reloaded = new FootballStore(h.footballPath);
+  assert.deepStrictEqual(reloaded.getBet(bet.bet.id).correctScoreCells, betCells);
+  assert.deepStrictEqual(reloaded.getParlay(parlay.parlay.id).legs[0].correctScoreCells, legCells);
+  const betScore = betCells[0].split('-').map(Number);
+  const legScore = legCells[0].split('-').map(Number);
+  // Simula que una cotización posterior ya no ofrece ninguna celda anterior.
+  h.betting._correctScoreCells = () => [];
+  h.betting.settleMatchBets(m1, { home: betScore[0], away: betScore[1] });
+  h.betting.settleParlayLeg(parlay.parlay.id, m2.id, { home: legScore[0], away: legScore[1] }, []);
+  assert.strictEqual(h.store.getBet(bet.bet.id).status, 'lost');
+  assert.strictEqual(h.store.getParlay(parlay.parlay.id).status, 'lost');
+  reloaded.close();
+  h.cleanup();
+});
+
 // --- Colocación: orden WAL (A8) ---
 
 test('placeBet sigue el WAL: queda open, debita el stake y es idempotente', async () => {
@@ -93,6 +336,55 @@ test('placeBet sigue el WAL: queda open, debita el stake y es idempotente', asyn
   assert.strictEqual(h.store.getBets({ profileId: 'p1' }).length, 1, 'no se duplicó la apuesta');
   assert.strictEqual(h.profile.chips, 900, 'no se debitó dos veces');
   h.cleanup();
+});
+
+test('reintentar una simple tras el cierre no debita de nuevo ni filtra boletos de otro perfil', async () => {
+  const h = setup({ chips: 1000 });
+  try {
+    const args = { profile: h.profile, matchId: h.match.id, market: '1x2', selection: 'home',
+      stake: 500, placedAt: 1000, idempotencyKey: 'simple-request-1' };
+    const first = await h.betting.placeBet(args);
+    assert.strictEqual(first.ok, true, first.code);
+    assert.strictEqual(h.profile.chips, 500);
+    h.match.status = 'settled';
+    const replay = await h.betting.placeBet(args);
+    assert.strictEqual(replay.ok, true);
+    assert.strictEqual(replay.replayed, true);
+    assert.strictEqual(replay.bet.id, first.bet.id);
+    assert.strictEqual(h.profile.chips, 500);
+    assert.strictEqual((await h.betting.placeBet({ ...args, selection: 'away' })).code, 'conflicto_idempotencia');
+    const other = h.profiles.getOrCreate('p2', 'Otro', null);
+    other.chips = 1000;
+    const conflict = await h.betting.placeBet({ ...args, profile: other });
+    assert.strictEqual(conflict.code, 'conflicto_idempotencia');
+    assert.strictEqual(conflict.bet, undefined);
+    assert.strictEqual(other.chips, 1000);
+  } finally { h.cleanup(); }
+});
+
+test('una combinada conserva su clave idempotente y se recupera después del cierre y reinicio', async () => {
+  const h = setup({ chips: 1000 });
+  try {
+    const matches = h.store.getMatches(h.month).slice(0, 2);
+    const args = { profile: h.profile, stake: 500, placedAt: 1000, idempotencyKey: 'parlay-request-1',
+      legs: matches.map(match => ({ matchId: match.id, market: '1x2', selection: 'home' })) };
+    const first = await h.betting.placeParlay(args);
+    assert.strictEqual(first.ok, true, first.code);
+    assert.strictEqual(h.profile.chips, 500);
+    matches.forEach(match => { match.status = 'settled'; });
+    h.store.saveNow();
+    const reloaded = new FootballStore(h.footballPath);
+    const resumed = createBettingService({ store: reloaded, profiles: h.profiles });
+    const retry = await resumed.placeParlay(args);
+    assert.strictEqual(retry.ok, true);
+    assert.strictEqual(retry.replayed, true);
+    assert.strictEqual(retry.parlay.id, first.parlay.id);
+    assert.strictEqual(h.profile.chips, 500);
+    assert.strictEqual((await resumed.placeParlay({ ...args, stake: 400 })).code, 'conflicto_idempotencia');
+    const different = args.legs.map((leg, index) => index ? { ...leg, selection: 'draw' } : leg);
+    assert.strictEqual((await resumed.placeParlay({ ...args, legs: different })).code, 'conflicto_idempotencia');
+    reloaded.close();
+  } finally { h.cleanup(); }
 });
 
 test('T34: la sección crítica es síncrona — apuestas concurrentes nunca dejan saldo negativo', async () => {
@@ -348,6 +640,21 @@ test('combinada: escrow, patas y pago multiplicado; pata anulada → cuota 1.00'
   h.cleanup();
 });
 
+test('el pago potencial de una combinada coincide con el producto exacto de las cuotas pactadas', async () => {
+  const h = setup({ chips: 1000 });
+  try {
+    const [m1, m2] = h.store.getMatches(h.month).filter(m => m.status === 'scheduled');
+    h.betting.getMarket = () => ({ selections: [{ key: 'home', price: 1.33 }] });
+    const result = await h.betting.placeParlay({ profile: h.profile, stake: 500, placedAt: 1000,
+      legs: [m1, m2].map(match => ({ matchId: match.id, market: '1x2', selection: 'home' })) });
+    assert.strictEqual(result.ok, true, result.code);
+    assert.strictEqual(result.parlay.potentialPayout, Math.floor(500 * 1.33 * 1.33));
+    h.betting.settleParlayLeg(result.parlay.id, m1.id, { home: 1, away: 0 });
+    h.betting.settleParlayLeg(result.parlay.id, m2.id, { home: 1, away: 0 });
+    assert.strictEqual(h.store.getParlay(result.parlay.id).payout, result.parlay.potentialPayout);
+  } finally { h.cleanup(); }
+});
+
 test('combinada: una pata perdida → lost inmediato; todas anuladas → reembolso', async () => {
   const h = setup({ chips: 1000 });
   const [m1, m2] = h.store.getMatches(h.month).filter(m => m.status === 'scheduled');
@@ -383,10 +690,10 @@ test('futuros: escrow al colocar, pago al cerrar la temporada y reembolso si se 
   const res = h.betting.settleFutures(h.month, { championTeamId: 'atletico_solaris' });
   assert.strictEqual(res.settled, 1);
   assert.strictEqual(h.store.getFutures({ profileId: 'p1' })[0].status, 'won');
-  assert.strictEqual(h.profile.chips, 900 + 800, 'pago = 100 × 8');
+  assert.strictEqual(h.profile.chips, 900 + r.future.potentialPayout, 'se paga la cuota fijada por el servidor');
 
   const h2 = setup({ chips: 1000 });
-  await h2.betting.placeFuture({ profile: h2.profile, seasonMonth: h2.month, market: 'champion', selection: 'vantora', odds: 6, stake: 100, placedAtJornada: 1, placedAt: 1000 });
+  assert.equal((await h2.betting.placeFuture({ profile: h2.profile, seasonMonth: h2.month, market: 'champion', selection: h2.match.homeId, odds: 6, stake: 100, placedAtJornada: 1, placedAt: 1000 })).ok, true);
   const ref = h2.betting.refundFutures(h2.month, 'temporada truncada');
   assert.strictEqual(ref.refunded, 1);
   assert.strictEqual(h2.profile.chips, 1000, 'futuro reembolsado');

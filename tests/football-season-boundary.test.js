@@ -64,14 +64,13 @@ test('sus apuestas se liquidan, no se anulan por «partido inexistente»', t => 
   const dir = tmpdir();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const store = new FootballStore(path.join(dir, 'football.json'));
-  store.saveNow = () => undefined;
   const league = store.generateSeason(PAST);
   const profiles = new ProfileStore(path.join(dir, 'profiles.json'));
   const profile = profiles.getOrCreate('p1', 'Jugador', null);
   profile.chips = 1_000_000;
   profiles.saveNow();
-  const betting = createBettingService({ store, profiles, log: () => {} });
   const match = league.calendar.matches.find(item => item.jornada === 30);
+  const betting = createBettingService({ store, profiles, now: () => match.scheduledKickoffAt - 60000, log: () => {} });
 
   return betting.placeBet({
     profile, matchId: match.id, market: '1x2', selection: 'home', stake: 25000

@@ -159,8 +159,8 @@
     ball: { x: .5, y: .5 }, ballStart: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 },
     ballT0: 0, ballDur: 800, playerT0: 0, playerDur: 1900,
     serverMinute: 0, minuteReceivedAt: 0,
-    stoppage: null, // { half, added }: minutos que el árbitro añadió en la mitad en curso
-    minute: 0, phase: 'pre', score: { home: 0, away: 0 }, possession: { home: .5, away: .5 },
+    stoppage: null, // agregado anunciado por el árbitro para V1
+    minute: 0, clockLabel: null, phase: 'pre', score: { home: 0, away: 0 }, shootout: null, possession: { home: .5, away: .5 },
     goalFlashUntil: 0, goalAnimUntil: 0, goalCueAt: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false,
     crowdLastSentAt: 0,
     // Grada: votación de moderación y autorización de insultos del partido.
@@ -2642,6 +2642,7 @@
     S.socket.emit('football:subscribe', { scope: 'match', matchId: matchId, token: S.token, tos: S.tosVersion }, function (res) {
       if (!res || !res.ok) return onSubError(res);
       if (S.currentMatchId !== matchId) {
+        if (S.slip) closeSlip();
         S.currentMatchId = matchId;
         resetCrowdFeed();
         setCrowdMessage('', '');
@@ -3478,7 +3479,8 @@
     if (bdoNote) {
       if (bdo.status === 'scheduled') bdoNote.textContent = 'El ciclo abre el día 1 del mes.';
       else if (bdo.status === 'locked') bdoNote.textContent = 'Cuotas cerradas: la ceremonia espera el último partido.';
-      else if (betsCloseAt && betsCloseAt > nowMs) bdoNote.textContent = 'Apuestas abiertas · cierran en ' + formatDdhhmmss(betsCloseAt - nowMs) + '.';
+      else if (betsCloseAt && betsCloseAt > nowMs) bdoNote.textContent = 'Apuestas abiertas · cierre estimado en ' + formatDdhhmmss(betsCloseAt - nowMs) + '.';
+      else if (bdo.status === 'active') bdoNote.textContent = 'Apuestas abiertas · cierran al terminar la jornada 20.';
       else if (ceremonyAt) bdoNote.textContent = 'Ceremonia a las 22:00 del último partido · ' + shortMoment(ceremonyAt) + '.';
       else bdoNote.textContent = '';
     }
@@ -3528,8 +3530,11 @@
     S.serverMinute = Number(rawMin || 0);
     S.minuteReceivedAt = performance.now();
     S.minute = Math.round(S.serverMinute);
+    S.clockLabel = ms.state && ms.state.clockLabel != null ? String(ms.state.clockLabel) : null;
+    S.stoppage = null;
     S.phase = ms.state ? ms.state.phase : 'pre';
     S.score = ms.state ? ms.state.score : { home: 0, away: 0 };
+    S.shootout = ms.state && ms.state.shootout ? ms.state.shootout : null;
     S.possession = ms.state && ms.state.possession ? ms.state.possession : { home: .5, away: .5 };
     S.possessionTeam = ms.state && ms.state.possessionTeam ? ms.state.possessionTeam : 'home';
     S.ballCarrierId = ms.state ? ms.state.ballCarrierId : null;
@@ -3654,11 +3659,12 @@
   // ===== Ciclo de render (tweening 60 fps) =====
   function frame(now) {
     S.rafId = requestAnimationFrame(frame);
+    var v2 = Boolean(S.match && S.match.engine === 'v2');
 
     // Balón
     var bDur = S.ballDur || 800;
     var bp = clamp((now - (S.ballT0 || now)) / bDur, 0, 1);
-    var be = reduced.matches ? 1 : easeOutCubic(bp);
+    var be = reduced.matches ? 1 : v2 ? bp : easeOutCubic(bp);
     S.ball.x = lerp(S.ballStart.x, S.ballDest.x, be);
     S.ball.y = lerp(S.ballStart.y, S.ballDest.y, be);
 
@@ -3671,7 +3677,7 @@
     // Jugadores
     var pDur = S.playerDur || TICK_MS;
     var pGlobal = clamp((now - (S.playerT0 || now)) / pDur, 0, 1);
-    var eGlobal = reduced.matches ? 1 : easeOutCubic(pGlobal);
+    var eGlobal = reduced.matches ? 1 : v2 ? pGlobal : easeOutCubic(pGlobal);
 
     for (var i = 0; i < S.players.length; i++) {
       var pl = S.players[i];
@@ -3682,7 +3688,7 @@
       }
       pl.baseX = lerp(pl.startX, pl.destX, pe);
       pl.baseY = lerp(pl.startY, pl.destY, pe);
-      if (reduced.matches || S.playStopped) {
+      if (v2 || reduced.matches || S.playStopped) {
         pl.renderX = pl.baseX; pl.renderY = pl.baseY;
       } else if (carrier && pl.id === carrier.id) {
         pl.renderX = pl.baseX; pl.renderY = pl.baseY;
@@ -3692,7 +3698,7 @@
       }
     }
 
-    if (carrier && !S.playStopped) {
+    if (!v2 && carrier && !S.playStopped) {
       if (bp >= 0.8 || (Math.hypot(S.ballDest.x - S.ballStart.x, S.ballDest.y - S.ballStart.y) < 0.06)) {
         var dir = carrier.team === 'home' ? 1 : -1;
         S.ball.x = clamp(carrier.renderX + dir * 0.012, -0.01, 1.01);
@@ -3706,7 +3712,7 @@
     if (S.match && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0) {
       if (!S.playStopped && Number.isFinite(S.serverMinute) && Number.isFinite(S.minuteReceivedAt)) {
         var elapsedSec = (now - S.minuteReceivedAt) / 1000;
-        var currentSimMin = Math.min(90, Math.max(1, Math.floor(S.serverMinute + elapsedSec / 10)));
+        var currentSimMin = Math.min(90, Math.max(1, Math.floor(S.serverMinute + elapsedSec / (v2 ? 15 : 10))));
         if (currentSimMin !== S.minute) {
           S.minute = currentSimMin;
           renderScoreboard();
@@ -3932,9 +3938,13 @@
     el['name-home'].textContent = teamFull(S.match.homeId); el['name-away'].textContent = teamFull(S.match.awayId);
     el['score-home'].textContent = S.score.home; el['score-away'].textContent = S.score.away;
     var live = ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0;
-    el['est-clock'].textContent = live ? clockMinuteLabel() + ' ' + phaseLabel(S.phase) : (STATUS_LABEL[S.match.status] || '—');
+    var isV2Clock = S.match.engine === 'v2' && S.clockLabel != null;
+    var clockMinute = isV2Clock ? S.clockLabel + (S.clockLabel === 'PEN' ? '' : "'") : clockMinuteLabel();
+    var shootoutLabel = S.shootout ? 'Penales ' + Number(S.shootout.home) + '–' + Number(S.shootout.away) : null;
+    el['est-clock'].textContent = shootoutLabel && (S.phase === 'shootout' || !live) ? shootoutLabel
+      : live ? clockMinute + ' ' + phaseLabel(S.phase) : (STATUS_LABEL[S.match.status] || '—');
     el['est-market-phase'].textContent = live ? 'En vivo' : 'Pre-partido';
-    el['est-pitch'].setAttribute('aria-label', 'Cancha cenital. ' + teamFull(S.match.homeId) + ' ' + S.score.home + ' – ' + S.score.away + ' ' + teamFull(S.match.awayId) + '. Minuto ' + (S.stoppage && S.stoppage.added ? clockMinuteLabel() : S.minute) + ', ' + phaseLabel(S.phase) + '.');
+    el['est-pitch'].setAttribute('aria-label', 'Cancha cenital. ' + teamFull(S.match.homeId) + ' ' + S.score.home + ' – ' + S.score.away + ' ' + teamFull(S.match.awayId) + '. Minuto ' + clockMinute + ', ' + phaseLabel(S.phase) + (shootoutLabel ? '. ' + shootoutLabel : '') + '.');
   }
 
   // ===== Relato hablado =====
@@ -4209,22 +4219,25 @@
       S.minute = Math.round(S.serverMinute);
     }
     var st = data.state || data;
+    if (st.clockLabel != null) S.clockLabel = String(st.clockLabel);
     if (st.phase) S.phase = st.phase;
     if (st.score) S.score = st.score;
+    if (st.shootout) S.shootout = st.shootout;
     if (st.possession) S.possession = st.possession;
     if (Object.prototype.hasOwnProperty.call(st, 'possessionTeam')) S.possessionTeam = st.possessionTeam;
     if (Object.prototype.hasOwnProperty.call(st, 'ballCarrierId')) S.ballCarrierId = st.ballCarrierId;
     if (Object.prototype.hasOwnProperty.call(st, 'playStopped')) S.playStopped = Boolean(st.playStopped);
 
+    var v2 = Boolean(S.match && S.match.engine === 'v2');
     var ball = st.ball;
-    if (ball && (!S.ballCarrierId || S.playStopped)) {
+    if (ball && (v2 || !S.ballCarrierId || S.playStopped)) {
       var bx = clamp(ball.x, -0.01, 1.01);
       var by = clamp(ball.y, 0, 1);
-      if (Math.hypot(bx - S.ball.x, by - S.ball.y) > 0.015) {
+      if (v2 || Math.hypot(bx - S.ball.x, by - S.ball.y) > 0.015) {
         S.ballStart = { x: S.ball.x, y: S.ball.y };
         S.ballDest = { x: bx, y: by };
         S.ballT0 = performance.now();
-        S.ballDur = 1800;
+        S.ballDur = v2 ? 500 : 1800;
       }
     }
 
@@ -4235,7 +4248,7 @@
       recomputeTargets(S.ballDest.x, S.ballDest.y);
     }
     S.playerT0 = performance.now();
-    S.playerDur = 1900;
+    S.playerDur = v2 ? 500 : 1900;
 
     renderScoreboard();
     updateTextFallback();
@@ -4278,6 +4291,11 @@
     if (Object.prototype.hasOwnProperty.call(ev, 'ballCarrierId')) S.ballCarrierId = ev.ballCarrierId;
     if (Object.prototype.hasOwnProperty.call(ev, 'playStopped')) S.playStopped = Boolean(ev.playStopped);
     if (ev.phase) S.phase = ev.phase;
+    if (ev.clockLabel != null) S.clockLabel = String(ev.clockLabel);
+    if (/^\d+-\d+$/.test(String(ev.marcadorTanda || ''))) {
+      var shootoutParts = String(ev.marcadorTanda).split('-');
+      S.shootout = { home: Number(shootoutParts[0]), away: Number(shootoutParts[1]) };
+    }
     if (ev.minute != null && Number.isFinite(Number(ev.minute))) {
       S.serverMinute = Number(ev.minute);
       S.minuteReceivedAt = performance.now();
@@ -4293,51 +4311,56 @@
     }
     applyRosterEvent(ev);
 
-    // Balón: cinemática balística fluida
-    if (ev.ball && Number.isFinite(ev.ball.x) && Number.isFinite(ev.ball.y)) {
-      S.ballStart = { x: S.ball.x, y: S.ball.y };
-      S.ballDest = { x: clamp(ev.ball.x, -0.01, 1.01), y: clamp(ev.ball.y, 0, 1) };
-      var dist = Math.hypot(S.ballDest.x - S.ballStart.x, S.ballDest.y - S.ballStart.y);
-      var isShot = ev.type === 'shot' || ev.type === 'shot_on_target' || ev.type === 'goal' || ev.type === 'penalty_scored';
-      S.ballDur = isShot ? Math.max(320, Math.min(720, dist * 1000)) : Math.max(360, Math.min(850, dist * 1200));
-      S.ballT0 = performance.now();
-    }
-
-    // Jugadores
-    S.playerT0 = performance.now();
-    S.playerDur = 800;
-    S.players.forEach(function (player) {
-      player.startX = player.renderX;
-      player.startY = player.renderY;
-      player.dur = null;
-    });
-
-    if (ev.playerId != null && ev.actorPosition) movePlayerTo(ev.playerId, ev.actorPosition, 500);
-    if (ev.receiverId != null) movePlayerTo(ev.receiverId, ev.ball || S.ballDest, 700);
-    if (ev.keeperId != null && ev.keeperPosition) movePlayerTo(ev.keeperId, ev.keeperPosition, 400);
-
-    if (ev.type === 'kickoff' || ev.type === 'goal_restart') {
-      S.players.forEach(function (pl) {
-        if (pl.team === 'home') pl.destX = Math.min(pl.destX, 0.485);
-        else if (pl.team === 'away') pl.destX = Math.max(pl.destX, 0.515);
-      });
-      if (ev.playerId != null) movePlayerTo(ev.playerId, { x: 0.5, y: 0.5 }, 500);
-    }
-
-    if (ev.ball && !S.playStopped && S.possessionTeam && ['goal_celebration', 'halftime', 'ended'].indexOf(ev.phase) < 0) {
-      var defSide = S.possessionTeam === 'home' ? 'away' : 'home';
-      var nearestDef = null, minDist = Infinity;
-      S.players.forEach(function (pl) {
-        if (pl.team === defSide && pl.role !== 'GK' && pl.id !== ev.playerId) {
-          var d = Math.hypot(pl.renderX - S.ballDest.x, pl.renderY - S.ballDest.y);
-          if (d < minDist) { minDist = d; nearestDef = pl; }
-        }
-      });
-      if (nearestDef) {
-        nearestDef.destX = clamp(nearestDef.destX + (S.ballDest.x - nearestDef.destX) * 0.35, 0.02, 0.98);
-        nearestDef.destY = clamp(nearestDef.destY + (S.ballDest.y - nearestDef.destY) * 0.35, 0.02, 0.98);
-        nearestDef.dur = 700;
+    // V2 dibuja solo posiciones autoritativas; no inventa carreras ni cambia
+    // el destino del balón a partir de un evento de texto.
+    if (!S.match || S.match.engine !== 'v2') {
+      // Balón: cinemática balística fluida
+      if (ev.ball && Number.isFinite(ev.ball.x) && Number.isFinite(ev.ball.y)) {
+        S.ballStart = { x: S.ball.x, y: S.ball.y };
+        S.ballDest = { x: clamp(ev.ball.x, -0.01, 1.01), y: clamp(ev.ball.y, 0, 1) };
+        var dist = Math.hypot(S.ballDest.x - S.ballStart.x, S.ballDest.y - S.ballStart.y);
+        var isShot = ev.type === 'shot' || ev.type === 'shot_on_target' || ev.type === 'goal' || ev.type === 'penalty_scored';
+        S.ballDur = isShot ? Math.max(320, Math.min(720, dist * 1000)) : Math.max(360, Math.min(850, dist * 1200));
+        S.ballT0 = performance.now();
       }
+
+      // Jugadores
+      S.playerT0 = performance.now();
+      S.playerDur = 800;
+      S.players.forEach(function (player) {
+        player.startX = player.renderX;
+        player.startY = player.renderY;
+        player.dur = null;
+      });
+
+      if (ev.playerId != null && ev.actorPosition) movePlayerTo(ev.playerId, ev.actorPosition, 500);
+      if (ev.receiverId != null) movePlayerTo(ev.receiverId, ev.ball || S.ballDest, 700);
+      if (ev.keeperId != null && ev.keeperPosition) movePlayerTo(ev.keeperId, ev.keeperPosition, 400);
+
+      if (ev.type === 'kickoff' || ev.type === 'goal_restart') {
+        S.players.forEach(function (pl) {
+          if (pl.team === 'home') pl.destX = Math.min(pl.destX, 0.485);
+          else if (pl.team === 'away') pl.destX = Math.max(pl.destX, 0.515);
+        });
+        if (ev.playerId != null) movePlayerTo(ev.playerId, { x: 0.5, y: 0.5 }, 500);
+      }
+
+      if (ev.ball && !S.playStopped && S.possessionTeam && ['goal_celebration', 'halftime', 'ended'].indexOf(ev.phase) < 0) {
+        var defSide = S.possessionTeam === 'home' ? 'away' : 'home';
+        var nearestDef = null, minDist = Infinity;
+        S.players.forEach(function (pl) {
+          if (pl.team === defSide && pl.role !== 'GK' && pl.id !== ev.playerId) {
+            var d = Math.hypot(pl.renderX - S.ballDest.x, pl.renderY - S.ballDest.y);
+            if (d < minDist) { minDist = d; nearestDef = pl; }
+          }
+        });
+        if (nearestDef) {
+          nearestDef.destX = clamp(nearestDef.destX + (S.ballDest.x - nearestDef.destX) * 0.35, 0.02, 0.98);
+          nearestDef.destY = clamp(nearestDef.destY + (S.ballDest.y - nearestDef.destY) * 0.35, 0.02, 0.98);
+          nearestDef.dur = 700;
+        }
+      }
+
     }
 
     if (ev.type === 'goal' || ev.type === 'penalty_scored') {
@@ -4675,7 +4698,7 @@
       if (code === 'live' || code === 'match_started') S.playStopped = false;
       var liveMarket = S.markets['1x2'];
       S.markets = liveMarket ? { '1x2': liveMarket } : {};
-      if (S.slip && S.slip.market !== '1x2') {
+      if (S.slip && S.slip.market !== '1x2' && !S.slip.idemKey) {
         S.slip = null;
         el['est-bet-slip'].hidden = true;
         betMsg('La boleta pre-partido se cerró al iniciar el juego.', false);
@@ -4744,13 +4767,15 @@
     // El servidor manda el nombre cuando el mercado no se puede leer de la clave
     // (primer goleador: la selección es el id del jugador).
     if (selection && selection.label) return selection.label;
-    var map = { home: 'Local', draw: 'Empate', away: 'Visita', over: 'Más', under: 'Menos', yes: 'Sí', no: 'No', other: 'Otro jugador' };
+    var map = { home: 'Local', draw: 'Empate', away: 'Visita', over: 'Más', under: 'Menos', yes: 'Sí', no: 'No' };
+    if (key === 'other') return market === 'correct_score' ? 'Otro resultado' : market === 'first_scorer' ? 'Otro jugador' : 'Otro';
     if (key === 'none') return 'Sin goles (0-0)';
     if (market === 'asian_handicap_home' || market.indexOf('asian_handicap_home_') === 0) {
       return ({ home: 'Local', away: 'Visita' })[key] || map[key] || key;
     }
     if (map[key]) return map[key];
-    if (market === 'double_chance') return ({ home_draw: 'Local o Empate', home_away: 'Local o Visita', draw_away: 'Empate o Visita' })[key] || key;
+    if (market === 'double_chance') return ({ home_draw: 'Local o Empate', home_away: 'Local o Visita', draw_away: 'Empate o Visita',
+      '1X': 'Local o Empate', '12': 'Local o Visita', 'X2': 'Empate o Visita' })[key] || key;
     if (market === 'ht_ft') {
       var names = { home: 'Local', draw: 'Empate', away: 'Visita' };
       var parts = String(key).split('_');
@@ -4775,7 +4800,8 @@
     var ended = S.match && ['settled', 'finished', 'postponed'].indexOf(S.match.status) >= 0;
     var live = S.match && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0;
     var suspended = Boolean(live && S.playStopped);
-    if (el['est-place-bet']) el['est-place-bet'].disabled = Boolean(S.submitting || ended || suspended || !S.slip);
+    var canRetry = Boolean(S.slip && S.slip.idemKey && S.slip.requestStake === Math.floor(Number(el['est-stake'].value || 0)));
+    if (el['est-place-bet']) el['est-place-bet'].disabled = Boolean(S.submitting || !S.slip || ((ended || suspended) && !canRetry));
     if (!keys.length) { box.innerHTML = '<p class="est-muted">' + (ended ? 'Partido finalizado: mercados cerrados.' : 'Sin mercados disponibles todavía.') + '</p>'; return; }
     box.innerHTML = '';
     if (suspended) {
@@ -4805,7 +4831,7 @@
         btn.innerHTML = '<span class="est-sel-key">' + esc(selLabel(mk, s.key, s)) + '</span>' +
           '<span class="est-sel-odds">' + Number(s.price).toFixed(2) + arrow + '</span>' +
           '<span class="est-sel-implied">impl. ' + pct(s.implied) + '</span>';
-        btn.setAttribute('aria-label', (MARKET_LABEL[mk] || mk) + ' ' + selLabel(mk, s.key) + ', cuota ' + Number(s.price).toFixed(2) + ', probabilidad implícita ' + pct(s.implied));
+        btn.setAttribute('aria-label', (MARKET_LABEL[mk] || mk) + ' ' + selLabel(mk, s.key, s) + ', cuota ' + Number(s.price).toFixed(2) + ', probabilidad implícita ' + pct(s.implied));
         btn.addEventListener('click', function () { if (!ended && !suspended && !locked) openSlip(mk, s); });
         row.appendChild(btn);
       });
@@ -4822,7 +4848,7 @@
     return { min: Math.max(0, Math.floor(min)), max: Math.max(0, Math.floor(max)) };
   }
   function openSlip(market, sel) {
-    S.slip = { market: market, selection: sel.key, price: sel.price, implied: sel.implied };
+    S.slip = { matchId: S.currentMatchId, market: market, selection: sel.key, price: sel.price, implied: sel.implied, idemKey: null, requestStake: null };
     el['est-bet-slip'].hidden = false;
     el['est-slip-pick'].textContent = (MARKET_LABEL[market] || market) + ' · ' + selLabel(market, sel.key);
     el['est-slip-odds'].textContent = Number(sel.price).toFixed(2);
@@ -4857,27 +4883,51 @@
     }
   }
   function closeSlip() { S.slip = null; el['est-bet-slip'].hidden = true; renderMarkets(); }
+  function newBetIdempotencyKey() {
+    try { return 'bet-' + crypto.randomUUID(); }
+    catch (_) { return 'bet-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 14); }
+  }
   function placeBet() {
     if (!S.slip || S.submitting) return;
-    if (S.match && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0 && S.playStopped) {
+    var slip = S.slip;
+    var stake = Math.floor(Number(el['est-stake'].value || 0));
+    var retry = Boolean(slip.idemKey && slip.requestStake === stake);
+    if (!retry && S.match && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0 && S.playStopped) {
       betMsg('Mercado suspendido mientras el juego está detenido.', false);
       return;
     }
-    var stake = Math.floor(Number(el['est-stake'].value || 0));
     var b = stakeBounds();
-    if (stake < b.min || stake > b.max) { betMsg('Monto fuera de rango (' + fmt(b.min) + '–' + fmt(b.max) + ').', false); return; }
+    // Un reintento puede haber debitado ya el saldo; el servidor reconoce la
+    // solicitud original antes de volver a comprobar límites o mercado.
+    if (!retry && (stake < b.min || stake > b.max)) { betMsg('Monto fuera de rango (' + fmt(b.min) + '–' + fmt(b.max) + ').', false); return; }
+    if (!retry) { slip.idemKey = newBetIdempotencyKey(); slip.requestStake = stake; }
     S.submitting = true; el['est-place-bet'].disabled = true; betMsg('Enviando…', true);
-    S.socket.emit('football:bet', { matchId: S.currentMatchId, market: S.slip.market, selection: S.slip.selection, stake: stake }, function (res) {
+    var complete = false;
+    var timeout = window.setTimeout(function () {
+      if (complete) return;
+      complete = true; S.submitting = false; renderMarkets();
+      betMsg('No llegó la confirmación. Reintenta este mismo boleto o consulta tu historial; no se duplicará el débito.', false);
+    }, 10000);
+    S.socket.emit('football:bet', { matchId: slip.matchId, market: slip.market, selection: slip.selection, stake: stake, idemKey: slip.idemKey }, function (res) {
+      if (complete) return;
+      complete = true; window.clearTimeout(timeout);
       S.submitting = false;
       renderMarkets();
-      if (!res || !res.ok) { betMsg(humanError(res && res.code), false); return; }
+      if (!res || !res.ok || !res.bet) {
+        // Para un fallo incierto se conserva la clave; un rechazo confirmado
+        // permite corregir el boleto y comenzar una solicitud nueva.
+        if (res && res.code && ['persistencia_pendiente', 'en_proceso', 'internal'].indexOf(res.code) < 0) {
+          slip.idemKey = null; slip.requestStake = null;
+        }
+        betMsg(humanError(res && res.code), false); return;
+      }
       S.chips = res.chips; updateChips();
-      if (res.bet) S.myBets.push(res.bet);
+      if (S.currentMatchId === slip.matchId && !(S.myBets || []).some(function (bet) { return bet.id === res.bet.id; })) S.myBets.push(res.bet);
       renderMyBets();
       loadBetHistory();
       betMsg('¡Apuesta colocada! ' + fmt(stake) + ' fichas a ' + Number(res.bet.odds).toFixed(2) + '.', true);
-      bell('bet');
-      closeSlip();
+      if (!res.replayed) bell('bet');
+      if (S.slip === slip) closeSlip();
     });
   }
   function betMsg(text, ok) { el['est-bet-msg'].textContent = text; el['est-bet-msg'].className = 'est-bet-msg ' + (ok ? 'ok' : 'err'); }
@@ -5547,6 +5597,7 @@
   function updateTextFallback() {
     if (!S.match) { el['est-text-state'].textContent = 'Sin partido seleccionado.'; return; }
     el['est-text-state'].textContent = teamFull(S.match.homeId) + ' ' + S.score.home + ' – ' + S.score.away + ' ' + teamFull(S.match.awayId) +
+      (S.shootout ? '. Penales ' + Number(S.shootout.home) + '–' + Number(S.shootout.away) : '') +
       '. Minuto ' + S.minute + ' (' + phaseLabel(S.phase) + '). Posesión ' + pct(S.possession.home) + ' local. Estado: ' + (STATUS_LABEL[S.match.status] || S.match.status) + '.';
   }
 

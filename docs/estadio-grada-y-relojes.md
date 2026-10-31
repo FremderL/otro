@@ -3,6 +3,12 @@
 Cambios de producto de octubre de 2026 sobre el Estadio MonteCristo. Cada apartado explica **qué se
 pidió**, **qué hace el código ahora** y **cómo se prueba**.
 
+> **Alcance del reloj:** los cálculos de 15 min 45 s de esta sección describen
+> V1. Para encuentros V2 desde noviembre de 2026, la grada permanece abierta
+> hasta el estado final real; el cierre de apuestas del Balón de Oro muestra
+> una estimación pública de 90 minutos a 15 s/min, sin revelar el final privado
+> del partido. El tiempo añadido o una prórroga pueden cambiar el cierre real.
+
 ---
 
 ## 1. Parrilla reprogramada: ningún partido pisa la clausura del Balón de Oro
@@ -26,7 +32,7 @@ Lo detectó un test nuevo que recorre los siete meses de referencia del calendar
 | Estelar | 2 | 20:00 · **21:00 (destacado)** | 20:30 · **21:30** |
 
 - El Estelar se adelanta media hora (`lib/football/fixtures.js`, `DEFAULT_BLOCKS`).
-- El **último kickoff del día es 21:30**, también en días dobles. Con la duración real de un partido
+- El **último kickoff del día es 21:30**, también en días dobles. Con la duración real de un partido V1
   (90 minutos simulados a 10 s/min + 45 s de intermedio = **15 min 45 s**, `matchRealMs()`) el último
   partido termina **21:45**, quince minutos antes de la clausura.
 - La segunda oleada sigue siendo **+30 min**: no hay dos partidos a la misma hora y el orden
@@ -37,7 +43,7 @@ Lo detectó un test nuevo que recorre los siete meses de referencia del calendar
 `tests/football-fixtures.test.js` verifica, para cada mes de referencia, que:
 
 1. ningún kickoff ocurre a las 22:00 o después;
-2. el último partido de la jornada del último día **termina** antes de las 22:00.
+2. con duración V1, el último partido de la jornada del último día **termina** antes de las 22:00.
 
 Si mañana se reprograma un partido a mano con el panel admin, el límite sigue aplicándose en las
 pruebas: cualquier cambio de horarios que cruce las 22:00 rompe la suite.

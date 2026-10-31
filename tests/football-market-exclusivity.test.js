@@ -25,8 +25,8 @@ function setup() {
   const profile = profiles.getOrCreate('p1', 'Jugador', null);
   profile.chips = 1000;
   profiles.saveNow();
-  const betting = createBettingService({ store, profiles, simulatedFlow: null, log: () => {} });
   const matches = store.getMatches(month).filter(m => m.status === 'scheduled');
+  const betting = createBettingService({ store, profiles, now: () => Math.min(...matches.map(item => item.scheduledKickoffAt)) - 60000, simulatedFlow: null, log: () => {} });
   const cleanup = () => { try { store.close(); } catch (_) {} try { profiles.saveNow(); } catch (_) {} fs.rmSync(dir, { recursive: true, force: true }); };
   return { store, profiles, profile, betting, match: matches[0], match2: matches[1], cleanup };
 }

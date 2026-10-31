@@ -21,6 +21,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { FootballStore } = require('../lib/football-store');
+const { createOfficialV2 } = require('../lib/football/v2/official');
 const { auditSeason, formatMetric, REAL_WORLD_DISTRIBUTION } = require('../lib/football/odds-audit');
 
 function parseArgs(argv) {
@@ -66,7 +67,10 @@ function main() {
   let report;
   try {
     store.generateSeason(season, { createdAt: Date.now() });
-    report = auditSeason(store, season);
+    // La auditoría temporal también respeta la política oficial de V2; no
+    // presenta Poisson V1 como si fueran cuotas de la temporada nueva.
+    const officialV2 = createOfficialV2({ store });
+    report = auditSeason(store, season, { officialV2, at: Date.now() });
   } finally {
     try { store.close(); } catch (_) { /* el store temporal se borra igual */ }
     fs.rmSync(dir, { recursive: true, force: true });

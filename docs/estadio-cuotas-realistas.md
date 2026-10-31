@@ -1,5 +1,12 @@
 # Cuotas realistas: diagnóstico medido y plan para parecerse a una casa de verdad
 
+> **Alcance de las mediciones:** este diagnóstico se tomó sobre el motor V1 y una
+> temporada sintética antes de integrar V2. Desde noviembre de 2026 la auditoría
+> usa la matriz estimada V2 del partido (`v2-estimated-1`), no Poisson V1; las
+> cifras históricas de este documento no son una medición de la política actual.
+> La matriz V2, el descanso/final y el primer goleador son aproximaciones, no
+> una garantía de calibración económica o de margen por encuentro.
+
 **Pregunta:** ¿cómo consigo que las cuotas del Estadio se parezcan a las de una casa de apuestas real?
 
 **Respuesta corta:** «realista» son tres cosas distintas y se arreglan en este orden:

@@ -89,7 +89,8 @@ function setup(opts = {}) {
   const month = monthKey();
   store.generateSeason(month);
   const profiles = new ProfileStore(path.join(dir, 'profiles.json'));
-  const betting = createBettingService({ store, profiles, log: () => {} });
+  const betting = createBettingService({ store, profiles,
+    now: () => Math.min(...store.getMatches(month).map(item => item.scheduledKickoffAt)) - 60000, log: () => {} });
 
   // Spies de identidad (A11): contamos getOrCreate/getProfile.
   const spy = { getOrCreate: 0, getProfile: 0, placeBet: 0 };
@@ -687,6 +688,27 @@ test('relato: dos eventos iguales seguidos no repiten la misma plantilla (memori
   assert.ok(narr.length >= 1, 'shot_on_target produce relato');
 });
 
+test('socket de futuros usa la cotización del servidor y descarta cuota y jornada manipuladas', async (t) => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const socket = ctx.io.connect();
+  const subscribed = subscribe(ctx, socket, { scope: 'lobby', name: 'Futuro socket' });
+  const profile = ctx.profiles.getProfile(subscribed.profile.id);
+  profile.chips = 1000; ctx.profiles.saveNow();
+  const market = socket._fire('football:futures_market', {});
+  assert.equal(market.ok, true);
+  const quote = market.market.markets.champion[0];
+  const reply = await new Promise(resolve => socket._fire('football:future', {
+    market: 'champion', selection: quote.selection, stake: 100, odds: 999999, jornada: 29
+  }, resolve));
+  assert.equal(reply.ok, true, reply.code);
+  assert.equal(reply.future.odds, quote.odds);
+  assert.equal(ctx.store.getFuture(reply.future.id).placedAtJornada, 0);
+  assert.equal(reply.future.potentialPayout, Math.floor(100 * quote.odds));
+  assert.ok(!('profileId' in reply.future));
+  assert.equal(profile.chips, 900);
+});
+
 test('socket BDO usa identidad suscrita, devuelve mercado público y descarta cuota/jornada del cliente', async (t) => {
   let actualMarket;
   const marketService = { getMarket: month => actualMarket.getMarket(month) };
@@ -837,4 +859,44 @@ test('Estadio bloquea una cuenta suspendida incluso en conexiones ya abiertas', 
  const ctx=setup({accountSessionsEnabled:true});t.after(ctx.cleanup);const profile=ctx.profiles.getOrCreate('moderada','Moderada');profile.username='moderada';const s=ctx.io.connect();s.data.accountProfileId=profile.id;
  assert.equal(subscribe(ctx,s,{name:'Moderada'}).ok,true);profile.moderation={status:'banned'};
  assert.equal(subscribe(ctx,s,{name:'Moderada'}).code,'account_banned');assert.equal(s._fire('football:fan_get',{}).code,'no_identity');
+});
+
+test('la grada V2 no caduca con el reloj V1 y se cierra al terminar el partido', t => {
+  let at = 0;
+  const ctx = setup({ now: () => at });
+  t.after(ctx.cleanup);
+  const match = ctx.scheduled;
+  match.simulation = { version: 'v2-test' }; // el motor falso no necesita el replay privado
+  match.status = 'live';
+  at = match.scheduledKickoffAt + 20 * 60 * 1000; // después de los 15:45 de V1, pero V2 aún juega
+  const voters = ['V2Grada1', 'V2Grada2', 'V2Grada3'].map(name => {
+    const socket = ctx.io.connect();
+    subscribe(ctx, socket, { scope: 'match', matchId: match.id, name });
+    return socket;
+  });
+  assert.equal(voters[0]._fire('football:stands_open', { matchId: match.id }).ok, true);
+  assert.equal(voters[1]._fire('football:stands_vote', { matchId: match.id, allow: true }).ok, true);
+  assert.equal(voters[2]._fire('football:stands_vote', { matchId: match.id, allow: true }).stands.allowsInsults, true);
+  assert.equal(voters[0]._fire('football:chat', { matchId: match.id, text: 'hola' }).ok, true);
+  assert.equal(ctx.io.lastTo(matchRoom(match.id), 'football:chat').soft, true);
+  match.status = 'settled';
+  ctx.engine.emit('football:status', { matchId: match.id, code: 'full_time' });
+  assert.equal(voters[0]._fire('football:stands_state', { matchId: match.id }).stands, null);
+  assert.equal(voters[1]._fire('football:stands_vote', { matchId: match.id, allow: true }).code, 'not_live');
+  assert.equal(voters[0]._fire('football:chat', { matchId: match.id, text: 'hola' }).ok, true);
+  assert.equal(ctx.io.lastTo(matchRoom(match.id), 'football:chat').soft, false);
+});
+
+test('el reloj de cierre del Balón de Oro usa el ritmo público V2 y lo identifica como estimado', t => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const j20 = ctx.store.getMatches(ctx.month).filter(match => match.jornada === 20);
+  const lastKickoff = Math.max(...j20.map(match => match.scheduledKickoffAt));
+  for (const match of j20) if (match.scheduledKickoffAt === lastKickoff) match.simulation = { version: 'v2-test' };
+  const socket = ctx.io.connect();
+  const subscribed = subscribe(ctx, socket, { name: 'RelojV2' });
+  assert.equal(subscribed.ok, true);
+  const bdo = subscribed.lobby.countdowns.ballonDor;
+  assert.equal(bdo.betsCloseAt, lastKickoff + 90 * 15 * 1000);
+  assert.equal(bdo.betsCloseEstimated, true);
 });

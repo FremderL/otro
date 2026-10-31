@@ -26,18 +26,19 @@ const { cleanBet, cleanParlayLeg, monthKey } = require('../lib/football-store-sh
 
 const MIN_STAKE = 25000;
 
-function setup(options = {}) {
+function setup() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bmarket-'));
   const footballPath = path.join(dir, 'football.json');
   const store = new FootballStore(footballPath);
   const month = monthKey();
   const league = store.generateSeason(month);
-  if (options.fast) store.saveNow = () => undefined;
   const profiles = new ProfileStore(path.join(dir, 'profiles.json'));
   const profile = profiles.getOrCreate('p1', 'Jugador', null);
   profile.chips = 10_000_000;
   profiles.saveNow();
-  const betting = createBettingService({ store, profiles, log: () => {} });
+  // Un boleto se vende antes del kickoff, con el mismo guardado durable que producción.
+  const now = Math.min(...league.calendar.matches.map(match => match.scheduledKickoffAt)) - 60000;
+  const betting = createBettingService({ store, profiles, now: () => now, log: () => {} });
   const cleanup = () => {
     try { store.close(); } catch (_) {}
     try { profiles.saveNow(); } catch (_) {}
@@ -82,7 +83,7 @@ test('la apuesta archiva las celdas publicadas y sobrevive al guardado', t => {
 });
 
 test('"otro resultado" se resuelve contra las doce celdas que se vendieron', async t => {
-  const ctx = setup({ fast: true });
+  const ctx = setup();
   t.after(ctx.cleanup);
   const match = ctx.store.getMatches(ctx.month).find(item => item.status === 'scheduled');
   const published = ctx.betting.getMarket(match, 'correct_score', {})
@@ -117,7 +118,7 @@ test('"otro resultado" se resuelve contra las doce celdas que se vendieron', asy
 });
 
 test('la liquidación de arranque usa las mismas celdas archivadas', async t => {
-  const ctx = setup({ fast: true });
+  const ctx = setup();
   t.after(ctx.cleanup);
   const match = ctx.store.getMatches(ctx.month).find(item => item.status === 'scheduled');
   const placed = await ctx.betting.placeBet({
@@ -137,7 +138,7 @@ test('la liquidación de arranque usa las mismas celdas archivadas', async t => 
 });
 
 test('cada pata de una combinada guarda sus propias celdas', async t => {
-  const ctx = setup({ fast: true });
+  const ctx = setup();
   t.after(ctx.cleanup);
   const matches = ctx.store.getMatches(ctx.month).filter(item => item.status === 'scheduled').slice(0, 2);
   assert.equal(matches.length, 2);

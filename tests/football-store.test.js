@@ -18,6 +18,17 @@ test.after(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
 
 const newStore = (name) => new FootballStore(path.join(tmpDir, `${name}.json`));
 
+test('saveStrict informa si realmente se pudo reemplazar el archivo', () => {
+  const store = newStore('strict');
+  store.generateSeason('2026-11');
+  assert.strictEqual(store.saveStrict(), true);
+  const original = store.filePath;
+  store.filePath = path.join(original, 'imposible.json'); // original es un archivo, no un directorio
+  assert.strictEqual(store.saveStrict(), false);
+  store.filePath = original;
+  store.close();
+});
+
 test('generateSeason construye una temporada completa y la persiste', () => {
   const store = newStore('gen');
   const league = store.generateSeason('2026-10');
