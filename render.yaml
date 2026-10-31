@@ -1,6 +1,9 @@
+# Sin previews de PR: un preview hereda el DATABASE_URL del servicio (definido
+# en el dashboard) y choca con la concesión de escritor único del Estadio
+# (lib/football/pg-single-writer.js) que ya sostiene producción, y su boot
+# muere con exit 1. Si alguna vez se quiere un preview, que use su propia base.
 previews:
-  generation: manual
-  expireAfterDays: 3
+  generation: off
 
 services:
   - type: web
@@ -34,12 +37,16 @@ services:
       # preparan automáticamente con V2 y cuotas estimadas persistidas.
       - key: FOOTBALL_ENABLED
         value: "on"
+      # Deploys rolling: Render inicia la instancia nueva antes de detener la
+      # vieja, así que durante unos segundos dos procesos comparten la base. Con
+      # la concesión de escritor único en espera, la nueva espera hasta 180 s a
+      # que la vieja libere el lock (al pasar el health check Render mata la
+      # vieja) en vez de morir al instante con exit 1.
+      - key: FOOTBALL_WRITER_WAIT_MS
+        value: "180000"
       # Persistencia de calendario, boletos y resultados del Estadio en el disco del servicio.
       - key: FOOTBALL_STORE_PATH
         value: /var/data/football.json
-      # Espera una breve ventana a que termine la instancia anterior al desplegar.
-      - key: FOOTBALL_WRITER_WAIT_MS
-        value: "45000"
       # Creatividades de La Previa (imágenes aprobadas): en el disco persistente.
       - key: PROMOTION_MEDIA_DIR
         value: /var/data/promotion-media
