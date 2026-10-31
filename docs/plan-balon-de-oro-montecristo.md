@@ -23,7 +23,7 @@
 
 ## Experiencia audiovisual congelada para el MVP
 
-La inauguración reutiliza la identidad de la entrada al Estadio (túnel, luz dorada y tarjetas dinámicas) y dura **1:48** (108 s): antes eran 45 s y cada candidato aparecía 2 s, así que se sentía apurada. La narración grabada (≈51 s) abre la presentación y, al terminar, entra el tema instrumental del Balón de Oro para la segunda mitad; ningún tramo queda en silencio. La ceremonia final añade un escenario de podio propio y una secuencia de **13 pasos** guiada por clips, de aproximadamente **20–21 s** según la duración de los nombres; en ambas, captions y transcripción permiten entenderlo todo sin audio. La inauguración se abre automáticamente una vez por ciclo, incluso con llegada tardía; permite pausar/reanudar la primera vista, pero no repetirla después de completarla. La ceremonia final, a diferencia de la apertura, conserva pausa y replay, y se habilita con gesto únicamente desde el resultado persistido y verificado, después de las **10:00 p. m.** en `America/Mexico_City`. La narración es-MX y el fondo instrumental cinematográfico sutil son capas opcionales, controlables por separado.
+La inauguración reutiliza la identidad de la entrada al Estadio (túnel, luz dorada y tarjetas dinámicas) y dura **1:48** (108 s): antes eran 45 s y cada candidato aparecía 2 s, así que se sentía apurada. La narración grabada (≈49,5 s) abre la presentación y, al terminar, entra el tema instrumental del Balón de Oro para la segunda mitad; ningún tramo queda en silencio. La ceremonia final añade un escenario de podio propio y una secuencia de **13 pasos** guiada por clips, de aproximadamente **20–21 s** según la duración de los nombres; en ambas, captions y transcripción permiten entenderlo todo sin audio. La inauguración se abre automáticamente una vez por ciclo, incluso con llegada tardía; permite pausar/reanudar la primera vista, pero no repetirla después de completarla. La ceremonia final, a diferencia de la apertura, conserva pausa y replay, y se habilita con gesto únicamente desde el resultado persistido y verificado, después de las **10:00 p. m.** en `America/Mexico_City`. La narración es-MX y el fondo instrumental cinematográfico sutil son capas opcionales, controlables por separado.
 
 **Límite de producción actual:** no hay generador nativo de video ni `ffmpeg` instalado; no se promete un MP4. Sí se puede producir voz sintética para líneas fijas e ilustraciones y programar movimiento de cámara simulado, transiciones, luces y tarjetas dinámicas con CSS/Canvas. Un MP4 aportado después podrá integrarse, pero no hace falta para el MVP.
 
@@ -193,7 +193,8 @@ Los seis cues y 16 clips de nombres son WAV locales; el mismo flujo ofrece capti
   Esta elección es **firme** y no se extiende a los comentaristas: la inauguración y la ceremonia
   final conservan voz femenina (pista fija y cues pregrabados), mientras que la mesa que relata los
   partidos en el Estadio usa voces masculinas. Al no hornear nombres de jugador ni clubes en la toma
-  fija, un traspaso del delantero estrella no invalida ni la locución ni los clips por `playerId`. Se generó la pista fija `public/assets/ballon-dor-opening-es-mx.mp3` (44.54 s) con el guion definido; el texto idéntico está disponible como transcripción.
+  fija, un traspaso del delantero estrella no invalida ni la locución ni los clips por `playerId`. Se generó la pista fija `public/assets/ballon-dor-opening-es-mx.mp3` (44,54 s) con el guion definido; el texto idéntico está disponible como transcripción.
+  La toma se **regrabó** el 2026-10-30 con una voz femenina `es-MX` de mejor calidad (49,54 s, guion idéntico, sin nombres ni clubes dentro de la pista). Como la duración total la fija el reloj de pared y no el MP3, el cambio no toca el reparto en actos ni la entrada del tema instrumental.
 - Se reutiliza `public/assets/estadio-tunnel.jpg` —ya disponible— como fondo; CSS añade dolly, luces, transiciones y tarjetas dinámicas con colores de club. No se generan retratos por temporada.
 - La página dedicada `/balon-de-oro` abre automáticamente la primera inauguración de cada ciclo, incluso con llegada tardía; la clave local distingue `started` de `completed`, de modo que una vista interrumpida se completa al volver. Tras completarla se ocultan los accesos de inicio/reproducción y no puede repetirse durante ese ciclo.
 - Los subtítulos accesibles siguen el progreso de la presentación y la secuencia de 1:48 muestra 16 tarjetas individuales —una por ST existente— con nombre, club/colores, dorsal, atributos y estadísticas del ciclo. Se quitaron las cajas de fórmula y no se cambió la fórmula subyacente.
@@ -309,7 +310,7 @@ fijos en el código:
 El reparto se deriva de la duración total (`ballonDorOpeningPlan`), así que
 alargarla o acortarla no obliga a tocar los umbrales de cada escena. El reloj de
 la presentación es de pared y ya no se desprende de `audio.currentTime`: antes la
-duración total quedaba atada al MP3. La narración grabada (≈51 s) cubre el primer
+duración total quedaba atada al MP3. La narración grabada (≈49,5 s) cubre el primer
 bloque —termina alrededor de la octava presentación— y en ese punto entra el tema
 instrumental del Balón de Oro, en bucle y a volumen bajo, hasta el cierre. Pausa,
 reanudación y silencio siguen funcionando y afectan a las dos capas.

@@ -10,7 +10,7 @@ Duplica esta plantilla **una vez por edición**. Rellena los campos entre corche
 - **Fecha/hora de apertura publicada (America/Mexico_City):** `[fecha y hora]`
 - **Responsable operativo:** `[nombre o equipo; conservar en el reporte interno, nunca en telemetría pública]`
 - **Fecha/hora del aviso aprobado:** `[fecha y hora / no publicado]`
-- **Duración comunicada:** inauguración `1:48` (≈51 s de narración + tema instrumental hasta el cierre); ceremonia final `20–21 s` aprox. (dinámica según los clips de nombre).
+- **Duración comunicada:** inauguración `1:48` (≈49,5 s de narración + tema instrumental hasta el cierre); ceremonia final `20–21 s` aprox. (dinámica según los clips de nombre).
 - **Fichas:** virtuales; sin depósitos, dinero real ni retiros.
 
 ## 2. Lista previa al ciclo

@@ -16,7 +16,7 @@
   var SHOWCASE_ROTATION_MS = PROMOTION_ROTATION_MS;
   // Inauguración del Balón de Oro. Antes duraba 45 s y cada candidato aparecía
   // 2 s: se sentía apurada. Ahora se reparte en actos y son ~1:48, con casi 5 s
-  // por jugador. La narración (≈51 s) cubre el primer bloque; el tema instrumental
+  // por jugador. La narración (≈49,5 s) cubre el primer bloque; el tema instrumental
   // del Balón de Oro acompaña el segundo, así que el tiempo extra no es silencio.
   var BALLON_DOR_OPENING_SECONDS = 108;
   // Reparto por actos (fracciones de la duración total): apertura, alineación de
@@ -2154,7 +2154,7 @@
   }
 
   // El reloj de la inauguración es de pared, no el del audio: la narración dura
-  // ~51 s y la presentación 1:48. Antes el avance se desprendía de currentTime,
+  // ~49,5 s y la presentación 1:48. Antes el avance se desprendía de currentTime,
   // lo que ataba la duración total al MP3 y aceleraba las escenas.
   function startBallonDorOpeningClock(session) {
     clearBallonDorOpeningTimer();

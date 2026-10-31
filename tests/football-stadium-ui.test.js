@@ -2570,3 +2570,39 @@ test('voces — si el navegador solo ofrece voces femeninas se conservan y se ba
   assert.equal(speech.utterances[1].voice.name, 'Microsoft Helena', 'la segunda voz sigue siendo otra voz');
   assert.ok(speech.utterances[1].pitch < speech.utterances[0].pitch, 'el analista queda más grave');
 });
+
+// La pista fija de la inauguración se regrabó (voz femenina es-MX, misma
+// transcripción). Este test evita que el asset se rompa o cambie de duración sin
+// que nadie lo note: el reloj de pared manda, pero la locución tiene que caber en
+// el primer bloque de 1:48 (termina antes de las presentaciones finales).
+function mp3DurationSeconds(filePath) {
+  const bytes = fs.readFileSync(filePath);
+  let offset = 0;
+  if (bytes.slice(0, 3).toString() === 'ID3') {
+    offset = 10 + (((bytes[6] & 0x7f) << 21) | ((bytes[7] & 0x7f) << 14) | ((bytes[8] & 0x7f) << 7) | (bytes[9] & 0x7f));
+  }
+  while (offset + 4 <= bytes.length && !(bytes[offset] === 0xff && (bytes[offset + 1] & 0xe0) === 0xe0)) offset++;
+  const version = (bytes[offset + 1] >> 3) & 3;   // 3 = MPEG1, 2 = MPEG2, 0 = MPEG2.5
+  const sampleRateIndex = (bytes[offset + 2] >> 2) & 3;
+  const sampleRate = version === 3 ? [44100, 48000, 32000][sampleRateIndex]
+    : version === 2 ? [22050, 24000, 16000][sampleRateIndex]
+      : [11025, 12000, 8000][sampleRateIndex];
+  const samplesPerFrame = version === 3 ? 1152 : 576;
+  const tag = bytes.indexOf('Info');
+  const xing = tag >= 0 ? tag : bytes.indexOf('Xing');
+  assert.ok(xing > 0, 'la pista trae cabecera de conteo de frames (Xing/Info)');
+  const frames = bytes.readUInt32BE(xing + 8);
+  return (frames * samplesPerFrame) / sampleRate;
+}
+
+test('inauguración — la pista fija sigue siendo un MP3 válido de voz que cabe en el primer bloque', () => {
+  const asset = path.join(__dirname, '..', 'public', 'assets', 'ballon-dor-opening-es-mx.mp3');
+  assert.ok(fs.existsSync(asset), 'existe la pista fija de la inauguración');
+  const size = fs.statSync(asset).size;
+  assert.ok(size > 100 * 1024, 'la pista no está vacía ni truncada (' + size + ' bytes)');
+  const seconds = mp3DurationSeconds(asset);
+  assert.ok(seconds > 35 && seconds < 60, 'la locución dura ~49,5 s (' + seconds.toFixed(2) + ')');
+  // Cabe en el primer bloque: con presentaciones de ~4,7 s desde el segundo 17,
+  // una locución de menos de 60 s termina antes del cierre y entra el tema.
+  assert.ok(seconds < 60, 'termina antes del cierre para que entre el tema instrumental');
+});
