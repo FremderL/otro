@@ -10,7 +10,7 @@ const { hash32, mulberry32 } = require('../lib/football/prng');
 const { buildSeasonClubs } = require('../lib/football/teams');
 const {
   generateCalendar, daysInMonth, doubleRoundRobin, jornadasPorDia, asignarDias,
-  zonedTimeToMs, JORNADAS
+  zonedTimeToMs, matchRealMs, JORNADAS
 } = require('../lib/football/fixtures');
 const { CASINO_TIME_ZONE } = require('../lib/profile-store-shared');
 
@@ -146,13 +146,16 @@ test('T17: generateCalendar es válido para todos los meses probados', () => {
 test('jornadas simples y dobles respetan la parrilla horaria sin partidos simultáneos', () => {
   for (const mes of ['2026-02','2026-04','2026-10']) {
     const cal=generateCalendar(mes,clubsFor(mes));
-    const expected=[13*60,14*60,15*60,17*60,18*60,19*60,20*60+30,21*60+30];
+    // Parrilla base: el estelar arranca a las 20:00 con el destacado a las
+    // 21:00, y la segunda oleada suma media hora: el último kickoff del día
+    // es 21:30, termina 21:45 y la clausura de las 22:00 no pisa partido.
+    const base=[13*60,14*60,15*60,17*60,18*60,19*60,20*60,21*60];
     const byDay=new Map();
     for(const jornada of cal.jornadas) {
       const minutes=jornada.matches.map(m=>{const {hour,minute}=kickoffParts(m.scheduledKickoffAt);return hour*60+minute;}).sort((a,b)=>a-b);
-      assert.deepStrictEqual(minutes,expected.map(n=>n+jornada.wave*30),`${mes} J${jornada.jornada}`);
+      assert.deepStrictEqual(minutes,base.map(n=>n+jornada.wave*30),`${mes} J${jornada.jornada}`);
       const featured=jornada.matches.find(m=>m.featured);const part=kickoffParts(featured.scheduledKickoffAt);
-      assert.equal(part.hour*60+part.minute,21*60+30+jornada.wave*30);
+      assert.equal(part.hour*60+part.minute,21*60+jornada.wave*30);
       for(const m of jornada.matches) {assert.equal(new Intl.DateTimeFormat('en-CA',{timeZone:CASINO_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(m.scheduledKickoffAt)),`${mes}-${String(m.day).padStart(2,'0')}`);}
       if(!byDay.has(jornada.day)) byDay.set(jornada.day,[]);byDay.get(jornada.day).push(...jornada.matches.map(m=>m.scheduledKickoffAt));
     }
@@ -181,4 +184,27 @@ test('zonedTimeToMs convierte hora de pared a epoch en la zona del casino', () =
   const { hour, minute } = kickoffParts(ms);
   assert.strictEqual(hour, 13);
   assert.strictEqual(minute, 0);
+});
+
+test('ningún partido empieza a la hora de la clausura del Balón de Oro ni después', () => {
+  // Muro duro del producto: la ceremonia es a las 22:00 locales del día del
+  // último partido. Ningún kickoff puede llegar a esa hora, y el último partido
+  // tiene que TERMINAR antes de la ceremonia (duración real del partido).
+  const matchMs = matchRealMs({});
+  assert.strictEqual(matchMs, 90 * 10 * 1000 + 45000, '90 minutos a 10 s/min + intermedio de 45 s');
+  for (const mes of MESES) {
+    const cal = generateCalendar(mes, clubsFor(mes));
+    const lastDay = Math.max(...cal.matches.map(m => m.day));
+    for (const match of cal.matches) {
+      const { hour, minute } = kickoffParts(match.scheduledKickoffAt);
+      assert.ok(hour * 60 + minute < 22 * 60,
+        `${mes} ${match.id} empieza a las ${hour}:${String(minute).padStart(2, '0')}, en o después de la clausura`);
+      if (match.day === lastDay) {
+        assert.ok(match.scheduledKickoffAt + matchMs <= zonedTimeToMs(
+          { year: +mes.slice(0, 4), month: +mes.slice(5, 7), day: match.day, hour: 22, minute: 0 },
+          CASINO_TIME_ZONE
+        ), `${mes} ${match.id} termina después de las 22:00 de la clausura`);
+      }
+    }
+  }
 });

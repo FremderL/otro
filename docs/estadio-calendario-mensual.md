@@ -25,6 +25,7 @@ vez por jornada; en un día doble, dos.
 | Jornadas | 30, siempre |
 | Días dobles | `max(0, 30 − días con fútbol)`, repartidos **uniformemente** para que no se junten al final |
 | Segunda oleada del día doble | todos los horarios **+30 min** |
+| Último kickoff del día | **21:30** (termina 21:45): ningún partido empieza a la hora de la clausura del Balón de Oro (22:00) ni después |
 | Zona horaria | la del casino, no la del servidor (Render/Neon corren en UTC) |
 
 ### Los tres bloques diarios
@@ -33,13 +34,19 @@ vez por jornada; en un día doble, dos.
 | --- | --- | --- |
 | Matutino | 3 | 13:00 · 14:00 · 15:00 |
 | Vespertino | 3 | 17:00 · 18:00 · 19:00 |
-| Estelar | 2 | 20:30 · **21:30 (destacado)** |
+| Estelar | 2 | 20:00 · **21:00 (destacado)** |
 
 En un día doble la segunda oleada repite la estructura desplazada media hora:
-**13:30 · 14:30 · 15:30 · 17:30 · 18:30 · 19:30 · 21:00 · 22:00**.
+**13:30 · 14:30 · 15:30 · 17:30 · 18:30 · 19:30 · 20:30 · 21:30**.
 
-Los dos partidos de mayor elo combinado van al bloque Estelar, y el de las **21:30** es el destacado del día
-(es el que la portada del Estadio resalta).
+El bloque Estelar arrancó en 20:30 hasta septiembre de 2026; con la segunda oleada en +30 min su destacado
+caía a las **22:00 en punto**, la hora de la clausura, y el partido seguía en juego hasta las 22:15. Desde
+octubre de 2026 el Estelar empieza **20:00** (destacado **21:00**), así que el último kickoff del día es
+**21:30** —también en días dobles—, el partido termina 21:45 y la ceremonia de las 22:00 nunca encuentra
+un partido en juego. La regla está cubierta por un test (`tests/football-fixtures.test.js`).
+
+Los dos partidos de mayor elo combinado van al bloque Estelar, y el de las **21:00** es el destacado del día
+(es el que la portada del Estadio resalta; en un día doble, el destacado de la segunda oleada juega 21:30).
 
 ## 2. Calendario según el largo del mes
 
@@ -59,17 +66,17 @@ para el cierre. En los meses cortos, los días dobles corren las jornadas siguie
 
 | Día | Jornada | Horarios |
 | --- | --- | --- |
-| 1 … 30 | J1 … J30 (una por día) | 13:00 · 14:00 · 15:00 · 17:00 · 18:00 · 19:00 · 20:30 · 21:30 |
+| 1 … 30 | J1 … J30 (una por día) | 13:00 · 14:00 · 15:00 · 17:00 · 18:00 · 19:00 · 20:00 · 21:00 |
 | 31 | — cierre y liquidación | hasta las 23:59 |
 
-Ceremonia del Balón de Oro: **30 de octubre, 22:00** (después del partido de las 21:30).
+Ceremonia del Balón de Oro: **30 de octubre, 22:00** (después del partido de las 21:00, que termina 21:15).
 
 ### Noviembre 2026 — 30 días, un día doble
 
 | Día | Jornada |
 | --- | --- |
 | 1 – 14 | J1 – J14 |
-| **15** | **J15 + J16** (oleada 2 a las 13:30 · 14:30 · 15:30 · 17:30 · 18:30 · 19:30 · 21:00 · 22:00) |
+| **15** | **J15 + J16** (oleada 2 a las 13:30 · 14:30 · 15:30 · 17:30 · 18:30 · 19:30 · 20:30 · 21:30) |
 | 16 – 29 | J17 – J30 |
 | 30 | — cierre y liquidación |
 
@@ -102,9 +109,9 @@ J20 cae el **18 de febrero** (cierre de mercado) y la ceremonia es el **27 de fe
 
 | Momento | Cuándo | Qué pasa |
 | --- | --- | --- |
-| **Apertura** | **día 1** del mes | El ciclo pasa de `scheduled` a `active` y se publican las primeras cuotas. Si el proceso no lo abre el día 1, el ciclo se **cancela** (`apertura_no_realizada_dia_1`) y se reembolsan las predicciones |
+| **Apertura** | **día 1** del mes | El ciclo pasa de `scheduled` a `active` y se publican las primeras cuotas. Un servidor apagado el día 1 **no cancela nada**: el ciclo se abre tarde (`football_ballon_dor_opened_late`) en cuanto el proceso vuelve |
 | **Apuestas** | J1 → final de J20 | Se puede predecir al ganador del premio. Las cuotas se **refrescan al completar cada jornada** |
-| **Cierre de mercado** | al asentarse el último partido de la **J20** (≈21:30–22:00) | El evento pasa a `locked`: ya no se aceptan predicciones |
+| **Cierre de mercado** | al asentarse el último partido de la **J20** (≈21:00–21:30) | El evento pasa a `locked`: ya no se aceptan predicciones |
 | **Acumulación** | J21 → J30 | El premio sigue sumando goles, asistencias, apariciones y tarjetas, pero sin mercado |
 | **Resultado** | al asentarse el último partido de la **J30** (y el desempate si hizo falta) | Se calcula el ranking con el bonus por posición final (campeón +5, subcampeón +3, top-4 +1) |
 | **Ceremonia y pagos** | **22:00** del día del último partido | Se anuncia el ganador y se liquidan las predicciones. Si el resultado se cierra después de las 22:00, la ceremonia pasa al día siguiente a las 22:00 |
@@ -119,7 +126,8 @@ Si no se resuelve a tiempo, el ciclo se cancela y las predicciones se reembolsan
 
 ### Motivos por los que un ciclo puede cancelarse (reembolso íntegro)
 
-- `apertura_no_realizada_dia_1` — el proceso no abrió el ciclo el día 1.
+- ~~`apertura_no_realizada_dia_1`~~ — **retirado** (octubre 2026): un servidor apagado el día 1 ya no
+  cancela el ciclo; se abre tarde y la ceremonia se celebra igual. Solo aparece en eventos históricos.
 - `temporada_no_cerrada_antes_reset` — la J30 (o su desempate) no quedó asentada antes del cierre.
 - `temporada_truncada` — la temporada se marcó truncada.
 - `desempate_no_resuelto_antes_reset` / `desempate_no_cabe_en_ventana_de_cierre`.
@@ -127,8 +135,11 @@ Si no se resuelve a tiempo, el ciclo se cancela y las predicciones se reembolsan
 
 ## 5. Notas prácticas
 
-- **Las horas son de pared**: un partido de las 21:30 se juega a las 21:30 en México aunque el servidor
+- **Las horas son de pared**: un partido de las 21:00 se juega a las 21:00 en México aunque el servidor
   esté en UTC.
+- **Muro de la ceremonia**: ningún partido empieza a las 22:00 —la hora de la clausura del Balón de Oro—
+  ni después, y el último del día termina antes (21:45 como muy tarde). Si en el futuro se reprograma un
+  partido a mano, el límite sigue siendo el mismo.
 - **El día doble duplica la jornada de cada club**: los 16 clubes juegan dos partidos ese día, media
   hora desfasados. Los puntos de Mi Once de las dos jornadas se suman.
 - **El último día del mes no tiene fútbol regular** por diseño: es la ventana de cierre, liquidación y

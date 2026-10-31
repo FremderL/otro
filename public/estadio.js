@@ -152,7 +152,9 @@
     serverMinute: 0, minuteReceivedAt: 0,
     minute: 0, phase: 'pre', score: { home: 0, away: 0 }, possession: { home: .5, away: .5 },
     goalFlashUntil: 0, goalAnimUntil: 0, goalCueAt: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false,
-    crowdLastSentAt: 0
+    crowdLastSentAt: 0,
+    // Grada: votación de moderación y autorización de insultos del partido.
+    stands: null
   };
 
   var el = {};
@@ -170,6 +172,9 @@
       'est-scoreboard', 'crest-home', 'crest-away', 'name-home', 'name-away', 'score-home', 'score-away',
       'est-clock', 'est-pitch', 'est-goal-banner', 'est-commentary', 'est-commentary-voice', 'est-text-state', 'est-market-phase',
       'est-crowd-feed', 'est-crowd-form', 'est-crowd-input', 'est-crowd-send', 'est-crowd-message', 'est-crowd-reactions',
+      'est-countdown-season', 'est-countdown-season-note', 'est-countdown-bdo', 'est-countdown-bdo-note',
+      'est-danmaku', 'est-stands-vote', 'est-stands-status', 'est-stands-open', 'est-stands-yes',
+      'est-stands-no', 'est-stands-tally',
       'est-markets', 'est-bet-slip', 'est-slip-pick', 'est-slip-clear', 'est-slip-odds', 'est-slip-implied',
       'est-stake', 'est-denoms', 'est-slip-range', 'est-place-bet', 'est-bet-msg', 'est-mybets',
       'est-mybets-count', 'est-bets-link-note', 'est-bets-link-dot',
@@ -463,6 +468,7 @@
     S.socket.on('football:event', onEvent);
     S.socket.on('football:goal', onGoalCue);
     S.socket.on('football:chat', onCrowdChat);
+    S.socket.on('football:stands_state', onStandsState);
     S.socket.on('football:reaction', onCrowdReaction);
     S.socket.on('football:commentary', onCommentary);
     S.socket.on('football:odds', onOdds);
@@ -3320,6 +3326,78 @@
       tb.appendChild(tr);
     });
   }
+  // ===== Cuentas regresivas largas (DD:HH:MM:SS) =====
+  // Dos relojes independientes, alimentados por instantes absolutos del
+  // servidor (S.lobby.countdowns): el final de la temporada del casino (con el
+  // reinicio de fichas) y el ciclo del Balón de Oro (cierre de apuestas de la
+  // J20 y ceremonia de las 22:00 posteriores al último partido).
+  function pad2(n) { return Number(n) < 10 ? '0' + Number(n) : String(n); }
+  function formatDdhhmmss(ms) {
+    var total = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+    var d = Math.floor(total / 86400);
+    var h = Math.floor((total % 86400) / 3600);
+    var m = Math.floor((total % 3600) / 60);
+    var s = total % 60;
+    return pad2(d) + ':' + pad2(h) + ':' + pad2(m) + ':' + pad2(s);
+  }
+  function shortMoment(ms) {
+    if (!Number.isFinite(Number(ms)) || Number(ms) <= 0) return '';
+    try {
+      return new Date(Number(ms)).toLocaleString('es-MX', {
+        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+      });
+    } catch (_) { return ''; }
+  }
+  function tickSeasonCountdowns(nowMs) {
+    var counts = S.lobby && S.lobby.countdowns ? S.lobby.countdowns : null;
+    var seasonClock = el['est-countdown-season'];
+    var seasonNote = el['est-countdown-season-note'];
+    var bdoClock = el['est-countdown-bdo'];
+    var bdoNote = el['est-countdown-bdo-note'];
+    if (!counts) {
+      if (seasonClock) seasonClock.textContent = '--:--:--:--';
+      if (seasonNote) seasonNote.textContent = 'Sin fecha de cierre publicada.';
+      if (bdoClock) bdoClock.textContent = '--:--:--:--';
+      if (bdoNote) bdoNote.textContent = 'Sin ciclo publicado.';
+      return;
+    }
+    var casino = counts.casino || {};
+    var endsAt = Number(casino.endsAt || casino.chipsResetAt || 0);
+    if (seasonClock) seasonClock.textContent = endsAt ? formatDdhhmmss(endsAt - nowMs) : '--:--:--:--';
+    if (seasonNote) {
+      if (casino.resetDeferred) seasonNote.textContent = 'El reinicio espera apuestas de fútbol abiertas.';
+      else if (endsAt) seasonNote.textContent = 'Fichas nuevas el ' + shortMoment(endsAt) + '.';
+      else seasonNote.textContent = '';
+    }
+
+    var bdo = counts.ballonDor || null;
+    if (!bdo) {
+      if (bdoClock) bdoClock.textContent = '--:--:--:--';
+      if (bdoNote) bdoNote.textContent = 'Sin ciclo del Balón de Oro.';
+      return;
+    }
+    var ceremonyAt = Number(bdo.ceremonyAt || 0);
+    var betsCloseAt = Number(bdo.betsCloseAt || 0);
+    if (bdo.status === 'settled') {
+      if (bdoClock) bdoClock.textContent = '00:00:00:00';
+      if (bdoNote) bdoNote.textContent = 'Ceremonia celebrada: resultado y premios publicados.';
+      return;
+    }
+    if (bdo.status === 'cancelled') {
+      if (bdoClock) bdoClock.textContent = '--:--:--:--';
+      if (bdoNote) bdoNote.textContent = 'Ciclo cancelado.';
+      return;
+    }
+    if (bdoClock) bdoClock.textContent = ceremonyAt ? formatDdhhmmss(ceremonyAt - nowMs) : '--:--:--:--';
+    if (bdoNote) {
+      if (bdo.status === 'scheduled') bdoNote.textContent = 'El ciclo abre el día 1 del mes.';
+      else if (bdo.status === 'locked') bdoNote.textContent = 'Cuotas cerradas: la ceremonia espera el último partido.';
+      else if (betsCloseAt && betsCloseAt > nowMs) bdoNote.textContent = 'Apuestas abiertas · cierran en ' + formatDdhhmmss(betsCloseAt - nowMs) + '.';
+      else if (ceremonyAt) bdoNote.textContent = 'Ceremonia a las 22:00 del último partido · ' + shortMoment(ceremonyAt) + '.';
+      else bdoNote.textContent = '';
+    }
+  }
+
   function tickCountdown() {
     var nowMs = currentServerTime();
     if (!S.countdownTo) {
@@ -3332,6 +3410,7 @@
         el['est-countdown'].innerHTML = 'Próximo kickoff en <b>' + (h > 0 ? h + 'h ' : '') + m + 'm ' + s + 's</b>';
       }
     }
+    tickSeasonCountdowns(nowMs);
     renderPreshow(nowMs);
   }
 
@@ -3355,6 +3434,7 @@
 
   function applyMatchState(ms) {
     if (!ms) return;
+    if (ms.stands !== undefined) renderStands(ms.stands);
     if (S.match && ms.match && S.match.id !== ms.match.id) cancelCommentarySpeech();
     S.match = ms.match; S.markets = ms.markets || {}; S.movement = {};
     S.myBets = (ms.myBets || []).slice();
@@ -4278,6 +4358,8 @@
     var who = data.name || 'Aficionado';
     var mine = Boolean(S.profile && data.name && data.name === S.profile.name);
     pushCrowdLine('chat', mine ? 'Tú' : who, data.text);
+    // El mismo mensaje cruza el campo como comentario bala (§ producto).
+    pushDanmaku(mine ? 'Tú' : who, data.text, { soft: Boolean(data.soft) });
     if (mine && el['est-crowd-message'] && el['est-crowd-message'].textContent === 'Enviando…') setCrowdMessage('', '');
   }
 
@@ -4285,6 +4367,121 @@
     if (!data || data.matchId !== S.currentMatchId) return;
     pushCrowdLine('reaction', data.from || 'Aficionado', data.emoji);
   }
+
+  // ===== Comentarios bala sobre la cancha =====
+  // Cada mensaje de la grada cruza el campo una vez y se va. Cada comentario
+  // trae SU propio botón ✕: se quita ese comentario, no todos (no hay
+  // interruptor global). El contenido se inserta con textContent.
+  var DANMAKU_MAX = 6;
+  var danmakuSeq = 0;
+  function removeDanmaku(node) {
+    if (node && node.parentNode) node.parentNode.removeChild(node);
+  }
+  function pushDanmaku(who, text, opts) {
+    var layer = el['est-danmaku'];
+    if (!layer) return;
+    var item = document.createElement('div');
+    item.className = 'est-danmaku-item' + (opts && opts.soft ? ' is-soft' : '');
+    item.style.top = (6 + ((danmakuSeq++ * 17) % 58)) + '%';
+    var body = document.createElement('span');
+    body.className = 'est-danmaku-text';
+    body.textContent = String(who || 'Aficionado').slice(0, 40) + ': ' + String(text || '').slice(0, 120);
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'est-danmaku-close';
+    close.textContent = '×';
+    close.title = 'Quitar este comentario del campo';
+    close.setAttribute('aria-label', 'Quitar este comentario del campo');
+    close.addEventListener('click', function () { removeDanmaku(item); });
+    item.appendChild(body);
+    item.appendChild(close);
+    layer.appendChild(item);
+    while (layer.children.length > DANMAKU_MAX) removeDanmaku(layer.firstElementChild);
+    if (typeof item.addEventListener === 'function') {
+      item.addEventListener('animationend', function () { removeDanmaku(item); });
+    }
+    // Red de seguridad: si la animación no dispara (pestaña en segundo plano),
+    // el comentario no se queda pegado a la cancha para siempre.
+    setTimeout(function () { removeDanmaku(item); }, 16000);
+  }
+
+  // ===== Votación de la grada (moderación opt-in) =====
+  function standsLive() {
+    return Boolean(S.currentMatchId && S.match
+      && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0);
+  }
+  function renderStands(state) {
+    var box = el['est-stands-vote'];
+    if (!box) return;
+    S.stands = state || null;
+    var st = state || {};
+    box.hidden = !S.currentMatchId;
+    if (box.hidden) return;
+    var status = el['est-stands-status'];
+    var tally = el['est-stands-tally'];
+    var openBtn = el['est-stands-open'];
+    var yes = el['est-stands-yes'];
+    var no = el['est-stands-no'];
+    var votes = st.votes || { yes: 0, no: 0, total: 0 };
+    var quorum = Number(st.quorum || 3);
+    var isOpen = st.status === 'open';
+    var voted = st.yourVote != null;
+    if (status) {
+      if (st.allowsInsults) {
+        status.textContent = 'Grada picante: la mayoría aceptó y en este partido se puede insultar sin censura.';
+        status.className = 'est-stands-status is-allowed';
+      } else if (isOpen) {
+        var missing = Math.max(0, quorum - Number(votes.yes || 0));
+        status.textContent = 'Votación en curso para permitir insultos en la grada.'
+          + (missing ? ' Faltan ' + missing + ' voto(s) a favor.' : '');
+        status.className = 'est-stands-status is-open';
+      } else if (st.status === 'rejected') {
+        status.textContent = 'La grada decidió mantener la censura en este partido.';
+        status.className = 'est-stands-status is-rejected';
+      } else {
+        status.textContent = 'La grada está censurada. Si la mayoría acepta, este partido permite insultos.';
+        status.className = 'est-stands-status';
+      }
+    }
+    if (openBtn) {
+      openBtn.hidden = Boolean(st.allowsInsults);
+      openBtn.textContent = isOpen ? 'Votación en curso…' : 'Pedir votación';
+      openBtn.disabled = isOpen || !standsLive();
+      openBtn.title = standsLive() ? 'Abre una votación para permitir insultos en este partido' : 'La votación se abre con el partido en juego';
+    }
+    if (yes) { yes.hidden = !isOpen || voted; yes.disabled = !isOpen || voted; }
+    if (no) { no.hidden = !isOpen || voted; no.disabled = !isOpen || voted; }
+    if (tally) {
+      tally.textContent = votes.total
+        ? 'A favor ' + Number(votes.yes || 0) + ' · En contra ' + Number(votes.no || 0) + ' · Quórum ' + quorum
+        : 'Quórum: ' + quorum + ' votos a favor para habilitar los insultos.';
+    }
+  }
+  function onStandsState(data) {
+    if (!data || data.matchId !== S.currentMatchId) return;
+    renderStands(data.stands || null);
+  }
+  function emitStands(event, allow) {
+    if (!crowdReady()) { setCrowdMessage('Elige un partido para participar.', 'error'); return; }
+    try {
+      S.socket.emit(event, { matchId: S.currentMatchId, allow: allow !== false }, function (res) {
+        if (!res || !res.ok) {
+          var code = res && res.code;
+          setCrowdMessage(code === 'not_live'
+            ? 'La votación de la grada se abre con el partido en juego.'
+            : code === 'ya_votaste' ? 'Ya votaste en esta votación.'
+            : code === 'espera_para_repetir' ? 'Espera un momento antes de repetir la votación.'
+            : 'No se pudo registrar el voto.', 'error');
+          if (res && res.stands) renderStands(res.stands);
+          return;
+        }
+        if (res.stands) renderStands(res.stands);
+        setCrowdMessage('', '');
+      });
+    } catch (_) { setCrowdMessage('No se pudo registrar el voto.', 'error'); }
+  }
+  function openStandsVote() { emitStands('football:stands_open', true); }
+  function castStandsVote(allow) { emitStands('football:stands_vote', allow); }
 
   function bindCrowdControls() {
     var form = el['est-crowd-form'];
@@ -4298,6 +4495,18 @@
         sendCrowdReaction(button.getAttribute('data-crowd-reaction'));
       });
     }
+    var standsBox = el['est-stands-vote'];
+    if (standsBox) {
+      standsBox.addEventListener('click', function (event) {
+        var target = event.target;
+        var button = target && typeof target.closest === 'function' ? target.closest('button') : null;
+        if (!button) return;
+        if (button.id === 'est-stands-open') return openStandsVote();
+        var vote = button.getAttribute('data-stands-vote');
+        if (vote) castStandsVote(vote === 'si');
+      });
+    }
+    renderStands(S.stands);
     resetCrowdFeed();
     updateCrowdAvailability();
   }

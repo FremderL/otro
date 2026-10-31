@@ -285,6 +285,13 @@ En día de doble jornada, la segunda oleada arranca con **+35 min** de desfase (
 Máximo de partidos simultáneos: **3** (6 en día doble). El techo configurado del motor es 12, así
 que hay margen para eventos especiales (copa de fin de semana, amistosos de pretemporada).
 
+> **Nota de cambio (octubre 2026).** La parrilla vigente es la de
+> [`docs/estadio-calendario-mensual.md`](estadio-calendario-mensual.md): los bloques usan franjas de
+> una hora dentro de tres bandas (13:00–15:00, 17:00–19:00, 20:00–21:00) y la segunda oleada de un día
+> doble entra con **+30 min**. El bloque Estelar pasó de 21:30 a **20:00** (destacado **21:00**) para
+> que el último kickoff del día sea 21:30 y el partido termine (21:45) antes de la clausura del Balón
+> de Oro de las 22:00. Máximo de partidos simultáneos: **1**.
+
 El partido destacado se muestra en grande en el encabezado de `/estadio` con marcador, reloj y
 relato; los demás aparecen en una franja lateral de «otros partidos en vivo» con marcador compacto,
 igual que hoy se listan las salas abiertas.

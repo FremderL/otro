@@ -265,18 +265,55 @@ test('el ciclo abre el día 1 y recalcula cuotas una vez por jornada hasta J20',
   }
 });
 
-test('si el proceso no llega el día 1, el ciclo programado se cancela idempotentemente', async () => {
+test('si el proceso no llega el día 1, el ciclo se abre tarde en vez de cancelarse', async () => {
   const h = tempHarness();
   try {
-    const market = new BallonDorMarketService({ store: h.store, projectOdds: fakeProjectOdds });
-    const first = await market.sweep(openAt + DAY);
-    assert.equal(first.cancelled, 1);
+    const lateAt = openAt + 5 * DAY + 9 * 60 * 60 * 1000; // día 6, 09:00 locales
+    const logEvents = [];
+    const market = new BallonDorMarketService({
+      store: h.store, projectOdds: fakeProjectOdds, log: eventName => logEvents.push(eventName)
+    });
+    const first = await market.sweep(lateAt);
+    assert.equal(first.cancelled, 0, 'un servidor apagado el día 1 no cancela el ciclo');
+    assert.equal(first.opened, 1);
     const event = h.store.getBallonDor(SEASON);
-    assert.equal(event.status, 'cancelled');
-    assert.equal(event.cancellationReason, 'apertura_no_realizada_dia_1');
-    const again = await market.sweep(openAt + DAY + 1000);
-    assert.equal(again.cancelled, 0);
-    assert.equal(h.store.getBallonDor(SEASON).status, 'cancelled');
+    assert.equal(event.status, 'active');
+    assert.equal(event.cancellationReason, null);
+    assert.equal(event.startedAt, lateAt);
+    assert.ok(logEvents.includes('football_ballon_dor_opened_late'));
+    const again = await market.sweep(lateAt + 1000);
+    assert.equal(again.opened, 0, 'la apertura tardía no se repite');
+
+    // El ciclo sigue su curso normal: se bloquea al asentarse la J20.
+    const afterTwentieth = lateAt + 20 * DAY;
+    settleThrough(h.league, 20, afterTwentieth);
+    await market.sweep(afterTwentieth);
+    assert.equal(h.store.getBallonDor(SEASON).status, 'locked');
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('un servidor apagado varios días no impide la ceremonia: se resuelve en la misma pasada', async () => {
+  const h = tempHarness();
+  try {
+    // Nadie hizo sweep hasta después del cierre del mes: el ciclo sigue en
+    // `scheduled` y la temporada se jugó y asentó completa antes del cierre.
+    const championId = h.league.config[0].id;
+    const regularMatches = h.league.calendar.matches.filter(match => !match.desempate && match.jornada >= 1 && match.jornada <= 30);
+    const lastKickoff = Math.max(...regularMatches.map(match => match.scheduledKickoffAt));
+    settleSeasonWithChampion(h.league, championId, lastKickoff + 60 * 60 * 1000);
+    const lateAt = openAt + 32 * DAY; // diciembre: el mes de la temporada ya pasó
+    assert.equal(h.store.getBallonDor(SEASON).status, 'scheduled');
+    const market = new BallonDorMarketService({ store: h.store, projectOdds: fakeProjectOdds, log: () => {} });
+    const summary = await market.sweep(lateAt);
+    assert.equal(summary.cancelled, 0, 'la ceremonia no se cancela por no haber abierto el día 1');
+    assert.equal(summary.settled, 1);
+    const event = h.store.getBallonDor(SEASON);
+    assert.equal(event.status, 'settled');
+    assert.equal(event.cancellationReason, null);
+    assert.ok(event.result, 'el Balón de Oro se entrega igual');
+    assert.equal(event.result.winnerCandidateId, h.league.ballonDor.candidates.find(c => c.clubId === championId).id);
   } finally {
     h.cleanup();
   }

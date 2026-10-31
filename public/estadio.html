@@ -56,6 +56,20 @@
       <section class="est-panel" id="est-lobby-panel">
         <h2 class="est-panel-title">Jornada de hoy</h2>
         <div id="est-countdown" class="est-countdown" aria-live="off">—</div>
+        <!-- Cuentas regresivas DD:HH:MM:SS: fin de temporada del casino (reinicio
+             de fichas) y ciclo del Balón de Oro (cierre de apuestas + ceremonia). -->
+        <div class="est-countdowns" aria-label="Cuentas regresivas de la temporada">
+          <div class="est-countdown-row">
+            <span class="est-countdown-label">Fichas y temporada</span>
+            <b id="est-countdown-season" class="est-countdown-clock" aria-live="off">--:--:--:--</b>
+            <small id="est-countdown-season-note" class="est-countdown-note"></small>
+          </div>
+          <div class="est-countdown-row">
+            <span class="est-countdown-label">Balón de Oro</span>
+            <b id="est-countdown-bdo" class="est-countdown-clock" aria-live="off">--:--:--:--</b>
+            <small id="est-countdown-bdo-note" class="est-countdown-note"></small>
+          </div>
+        </div>
         <ul id="est-match-list" class="est-match-list" aria-label="Partidos de hoy"></ul>
       </section>
       <button class="est-hub-launch" id="est-hub-open" type="button" aria-haspopup="dialog" aria-controls="est-hub">
@@ -125,6 +139,9 @@
         <canvas id="est-pitch" width="1050" height="680" role="img"
                 aria-label="Cancha de fútbol en vista cenital. Marcador y minuto disponibles en el texto alternativo."></canvas>
         <div id="est-goal-banner" class="est-goal-banner" aria-hidden="true">¡GOOOL!</div>
+        <!-- Comentarios bala: los mensajes de la grada cruzan la cancha. Cada
+             comentario trae su propio botón ✕ para quitarlo del campo. -->
+        <div id="est-danmaku" class="est-danmaku" aria-hidden="true"></div>
       </div>
 
       <!-- Cabina de comentaristas: panel destacado y feed accesible del partido -->
@@ -171,6 +188,17 @@
             <button class="est-crowd-react" type="button" data-crowd-reaction="😱" aria-label="Reaccionar: ¡No puede ser!" title="¡No puede ser!">😱</button>
             <button class="est-crowd-react" type="button" data-crowd-reaction="🟨" aria-label="Reaccionar: Pide tarjeta" title="Pide tarjeta">🟨</button>
           </div>
+        </div>
+        <!-- Moderación opt-in: si la mayoría de la grada acepta, ese partido
+             permite insultos sin censura (los términos de odio nunca). -->
+        <div id="est-stands-vote" class="est-stands-vote" hidden>
+          <p id="est-stands-status" class="est-stands-status" role="status">Moderación de la grada</p>
+          <div class="est-stands-actions">
+            <button id="est-stands-open" class="est-stands-btn is-primary" type="button">Pedir votación</button>
+            <button id="est-stands-yes" class="est-stands-btn" type="button" data-stands-vote="si" hidden>Sí, permitir insultos</button>
+            <button id="est-stands-no" class="est-stands-btn" type="button" data-stands-vote="no" hidden>No, mantener la censura</button>
+          </div>
+          <p id="est-stands-tally" class="est-stands-tally" aria-live="polite"></p>
         </div>
         <div class="est-crowd-body">
           <ol class="est-crowd-feed" id="est-crowd-feed" role="log" aria-live="polite" aria-relevant="additions text"></ol>
