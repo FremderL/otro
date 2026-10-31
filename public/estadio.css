@@ -2261,6 +2261,7 @@ body.est-hub-open { overflow:hidden; }
 .est-transfer-list { list-style:none; display:grid; gap:10px; padding:0; margin:12px 0; }
 .est-transfer-list li { display:grid; gap:6px; padding:12px; border:1px solid var(--line); border-radius:10px; background:rgba(255,255,255,.035); }
 .est-transfer-list li span { display:flex; align-items:center; flex-wrap:wrap; gap:5px; }
+.est-transfer-list .est-transfer-value { font-size:11px; letter-spacing:.02em; color:var(--gold, #ceb574); text-transform:uppercase; }
 .est-active-fan-pin { display:inline-flex; align-items:center; gap:5px; font-size:11px; }
 .est-active-fan-pin[hidden] { display:none; }
 #est-fan-rewards button { margin-left:8px; padding:4px 8px; border:1px solid rgba(82,224,174,.4); border-radius:6px; color:inherit; background:rgba(82,224,174,.08); cursor:pointer; }

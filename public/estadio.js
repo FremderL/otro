@@ -14,7 +14,16 @@
   var PRESHOW_WINDOW_MS = 30 * 60 * 1000;
   var PROMOTION_ROTATION_MS = 15 * 1000;
   var SHOWCASE_ROTATION_MS = PROMOTION_ROTATION_MS;
-  var BALLON_DOR_OPENING_SECONDS = 45;
+  // Inauguración del Balón de Oro. Antes duraba 45 s y cada candidato aparecía
+  // 2 s: se sentía apurada. Ahora se reparte en actos y son ~1:48, con casi 5 s
+  // por jugador. La narración (≈51 s) cubre el primer bloque; el tema instrumental
+  // del Balón de Oro acompaña el segundo, así que el tiempo extra no es silencio.
+  var BALLON_DOR_OPENING_SECONDS = 108;
+  // Reparto por actos (fracciones de la duración total): apertura, alineación de
+  // los 16 clubes y cierre. Las 16 presentaciones se llevan el resto.
+  var BALLON_DOR_OPENING_ACTS = { intro: 0.065, lineup: 0.09, final: 0.14 };
+  var BALLON_DOR_OPENING_MIN_REVEAL = 3;   // segundos mínimos por candidato
+  var BALLON_DOR_OPENING_BED_VOLUME = 0.35; // el tema acompaña, no tapa
   var BALLON_DOR_CEREMONY_CUE_BASE = '/assets/ballon-dor-ceremony/cues/';
   var BALLON_DOR_CEREMONY_NAME_BASE = '/assets/ballon-dor-ceremony/names/';
   var BALLON_DOR_OPENING_KEY = 'montecristo-bdo-opening-v2:';
@@ -196,7 +205,7 @@
       'est-bdo-opening-stage', 'est-bdo-opening-kicker', 'est-bdo-opening-title', 'est-bdo-opening-description', 'est-bdo-opening-cta',
       'est-bdo-opening-clubs', 'est-bdo-opening-cards', 'est-bdo-opening-caption',
       'est-bdo-opening-progress', 'est-bdo-opening-progress-bar', 'est-bdo-opening-time', 'est-bdo-opening-play',
-      'est-bdo-opening-mute', 'est-bdo-opening-enable-audio', 'est-bdo-opening-skip', 'est-bdo-opening-close', 'est-bdo-opening-audio', 'est-bdo-opening-transcript-copy',
+      'est-bdo-opening-mute', 'est-bdo-opening-enable-audio', 'est-bdo-opening-skip', 'est-bdo-opening-close', 'est-bdo-opening-audio', 'est-bdo-opening-bed', 'est-bdo-opening-transcript-copy',
       'est-nav-badge', 'est-ledger', 'est-ledger-title', 'est-ledger-sub', 'est-ledger-unseen', 'est-ledger-stats', 'est-ledger-chips',
       'est-ledger-history-view', 'est-ledger-ranking-view', 'est-ledger-tab-history', 'est-ledger-tab-ranking', 'est-ledger-ranking-back',
       'est-bet-ranking-live', 'est-bet-ranking-personal', 'est-bet-ranking-updated', 'est-bet-ranking-list',
@@ -295,8 +304,8 @@
     if (skipLink) skipLink.textContent = 'Ir al evento Balón de Oro';
     var launchKicker = document.querySelector('.est-bdo-opening-launch-kicker');
     if (launchKicker) launchKicker.textContent = IS_BDO_DEMO_PREVIEW
-      ? 'Demo sintética · inauguración de 45 segundos'
-      : 'Inauguración oficial · 45 segundos';
+      ? 'Demo sintética · inauguración de 1:48'
+      : 'Inauguración oficial · 1:48';
     var launchCopy = document.querySelector('.est-bdo-opening-launch-copy');
     if (launchCopy) launchCopy.textContent = 'En la primera visita se abre una presentación individual de los 16 candidatos. La fecha de llegada no importa: puedes conocer el evento aunque entres avanzado el ciclo.';
   }
@@ -1963,25 +1972,46 @@
     container.setAttribute('aria-label', 'Presentación individual, jugador ' + (candidateIndex + 1) + ' de 16');
   }
 
+  // Reparto del tiempo de la inauguración en actos. Todo se deriva de la
+  // duración total, así que alargar o acortar la presentación no obliga a tocar
+  // los umbrales de cada escena (el error clásico: 16 candidatos en 32 s).
+  function ballonDorOpeningPlan(total) {
+    var seconds = Number(total);
+    if (!Number.isFinite(seconds) || seconds <= 0) seconds = BALLON_DOR_OPENING_SECONDS;
+    var introEnd = Math.max(4, seconds * BALLON_DOR_OPENING_ACTS.intro);
+    var lineupEnd = introEnd + Math.max(6, seconds * BALLON_DOR_OPENING_ACTS.lineup);
+    var finalLength = Math.max(8, seconds * BALLON_DOR_OPENING_ACTS.final);
+    var revealEach = Math.max(BALLON_DOR_OPENING_MIN_REVEAL,
+      (seconds - lineupEnd - finalLength) / 16);
+    return {
+      total: seconds,
+      introEnd: introEnd,
+      lineupEnd: lineupEnd,
+      revealEach: revealEach,
+      finalStart: lineupEnd + revealEach * 16
+    };
+  }
+
   function renderBallonDorOpeningScene(seconds) {
     var stage = el['est-bdo-opening-stage'];
     if (!stage) return;
     var scene, playerIndex = -1, kicker, title, description, caption;
     var month = ballonDorMonthLabel(S.ballonDorOpeningMonth);
-    if (seconds < 4) {
+    var plan = ballonDorOpeningPlan(BALLON_DOR_OPENING_SECONDS);
+    if (seconds < plan.introEnd) {
       scene = 'opening';
       kicker = 'INICIO DE TEMPORADA · ' + month;
       title = 'Una carrera. Una corona.';
       description = 'La Liga MonteCristo presenta el premio individual más esperado de la temporada.';
       caption = 'La Liga MonteCristo presenta una nueva carrera por el Balón de Oro.';
-    } else if (seconds < 8) {
+    } else if (seconds < plan.lineupEnd) {
       scene = 'lineup';
       kicker = '16 CLUBES · 16 DELANTEROS';
       title = 'Un representante por club';
       description = 'La inauguración presenta a cada candidato del ciclo, uno por uno.';
       caption = 'Dieciséis clubes. Dieciséis delanteros. Un solo ganador.';
-    } else if (seconds < 40) {
-      playerIndex = Math.min(15, Math.floor((seconds - 8) / 2));
+    } else if (seconds < plan.finalStart) {
+      playerIndex = Math.max(0, Math.min(15, Math.floor((seconds - plan.lineupEnd) / plan.revealEach)));
       var candidate = S.ballonDorOpeningCandidates[playerIndex] || {};
       scene = 'reveal-' + (playerIndex + 1);
       kicker = 'PRESENTACIÓN ' + String(playerIndex + 1).padStart(2, '0') + ' DE 16 · ' + (candidate.clubName || 'MONTECRISTO');
@@ -1994,8 +2024,8 @@
       var status = S.ballonDorMarket && S.ballonDorMarket.status;
       if (status === 'active') {
         title = 'Observa. Elige. Vive la temporada.';
-        description = 'Predicciones con fichas virtuales · mercado hasta J20 · anuncio final al cierre del ciclo.';
-        caption = 'Revisa las estadísticas de cada candidato, elige tu pronóstico y acompaña la carrera hasta el anuncio final.';
+        description = 'Predicciones con fichas virtuales · mercado hasta J20 · anuncio final al cierre del ciclo. La conferencia de prensa del Estadio presenta los traspasos y el valor de cada jugador.';
+        caption = 'Revisa las estadísticas de cada candidato, elige tu pronóstico y acompaña la carrera hasta el anuncio final. La conferencia de prensa del mercado, en la pestaña Mercado, muestra los traspasos y la valoración de los jugadores.';
         el['est-bdo-opening-cta'].textContent = 'Ver candidatos y hacer mi predicción ›';
       } else if (status === 'locked') {
         title = 'La temporada sigue en juego.';
@@ -2089,6 +2119,7 @@
     S.ballonDorOpeningComplete = true;
     S.ballonDorOpeningPaused = true;
     S.ballonDorOpeningMandatory = false;
+    stopBallonDorOpeningAudio();
     if (el['est-bdo-opening']) el['est-bdo-opening'].classList.remove('is-mandatory');
     var completionKey = BALLON_DOR_OPENING_KEY + S.ballonDorOpeningMonth;
     try { localStorage.setItem(completionKey, 'completed'); }
@@ -2100,7 +2131,8 @@
     renderBallonDorOpeningScene(BALLON_DOR_OPENING_SECONDS);
     el['est-bdo-opening-progress'].setAttribute('aria-valuenow', '100');
     el['est-bdo-opening-progress-bar'].style.width = '100%';
-    el['est-bdo-opening-time'].textContent = '0:45 / 0:45';
+    var total = formatBallonDorOpeningTime(BALLON_DOR_OPENING_SECONDS);
+    el['est-bdo-opening-time'].textContent = total + ' / ' + total;
     el['est-bdo-opening-status'].textContent = 'Inauguración completada · no se repite durante este ciclo.';
     updateBallonDorOpeningControls();
   }
@@ -2109,10 +2141,10 @@
     if (!el['est-bdo-opening'] || el['est-bdo-opening'].hidden || S.ballonDorOpeningPaused) return;
     var total = Number(duration);
     if (!Number.isFinite(total) || total <= 0) total = BALLON_DOR_OPENING_SECONDS;
-    var current = Math.max(0, Number(elapsed) || 0);
+    var current = Math.max(0, Math.min(total, Number(elapsed) || 0));
+    S.ballonDorOpeningElapsed = current;
+    renderBallonDorOpeningScene(current);
     var progress = clamp(current / total, 0, 1);
-    S.ballonDorOpeningElapsed = progress * BALLON_DOR_OPENING_SECONDS;
-    renderBallonDorOpeningScene(S.ballonDorOpeningElapsed);
     var percent = Math.round(progress * 100);
     el['est-bdo-opening-progress'].setAttribute('aria-valuenow', String(percent));
     el['est-bdo-opening-progress-bar'].style.width = percent + '%';
@@ -2120,50 +2152,80 @@
     if (progress >= 1) finishBallonDorOpening();
   }
 
-  function onBallonDorOpeningTimeUpdate() {
-    if (S.ballonDorOpeningMode !== 'audio' || S.ballonDorOpeningPaused) return;
-    var audio = el['est-bdo-opening-audio'];
-    updateBallonDorOpeningFrame(audio.currentTime, audio.duration);
+  // El reloj de la inauguración es de pared, no el del audio: la narración dura
+  // ~51 s y la presentación 1:48. Antes el avance se desprendía de currentTime,
+  // lo que ataba la duración total al MP3 y aceleraba las escenas.
+  function startBallonDorOpeningClock(session) {
+    clearBallonDorOpeningTimer();
+    S.ballonDorOpeningStartedAt = Date.now() - S.ballonDorOpeningElapsed * 1000;
+    S.ballonDorOpeningTimer = window.setInterval(function () {
+      if (session !== S.ballonDorOpeningSession || S.ballonDorOpeningPaused) return;
+      var elapsed = Math.max(0, (Date.now() - S.ballonDorOpeningStartedAt) / 1000);
+      updateBallonDorOpeningFrame(elapsed, BALLON_DOR_OPENING_SECONDS);
+    }, 100);
+  }
+
+  function stopBallonDorOpeningAudio() {
+    ['est-bdo-opening-audio', 'est-bdo-opening-bed'].forEach(function (id) {
+      var audio = el[id];
+      if (!audio) return;
+      try { audio.pause(); } catch (_) { /* el navegador puede no exponer media */ }
+    });
+  }
+
+  // Segunda mitad: el tema instrumental del Balón de Oro (el mismo de la
+  // ceremonia) entra cuando termina la narración y se repite hasta el cierre.
+  function startBallonDorOpeningBed() {
+    var bed = el['est-bdo-opening-bed'];
+    if (!bed || S.ballonDorOpeningPaused || S.ballonDorOpeningComplete) return;
+    if (S.ballonDorOpeningMuted) { S.ballonDorOpeningMode = 'visual'; return; }
+    S.ballonDorOpeningMode = 'bed';
+    el['est-bdo-opening-status'].textContent = 'Tema instrumental · segunda mitad de la presentación.';
+    try {
+      bed.volume = BALLON_DOR_OPENING_BED_VOLUME;
+      bed.muted = false;
+      bed.currentTime = 0;
+      var playback = bed.play();
+      if (playback && typeof playback.catch === 'function') {
+        playback.catch(function () { S.ballonDorOpeningMode = 'visual'; });
+      }
+    } catch (_) { S.ballonDorOpeningMode = 'visual'; }
+  }
+
+  function onBallonDorOpeningNarrationEnded() {
+    reportBallonDorAudio('opening_narration', 'completed', S.ballonDorOpeningMonth);
+    // La narración termina a mitad de la presentación: sigue el tema, no el cierre.
+    if (!S.ballonDorOpeningComplete) startBallonDorOpeningBed();
   }
 
   function startBallonDorOpeningFallback(session, statusText, audioBlocked) {
     if (session !== S.ballonDorOpeningSession || !el['est-bdo-opening'] || el['est-bdo-opening'].hidden) return;
     if (audioBlocked !== false) reportBallonDorAudio('opening_narration', 'blocked', S.ballonDorOpeningMonth);
-    var audio = el['est-bdo-opening-audio'];
-    try { audio.pause(); } catch (_) { /* el navegador puede no exponer media */ }
+    stopBallonDorOpeningAudio();
     S.ballonDorOpeningMode = 'visual';
     S.ballonDorOpeningAudioBlocked = audioBlocked !== false;
     S.ballonDorOpeningDuration = BALLON_DOR_OPENING_SECONDS;
-    S.ballonDorOpeningPaused = false;
-    S.ballonDorOpeningStartedAt = Date.now() - S.ballonDorOpeningElapsed * 1000;
+    if (el['est-bdo-opening-status']) el['est-bdo-opening-status'].textContent = statusText || 'Narración no disponible · escenas y guion en pantalla.';
     el['est-bdo-opening-stage'].classList.remove('is-paused');
-    el['est-bdo-opening-status'].textContent = statusText || 'Narración no disponible · escenas y guion en pantalla.';
-    clearBallonDorOpeningTimer();
-    S.ballonDorOpeningTimer = window.setInterval(function () {
-      if (S.ballonDorOpeningPaused) return;
-      var elapsed = Math.max(0, (Date.now() - S.ballonDorOpeningStartedAt) / 1000);
-      updateBallonDorOpeningFrame(elapsed, BALLON_DOR_OPENING_SECONDS);
-    }, 100);
+    startBallonDorOpeningClock(session);
     updateBallonDorOpeningFrame(S.ballonDorOpeningElapsed, BALLON_DOR_OPENING_SECONDS);
     updateBallonDorOpeningControls();
   }
 
-  function playBallonDorOpeningAudio(session) {
+  function playBallonDorOpeningNarration(session, seekTo) {
     var audio = el['est-bdo-opening-audio'];
-    clearBallonDorOpeningTimer();
-    S.ballonDorOpeningMode = 'audio';
+    S.ballonDorOpeningMode = 'narration';
     S.ballonDorOpeningAudioBlocked = false;
-    S.ballonDorOpeningPaused = false;
     el['est-bdo-opening-stage'].classList.remove('is-paused');
-    el['est-bdo-opening-status'].textContent = 'Reproduciendo narración · español de México.';
+    el['est-bdo-opening-status'].textContent = 'Narración · bloque 1 de 2 (español de México).';
     updateBallonDorOpeningControls();
+    try { audio.currentTime = Math.max(0, Number(seekTo) || 0); } catch (_) { /* metadata aún no cargada */ }
     try {
       var playback = audio.play();
       if (playback && typeof playback.then === 'function') {
         playback.then(function () {
           if (session !== S.ballonDorOpeningSession || el['est-bdo-opening'].hidden) return;
           reportBallonDorAudio('opening_narration', 'started', S.ballonDorOpeningMonth);
-          onBallonDorOpeningTimeUpdate();
         }, function () {
           startBallonDorOpeningFallback(session,
             'Audio no disponible automáticamente · activa la narración si la quieres escuchar. La presentación continúa con texto.', true);
@@ -2195,7 +2257,7 @@
     S.ballonDorOpeningMandatory = Boolean(settings.mandatory);
     S.ballonDorOpeningAudioBlocked = false;
     S.ballonDorOpeningPaused = false;
-    S.ballonDorOpeningMode = 'audio';
+    S.ballonDorOpeningMode = 'narration';
     S.ballonDorOpeningAutoShown[market.seasonMonth] = true;
     clearBallonDorOpeningTimer();
     overlay.hidden = false;
@@ -2209,62 +2271,69 @@
     } catch (_) { /* la presentación funciona aunque no se pueda persistir */ }
     renderBallonDorOpeningButton();
     audio.muted = S.ballonDorOpeningMuted;
-    try { audio.currentTime = 0; } catch (_) { /* metadata aún no cargada */ }
+    if (el['est-bdo-opening-bed']) el['est-bdo-opening-bed'].muted = S.ballonDorOpeningMuted;
     renderBallonDorOpeningScene(0);
     el['est-bdo-opening-progress'].setAttribute('aria-valuenow', '0');
     el['est-bdo-opening-progress-bar'].style.width = '0%';
-    el['est-bdo-opening-time'].textContent = '0:00 / 0:45';
+    el['est-bdo-opening-time'].textContent = '0:00 / ' + formatBallonDorOpeningTime(BALLON_DOR_OPENING_SECONDS);
     el['est-bdo-opening-transcript-copy'].textContent = BALLON_DOR_OPENING_SCRIPT;
     updateBallonDorOpeningControls();
-    playBallonDorOpeningAudio(S.ballonDorOpeningSession);
+    startBallonDorOpeningClock(S.ballonDorOpeningSession);
+    playBallonDorOpeningNarration(S.ballonDorOpeningSession, 0);
     if (S.ballonDorOpeningMandatory) el['est-bdo-opening-play'].focus();
     else el['est-bdo-opening-close'].focus();
   }
 
+  // Un gesto del usuario puede desbloquear el audio del navegador. Se reanuda en
+  // el punto de la presentación en que esté: si la narración ya terminó, entra el
+  // tema instrumental en vez de repetir la voz desde el principio.
   function activateBallonDorOpeningAudio() {
     if (!S.ballonDorOpeningAudioBlocked || S.ballonDorOpeningComplete) return;
     var audio = el['est-bdo-opening-audio'];
-    if (!S.ballonDorOpeningPaused) {
-      S.ballonDorOpeningElapsed = Math.min(BALLON_DOR_OPENING_SECONDS,
-        Math.max(0, (Date.now() - S.ballonDorOpeningStartedAt) / 1000));
-    }
-    var duration = Number(audio.duration);
-    var progress = clamp(S.ballonDorOpeningElapsed / BALLON_DOR_OPENING_SECONDS, 0, 1);
-    try { audio.currentTime = Number.isFinite(duration) && duration > 0 ? duration * progress : BALLON_DOR_OPENING_SECONDS * progress; }
-    catch (_) { /* el navegador puede no permitir seek antes de cargar metadata */ }
     S.ballonDorOpeningPaused = false;
-    playBallonDorOpeningAudio(S.ballonDorOpeningSession);
+    var narrationEnd = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null;
+    if (narrationEnd != null && S.ballonDorOpeningElapsed >= narrationEnd) {
+      startBallonDorOpeningBed();
+      startBallonDorOpeningClock(S.ballonDorOpeningSession);
+      return;
+    }
+    playBallonDorOpeningNarration(S.ballonDorOpeningSession, S.ballonDorOpeningElapsed);
+    startBallonDorOpeningClock(S.ballonDorOpeningSession);
   }
 
   function toggleBallonDorOpeningPlayback() {
     if (S.ballonDorOpeningComplete) return;
-    var audio = el['est-bdo-opening-audio'];
+    var bed = el['est-bdo-opening-bed'];
     if (!S.ballonDorOpeningPaused) {
-      if (S.ballonDorOpeningMode === 'audio') {
-        try { audio.pause(); } catch (_) { /* audio opcional */ }
-        S.ballonDorOpeningElapsed = Number.isFinite(audio.duration) && audio.duration > 0
-          ? clamp(audio.currentTime / audio.duration, 0, 1) * BALLON_DOR_OPENING_SECONDS
-          : S.ballonDorOpeningElapsed;
-      } else {
-        S.ballonDorOpeningElapsed = Math.min(BALLON_DOR_OPENING_SECONDS,
-          Math.max(0, (Date.now() - S.ballonDorOpeningStartedAt) / 1000));
-        clearBallonDorOpeningTimer();
-      }
+      stopBallonDorOpeningAudio();
+      S.ballonDorOpeningElapsed = Math.min(BALLON_DOR_OPENING_SECONDS,
+        Math.max(0, (Date.now() - S.ballonDorOpeningStartedAt) / 1000));
+      clearBallonDorOpeningTimer();
       S.ballonDorOpeningPaused = true;
       el['est-bdo-opening-stage'].classList.add('is-paused');
       el['est-bdo-opening-status'].textContent = 'Inauguración en pausa.';
     } else {
       S.ballonDorOpeningPaused = false;
-      if (S.ballonDorOpeningMode === 'audio') playBallonDorOpeningAudio(S.ballonDorOpeningSession);
-      else startBallonDorOpeningFallback(S.ballonDorOpeningSession,
-        'Audio no disponible · escenas y guion en pantalla. Activa la narración si la quieres escuchar.', true);
+      startBallonDorOpeningClock(S.ballonDorOpeningSession);
+      if (S.ballonDorOpeningMode === 'narration' && !S.ballonDorOpeningAudioBlocked) {
+        playBallonDorOpeningNarration(S.ballonDorOpeningSession, S.ballonDorOpeningElapsed);
+      } else if (S.ballonDorOpeningMode === 'bed') {
+        try { bed.play(); } catch (_) { /* audio opcional */ }
+        el['est-bdo-opening-stage'].classList.remove('is-paused');
+      } else if (S.ballonDorOpeningAudioBlocked) {
+        el['est-bdo-opening-stage'].classList.remove('is-paused');
+        el['est-bdo-opening-status'].textContent = 'Audio no disponible · escenas y guion en pantalla. Activa la narración si la quieres escuchar.';
+      } else {
+        el['est-bdo-opening-stage'].classList.remove('is-paused');
+      }
     }
     updateBallonDorOpeningControls();
   }
 
   function muteBallonDorOpening() {
     S.ballonDorOpeningMuted = !S.ballonDorOpeningMuted;
-    el['est-bdo-opening-audio'].muted = S.ballonDorOpeningMuted;
+    if (el['est-bdo-opening-audio']) el['est-bdo-opening-audio'].muted = S.ballonDorOpeningMuted;
+    if (el['est-bdo-opening-bed']) el['est-bdo-opening-bed'].muted = S.ballonDorOpeningMuted;
     updateBallonDorOpeningControls();
   }
 
@@ -2273,9 +2342,10 @@
     if (!overlay || overlay.hidden || (S.ballonDorOpeningMandatory && !S.ballonDorOpeningComplete)) return;
     S.ballonDorOpeningSession++;
     clearBallonDorOpeningTimer();
+    stopBallonDorOpeningAudio();
     try {
-      el['est-bdo-opening-audio'].pause();
       el['est-bdo-opening-audio'].currentTime = 0;
+      if (el['est-bdo-opening-bed']) el['est-bdo-opening-bed'].currentTime = 0;
     } catch (_) { /* audio opcional */ }
     overlay.hidden = true;
     overlay.setAttribute('aria-hidden', 'true');
@@ -3153,6 +3223,14 @@
       }).join('') + '</ul>';
     });
   }
+  // Conferencia de prensa del mercado: los acuerdos de la temporada con el valor
+  // de cada jugador. La valoración viene del servidor (atributos del jugador), no
+  // se calcula aquí: dos fórmulas distintas acabarían mostrando dos precios.
+  function transferValueLabel(value) {
+    var n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return '—';
+    return n.toFixed(1).replace('.', ',') + ' M';
+  }
   function refreshTransfers() {
     var list = $('est-transfers-list');
     if (!list || !S.socket || !S.socket.connected) { if (list) list.textContent = 'Conéctate para consultar el mercado.'; return; }
@@ -3162,8 +3240,15 @@
       var market = res.transfers;
       if (market.status === 'scheduled') { list.textContent = 'Los traspasos se anunciarán el día 15 de este mes.'; return; }
       if (!Array.isArray(market.moves) || !market.moves.length) { list.textContent = 'No hay acuerdos disponibles para esta temporada.'; return; }
-      list.innerHTML = '<p>Acuerdos para la temporada ' + esc(market.effectiveSeason) + '.</p><ul class="est-transfer-list">' + market.moves.map(function (move) {
-        return '<li><b>' + esc(move.playerName) + '</b><span>' + clubCrestMarkup(move.fromId, 'est-inline-crest') + esc(teamName(move.fromId)) + ' → ' + clubCrestMarkup(move.toId, 'est-inline-crest') + esc(teamName(move.toId)) + '</span></li>';
+      var stage = market.status === 'effective'
+        ? 'Acuerdos en vigor desde la temporada ' + market.effectiveSeason + '.'
+        : 'Acuerdos anunciados; se hacen efectivos en la temporada ' + market.effectiveSeason + '.';
+      list.innerHTML = '<p>' + esc(stage) + '</p><ul class="est-transfer-list">' + market.moves.map(function (move) {
+        var position = move.position ? ' · ' + esc(move.position) : '';
+        return '<li><b>' + esc(move.playerName) + '</b>' + position +
+          '<span>' + clubCrestMarkup(move.fromId, 'est-inline-crest') + esc(teamName(move.fromId)) + ' → ' +
+          clubCrestMarkup(move.toId, 'est-inline-crest') + esc(teamName(move.toId)) + '</span>' +
+          '<span class="est-transfer-value">Valoración ' + esc(transferValueLabel(move.playerValue)) + '</span></li>';
       }).join('') + '</ul>';
     });
   }
@@ -5868,12 +5953,14 @@
     el['est-bdo-opening'].addEventListener('click', function (event) {
       if (event.target.classList.contains('est-bdo-opening-scrim')) closeBallonDorOpening();
     });
-    el['est-bdo-opening-audio'].addEventListener('timeupdate', onBallonDorOpeningTimeUpdate);
-    el['est-bdo-opening-audio'].addEventListener('durationchange', onBallonDorOpeningTimeUpdate);
-    el['est-bdo-opening-audio'].addEventListener('ended', function () {
-      reportBallonDorAudio('opening_narration', 'completed', S.ballonDorOpeningMonth);
-      finishBallonDorOpening();
-    });
+    // La narración ya no marca el final de la presentación: al terminar entra el
+    // tema instrumental y la inauguración sigue hasta su propio cierre.
+    el['est-bdo-opening-audio'].addEventListener('ended', onBallonDorOpeningNarrationEnded);
+    if (el['est-bdo-opening-bed']) {
+      el['est-bdo-opening-bed'].addEventListener('error', function () {
+        S.ballonDorOpeningMode = 'visual';
+      });
+    }
     el['est-bdo-opening-audio'].addEventListener('error', function () {
       reportBallonDorAudio('opening_narration', 'error', S.ballonDorOpeningMonth);
       startBallonDorOpeningFallback(S.ballonDorOpeningSession, 'Audio no disponible · las escenas y el guion siguen disponibles.');
