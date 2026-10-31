@@ -207,5 +207,80 @@ npm run football:odds-audit -- --margins          # solo márgenes
 | `lib/football/match-context.js` | Única definición de λ/matriz de un partido (la usan betting y el auditor) |
 | `scripts/estadio-cuotas.js` | CLI `football:odds-audit` |
 | `tests/football-odds-realism.test.js` | 7 pruebas: contexto único, divisor de mercados solapados, piso anti-arbitraje, bandas y hallazgos |
+| `tests/football-market-catalog.test.js` | 8 pruebas del catálogo: escalera asiática, empujes y medias victorias, descanso/final, primer goleador y archivo del asentado |
 
 **Fuentes de las bandas**: [bet.report · márgenes por mercado](https://bet.report/en/blog/bookmaker-margins-explained/) · [smartmatchpick · overround por mercado](https://smartmatchpick.com/guides/bookmaker-overround-explained) · [soccernews · hándicap asiático vs 1X2](https://www.soccernews.com/asian-handicap-betting/401985/) · [soccernews · marcador exacto](https://www.soccernews.com/correct-score-betting-how-it-works-and-whether-it-is-worth-it/402622/) · [odds-academy · márgenes Pinnacle vs casa blanda](https://odds-academy.com/compare/asian-handicap-vs-1x2/) · [bettingtools · Pinnacle 2 %](https://bettingtools.com/bookie/pinnacle/) · [statpair · 5 grandes ligas 2025/26](https://statpair.com/blog/home-away-stats-location-matters) · [balanceofplay · la ventaja de local se desvanece](https://balanceofplay.substack.com/p/home-advantage-is-fading-across-european).
+
+---
+
+## 7. Estado de la ejecución: A, B y C hechas
+
+### Fase A — márgenes por mercado (`lib/football/odds.js`)
+
+`MARGINS` ya no es un número único: cada mercado cotiza en la banda que publica una casa recreativa.
+
+| Mercado | Antes | Ahora | Banda real | Medido (2026-11, 240 partidos) |
+| --- | --- | --- | --- | --- |
+| 1X2 | 7 % | 6 % | 5–8 % | 6,01 % |
+| Doble oportunidad | 6 % | 6 % | 3–8 % | 5,99 % |
+| Hándicap europeo | 7 % | 6 % | 4–7 % | 6,00 % |
+| **Hándicap asiático** | — | **2,5 %** | 1–4 % | 2,52–2,55 % |
+| Altas/bajas | 7 % | 5 % | 4–6 % | 4,99–5,02 % |
+| Ambos marcan | 8 % | 6 % | 5–8 % | 6,02 % |
+| Gana a cero | 9 % | 7 % | 5–9 % | 6,82–6,99 % |
+| Goles por equipo | 8 % | 6,5 % | 5–8 % | 6,50–6,51 % |
+| **Descanso/final** | — | **14 %** | 12–20 % | 14,00 % |
+| Marcador exacto | 12 % | 18 % | 15–25 % | 18,00 % |
+| **Primer goleador** | — | **22 %** | 20–40 % | 22,00 % |
+
+El piso anti-arbitraje sigue siendo un invariante **por mercado**: 4 % general y 2 % en el hándicap asiático
+(`ASIAN_MIN_MARGIN`). En ambos casos el libro tiene margen positivo — nunca es arbitrable.
+
+### Fase B — ventaja de local normalizada (`lib/football/ratings.js`)
+
+`λ_local = leagueAvg · att · def · √homeAdv` y `λ_visita = leagueAvg · att · def / √homeAdv`.
+Con `homeAdv = 1,24` la ventaja se queda en el **reparto de goles** en vez de inflar el total: el modelo
+antiguo esperaba 2,24·L goles, el nuevo 2,01·L.
+
+| Métrica | Antes | Ahora | Banda real |
+| --- | --- | --- | --- |
+| Goles por partido | 2,92 | **2,77** | 2,55–2,90 |
+| Victorias locales | 40,7 % | **43,4 %** | 38–48 % |
+| Empates | 26 % | **26,4 %** | 23–28 % |
+| Altas 2.5 | 54 % | **52,5 %** | 47–56 % |
+| Ambos marcan | 59 % | **56,0 %** | 47–56 % |
+
+### Fase C — catálogo (`odds.js`, `betting.js`, `estadio.js`)
+
+**Hándicap asiático de dos vías**, con escalera centrada en la línea justa del modelo:
+
+- Claves `asian_handicap_home_minus|plus<línea>` en cuartos (`minus0.75`, `plus0`, `plus1.5`…).
+- Se publican **cinco líneas**: la principal (la supremacía esperada redondeada al cuarto) y sus dos
+  vecinas a cada lado. La escalera viaja con el partido, no es una constante: `betting.marketKeysFor()`.
+- Probabilidad cotizada **condicionada a que no haya empuje**:
+  `q_local = P(gana) / (1 − P(empuje))`; así el libro de dos vías suma 1 y el margen declarado es el real.
+- **Liquidación** (`resolveSelection`): línea entera o de medio punto → `won` / `lost` / `void` (empuje).
+  Línea de cuarto → dos medias apuestas a las líneas vecinas, con desenlaces **`half_won`** y
+  **`half_lost`**: media cuota cobrada + media devuelta, o media devuelta. `_payoutBet` paga el parcial.
+- Las líneas de cuarto **no se combinan en parlays** (`linea_cuarto_no_combinable`): el empuje parcial no
+  se puede multiplicar sin un estado de pata parcial. Las de medio punto sí.
+
+**Descanso / final (`ht_ft`)**: nueve resultados `home|draw|away` × `home|draw|away`. Se modela cada
+tiempo como Poisson independiente con su parte de λ (45 % antes del descanso) y se publica con 14 %.
+Se liquida con el **marcador del descanso archivado en el resultado asentado** (`match.result.halftime`);
+si el partido se asentó sin cronología verificada, el boleto se anula en vez de adivinar.
+
+**Primer goleador (`first_scorer`)**: doce nombres (peso de tiro = el mismo `shootWeight` con el que el
+motor elige rematador) + `other` («otro jugador») + `none` («sin goles»). Se publica solo si hay
+alineaciones (son deterministas desde la plantilla, así que existen desde antes del partido) y con 22 %.
+Se liquida con `match.result.firstScorer` (`{ id, name, team, minute }`, `null` en un 0-0, `ownGoal` si el
+primer gol fue en propia puerta → anulado). La selección `other` se resuelve contra la **lista archivada
+con el boleto** (`bet.firstScorerIds`), igual que las celdas del marcador exacto.
+
+**Lo que el asentado archiva ahora** (`lib/football-store.js`): además de marcador, ganador, estadísticas
+y destacados, `result.halftime` y `result.firstScorer` salen de la MISMA cronología verificada. Es la
+fuente autoritativa de liquidación (§15.4); `cleanMatch` los preserva al recargar. La recuperación
+(`reconcileEscrow`) y las combinadas usan exactamente el mismo contexto (`_contextForBet`).
+
+**Pendiente de la palanca C (no incluido):** tarjetas y córners por línea (necesitan su propio modelo de
+λ por equipo y su archivo en el asentado) y precio en vivo de los mercados nuevos (hoy en vivo solo 1X2).

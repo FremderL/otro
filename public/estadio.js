@@ -4575,12 +4575,34 @@
     'over_under_3.5': 'Goles 3.5', 'btts': 'Ambos anotan', 'correct_score': 'Marcador exacto',
     'win_to_nil_home': 'Local gana a cero', 'win_to_nil_away': 'Visita gana a cero',
     'team_total_home_0.5': 'Goles local 0.5', 'team_total_home_1.5': 'Goles local 1.5',
-    'team_total_away_0.5': 'Goles visita 0.5', 'team_total_away_1.5': 'Goles visita 1.5'
+    'team_total_away_0.5': 'Goles visita 0.5', 'team_total_away_1.5': 'Goles visita 1.5',
+    'ht_ft': 'Descanso / final', 'first_scorer': 'Primer goleador'
   };
-  function selLabel(market, key) {
-    var map = { home: 'Local', draw: 'Empate', away: 'Visita', over: 'Más', under: 'Menos', yes: 'Sí', no: 'No', other: 'Otro' };
+  // Hándicap asiático: la línea vive en la clave del mercado («minus0.75» → −0,75)
+  // porque la escalera se calcula por partido. Cuarto de línea = empuje parcial.
+  function asianLineLabel(market) {
+    var m = /^asian_handicap_home_(minus|plus)(\d+(?:\.\d+)?)$/.exec(String(market || ''));
+    if (!m) return null;
+    var line = (m[1] === 'minus' ? '−' : '+') + String(m[2]).replace('.', ',');
+    var devuelve = /\.[257]5$/.test(m[2]) || m[2].indexOf('.25') >= 0 || m[2].indexOf('.75') >= 0;
+    return 'Hándicap asiático ' + line + (devuelve ? ' (empuje)' : '');
+  }
+  function selLabel(market, key, selection) {
+    // El servidor manda el nombre cuando el mercado no se puede leer de la clave
+    // (primer goleador: la selección es el id del jugador).
+    if (selection && selection.label) return selection.label;
+    var map = { home: 'Local', draw: 'Empate', away: 'Visita', over: 'Más', under: 'Menos', yes: 'Sí', no: 'No', other: 'Otro jugador' };
+    if (key === 'none') return 'Sin goles (0-0)';
+    if (market === 'asian_handicap_home' || market.indexOf('asian_handicap_home_') === 0) {
+      return ({ home: 'Local', away: 'Visita' })[key] || map[key] || key;
+    }
     if (map[key]) return map[key];
     if (market === 'double_chance') return ({ home_draw: 'Local o Empate', home_away: 'Local o Visita', draw_away: 'Empate o Visita' })[key] || key;
+    if (market === 'ht_ft') {
+      var names = { home: 'Local', draw: 'Empate', away: 'Visita' };
+      var parts = String(key).split('_');
+      return (names[parts[0]] || parts[0]) + ' / ' + (names[parts[1]] || parts[1]);
+    }
     if (market.indexOf('handicap') === 0) return ({ home: 'Local −1', draw: 'Empate hándicap', away: 'Visita +1' })[key] || key;
     return key;
   }
@@ -4616,7 +4638,7 @@
       var sels = S.markets[mk] || []; if (!sels.length) return;
       var lockedBy = taken[mk];
       var group = document.createElement('div'); group.className = 'est-market-group';
-      var head = document.createElement('div'); head.className = 'est-market-name'; head.textContent = MARKET_LABEL[mk] || mk; group.appendChild(head);
+      var head = document.createElement('div'); head.className = 'est-market-name'; head.textContent = MARKET_LABEL[mk] || asianLineLabel(mk) || mk; group.appendChild(head);
       var row = document.createElement('div'); row.className = 'est-selections';
       sels.forEach(function (s) {
         var mv = S.movement[mk + ':' + s.key];
@@ -4627,7 +4649,7 @@
         if (suspended) btn.title = 'Mercado suspendido durante la pausa del juego.';
         else if (locked) btn.title = 'Ya apostaste en esta categoría. Solo se permite una selección por mercado.';
         var arrow = mv && mv.dir === 'up' ? '<span class="est-sel-move up">▲</span>' : mv && mv.dir === 'down' ? '<span class="est-sel-move down">▼</span>' : '';
-        btn.innerHTML = '<span class="est-sel-key">' + esc(selLabel(mk, s.key)) + '</span>' +
+        btn.innerHTML = '<span class="est-sel-key">' + esc(selLabel(mk, s.key, s)) + '</span>' +
           '<span class="est-sel-odds">' + Number(s.price).toFixed(2) + arrow + '</span>' +
           '<span class="est-sel-implied">impl. ' + pct(s.implied) + '</span>';
         btn.setAttribute('aria-label', (MARKET_LABEL[mk] || mk) + ' ' + selLabel(mk, s.key) + ', cuota ' + Number(s.price).toFixed(2) + ', probabilidad implícita ' + pct(s.implied));

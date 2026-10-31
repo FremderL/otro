@@ -60,27 +60,31 @@ test('el margen medido respeta el divisor de los mercados que se solapan', () =>
     const markets = O.buildPreMatchMarkets(matchContextFor(h.store, match).matrix);
     const oneXtwo = marketMargin(markets['1x2']);
     assert.ok(Math.abs(oneXtwo.overround - markets['1x2'].overround) < 1e-4, 'el overround medido es el publicado');
-    assert.ok(Math.abs(oneXtwo.margin - 0.07) < 0.005, 'el 1X2 va con su margen configurado');
+    assert.ok(Math.abs(oneXtwo.margin - O.MARGINS['1x2']) < 0.005, 'el 1X2 va con su margen configurado');
 
     // La doble oportunidad publica tres pares que cubren cada resultado dos
     // veces: su suma es 2·(1+margen), no (1+margen).
     const dc = marketMargin({ ...markets.double_chance, independent: true });
     assert.ok(dc.overround > 1.9, 'la suma bruta pasa de 1.9');
-    assert.ok(Math.abs(dc.margin - 0.06) < 0.006, 'y el margen normalizado es el configurado');
+    assert.ok(Math.abs(dc.margin - O.MARGINS.double_chance) < 0.006, 'y el margen normalizado es el configurado');
   } finally {
     h.cleanup();
   }
 });
 
-test('ningún mercado baja del piso anti-arbitraje (1 + MIN_MARGIN)', () => {
+test('ningún mercado baja de su piso anti-arbitraje', () => {
+  // El piso es por mercado: 4 % general y 2 % en el hándicap asiático, cuyo margen
+  // real (2,5 %) es más fino que el piso general. En ambos casos el libro tiene
+  // margen positivo: nunca es arbitrable.
   const h = harness();
   try {
     const matches = h.store.getMatches(SEASON).slice(0, 24);
     for (const match of matches) {
       const markets = O.buildPreMatchMarkets(matchContextFor(h.store, match).matrix);
       for (const [key, market] of Object.entries(markets)) {
+        const floor = String(key).startsWith('asian_handicap') ? O.ASIAN_MIN_MARGIN : O.MIN_MARGIN;
         const measured = marketMargin({ ...market, independent: Boolean(market.independent) });
-        assert.ok(measured.margin >= O.MIN_MARGIN - 0.002, `${match.id} ${key} por debajo del piso`);
+        assert.ok(measured.margin >= floor - 0.002, `${match.id} ${key} por debajo del piso (${measured.margin})`);
       }
     }
   } finally {
@@ -102,8 +106,8 @@ test('auditSeason mide todos los mercados publicados y devuelve veredicto y band
       assert.ok(['en_banda', 'alto', 'bajo', 'sin_banda'].includes(row.verdict));
       assert.ok(row.priceMax > row.priceMin, 'hay rango de precios');
     }
-    // El 1X2 configurado al 7 % se mide como 7 % (±0,2 pp).
-    assert.ok(Math.abs(report.margins['1x2'].meanMargin - 0.07) < 0.002);
+    // El margen configurado del 1X2 se mide tal cual (±0,2 pp).
+    assert.ok(Math.abs(report.margins['1x2'].meanMargin - O.MARGINS['1x2']) < 0.002);
     assert.ok(report.distribution.matches === 240);
     for (const key of ['homeWin', 'draw', 'awayWin', 'goalsPerMatch', 'over25', 'btts']) {
       assert.ok(Number.isFinite(report.distribution[key]), `falta ${key}`);

@@ -30,15 +30,31 @@ test('eloExpected da más de 0.5 al favorito y es complementaria', () => {
 test('expectedGoals aplica homeAdv y los ratings de ataque/defensa', () => {
   const home = ratings(1500, 1.2, 0.9);
   const away = ratings(1500, 0.9, 1.2);
-  const { lambdaHome, lambdaAway } = expectedGoals(home, away, { leagueAvg: 1.35, homeAdv: 1.12 });
-  // λ_home = 1.35 · 1.2 · 1.2 · 1.12 ; λ_away = 1.35 · 0.9 · 0.9
+  const homeAdv = 1.24;
+  const { lambdaHome, lambdaAway } = expectedGoals(home, away, { leagueAvg: 1.35, homeAdv });
+  // λ_home = 1.35 · 1.2 · 1.2 · √1.24 ; λ_away = 1.35 · 0.9 · 0.9 / √1.24
   assert.ok(lambdaHome > lambdaAway, 'el local con mejor ataque y peor defensa rival espera más goles');
-  assert.ok(Math.abs(lambdaHome - 1.35 * 1.2 * 1.2 * 1.12) < 1e-9);
-  assert.ok(Math.abs(lambdaAway - 1.35 * 0.9 * 0.9) < 1e-9);
+  const swing = Math.sqrt(homeAdv);
+  assert.ok(Math.abs(lambdaHome - 1.35 * 1.2 * 1.2 * swing) < 1e-9);
+  assert.ok(Math.abs(lambdaAway - 1.35 * 0.9 * 0.9 / swing) < 1e-9);
+  // La ventaja de local REPARTE goles en vez de inventarlos: el total pasa de
+  // (homeAdv + 1)·L —multiplicar solo al local— a (√homeAdv + 1/√homeAdv)·L, que
+  // ronda 2·L. Con 1,24 son 2,01·L frente a 2,24·L del modelo anterior.
+  const even = expectedGoals(ratings(1500, 1, 1), ratings(1500, 1, 1), { leagueAvg: 1.35, homeAdv: 1.24 });
+  const spread = Math.sqrt(1.24) + 1 / Math.sqrt(1.24);
+  assert.ok(Math.abs((even.lambdaHome + even.lambdaAway) - 1.35 * spread) < 1e-9);
+  assert.ok((even.lambdaHome + even.lambdaAway) < 1.35 * (1.24 + 1) - 1e-6,
+    'repartir la ventaja produce menos goles que cargarlos todos al local');
+  assert.ok(Math.abs((even.lambdaHome + even.lambdaAway) - 2 * 1.35) < 0.03 * 1.35,
+    'el total queda a menos del 3 % de 2·leagueAvg');
+  const wide = expectedGoals(ratings(1500, 1, 1), ratings(1500, 1, 1), { leagueAvg: 1.35, homeAdv: 1.5 });
+  assert.ok(Math.abs(wide.lambdaHome / wide.lambdaAway - 1.5) < 1e-9, 'el ratio local/visitante es homeAdv');
   // Sin contexto usa las constantes iniciales.
   const def = expectedGoals(ratings(1500, 1, 1), ratings(1500, 1, 1));
-  assert.ok(Math.abs(def.lambdaHome - INITIAL_LEAGUE_AVG * INITIAL_HOME_ADV) < 1e-9);
-  assert.ok(Math.abs(def.lambdaAway - INITIAL_LEAGUE_AVG) < 1e-9);
+  const defSwing = Math.sqrt(INITIAL_HOME_ADV);
+  assert.ok(Math.abs(def.lambdaHome - INITIAL_LEAGUE_AVG * defSwing) < 1e-9);
+  assert.ok(Math.abs(def.lambdaAway - INITIAL_LEAGUE_AVG / defSwing) < 1e-9);
+  assert.ok(Math.abs((def.lambdaHome + def.lambdaAway) - INITIAL_LEAGUE_AVG * (defSwing + 1 / defSwing)) < 1e-9);
 });
 
 test('updateAfterMatch: el ganador sube elo, el perdedor baja, y es suma cero', () => {

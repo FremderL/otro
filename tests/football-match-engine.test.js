@@ -349,9 +349,17 @@ test('acciones — todos los participantes siguen activos y pertenecen al partid
 });
 
 test('penal atajado — el guardameta controla el balón, suma la falta y el juego se reanuda', () => {
-  const r = generateTimeline(HOME, AWAY, ctxBase, rnd('pen-save-7'));
-  const missed = r.timeline.find(event => event.type === 'penalty_missed' && event.outcome === 'saved');
-  assert.ok(missed, 'la semilla fija debe contener un penal atajado');
+  // La cronología depende de λ (y λ de la fórmula de goles), así que se busca una
+  // semilla que contenga un penal atajado en lugar de fijar una concreta: el test
+  // comprueba el comportamiento, no el resultado de una semilla histórica.
+  let r = null;
+  let missed = null;
+  for (let i = 1; i <= 60 && !missed; i++) {
+    const candidate = generateTimeline(HOME, AWAY, ctxBase, rnd(`pen-save-${i}`));
+    const found = candidate.timeline.find(event => event.type === 'penalty_missed' && event.outcome === 'saved');
+    if (found) { r = candidate; missed = found; }
+  }
+  assert.ok(missed, 'alguna semilla de las probadas debe contener un penal atajado');
   const { state } = deriveState(r.timeline, missed.t, r.lineups);
   assert.equal(state.phase, 'build_up');
   assert.equal(state.playStopped, false);
