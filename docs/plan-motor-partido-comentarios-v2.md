@@ -1,6 +1,6 @@
 # Plan incremental: motor de partidos y comentarios V2
 
-**Estado:** propuesta de planificación; no autoriza todavía cambiar el motor activo.
+**Estado al 31 de octubre de 2026:** el motor causal V2 y una ruta de apuestas están integrados para pruebas con compromisos preparados manualmente. **No existe todavía selección automática V2 para las nuevas jornadas de noviembre y no está listo para activarse oficialmente.** Los partidos sin compromiso V2 siguen usando V1; esto no satisface por sí solo el requisito del usuario. El objetivo pendiente es V2 oficial para simulación y apuestas sin sustituir compromisos existentes ni suspender las apuestas como solución. Véase el estado verificable al final del documento.
 
 **Fecha de auditoría:** 2026-10-10.
 
@@ -308,6 +308,38 @@ Si conserva un ejemplo del fallo de #18 (seed/minuto, captura o descripción exa
 
 Por ahora el plan conserva dos voces en español y el límite actual de 140 caracteres como valor por defecto. Cambiarlo sería una decisión editorial separada, no un prerrequisito para comenzar el prototipo.
 
-## 10. Cierre de esta sesión
+## 10. Cierre del análisis original (histórico)
 
-Esta sesión se mantiene en **análisis y planificación**. No se implementó ni modificó el motor, el generador de comentarios, el scheduler ni las cuotas. El siguiente paso de implementación sería la Fase 0 (reproducir el fallo y fijar la línea base) y luego los contratos del V2; no saltar directamente a reemplazar V1.
+La sesión inicial terminó en análisis y planificación. Los avances posteriores de implementación se describen a continuación; esta sección histórica no representa el estado actual.
+
+## Estado de implementación y riesgos abiertos — 31 de octubre de 2026
+
+### Implementado y comprobado
+
+- `v2-causal-2` genera los goles desde jugadas y dispone de faltas, tarjetas, cambios, tiempo añadido y comentarios. La versión anterior permanece disponible para reproducir compromisos anteriores. La demo 2D y el adaptador del Estadio muestran solo el prefijo revelado; el replay completo y la clave no se envían al cliente.
+- Los compromisos manuales congelan alineaciones, ratings, entradas, versión y clave privada; se guardan y rehidratan en archivo y en PostgreSQL real para el recorrido de una instancia. Los compromisos existentes y los boletos incompatibles impiden cambiar silenciosamente de motor. **Todavía no hay selector automático ni preparación de las jornadas nuevas.**
+- La ruta experimental cotiza mercados prepartido y 1X2 en vivo desde muestras del mismo motor, liquida simples y combinadas contra el replay V2 y aplica cash-out. `v2-quotes-2` añade límites conservadores de Wilson y conserva la lectura de `v2-quotes-1`; cuando no hay cuota de venta segura, puede omitirse una selección. Esto no equivale a cobertura completa ni es una solución de lanzamiento para la instrucción de mantener apuestas.
+- El escrow recuperable de simples, combinadas y futuros ordinarios registra intentos, débitos y pagos idempotentes. Se probaron interrupciones, reinicios, reintentos de cash-out, conflictos de claves y pagos sin duplicar en proceso único. Los futuros ordinarios usan cuotas del servidor, no del cliente; su liquidación trata campeón, top 2/top 4 y goleador, y conserva el futuro de campeón mientras se disputa un desempate pendiente incluso al cambiar de mes.
+- Los barridos recuperan partidos antiguos asociados a apuestas y sus desempates pendientes. La protección del reset espera pagos o boletos ordinarios abiertos; si no pueden reconciliarse, puede requerir reparación manual.
+- En PostgreSQL, con Estadio habilitado, el servidor adquiere antes de leer perfiles una concesión de escritor único. Las escrituras de fútbol y perfiles conectadas a ella comprueban un token de *fencing* dentro de la transacción; si se pierde la concesión, el proceso termina. Una segunda instancia protegida no arranca hasta que la primera libera la concesión. Se comprobó con dos procesos de servidor reales, dos procesos Node y transacciones que se solapan; no suspende selectivamente las apuestas, afecta al proceso duplicado completo.
+
+### Prueba económica exploratoria, no certificación
+
+`node scripts/calibrate-football-v2.js --demo --samples=2048` usó **dos grupos independientes de 2.048 partidos sintéticos**, para un único enfrentamiento, en **377,4 s**. El filtro agregado de cinco métricas pasó (diferencia máxima 2,54 puntos porcentuales). Con `v2-quotes-2`, 0 de 44 selecciones ofertadas tuvieron retorno positivo observado en ese grupo de control. La cobertura de estados observados con cotización live fue **62,18 %**. Una versión anterior de cuotas mostró 6 de 45 selecciones con retorno positivo; la comparación no valida todos los mercados ni justifica el despliegue. Los límites de Wilson no corrigen sesgos estructurales, información visible durante una jugada, cash-out, exposición ni futuros.
+
+La calibración actual se realiza por enfrentamiento; el tiempo de esta muestra hace inviable ejecutar 240 enfrentamientos secuencialmente en el arranque sin un diseño de preparación y coste diferente. En otro ensayo exploratorio de siete enfrentamientos con plantillas de noviembre y 192 muestras por partido, por ejemplo, Celtic de Cómic–Real Suciedad produjo medias V2 de **1,203–1,906** goles frente a lambdas V1 de **1,501–1,256**. Una distribución agrupada, contrastada dejando fuera cada enfrentamiento y con margen del 15 %, llegó a un retorno observado de **+107,2 %** en un marcador 0–1. Las muestras son pequeñas: no demuestran ese retorno como propiedad estable, pero sí desaconsejan sustituir la calibración por las cuotas V1 o por una cohorte global sin más pruebas. Otros 32 enfrentamientos con 64 muestras cada uno se usaron para explorar ajustes, sin convertirlos en cuotas oficiales. No hay datos reales de octubre en este checkout: no se han inventado estadísticas de producción.
+
+### Bloqueantes para cumplir el pedido
+
+1. Seleccionar y preparar automáticamente V2 desde noviembre sin cambiar un partido o boleto ya comprometido. Debe resolverse la preparación previa a futuros/BDO, el coste de calibración y su persistencia durable.
+2. Diseñar y contrastar una cotización live completa que contemple el estado visible sin filtrar la trayectoria privada. Cubrir estados poco frecuentes; la cobertura parcial actual no cumple la petición de mantener apuestas operativas.
+3. Calibrar los futuros de temporada, Bota de Oro y Balón de Oro frente al mismo motor y sus reglas de liquidación. El proyector actual es aproximado; el mercado de futuros ordinarios todavía no cotiza durante partidos activos o con datos necesarios ausentes. Esto es una limitación pendiente, no una solución de producto.
+4. Extender y verificar la protección de escritura en todos los despliegues y rutas. La concesión y el fencing protegen las rutas de perfil/fútbol conectadas en servidores nuevos con PostgreSQL y `FOOTBALL_ENABLED=on`, pero no versiones antiguas que la ignoren, procesos con el flag apagado, backend de archivo ni escrituras directas de otros stores, incluidos `password-reset-store-pg.js` y `moderation-store-pg.js`. Una primera actualización con instancias antiguas simultáneas necesita coordinación operacional; no se ha demostrado una garantía universal multiproceso. `season-admission.js` por sí solo sigue coordinando una copia.
+5. Acordar y verificar la política de generación y custodia de la clave privada: el prototipo actual crea la clave antes de aceptar boletos y la guarda en el servidor; el plan original requería crear el seed tras el cierre prepartido. Hay que resolver esa diferencia antes de activar el producto.
+6. Implementar y probar prórroga y tanda en V2, incluidos los compromisos de los futuros de campeón; actualmente V2 rechaza el desempate y no desvincula completamente V1.
+
+### Comprobaciones ejecutadas
+
+Con PostgreSQL 18 temporal real, la suite completa pasó **491/491 unitarias y 224/224 de integración**, sin omisiones ni TODO; también pasaron lint y sintaxis. La prueba V2 cubre confirmación incierta de `COMMIT`, reintento conservando la clave, apuesta, reinicio, reconstrucción y pago idempotente en una instancia. La prueba de la carrera ya no está marcada TODO: con la concesión activa, la segunda instancia fue rechazada, la siguiente recargó el saldo correcto y el token anterior dejó de escribir; se comprobó que el cambio de dueño espera una escritura protegida en curso. También se comprobó la exclusión en procesos Node independientes y en dos servidores completos con Estadio habilitado. Después de la suite completa se amplió esa prueba para terminar desde PostgreSQL la conexión que mantenía la concesión: el servidor anterior terminó con error y un tercero pudo arrancar. El archivo focalizado pasó **5/5** tras esa ampliación. El diagnóstico anterior sin concesión sí produjo dos apuestas de 500 con saldo persistido de 500 en lugar de 0. Las pruebas económicas de integración usan muestras sintéticas, no cuotas validadas para producción.
+
+La primera ejecución real de V2 descubrió que JSONB reordena las claves y podía invalidar el hash de entradas. El guardado PostgreSQL conserva ahora el compromiso serializado como cadena para mantener su orden y valida el hash al rehidratar. Un compromiso escrito previamente como objeto JSONB con el orden ya alterado no se reinterpreta ni se reemplaza automáticamente: requiere recuperar el original o reparación explícita. Las pruebas de escritor único cubren las rutas y condiciones descritas arriba, no autorizan por sí solas la activación oficial.

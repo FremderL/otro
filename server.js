@@ -200,7 +200,7 @@ installSeasonalThemeRoutes(app, {
 // imágenes del lobby (tienen nombre estable; si se reemplazan, cambiar el nombre del archivo).
 app.use(compression());
 app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: '7d', immutable: false }));
-const revalidateAppShell = new Set(['index.html', 'app.js', 'styles.css', 'chat-format.js', 'estadio-banner.js', 'estadio.html', 'estadio.js', 'estadio.css', 'loteria.html', 'loteria.js', 'loteria.css']);
+const revalidateAppShell = new Set(['index.html', 'app.js', 'styles.css', 'chat-format.js', 'estadio-banner.js', 'estadio.html', 'estadio.js', 'estadio.css', 'estadio-simulador.html', 'estadio-simulador.js', 'estadio-simulador.css', 'loteria.html', 'loteria.js', 'loteria.css']);
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: '5m',
   setHeaders(res, filePath) {
@@ -3463,7 +3463,8 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 async function initFootball() {
   // 1. Store (fábrica: archivo JSON o Postgres/Neon). La fábrica falla cerrada si
   //    DATABASE_URL está definida antes de la Fase F (backend PG del Estadio).
-  footballStore = await createFootballStore(footballConfig.storePath, process.env.DATABASE_URL);
+  footballStore = await createFootballStore(footballConfig.storePath, process.env.DATABASE_URL,
+    profiles.footballWriter ? { writerLease: profiles.footballWriter } : {});
   footballStore.ensureSeason(new Date());
 
   // 2. Log estructurado que ADEMÁS reenvía cada liquidación al socket del perfil
@@ -3570,7 +3571,14 @@ async function bootstrap() {
   // de su constructor (archivo) o de _init (Postgres), antes de que exista el store de
   // fútbol y antes de poder consultar si quedan apuestas abiertas. El cierre efectivo
   // se hace más abajo con profiles.ensureSeason(), ya con el gate cableado.
-  profiles = await createProfileStore(process.env.PROFILE_STORE_PATH, process.env.DATABASE_URL, { deferSeasonCheck: true });
+  profiles = await createProfileStore(process.env.PROFILE_STORE_PATH, process.env.DATABASE_URL, {
+    deferSeasonCheck: true,
+    footballSingleWriter: footballConfig.enabled,
+    onFootballWriterLost: error => {
+      console.error('Se perdió la exclusión de escritura del Estadio; cerrando el proceso:', error.message);
+      process.exit(1);
+    }
+  });
   accountSessionStore = createAccountSessionStore(adminConfig);
   auditStore = createAuditStore(adminConfig);
   moderationStore = createModerationStore(adminConfig);
@@ -3598,9 +3606,8 @@ async function bootstrap() {
     // reset mensual. ensureSeason() del casino lo consulta ANTES de cerrar la
     // temporada: si la temporada que va a cerrar aún tiene apuestas, combinadas o
     // futuros abiertos, devuelve {type:'deferred'} y no se reinician los saldos.
-    // Fallo abierto: si la consulta falla, se permite el cierre — el casino no puede
-    // quedar atascado por un error del gate (y ensureSeason lleva su propio tope de
-    // aplazamientos, SEASON_RESET_MAX_DEFERRALS).
+    // Si no se puede consultar el escrow, se aplaza el cierre para no borrar
+    // compromisos sin reconciliar; es necesario reparar el fallo de persistencia.
     profiles.onBeforeSeasonReset = ({ fromMonth, date }) => {
       // Intenta cerrar/resolver el ciclo que termina. El gancho existente es
       // síncrono; la promesa queda aislada para que un fallo del premio jamás
@@ -3616,9 +3623,9 @@ async function bootstrap() {
       try {
         return footballSeasonResetGate(footballStore, fromMonth);
       } catch (error) {
-        console.warn('Gate de reset de temporada: no se pudo consultar el fútbol; se permite el cierre:', error.message);
+        console.warn('Gate de reset de temporada: no se pudo consultar el fútbol; se aplaza el cierre:', error.message);
+        return { type: 'deferred', reason: 'escrow_de_futbol_no_disponible', requireSettlement: true };
       }
-      return null;
     };
     profiles.onAfterSeasonReset = ({ fromMonth, toMonth }) => {
       if (!footballBallonDorMarket) return;

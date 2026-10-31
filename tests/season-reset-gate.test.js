@@ -18,6 +18,8 @@ const fs = require('node:fs');
 const { ProfileStore } = require('../lib/profile-store');
 const { INITIAL_CHIPS } = require('../lib/profile-store-shared');
 const { emptyClubTreasury } = require('../lib/profile-store-base');
+const { FootballStore } = require('../lib/football-store');
+const { footballSeasonResetGate } = require('../lib/football/reset-gate');
 
 function makeStore(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-'));
@@ -86,6 +88,50 @@ test('tope de aplazamientos: al agotarse, fuerza el cierre', (t) => {
   assert.equal(r3.type, 'closed', 'cierre forzado al agotar el tope');
   assert.equal(profile.chips, INITIAL_CHIPS, 'saldo reiniciado al forzar');
   assert.notEqual(store.seasons.current, '2020-01', 'el mes avanzó');
+});
+
+test('un pago sin confirmar impide el reset incluso si se agota el límite ordinario', (t) => {
+  const previous = process.env.SEASON_RESET_MAX_DEFERRALS;
+  process.env.SEASON_RESET_MAX_DEFERRALS = '2';
+  t.after(() => { if (previous == null) delete process.env.SEASON_RESET_MAX_DEFERRALS; else process.env.SEASON_RESET_MAX_DEFERRALS = previous; });
+  const { store: profiles, profile } = makeStore(t);
+  ageSeason(profiles);
+  const football = new FootballStore(path.join(path.dirname(profiles.filePath), 'football.json'));
+  const match = football.generateSeason('2020-01').calendar.matches[0];
+  football.insertBet({ id: 'pending-payout', idempotencyKey: 'pending-payout', profileId: profile.id,
+    matchId: match.id, market: '1x2', selection: 'home', stake: 100, oddsAtPlacement: 2,
+    status: 'open', debited: true });
+  football.settleBet('pending-payout', { status: 'won', payout: 200 });
+  profiles.onBeforeSeasonReset = ({ fromMonth }) => footballSeasonResetGate(football, fromMonth);
+  for (let i = 0; i < 4; i++) {
+    const result = profiles.ensureSeason(new Date());
+    assert.equal(result.type, 'deferred');
+    assert.equal(result.reason, 'pagos_de_futbol_pendientes');
+    assert.equal(profile.chips, 4321);
+  }
+  football.markBetPayoutApplied('pending-payout');
+  assert.equal(profiles.ensureSeason(new Date()).type, 'closed');
+  football.close();
+});
+
+test('una colocación o pago huérfanos no se pierden al faltar el partido', (t) => {
+  const previous = process.env.SEASON_RESET_MAX_DEFERRALS;
+  process.env.SEASON_RESET_MAX_DEFERRALS = '1';
+  t.after(() => { if (previous == null) delete process.env.SEASON_RESET_MAX_DEFERRALS; else process.env.SEASON_RESET_MAX_DEFERRALS = previous; });
+  const { store: profiles, profile } = makeStore(t);
+  ageSeason(profiles);
+  const football = new FootballStore(path.join(path.dirname(profiles.filePath), 'football-orphan.json'));
+  football.insertBet({ id: 'missing-match', idempotencyKey: 'missing-match', profileId: profile.id,
+    seasonMonth: '2020-01', matchId: 'missing', market: '1x2', selection: 'home', stake: 100, oddsAtPlacement: 2,
+    status: 'pending', debited: true, escrowProtocol: 'durable-1' });
+  profiles.onBeforeSeasonReset = ({ fromMonth }) => footballSeasonResetGate(football, fromMonth);
+  for (let i = 0; i < 3; i++) assert.equal(profiles.ensureSeason(new Date()).type, 'deferred');
+  assert.equal(profile.chips, 4321);
+  football.voidBet('missing-match', { payout: 100 });
+  assert.equal(profiles.ensureSeason(new Date()).reason, 'pagos_de_futbol_pendientes');
+  football.markBetPayoutApplied('missing-match');
+  assert.equal(profiles.ensureSeason(new Date()).type, 'closed');
+  football.close();
 });
 
 test('el contador de aplazamientos se reinicia tras un cierre real', (t) => {

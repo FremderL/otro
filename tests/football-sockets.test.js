@@ -89,7 +89,8 @@ function setup(opts = {}) {
   const month = monthKey();
   store.generateSeason(month);
   const profiles = new ProfileStore(path.join(dir, 'profiles.json'));
-  const betting = createBettingService({ store, profiles, log: () => {} });
+  const betting = createBettingService({ store, profiles,
+    now: () => Math.min(...store.getMatches(month).map(item => item.scheduledKickoffAt)) - 60000, log: () => {} });
 
   // Spies de identidad (A11): contamos getOrCreate/getProfile.
   const spy = { getOrCreate: 0, getProfile: 0, placeBet: 0 };
@@ -620,6 +621,27 @@ test('relato: dos eventos iguales seguidos no repiten la misma plantilla (memori
   // Con memoria anti-repetición, si hay dos líneas de narrador no deben ser idénticas.
   if (narr.length >= 2) assert.notEqual(narr[0], narr[narr.length - 1], 'la memoria evita la repetición inmediata');
   assert.ok(narr.length >= 1, 'shot_on_target produce relato');
+});
+
+test('socket de futuros usa la cotización del servidor y descarta cuota y jornada manipuladas', async (t) => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const socket = ctx.io.connect();
+  const subscribed = subscribe(ctx, socket, { scope: 'lobby', name: 'Futuro socket' });
+  const profile = ctx.profiles.getProfile(subscribed.profile.id);
+  profile.chips = 1000; ctx.profiles.saveNow();
+  const market = socket._fire('football:futures_market', {});
+  assert.equal(market.ok, true);
+  const quote = market.market.markets.champion[0];
+  const reply = await new Promise(resolve => socket._fire('football:future', {
+    market: 'champion', selection: quote.selection, stake: 100, odds: 999999, jornada: 29
+  }, resolve));
+  assert.equal(reply.ok, true, reply.code);
+  assert.equal(reply.future.odds, quote.odds);
+  assert.equal(ctx.store.getFuture(reply.future.id).placedAtJornada, 0);
+  assert.equal(reply.future.potentialPayout, Math.floor(100 * quote.odds));
+  assert.ok(!('profileId' in reply.future));
+  assert.equal(profile.chips, 900);
 });
 
 test('socket BDO usa identidad suscrita, devuelve mercado público y descarta cuota/jornada del cliente', async (t) => {

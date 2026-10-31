@@ -31,8 +31,8 @@ function setup() {
   const bob = profiles.getOrCreate('bob', 'Beto', null);
   bob.chips = 1000;
   profiles.saveNow();
-  const betting = createBettingService({ store, profiles, log: () => {} });
   const match = store.getMatches(month).find(m => m.status === 'scheduled');
+  const betting = createBettingService({ store, profiles, now: () => Math.min(...store.getMatches(month).map(item => item.scheduledKickoffAt)) - 60000, log: () => {} });
   const cleanup = () => {
     try { store.close(); } catch (_) {}
     try { profiles.saveNow(); } catch (_) {}

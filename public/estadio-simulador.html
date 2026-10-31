@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#091311">
+  <meta name="description" content="Una prueba aislada del simulador de fútbol con fichas 2D de Estadio MonteCristo.">
+  <title>Laboratorio 2D · Estadio MonteCristo</title>
+  <link rel="stylesheet" href="/estadio-simulador.css">
+  <script defer src="/estadio-simulador/motor.js"></script>
+  <script defer src="/estadio-simulador.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#contenido">Ir al partido</a>
+  <header class="topbar">
+    <a class="brand" href="/estadio" aria-label="Volver al Estadio MonteCristo"><span class="brand-mark">M<span>✦</span></span><span><strong>MONTECRISTO</strong><small>ESTADIO</small></span></a>
+    <div class="topbar-right"><span class="topbar-label">LABORATORIO DE FÚTBOL</span><a class="back-link" href="/estadio">← <span>Volver al Estadio</span></a></div>
+  </header>
+  <div class="demo-notice" role="note"><span class="notice-icon" aria-hidden="true">✦</span><strong>PRUEBA EXPERIMENTAL</strong><span>Sin apuestas ni fichas. No afecta los partidos ni la tabla oficial.</span></div>
+
+  <main id="contenido" class="shell">
+    <div class="page-heading">
+      <div><p class="eyebrow"><span></span> ESTADIO MONTECRISTO / LABORATORIO 2D</p><h1>El partido se juega <em>en la cancha.</em></h1><p class="page-intro">Once contra once. Cada pase, movimiento y tiro construye la historia del partido.</p></div>
+      <div class="heading-meta"><span class="heading-meta-icon">◉</span><span>VISTA CENITAL <strong>SIMULACIÓN 2D</strong></span></div>
+    </div>
+
+    <div class="content-grid">
+      <section class="match-card" aria-label="Simulación del partido">
+        <div class="match-topline"><span><i></i> PARTIDO DE PRUEBA</span><span class="match-topline-right">11 vs 11 <b>·</b> SIMULACIÓN LOCAL</span></div>
+        <div class="scoreboard">
+          <div class="score-team home-team"><span class="team-badge badge-home"><img id="home-badge" src="/assets/escudos/RMD.svg" alt="" width="44" height="50"></span><span class="team-copy"><small>LOCAL</small><strong id="home-name">Real Mandril</strong><span id="home-formation">4-3-3</span></span></div>
+          <div class="score-center"><div class="score-digits"><strong id="score-home">0</strong><span>:</span><strong id="score-away">0</strong></div><div class="clock-line"><span class="clock-dot"></span><span id="match-clock">00:00</span><span class="clock-separator">/</span><span id="match-phase">1ER TIEMPO</span></div></div>
+          <div class="score-team away-team"><span class="team-copy"><small>VISITANTE</small><strong id="away-name">Farselona FC</strong><span id="away-formation">4-4-2</span></span><span class="team-badge badge-away"><img id="away-badge" src="/assets/escudos/FAR.svg" alt="" width="44" height="50"></span></div>
+        </div>
+        <div class="pitch-frame"><canvas id="pitch" width="1120" height="735" role="img" aria-label="Cancha de fútbol vista desde arriba con 22 fichas y un balón. El marcador y las jugadas también están disponibles en texto."></canvas><div id="goal-banner" class="goal-banner" aria-hidden="true">¡GOL!</div></div>
+        <div class="match-bottomline"><div class="legend"><span><i class="legend-home"></i><b id="legend-home">LOCAL</b></span><span><i class="legend-away"></i><b id="legend-away">VISITANTE</b></span><span><i class="legend-ball"></i>BALÓN</span></div><span class="pitch-note">CANCHA · 105 × 68 M</span></div>
+        <div class="playback">
+          <div class="playback-main"><button id="play-toggle" class="play-button" type="button" aria-pressed="true"><span id="play-icon" aria-hidden="true">Ⅱ</span><span id="play-label">Pausar partido</span></button><div class="playback-description"><strong id="playback-status">Partido en marcha</strong><span>90 min más añadido · a 4× son al menos 22 min 30 s</span></div></div>
+          <div class="speed-control"><span>VELOCIDAD</span><div class="speed-buttons" role="group" aria-label="Velocidad de la simulación"><button type="button" data-speed="4" aria-pressed="true">4×</button><button type="button" data-speed="8" aria-pressed="false">8×</button><button type="button" data-speed="16" aria-pressed="false">16×</button></div></div>
+        </div>
+      </section>
+
+      <aside class="sidebar" aria-label="Controles, estadísticas y jugadas">
+        <section class="side-card setup-card" aria-labelledby="setup-title"><div class="side-heading"><div><p class="section-kicker">ELIGE TU PARTIDO</p><h2 id="setup-title">En el laboratorio</h2></div><span class="side-icon" aria-hidden="true">↗</span></div><p class="side-intro">Prueba el movimiento de las fichas con dos clubes de la liga.</p>
+          <form id="match-form"><label for="home-select">LOCAL</label><div class="select-wrap"><select id="home-select" name="home" required aria-describedby="setup-feedback"></select></div><div class="versus"><span></span><b>VS</b><span></span></div><label for="away-select">VISITANTE</label><div class="select-wrap"><select id="away-select" name="away" required aria-describedby="setup-feedback"></select></div><p id="setup-feedback" class="setup-feedback" role="status" aria-live="polite"></p><button class="new-match" type="submit">Nuevo partido <span aria-hidden="true">↗</span></button></form>
+          <p class="setup-footnote">Jugadores y atributos de prueba. El partido se simula en este navegador.</p>
+        </section>
+        <section class="side-card stats-card" aria-labelledby="stats-title"><div class="side-heading"><div><p class="section-kicker">EL PARTIDO EN NÚMEROS</p><h2 id="stats-title">Estadísticas</h2></div><span class="mini-live" id="stats-status"><i></i> EN JUEGO</span></div>
+          <div class="stats-teams"><span id="stats-home-label">RMD</span><span id="stats-away-label">FAR</span></div>
+          <div class="stat-row"><div><b id="possession-home">50%</b><span>POSESIÓN</span><b id="possession-away">50%</b></div><div class="stat-bar"><i id="possession-bar" style="width:50%"></i></div></div>
+          <div class="stat-row"><div><b id="shots-home">0</b><span>TIROS</span><b id="shots-away">0</b></div><div class="stat-bar"><i id="shots-bar" style="width:50%"></i></div></div>
+          <div class="stat-row"><div><b id="target-home">0</b><span>TIROS A PUERTA</span><b id="target-away">0</b></div><div class="stat-bar"><i id="target-bar" style="width:50%"></i></div></div>
+          <div class="stat-row"><div><b id="passes-home">0</b><span>PASES COMPLETADOS</span><b id="passes-away">0</b></div><div class="stat-bar"><i id="passes-bar" style="width:50%"></i></div></div>
+        </section>
+        <section class="side-card feed-card" aria-labelledby="feed-title"><div class="side-heading"><div><p class="section-kicker">LO QUE PASA EN LA CANCHA</p><h2 id="feed-title">Jugadas</h2></div><span class="feed-icon" aria-hidden="true">≋</span></div><div id="event-feed" class="event-feed" role="log" aria-live="polite" aria-relevant="additions" aria-label="Jugadas ocurridas"><p class="feed-empty">La narración aparecerá cuando arranque el partido.</p></div></section>
+        <div class="safety-note"><span aria-hidden="true">ⓘ</span><p><strong>Un espacio seguro para probar.</strong> El motor oficial, las cuotas y la liquidación siguen sin cambios.</p></div>
+      </aside>
+    </div>
+    <footer><span>✦ &nbsp; MONTECRISTO · ESTADIO</span><span>SIMULACIÓN EXPERIMENTAL · SIN APUESTAS</span></footer>
+  </main>
+  <noscript><p class="noscript">Activa JavaScript para utilizar esta simulación de prueba.</p></noscript>
+</body>
+</html>

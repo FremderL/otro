@@ -148,6 +148,7 @@ function createHarness(options = {}) {
     on(event, handler) { handlers[event] = handler; },
     emit(event, payload, ack) {
       socketEmitted.push({ event, payload });
+      if (event === 'football:bet' && options.onBet) { options.onBet(payload, ack); return; }
       if (event === 'football:quiniela_get' && options.onQuinielaGet) { ack(options.onQuinielaGet(payload)); return; }
       if (event === 'football:transfers_get' && options.onTransfersGet) { ack(options.onTransfersGet(payload)); return; }
       if (event === 'football:fan_equip' && options.onFanEquip) { ack(options.onFanEquip(payload)); return; }
@@ -189,10 +190,11 @@ function createHarness(options = {}) {
   };
   let rafCallback = null;
   const drawnText = [];
+  const playerTextTrace = [];
   const ballTrace = [];
   const canvasContext = new Proxy({}, {
     get(_target, key) {
-      if (key === 'fillText') return value => drawnText.push(String(value));
+      if (key === 'fillText') return (value, x, y) => { drawnText.push(String(value)); playerTextTrace.push({ value: String(value), x, y }); };
       // El balón se dibuja con radio BALL_R (6): se registra su posición para medir la trayectoria.
       if (key === 'arc') return (x, y, r) => { if (r === 6) ballTrace.push({ x, y }); };
       return () => {};
@@ -389,7 +391,7 @@ function createHarness(options = {}) {
   window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
 
   return {
-    dom, window, socket, handlers, match, matchState, players, drawnText, requests, ballTrace, socketEmitted, scheduledTimeouts,
+    dom, window, socket, handlers, match, matchState, players, drawnText, playerTextTrace, requests, ballTrace, socketEmitted, scheduledTimeouts,
     audioTelemetryAttempts, ballonDorSocketAttempts, ballonDorHttpAttempts,
     speech: speechApi ? {
       utterances: speechUtterances,
@@ -1151,6 +1153,65 @@ test('secuencia de eventos: el balón recorre los destinos con animación fluida
 
   // El balón avanza progresivamente hacia el destino final (.9)
   assert.ok(samples[samples.length - 1].x >= 0.85, 'al final de la secuencia el balón llega al destino');
+});
+
+test('la UI V2 respeta el fotograma del servidor y el reloj de quince segundos por minuto', async t => {
+  const h = createHarness({ reducedMotion: true });
+  t.after(h.close);
+  h.match.engine = 'v2';
+  h.match.status = 'live';
+  await h.connectToMatch();
+  const id = h.match.id;
+  h.handlers['football:status']({ matchId: id, code: 'live', minute: 10 });
+  const frame = h.players.map(p => ({ ...p, x: p.id === 'h1' ? .7 : p.x, y: p.y }));
+  h.handlers['football:tick']({
+    matchId: id, minute: 10, displayMinute: 10, phase: 'build_up', playStopped: false,
+    score: { home: 0, away: 0 }, ball: { x: .6, y: .5 }, ballCarrierId: 'h1',
+    possessionTeam: 'home', players: frame
+  });
+  h.playerTextTrace.length = 0;
+  h.ballTrace.length = 0;
+  h.draw(0);
+  const keeper = h.playerTextTrace.find(item => item.value === '1');
+  assert.ok(keeper, 'el jugador del fotograma se dibuja');
+  assert.ok(Math.abs(keeper.x - (18 + .7 * (1050 - 36))) < .001, 'la ficha usa la posición V2');
+  const ball = h.ballTrace.at(-1);
+  assert.ok(ball && Math.abs(ball.x - (18 + .6 * (1050 - 36))) < .001, 'el balón no se desplaza artificialmente al portador');
+  h.advanceTime(10000);
+  h.draw(0);
+  assert.match(h.window.document.getElementById('est-clock').textContent, /10'/);
+  h.advanceTime(5000);
+  h.draw(0);
+  assert.match(h.window.document.getElementById('est-clock').textContent, /11'/);
+});
+
+test('la boleta conserva la clave al perder una respuesta y permite reintentar después del kickoff', async t => {
+  let calls = 0;
+  const h = createHarness({ onBet(payload, ack) {
+    calls++;
+    if (calls === 2) ack({ ok: true, replayed: true, chips: 900,
+      bet: { id: 'accepted-bet', market: payload.market, selection: payload.selection, odds: 1.3,
+        stake: 100, potentialPayout: 130, status: 'open' } });
+  } });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  window.document.querySelectorAll('.est-market-group')[1].querySelector('.est-sel').click();
+  window.document.getElementById('est-stake').value = '100';
+  window.document.getElementById('est-place-bet').click();
+  const first = h.socketEmitted.filter(item => item.event === 'football:bet')[0].payload;
+  assert.ok(first.idemKey);
+  handlers['football:status']({ matchId: match.id, code: 'kickoff', minute: 0 });
+  assert.equal(window.document.getElementById('est-bet-slip').hidden, false, 'no se descarta un envío sin confirmar');
+  h.advanceTime(10001);
+  assert.match(window.document.getElementById('est-bet-msg').textContent, /No llegó la confirmación/);
+  assert.equal(window.document.getElementById('est-place-bet').disabled, false);
+  window.document.getElementById('est-place-bet').click();
+  const second = h.socketEmitted.filter(item => item.event === 'football:bet')[1].payload;
+  assert.equal(second.idemKey, first.idemKey);
+  assert.equal(second.stake, first.stake);
+  assert.match(window.document.getElementById('est-bet-msg').textContent, /Apuesta colocada/);
+  assert.equal(window.document.getElementById('est-bet-slip').hidden, true);
 });
 
 test('la UI sigue el estado del motor: kickoff, pausas, gol, sustitución y final', async t => {
