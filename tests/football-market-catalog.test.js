@@ -47,6 +47,10 @@ test('parseMarket reconoce hándicap asiático, descanso/final y primer goleador
   assert.deepStrictEqual(parseMarket('asian_handicap_home_plus1.5'), { type: 'asian_handicap', line: 1.5 });
   assert.deepStrictEqual(parseMarket('ht_ft'), { type: 'ht_ft' });
   assert.deepStrictEqual(parseMarket('first_scorer'), { type: 'first_scorer' });
+  assert.deepStrictEqual(parseMarket('yellow_cards_over_under_3.5'), { type: 'yellow_cards', line: 3.5 });
+  assert.deepStrictEqual(parseMarket('yellow_cards_over_under_4.5'), { type: 'yellow_cards', line: 4.5 });
+  assert.deepStrictEqual(parseMarket('both_teams_booked'), { type: 'both_teams_booked' });
+  assert.deepStrictEqual(parseMarket('red_card'), { type: 'red_card' });
 });
 
 // --- Liquidación del hándicap asiático ---
@@ -251,4 +255,109 @@ test('cleanMatch conserva descanso y primer goleador del resultado asentado', ()
   // 0-0 se conserva como null explícito (no como «sin fuente»).
   const zero = cleanMatch({ ...raw, result: { home: 0, away: 0, winner: 'draw', halftime: { home: 0, away: 0 }, firstScorer: null } });
   assert.strictEqual(zero.result.firstScorer, null);
+});
+
+// --- Tarjetas: amarillas y rojas (tasas Poisson del motor, foto asentada) ---
+
+test('tarjetas: el catálogo publica amarillas over/under, ambos amonestados y roja con libro sano', () => {
+  const h = setup();
+  try {
+    const mc = matchContextFor(h.store, h.match);
+    const markets = O.buildPreMatchMarkets(mc.matrix, { lambdas: mc.lambdas });
+    for (const key of ['yellow_cards_over_under_3.5', 'yellow_cards_over_under_4.5', 'both_teams_booked', 'red_card']) {
+      const market = markets[key];
+      assert.ok(market && !market.degenerate, `falta o degenerado: ${key}`);
+      assert.ok(market.overround >= 1 + O.MIN_MARGIN - 1e-9, `${key} arbitrable: ${market.overround}`);
+      const sum = market.selections.reduce((a, s) => a + s.prob, 0);
+      assert.ok(Math.abs(sum - 1) < 1e-6, `${key} debe cubrir todo el mercado`);
+      assert.ok(parseMarket(key).type !== 'unknown', `${key} se puede liquidar`);
+    }
+    assert.deepStrictEqual(markets['yellow_cards_over_under_3.5'].selections.map(s => s.key), ['over', 'under']);
+    assert.deepStrictEqual(markets.red_card.selections.map(s => s.key), ['yes', 'no']);
+    // La línea 3.5 está cerca de la media (4.1): over no debe ser un favorito aplastante.
+    const over35 = markets['yellow_cards_over_under_3.5'].selections.find(s => s.key === 'over');
+    assert.ok(over35.prob > 0.45 && over35.prob < 0.75, `P(over 3.5) = ${over35.prob}`);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('tarjetas: se liquidan con el conteo archivado y sin él se anulan (nunca a ojo)', () => {
+  const s = { home: 2, away: 1 };
+  const cards = { yellow: 5, red: 1, homeYellow: 3, awayYellow: 2, homeRed: 1, awayRed: 0 };
+  // Amarillas 3.5: 5 amarillas ⇒ over gana, under pierde.
+  assert.strictEqual(resolveSelection('yellow_cards_over_under_3.5', 'over', s, { cards }), 'won');
+  assert.strictEqual(resolveSelection('yellow_cards_over_under_3.5', 'under', s, { cards }), 'lost');
+  // Amarillas 4.5: 5 ⇒ over gana; con 4 amarillas perdería.
+  assert.strictEqual(resolveSelection('yellow_cards_over_under_4.5', 'over', s, { cards }), 'won');
+  assert.strictEqual(resolveSelection('yellow_cards_over_under_4.5', 'over', s, { cards: { ...cards, yellow: 4 } }), 'lost');
+  // Ambos amonestados: 3 y 2 ⇒ sí gana; si un equipo no tiene, pierde.
+  assert.strictEqual(resolveSelection('both_teams_booked', 'yes', s, { cards }), 'won');
+  assert.strictEqual(resolveSelection('both_teams_booked', 'no', s, { cards }), 'lost');
+  assert.strictEqual(resolveSelection('both_teams_booked', 'yes', s, { cards: { ...cards, awayYellow: 0 } }), 'lost');
+  // Roja: con 1 roja (directa o segunda amarilla) el «sí» cobra.
+  assert.strictEqual(resolveSelection('red_card', 'yes', s, { cards }), 'won');
+  assert.strictEqual(resolveSelection('red_card', 'no', s, { cards }), 'lost');
+  assert.strictEqual(resolveSelection('red_card', 'no', s, { cards: { ...cards, red: 0 } }), 'won');
+  // Partido asentado antes de existir estos mercados (sin conteo): se anula.
+  assert.strictEqual(resolveSelection('yellow_cards_over_under_3.5', 'over', s, {}), 'void');
+  assert.strictEqual(resolveSelection('both_teams_booked', 'yes', s, {}), 'void');
+  assert.strictEqual(resolveSelection('red_card', 'yes', s, {}), 'void');
+  assert.strictEqual(resolveSelection('red_card', 'yes', s, { cards: null }), 'void');
+});
+
+test('el asentado archiva las tarjetas y los mercados se liquidan con ese conteo', () => {
+  const h = setup();
+  try {
+    const league = h.store.getLeague(h.month);
+    const home = league.config.find(c => c.id === h.match.homeId);
+    const away = league.config.find(c => c.id === h.match.awayId);
+    const { generateTimeline } = require('../lib/football/match-engine');
+    const { mulberry32 } = require('../lib/football/prng');
+    const gen = generateTimeline(home, away, {
+      leagueAvg: league.ctx.leagueAvg, homeAdv: league.ctx.homeAdv,
+      ...(league.ctx.rho != null ? { rho: league.ctx.rho } : {})
+    }, mulberry32(20261103));
+
+    const cards = O.cardsFromTimeline(gen.timeline);
+    const total = cards.yellow;
+    const over35 = total > 3.5 ? 'over' : 'under';
+    const over45 = total > 4.5 ? 'over' : 'under';
+    const booked = cards.homeYellow >= 1 && cards.awayYellow >= 1 ? 'yes' : 'no';
+    const redSel = cards.red >= 1 ? 'yes' : 'no';
+
+    h.store.insertBet({ id: 'b_y35', idempotencyKey: 'ky35', profileId: h.profile.id, matchId: h.match.id, market: 'yellow_cards_over_under_3.5', selection: over35, stake: 10, oddsAtPlacement: 1.6, status: 'open', debited: true });
+    h.store.insertBet({ id: 'b_y45', idempotencyKey: 'ky45', profileId: h.profile.id, matchId: h.match.id, market: 'yellow_cards_over_under_4.5', selection: over45 === 'over' ? 'under' : 'over', stake: 10, oddsAtPlacement: 2.3, status: 'open', debited: true });
+    h.store.insertBet({ id: 'b_booked', idempotencyKey: 'kb', profileId: h.profile.id, matchId: h.match.id, market: 'both_teams_booked', selection: booked, stake: 10, oddsAtPlacement: 1.3, status: 'open', debited: true });
+    h.store.insertBet({ id: 'b_red', idempotencyKey: 'kr', profileId: h.profile.id, matchId: h.match.id, market: 'red_card', selection: redSel === 'yes' ? 'no' : 'yes', stake: 10, oddsAtPlacement: 9.5, status: 'open', debited: true });
+
+    const settled = h.store.settleMatch(h.match.id, { home: gen.score.home, away: gen.score.away },
+      { timeline: gen.timeline, lineups: gen.lineups, now: Date.now() });
+    assert.strictEqual(settled.ok, true, settled.reason);
+    const stored = h.store.getMatch(h.match.id);
+    assert.deepStrictEqual(stored.result.cards, cards, 'el conteo de tarjetas queda asentado');
+
+    // cleanMatch conserva el conteo al recargar.
+    const reloaded = cleanMatch(JSON.parse(JSON.stringify(stored)));
+    assert.deepStrictEqual(reloaded.result.cards, cards, 'cleanMatch conserva las tarjetas');
+
+    h.betting.settleMatchBets(stored, { home: gen.score.home, away: gen.score.away });
+    assert.strictEqual(h.store.getBet('b_y35').status, 'won', 'amarillas 3.5 cobra con el conteo real');
+    assert.strictEqual(h.store.getBet('b_y45').status, 'lost', 'la selección contraria pierde');
+    assert.strictEqual(h.store.getBet('b_booked').status, 'won', 'ambos amonestados cobra');
+    assert.strictEqual(h.store.getBet('b_red').status, 'lost', 'la roja contraria pierde');
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('cleanMatch descarta un conteo de tarjetas corrupto (el boleto quedará void)', () => {
+  const raw = {
+    id: 'm1', seasonMonth: '2026-11', jornada: 1, status: 'settled', settledAt: 1,
+    result: { home: 1, away: 0, winner: 'home', cards: { yellow: 3, red: -1, homeYellow: 1, awayYellow: 2, homeRed: 0, awayRed: 1 } }
+  };
+  const clean = cleanMatch(raw);
+  assert.strictEqual(clean.result.cards, undefined, 'conteo con negativos no se conserva');
+  const good = cleanMatch({ ...raw, result: { ...raw.result, cards: { yellow: 3, red: 1, homeYellow: 1, awayYellow: 2, homeRed: 0, awayRed: 1 } } });
+  assert.deepStrictEqual(good.result.cards, { yellow: 3, red: 1, homeYellow: 1, awayYellow: 2, homeRed: 0, awayRed: 1 });
 });

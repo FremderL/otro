@@ -43,7 +43,8 @@ async function runOnce({
   sendCsrf = true,
   origin = ORIGIN,
   path = '/admin/estadio/matches/m1/suspend',
-  body = { untilMs: NOW + 60_000 }
+  body = { untilMs: NOW + 60_000 },
+  method = 'POST'
 } = {}) {
   const profiles = new Map([
     ['admin1', makeProfile('admin1', 'admin')],
@@ -82,17 +83,20 @@ async function runOnce({
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
 
-  const headers = { 'content-type': 'application/json' };
+  const headers = {};
+  if (method !== 'GET') headers['content-type'] = 'application/json';
   if (origin) headers.origin = origin;
   if (role) headers.cookie = `${COOKIE_NAME}=${TOKEN}`;
   if (sendCsrf && session) headers['x-csrf-token'] = csrfToken(session.id, PEPPER);
 
   const res = await fetch(`http://127.0.0.1:${port}${path}`, {
-    method: 'POST', headers, body: JSON.stringify(body)
+    method, headers, body: method === 'GET' ? undefined : JSON.stringify(body)
   });
-  const json = await res.json().catch(() => null);
+  const text = await res.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch (_) { /* respuestas HTML/planas */ }
   await new Promise(resolve => server.close(resolve));
-  return { status: res.status, json, spies };
+  return { status: res.status, json, text, spies };
 }
 
 test('ADMIN_FEATURE_ENABLED apagado: 404 fail-closed (sin revelar existencia)', async () => {
@@ -154,6 +158,37 @@ test('reschedule requiere sesión admin con football:manage y rechaza a moderado
   assert.equal(allowed.status, 200);
   assert.equal(allowed.json.ok, true);
   assert.equal(allowed.json.match.scheduledKickoffAt, NOW + 60000);
+});
+
+// --- Laboratorio 2D: dejó de ser público (/estadio-simulador* -> 404) y solo se
+// sirve bajo /admin/estadio/laboratorio/* tras la misma guardia staff. ---
+test('laboratorio: 404 con admin apagado, 401 anónimo, 403 user/moderador, 200 admin', async () => {
+  const off = await runOnce({ adminEnabled: false, role: 'admin', method: 'GET', path: '/admin/estadio/laboratorio' });
+  assert.equal(off.status, 404);
+
+  const anon = await runOnce({ role: null, method: 'GET', path: '/admin/estadio/laboratorio' });
+  assert.equal(anon.status, 401);
+  assert.equal(anon.json.code, 'session_required');
+
+  const user = await runOnce({ role: 'user', method: 'GET', path: '/admin/estadio/laboratorio' });
+  assert.equal(user.status, 403);
+  assert.equal(user.json.code, 'staff_required');
+
+  const mod = await runOnce({ role: 'moderator', method: 'GET', path: '/admin/estadio/laboratorio/motor.js' });
+  assert.equal(mod.status, 403);
+  assert.equal(mod.json.code, 'permission_denied');
+
+  const page = await runOnce({ role: 'admin', method: 'GET', path: '/admin/estadio/laboratorio' });
+  assert.equal(page.status, 200);
+  assert.match(page.text, /Laboratorio 2D/);
+  assert.equal(page.json, null, 'la vista responde HTML, no JSON');
+
+  const motor = await runOnce({ role: 'admin', method: 'GET', path: '/admin/estadio/laboratorio/motor.js' });
+  assert.equal(motor.status, 200);
+  assert.match(motor.text, /createMatch/);
+
+  const asset = await runOnce({ role: 'admin', method: 'GET', path: '/admin/estadio/laboratorio/estadio-simulador.css' });
+  assert.equal(asset.status, 200);
 });
 
 // --- Regresión del refactor (E4b): installAdminRoutes ahora consume makeAdminGuard.

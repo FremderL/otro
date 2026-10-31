@@ -2262,6 +2262,40 @@ body.est-hub-open { overflow:hidden; }
 .est-transfer-list li { display:grid; gap:6px; padding:12px; border:1px solid var(--line); border-radius:10px; background:rgba(255,255,255,.035); }
 .est-transfer-list li span { display:flex; align-items:center; flex-wrap:wrap; gap:5px; }
 .est-transfer-list .est-transfer-value { font-size:11px; letter-spacing:.02em; color:var(--gold, #ceb574); text-transform:uppercase; }
+
+/* MonteCristo News: transmisión del mercado de traspasos (primera vez que se ve) */
+.est-news { margin:12px 0; border-radius:12px; overflow:hidden; background:#07101f; border:1px solid rgba(206,181,116,.4); }
+.est-news-bumper { padding:36px 18px; text-align:center; background:radial-gradient(ellipse at center, #12244d 0%, #07101f 70%); }
+.est-news-logo { font-size:26px; font-weight:800; letter-spacing:.18em; color:#fff; }
+.est-news-logo em { font-style:normal; color:var(--gold, #ceb574); }
+.est-news-tuning { margin-top:12px; font-size:11px; letter-spacing:.32em; color:#9fb4d8; animation:est-news-blink 1s steps(2) infinite; }
+.est-news-studio { padding:12px; }
+.est-news-header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.est-news-live { color:#ff5252; font-size:11px; font-weight:800; letter-spacing:.1em; }
+.est-news-channel { font-size:11px; font-weight:800; letter-spacing:.24em; color:var(--gold, #ceb574); }
+.est-news-screen { margin-top:10px; background:#0b1830; border:1px solid rgba(255,255,255,.09); border-radius:8px; padding:14px; min-height:118px; }
+.est-news-kicker { margin:0 0 8px; font-size:10px; letter-spacing:.26em; color:#9fb4d8; }
+.est-news-lines p { margin:6px 0; font-size:14px; line-height:1.45; color:#eef3ff; animation:est-news-line .35s ease; }
+.est-news-lower { display:flex; align-items:center; gap:8px; margin-top:10px; padding:8px 10px; border-radius:6px; background:rgba(206,181,116,.14); }
+.est-news-narrador { font-size:10px; font-weight:800; letter-spacing:.16em; color:var(--gold, #ceb574); white-space:nowrap; }
+.est-news-ticker { font-size:12px; color:#fff; }
+.est-news-skip { margin:10px 12px 12px; }
+@keyframes est-news-blink { 50% { opacity:.25; } }
+@keyframes est-news-line { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+
+/* Quiniela: lista de partidos con 1/X/2 y formulario de registro */
+.est-quiniela-head { margin:12px 0 4px; font-size:13px; }
+.est-quiniela-matches { list-style:none; display:grid; gap:8px; padding:0; margin:12px 0; }
+.est-quiniela-matches li { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:rgba(255,255,255,.035); }
+.est-quiniela-teams { display:flex; align-items:center; flex-wrap:wrap; gap:5px; font-size:13px; }
+.est-quiniela-teams em { color:var(--muted, #9aa3b2); font-style:normal; }
+.est-quiniela-picks { display:flex; gap:6px; }
+.est-quiniela-pick { display:inline-flex; align-items:center; gap:4px; padding:4px 9px; border:1px solid var(--line); border-radius:999px; font-size:12px; cursor:pointer; user-select:none; }
+.est-quiniela-pick input { accent-color:var(--gold, #ceb574); margin:0; }
+.est-quiniela-pick:has(input:checked) { border-color:var(--gold, #ceb574); background:rgba(206,181,116,.14); }
+.est-quiniela-pick:has(input:disabled) { opacity:.55; cursor:default; }
+#est-quiniela-form button[type="submit"] { margin-top:4px; }
+.est-quiniela-ticket, .est-quiniela-result { font-size:12px; color:var(--muted, #9aa3b2); margin:8px 0 0; }
 .est-active-fan-pin { display:inline-flex; align-items:center; gap:5px; font-size:11px; }
 .est-active-fan-pin[hidden] { display:none; }
 #est-fan-rewards button { margin-left:8px; padding:4px 8px; border:1px solid rgba(82,224,174,.4); border-radius:6px; color:inherit; background:rgba(82,224,174,.08); cursor:pointer; }
@@ -2277,16 +2311,6 @@ body.est-hub-open { overflow:hidden; }
 .est-highlights h2 { margin:4px 0; font:800 21px var(--display); }.est-highlights h3 { margin:14px 0 5px; font-size:13px; }
 .est-highlights ol { margin:0; padding-left:20px; font-size:13px; line-height:1.6; }.est-highlights button { padding:9px 12px; border:1px solid #90d5af; border-radius:7px; background:#1e5139; color:#fff; cursor:pointer; }
 .est-highlights-note { color:#aec7b7; font-size:11px; }
-
-/* Entrada claramente separada de los partidos oficiales y sus mercados. */
-.est-lab-launch{display:flex;flex-direction:column;align-items:flex-start;gap:7px;padding:17px 18px;text-decoration:none;color:#f0f5ec;border:1px solid rgba(218,196,137,.28);border-radius:14px;background:linear-gradient(135deg,rgba(43,40,27,.9),rgba(13,26,22,.96));}
-.est-lab-launch:hover{border-color:#e0c88f;background-color:#26382d;}
-.est-lab-launch:focus-visible{outline:3px solid #9cf2c0;outline-offset:3px;}
-.est-lab-kicker{color:#dcc991;font-size:9px;font-weight:850;letter-spacing:.13em;}
-.est-lab-launch strong{font-family:var(--display);font-size:18px;line-height:1.15;}
-.est-lab-launch strong span{color:#e6d59f;font-family:var(--sans);font-size:14px;}
-.est-lab-launch>span:not(.est-lab-kicker):not(.est-lab-action){color:#bfcfc2;font-size:12px;line-height:1.4;}
-.est-lab-launch .est-lab-action{margin-top:3px;color:#c7e7c8;font-size:11px;font-weight:800;}
 
 /* ===== Cuentas regresivas largas (DD:HH:MM:SS) =====
    Dos relojes del lobby: fin de temporada del casino (reinicio de fichas) y

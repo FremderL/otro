@@ -116,7 +116,8 @@ test('redondeo de libro: pasos 0.01 / 0.05 / 0.10 y clamp [1.05, 101]', () => {
 test('catálogo pre-partido: genera los mercados y la doble oportunidad es independiente', () => {
   const mk = O.buildPreMatchMarkets(M(1.5, 1.1));
   for (const key of ['1x2', 'double_chance', 'over_under_2.5', 'btts', 'correct_score',
-    'win_to_nil_home', 'win_to_nil_away', 'team_total_home_1.5', 'handicap_home_minus1']) {
+    'win_to_nil_home', 'win_to_nil_away', 'team_total_home_1.5', 'handicap_home_minus1',
+    'yellow_cards_over_under_3.5', 'yellow_cards_over_under_4.5', 'both_teams_booked', 'red_card']) {
     assert.ok(mk[key], `falta el mercado ${key}`);
   }
   assert.strictEqual(mk.double_chance.independent, true);
@@ -182,4 +183,55 @@ test('las probabilidades implícitas se exponen junto a la cuota (transparencia 
       `implícita inválida en ${s.key}`);
     assert.ok(Math.abs(s.implied - 1 / s.price) < 1e-3, 'la implícita no coincide con 1/cuota');
   }
+});
+
+test('tarjetas: las probabilidades salen de las mismas tasas Poisson del motor', () => {
+  // Amarillas ~ Poisson(4.1) por partido; la línea 3.5 no tiene empuje.
+  const y35 = O.probYellowCards(3.5);
+  const expectedUnder35 = O.poissonCdf(O.YELLOW_RATE, 3);
+  assert.ok(Math.abs(y35.under - expectedUnder35) < 1e-9);
+  assert.ok(Math.abs(y35.over + y35.under - 1) < 1e-9, 'over+under cubren el mercado');
+  assert.ok(y35.over > 0.5 && y35.over < 0.65, `over 3.5 razonable (${y35.over.toFixed(3)})`);
+  // Por equipo son Poisson independientes con la mitad de tasa (adelgazamiento).
+  const btb = O.probBothTeamsBooked();
+  const bookedOne = 1 - Math.exp(-O.YELLOW_RATE / 2);
+  assert.ok(Math.abs(btb.yes - bookedOne * bookedOne) < 1e-9);
+  // Roja ~ Poisson(0.09): evento raro (~8.6 %).
+  const red = O.probRedCard();
+  assert.ok(Math.abs(red.yes - (1 - Math.exp(-O.RED_RATE))) < 1e-12);
+  assert.ok(red.yes > 0.05 && red.yes < 0.15, `P(roja) razonable (${red.yes.toFixed(3)})`);
+  assert.ok(Math.abs(red.yes + red.no - 1) < 1e-9);
+});
+
+test('tarjetas: el catálogo publica los cuatro mercados con libro sano', () => {
+  const mk = O.buildPreMatchMarkets(M(1.5, 1.1));
+  const cardKeys = ['yellow_cards_over_under_3.5', 'yellow_cards_over_under_4.5', 'both_teams_booked', 'red_card'];
+  for (const key of cardKeys) {
+    const m = mk[key];
+    assert.ok(m && !m.degenerate, `falta o degenerado: ${key}`);
+    assert.ok(m.overround >= 1 + O.MIN_MARGIN - 1e-9, `${key} arbitrable: ${m.overround}`);
+    const sum = m.selections.reduce((a, s) => a + s.prob, 0);
+    assert.ok(Math.abs(sum - 1) < 1e-6, `${key} no cubre todo: ${sum}`);
+  }
+  assert.deepStrictEqual(mk['yellow_cards_over_under_3.5'].selections.map(s => s.key), ['over', 'under']);
+  assert.deepStrictEqual(mk.red_card.selections.map(s => s.key), ['yes', 'no']);
+  // La roja cotiza cara en el «sí» y clavada en el piso en el «no» (como las casas reales).
+  const redYes = mk.red_card.selections.find(s => s.key === 'yes');
+  const redNo = mk.red_card.selections.find(s => s.key === 'no');
+  assert.ok(redYes.price > 5, `la roja sí debe cotizar cara (${redYes.price})`);
+  assert.strictEqual(redNo.price, O.PRICE_MIN, 'el «no» queda en el precio mínimo');
+});
+
+test('cardsFromTimeline cuenta amarillas y rojas (la segunda amarilla suma roja)', () => {
+  const cards = O.cardsFromTimeline([
+    { type: 'goal', team: 'home' },
+    { type: 'yellow_card', team: 'home' },
+    { type: 'yellow_card', team: 'away' },
+    { type: 'yellow_card', team: 'away' },
+    { type: 'second_yellow', team: 'away' }, // su amarilla ya estaba contada arriba
+    { type: 'red_card', team: 'home' }
+  ]);
+  assert.deepStrictEqual(cards, { yellow: 3, red: 2, homeYellow: 1, awayYellow: 2, homeRed: 1, awayRed: 1 });
+  assert.deepStrictEqual(O.cardsFromTimeline([]), { yellow: 0, red: 0, homeYellow: 0, awayYellow: 0, homeRed: 0, awayRed: 0 });
+  assert.deepStrictEqual(O.cardsFromTimeline(null), { yellow: 0, red: 0, homeYellow: 0, awayYellow: 0, homeRed: 0, awayRed: 0 });
 });

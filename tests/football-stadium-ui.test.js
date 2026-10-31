@@ -150,6 +150,7 @@ function createHarness(options = {}) {
       socketEmitted.push({ event, payload });
       if (event === 'football:bet' && options.onBet) { options.onBet(payload, ack); return; }
       if (event === 'football:quiniela_get' && options.onQuinielaGet) { ack(options.onQuinielaGet(payload)); return; }
+      if (event === 'football:quiniela_enter' && options.onQuinielaEnter) { ack(options.onQuinielaEnter(payload)); return; }
       if (event === 'football:transfers_get' && options.onTransfersGet) { ack(options.onTransfersGet(payload)); return; }
       if (event === 'football:fan_equip' && options.onFanEquip) { ack(options.onFanEquip(payload)); return; }
       if (event === 'football:fan_get' && options.onFanGet) { ack(options.onFanGet(payload)); return; }
@@ -2328,7 +2329,7 @@ test('Zona de afición separa Mi Once y muestra las funciones ausentes sin simul
   const players = [['GK', 1], ['DF', 4], ['MF', 4], ['FW', 2]].flatMap(([group, n]) =>
     Array.from({ length: n }, (_, i) => ({ id: group + i, group, name: 'Jugador ' + i, clubName: 'Club', position: group })));
   const data = { season: '2026-10', points: 0, next: { jornada: 2 }, selected: [], players, ranking: [], challenges: [], rankingOptIn: false };
-  const h = createHarness({ onFantasyGet: () => ({ ok: true, fantasy: data }) });
+  const h = createHarness({ onFantasyGet: () => ({ ok: true, fantasy: data }), onQuinielaGet: () => ({ ok: true, quiniela: { available: false, jornada: 7, matches: [{ id: 'm', homeId: 'united_vanguard', awayId: 'sporting_almar' }] } }) });
   try {
     await h.connectToMatch();
     const doc = h.window.document, hub = doc.getElementById('est-hub'), open = doc.getElementById('est-hub-open');
@@ -2434,6 +2435,42 @@ test('la conferencia de prensa del mercado muestra traspasos, escudos y valoraci
   } finally {h.window.close();}
 });
 
+test('MonteCristo News sintoniza y narra los traspasos la primera vez que si ves', async () => {
+  const moves=[
+    {playerName:'Jugador Uno',fromId:'united_vanguard',toId:'sporting_almar',position:'CM',playerValue:17.5},
+    {playerName:'Jugador Dos',fromId:'sporting_almar',toId:'united_vanguard',position:'CM',playerValue:9.25}
+  ];
+  const h=createHarness({ extraTeams:{ united_vanguard:team('united_vanguard','Farselona FC','FAR','#d32f2f','#111111'), sporting_almar:team('sporting_almar','Liverpulpo FC','LVP','#388e3c','#ffffff') },
+    onTransfersGet:()=>({ok:true, transfers:{status:'announced',seasonMonth:'2026-10',effectiveSeason:'2026-11',moves}, firstView:true}) });
+  try {
+    await h.connectToMatch(); const doc=h.window.document;
+    doc.getElementById('est-hub-open').click(); doc.querySelector('[data-hub-view="mercado"]').click();
+    const panel=doc.querySelector('[data-hub-panel="mercado"]');
+    const news=panel.querySelector('.est-news'); assert.ok(news,'se muestra la transmisión del canal');
+    assert.match(news.textContent,/MONTECRISTO/); assert.match(news.textContent,/NEWS/);
+    assert.match(news.textContent,/SINTONIZANDO/i);
+    assert.equal(panel.querySelector('.est-transfer-list'),null,'la lista llega al terminar la transmisión');
+    news.querySelector('.est-news-skip').click();
+    const list=panel.querySelector('.est-transfer-list'); assert.ok(list,'tras saltar aparece la lista');
+    assert.equal(list.querySelectorAll('li').length,2);
+    assert.match(list.textContent,/Jugador Uno/); assert.match(list.textContent,/Valoración 17,5 M/);
+    assert.match(list.textContent,/Jugador Dos/); assert.match(list.textContent,/9,3 M/);
+    assert.match(panel.textContent,/Acuerdos anunciados/);
+  } finally {h.window.close();}
+});
+
+test('sin primera vista no hay bumper: el mercado muestra la lista directo', async () => {
+  const h=createHarness({ extraTeams:{ united_vanguard:team('united_vanguard','Farselona FC','FAR','#d32f2f','#111111'), sporting_almar:team('sporting_almar','Liverpulpo FC','LVP','#388e3c','#ffffff') },
+    onTransfersGet:()=>({ok:true, transfers:{status:'announced',seasonMonth:'2026-10',effectiveSeason:'2026-11',moves:[{playerName:'Jugador Uno',fromId:'united_vanguard',toId:'sporting_almar',position:'CM',playerValue:17.5}]}, firstView:false}) });
+  try {
+    await h.connectToMatch(); const doc=h.window.document;
+    doc.getElementById('est-hub-open').click(); doc.querySelector('[data-hub-view="mercado"]').click();
+    const panel=doc.querySelector('[data-hub-panel="mercado"]');
+    assert.equal(panel.querySelector('.est-news'),null,'sin firstView no hay transmisión');
+    assert.ok(panel.querySelector('.est-transfer-list li'));
+  } finally {h.window.close();}
+});
+
 
 test('Mi afición permite equipar un pin desbloqueado y muestra el escudo', async () => {
  let fan={clubId:'united_vanguard',wins:1,level:1,ranking:[],rankingOptIn:false,equippedPin:null,rewards:[{id:'fan-1',title:'Primera victoria',target:1,progress:1,unlocked:true,equipped:false}]};
@@ -2449,6 +2486,29 @@ test('Mi afición permite equipar un pin desbloqueado y muestra el escudo', asyn
 test('Quiniela muestra jornada real sin simular venta de boletos', async () => {
  const h=createHarness({extraTeams:{united_vanguard:team('united_vanguard','Farselona FC','FAR','#d32f2f','#111111'),sporting_almar:team('sporting_almar','Liverpulpo FC','LVP','#388e3c','#ffffff')},onQuinielaGet:()=>({ok:true,quiniela:{available:false,jornada:7,matches:[{id:'m',homeId:'united_vanguard',awayId:'sporting_almar'}]}})});
  try {await h.connectToMatch();const doc=h.window.document;doc.getElementById('est-hub-open').click();doc.querySelector('[data-hub-view="quiniela"]').click();const panel=doc.querySelector('[data-hub-panel="quiniela"]');assert.match(panel.textContent,/Jornada 7/);assert.match(panel.textContent,/Farselona FC/);assert.match(panel.textContent,/inscripción no está disponible/i);assert.ok(panel.querySelector('img[src="/assets/escudos/LVP.svg"]'));assert.equal(panel.querySelectorAll('button').length,0);}finally{h.window.close();}
+});
+
+test('Quiniela abierta muestra el formulario 1/X/2 y registra el boleto con fichas', async () => {
+ const matches=Array.from({length:8},(_,i)=>({id:'q'+i,homeId:'united_vanguard',awayId:'sporting_almar'}));
+ let entered=null;
+ const state={available:true,season:'2026-10',jornada:3,closesAt:Date.now()+3600000,entryCost:50,carry:120,matches,myTicket:null,lastResult:null};
+ const h=createHarness({extraTeams:{united_vanguard:team('united_vanguard','Farselona FC','FAR','#d32f2f','#111111'),sporting_almar:team('sporting_almar','Liverpulpo FC','LVP','#388e3c','#ffffff')},
+  onQuinielaGet:()=>({ok:true,quiniela:state}),
+  onQuinielaEnter:payload=>{entered=payload;state.myTicket={picks:payload.picks,placedAt:Date.now(),status:'open',payout:0};return {ok:true,chips:950,quiniela:state};}});
+ try {
+  await h.connectToMatch();const doc=h.window.document;doc.getElementById('est-hub-open').click();doc.querySelector('[data-hub-view="quiniela"]').click();
+  const panel=doc.querySelector('[data-hub-panel="quiniela"]');
+  const form=panel.querySelector('#est-quiniela-form');assert.ok(form,'hay formulario cuando la jornada está abierta');
+  assert.match(panel.textContent,/Jornada 3/);assert.match(panel.textContent,/bote acumulado 120/);assert.match(panel.textContent,/50 fichas/);
+  assert.equal(panel.querySelectorAll('input[type="radio"]').length,24); // 8 partidos × 1/X/2
+  const submit=panel.querySelector('#est-quiniela-submit');assert.equal(submit.disabled,true,'sin 8 selecciones no se envía');
+  for(const m of matches){const radio=form.querySelector('input[name="quiniela_'+m.id+'"][value="home"]');radio.checked=true;radio.dispatchEvent(new h.window.Event('change',{bubbles:true}));}
+  assert.equal(submit.disabled,false);
+  form.dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));
+  assert.ok(entered);assert.equal(entered.season,'2026-10');assert.equal(entered.jornada,3);assert.equal(entered.picks.length,8);
+  assert.ok(entered.picks.every(p=>p.pick==='home'));assert.ok(entered.tos);
+  assert.match(panel.textContent,/Tu boleto/); // tras el ack se re-renderiza con el boleto
+ } finally { h.window.close(); }
 });
 
 test('escudos acompañan nombres en historial abierto, combinadas y cambio de afición', async t => {

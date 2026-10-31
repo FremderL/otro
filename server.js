@@ -82,6 +82,7 @@ const { createOfficialV2 } = require('./lib/football/v2/official');
 const { publicProjectionState } = require('./lib/football/v2/projection');
 const { createBettingService } = require('./lib/football/betting');
 const { BallonDorMarketService } = require('./lib/football/ballon-dor-market');
+const { QuinielaService } = require('./lib/football/quiniela-service');
 const {
   createBallonDorAudioTelemetry, isPrivateBallonDorBetLog
 } = require('./lib/football/rollout-telemetry');
@@ -202,7 +203,16 @@ installSeasonalThemeRoutes(app, {
 // imágenes del lobby (tienen nombre estable; si se reemplazan, cambiar el nombre del archivo).
 app.use(compression());
 app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: '7d', immutable: false }));
-const revalidateAppShell = new Set(['index.html', 'app.js', 'styles.css', 'chat-format.js', 'estadio-banner.js', 'estadio.html', 'estadio.js', 'estadio.css', 'estadio-simulador.html', 'estadio-simulador.js', 'estadio-simulador.css', 'loteria.html', 'loteria.js', 'loteria.css']);
+// El laboratorio 2D del Estadio ya no es público: solo se sirve tras la guardia
+// de administración en /admin/estadio/laboratorio/* (lib/football/http.js). Aquí
+// se bloquean la ruta antigua y sus archivos estáticos para que un usuario sin
+// sesión staff reciba 404 en vez del código de prueba o de la shell del casino.
+const labPathBlock = /^\/estadio-simulador(?:[\/.]|$)/i;
+app.use((req, res, next) => {
+  if (labPathBlock.test(req.path)) return res.status(404).send('Not found');
+  next();
+});
+const revalidateAppShell = new Set(['index.html', 'app.js', 'styles.css', 'chat-format.js', 'estadio-banner.js', 'estadio.html', 'estadio.js', 'estadio.css', 'loteria.html', 'loteria.js', 'loteria.css']);
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: '5m',
   setHeaders(res, filePath) {
@@ -326,6 +336,7 @@ const footballAdminGuard = makeAdminGuard({
 });
 installFootballAdminRoutes(app, {
   adminConfig,
+  publicDir: path.join(__dirname, 'public'),
   promotionMediaDir: process.env.PROMOTION_MEDIA_DIR || undefined,
   guard: footballAdminGuard.fullGuard(PERMISSIONS.FOOTBALL_MANAGE),
   readGuard: (req, res, next) => footballAdminGuard.resolveAdmin(req, res, () =>
@@ -392,6 +403,7 @@ let footballStore = null;
 let footballEngine = null;
 let footballBetting = null;
 let footballBallonDorMarket = null;
+let footballQuiniela = null;
 let footballScheduler = null;
 let footballSockets = null;
 let accountSessionStore = null;
@@ -3495,6 +3507,10 @@ async function initFootball() {
       'football_ballon_dor_announcement_available', 'football_ballon_dor_payouts_updated'].includes(event)) {
       footballSockets?.broadcastBallonDorMarket?.(data?.seasonMonth);
     }
+    if (event === 'football_quiniela_settled' && footballSockets && footballStore) {
+      const league = footballStore.getLeague(data?.season);
+      if (league) io.to(footballSockets.LOBBY_ROOM).emit('football:quiniela_updated', footballQuiniela?.publicSnapshot(league, Date.now()));
+    }
   };
 
   // La política y los partidos próximos deben estar persistidos ANTES de
@@ -3512,14 +3528,29 @@ async function initFootball() {
   footballBallonDorMarket = new BallonDorMarketService({
     store: footballStore, betting: footballBetting, now: () => Date.now(), log: footballLog
   });
+  // Quiniela activada: diario en la liga + cartera real con operationId (§Quiniela).
+  footballQuiniela = new QuinielaService({
+    store: footballStore, profiles, log: footballLog, now: () => Date.now(),
+    enabled: footballConfig.enabled && footballConfig.quinielaEnabled !== false
+  });
 
   // 4. Motor determinista con los hooks de apuestas cableados (Fase D) y el gate de
   //    temporada (A7). El motor emite eventos que la capa de socket difunde.
   footballEngine = new FootballEngine(footballStore, {
     officialV2,
     logEvent: footballLog,
-    settleBets: (match, score) => footballBetting.settleMatchBets(match, score),
-    refundBets: (match, reason) => footballBetting.refundMatchBets(match, reason),
+    settleBets: (match, score) => {
+      const result = footballBetting.settleMatchBets(match, score);
+      // La quiniela liquida la jornada cuando sus 8 partidos ya tienen resultado;
+      // best-effort: el barrido del scheduler lo reintenta (§Quiniela).
+      footballQuiniela?.notifyMatch(match)?.catch?.(() => {});
+      return result;
+    },
+    refundBets: (match, reason) => {
+      const result = footballBetting.refundMatchBets(match, reason);
+      footballQuiniela?.notifyMatch(match)?.catch?.(() => {});
+      return result;
+    },
     cancelPendingBets: () => footballBetting.cancelPendingBets(),
     reconcileEscrow: () => footballBetting.reconcileEscrow(),
     hasOpenBets: (month) => footballBetting.hasOpenBets(month),
@@ -3534,6 +3565,16 @@ async function initFootball() {
   // 5. Reconciliación de arranque (§15.6): reconstruye el estado de los partidos no
   //    terminales desde (seed, now) y cuadra el escrow. ANTES de aceptar tráfico.
   footballEngine.reconcile(Date.now());
+
+  // 5a. Recuperación de la quiniela al arrancar: aplica con operationId los
+  //     movimientos del diario que un crash dejó a medias (entrada/premio/
+  //     reembolso pendientes) sin pagar nada dos veces. ANTES de aceptar tráfico.
+  try {
+    const quinielaRecovery = await footballQuiniela.recover();
+    if (quinielaRecovery.recovered > 0) logEvent('football_quiniela_recovered', quinielaRecovery);
+  } catch (error) {
+    logEvent('football_quiniela_recover_error', { message: String(error?.message || error) });
+  }
 
   // 5b. Auditoría del acumulado del Balón de Oro contra el archivo por partido.
   //     El premio suma la contribución de cada partido al asentarse; si un club se
@@ -3596,6 +3637,7 @@ async function initFootball() {
   //    nombres) y verifyTosAcceptance. La identidad se resuelve SOLO en subscribe.
   footballSockets = registerFootballSockets(io, {
     betting: footballBetting, engine: footballEngine, store: footballStore, profiles,
+    quiniela: footballQuiniela,
     onFanChanged: profile => {
       for (const room of rooms.values()) if (room.players.some(player => player._profile === profile)) broadcast(room);
       io.to(`account:${profile.id}`).emit('profile_event', { events:[], profile:publicProgress(profile, true) });
@@ -3610,7 +3652,7 @@ async function initFootball() {
 
   // 7. Scheduler: sweeps de kickoff, avance, partidos atascados y temporada (§15).
   footballScheduler = new FootballScheduler(footballEngine, {
-    officialV2, ballonDorService: footballBallonDorMarket, logEvent: footballLog
+    officialV2, ballonDorService: footballBallonDorMarket, quinielaService: footballQuiniela, logEvent: footballLog
   });
   footballScheduler.start();
 
