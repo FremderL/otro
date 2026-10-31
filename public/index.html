@@ -22,6 +22,7 @@
   <div class="noise" aria-hidden="true"></div>
   <div class="ambient-grid" aria-hidden="true"></div>
   <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
+  <div id="invite-inbox" class="invite-inbox hidden" aria-live="polite" aria-label="Invitaciones de amistades"></div>
   <div id="seasonal-effects" class="seasonal-effects" aria-hidden="true" hidden></div>
 
   <div id="connection-overlay" class="connection-overlay" role="status" aria-live="polite" aria-atomic="true" aria-hidden="false">
@@ -546,6 +547,40 @@
     </div>
   </div>
 
+  <div id="invite-modal" class="modal invite-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-invite></div>
+    <div class="modal-card invite-modal-card" role="dialog" aria-modal="true" aria-labelledby="invite-title">
+      <button class="modal-close" data-close-invite aria-label="Cerrar">×</button>
+      <header class="invite-heading">
+        <div class="invite-heading-mark">✉</div>
+        <div class="invite-heading-copy">
+          <span class="kicker">MONTECRISTO · INVITAR A JUGAR</span>
+          <h2 id="invite-title">Tu mesa, a un toque</h2>
+          <p id="invite-subtitle">Elige a quién invitar. Recibirá el aviso al instante y entrará sin escribir el código.</p>
+        </div>
+      </header>
+      <div class="invite-room">
+        <div class="invite-room-copy"><small id="invite-room-label">MESA PRIVADA</small><b id="invite-room-name">—</b><span id="invite-room-meta">—</span></div>
+        <span class="invite-room-code" id="invite-room-code">—</span>
+      </div>
+      <div class="invite-link-row">
+        <label class="sr-only" for="invite-link">Enlace de la sala</label>
+        <input id="invite-link" type="text" readonly value="" />
+        <button id="invite-copy-link" class="btn btn-ghost" type="button">⧉ Copiar enlace</button>
+      </div>
+      <div id="invite-guest-note" class="invite-guest-note hidden">
+        <span>◉</span>
+        <div><b>Invitaciones con cuenta</b><p>Inicia sesión para invitar a tus amistades con un clic. Mientras tanto, comparte el enlace de la sala.</p><button id="invite-login" class="btn btn-primary" type="button">Iniciar sesión</button></div>
+      </div>
+      <div id="invite-friends-section">
+        <div class="community-section-title"><span>Amistades</span><small id="invite-friends-subtitle">—</small></div>
+        <div id="invite-friends-list" class="community-list invite-friends-list" aria-live="polite"></div>
+      </div>
+      <p id="invite-status" class="community-status" aria-live="polite"></p>
+      <p class="invite-footnote">Las invitaciones duran 10 minutos y solo las reciben tus amistades. Nadie más ve el código de tu sala.</p>
+    </div>
+  </div>
+
   <div id="report-modal" class="modal account-modal" aria-hidden="true"><div class="modal-backdrop" data-close-report></div><div class="modal-card account-modal-card" role="dialog" aria-modal="true" aria-labelledby="report-title"><button class="modal-close" data-close-report>×</button><span class="kicker">SEGURIDAD</span><h2 id="report-title">Reportar un usuario</h2><p id="report-copy">Describe lo ocurrido. Los reportes falsos o abusivos también pueden revisarse.</p><form id="report-form" class="account-form"><div id="report-user-field" class="form-field"><label for="reported-username">Usuario</label><div class="input-wrap"><span>@</span><input id="reported-username" maxlength="20" required /></div></div><div class="form-field"><label for="report-category">Categoría</label><select id="report-category"><option value="harassment">Acoso</option><option value="hate">Odio o discriminación</option><option value="threat">Amenaza</option><option value="spam">Spam</option><option value="impersonation">Suplantación</option><option value="cheating">Trampas</option><option value="account_trade">Comercio de cuentas</option><option value="other">Otro</option></select></div><div class="form-field"><label for="report-description">Descripción</label><textarea id="report-description" minlength="10" maxlength="1000" required></textarea></div><p id="report-error" class="account-error hidden"></p><button class="btn btn-primary" type="submit">Enviar reporte</button></form><div class="progress-title"><span>MIS REPORTES</span><button id="my-reports-refresh" class="text-button" type="button">Actualizar</button></div><div id="my-reports-list" class="my-reports-list"></div></div></div>
 
   <div id="account-modal" class="modal account-modal" aria-hidden="true">
@@ -615,7 +650,8 @@
         <div class="room-share">
           <div class="connection-mini" id="header-connection"><i></i><span>En vivo</span></div>
           <div class="room-code-display"><small>CÓDIGO DE SALA</small><b id="header-code">—</b></div>
-          <button id="copy-link" class="btn btn-primary btn-invite"><span>↗</span><b>Invitar</b></button>
+          <button id="copy-link" class="btn btn-ghost btn-invite-copy" type="button" title="Copiar el enlace de la sala" aria-label="Copiar el enlace de la sala">⧉</button>
+          <button id="invite-friends" class="btn btn-primary btn-invite" type="button" title="Invitar a tus amistades"><span>✉</span><b>Invitar</b></button>
         </div>
       </header>
 

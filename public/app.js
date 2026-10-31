@@ -179,6 +179,11 @@
     botDifficulty: $('#bot-difficulty'), botStyle: $('#bot-style'), botAdd: $('#bot-add'), botFill: $('#bot-fill'),
     reportOpenBtn: $('#report-open-btn'), reportModal: $('#report-modal'), reportForm: $('#report-form'), reportTitle: $('#report-title'), reportCopy: $('#report-copy'), reportUserField: $('#report-user-field'), reportedUsername: $('#reported-username'), reportCategory: $('#report-category'), reportDescription: $('#report-description'), reportError: $('#report-error'), myReportsList: $('#my-reports-list'), myReportsRefresh: $('#my-reports-refresh'),
     communityOpenBtn: $('#community-open-btn'), communityModal: $('#community-modal'),
+    inviteFriendsBtn: $('#invite-friends'), inviteModal: $('#invite-modal'), inviteInbox: $('#invite-inbox'),
+    inviteRoomCode: $('#invite-room-code'), inviteRoomName: $('#invite-room-name'), inviteRoomMeta: $('#invite-room-meta'),
+    inviteLink: $('#invite-link'), inviteCopyLink: $('#invite-copy-link'), inviteGuestNote: $('#invite-guest-note'),
+    inviteLogin: $('#invite-login'), inviteFriendsSection: $('#invite-friends-section'), inviteFriendsList: $('#invite-friends-list'),
+    inviteFriendsSubtitle: $('#invite-friends-subtitle'), inviteStatus: $('#invite-status'),
     accountOpenBtn: $('#account-open-btn'), accountModal: $('#account-modal'), accountForm: $('#account-form'),
     accountModalTitle: $('#account-modal-title'), accountModalCopy: $('#account-modal-copy'),
     accountUsername: $('#account-username'), accountPassword: $('#account-password'), accountError: $('#account-error'),
@@ -281,6 +286,8 @@
     profileRevision: 0, // sube con cada snapshot de perfil aplicado (ver applyProfileSnapshot)
     lobbyTournaments: null, expandedTournamentBrackets: new Set(), pendingTournamentSignup: null,
     communityTab: 'friends', communityData: null,
+    // Invitaciones de amistad a mesas privadas (efímeras, en memoria).
+    invites: [], inviteTimer: null, inviteModalOpen: false, friendPresence: {}, inviteCooldowns: new Map(),
     rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null, resultQueue: [],
     fortuneAngle: 0, fortuneLanded: null, fortuneSpin: null, fortuneTimer: null,
     spectating: false
@@ -888,6 +895,8 @@
     // refrescar los datos públicos en segundo plano, sin tocar el estado visual
     // si falla.
     if (ui.accountSession) refreshAccountProfile();
+    // Invitaciones que llegaron mientras la pestaña estaba cerrada o sin red.
+    if (ui.accountSession) { syncFriendInvites(); requestFriendPresence(true); }
     if (ui.shouldResume && ui.activeCode && ui.playerName) {
       ui.shouldResume = false;
       ui.joining = true;
@@ -1007,7 +1016,7 @@
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
     if (bettingSpaceModalIsOpen()) { closeBettingSpaceModal(); return; }
-    closeCollectionModal(); closeModal(); closeProfileModal(); closeAccountModal(); toggleShortcutHelp(false);
+    closeCollectionModal(); closeModal(); closeProfileModal(); closeAccountModal(); closeInviteModal(); toggleShortcutHelp(false);
   });
   // Fases 5 y 6: saltar animaciones (botones presentes en mesa o panel de acciones)
   document.addEventListener('click', event => {
@@ -1484,6 +1493,12 @@
     if (wasOutside) enterRoom();
     renderRoom();
     setOverlay(false);
+    // Al entrar a una mesa, su invitación ya no tiene sentido en la bandeja.
+    if (ui.invites.some(invite => invite.room?.code === room.code)) {
+      ui.invites = ui.invites.filter(invite => invite.room?.code !== room.code);
+      renderInviteInbox();
+    }
+    if (ui.inviteModalOpen) { renderInviteRoom(); renderInviteFriends(); requestFriendPresence(); }
   });
 
   // Cuenta moderada desde el panel: el servidor avisa y cierra la sesión 250 ms
@@ -2287,16 +2302,17 @@
     els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>${active ? 'La acción está en la mesa' : room.phase === 'showdown' ? 'La mano terminó' : 'La mesa está lista'}</b><span>${waitingCopy}</span></div><div class="action-buttons">
       ${canStart ? `<button class="game-btn primary" data-event="poker_start">${startCopy}</button>` : ''}
       ${canStart && !lobbyMatch && !room.tournament?.active && room.players.filter(p => p.connected).length >= 2 ? '<button class="game-btn tournament-btn" data-event="tournament_start" title="Sit & Go de mesa: entrada 200 fichas y premio para el ganador">🏆 Iniciar Sit & Go</button>' : ''}
+      ${!active && !lobbyMatch ? '<button class="game-btn" type="button" data-invite-open-friends aria-label="Invitar amigos" title="Invita a tus amistades a esta mesa">✉ Invitar amigos</button>' : ''}
       ${room.results?.length ? `<div class="result-strip">${room.results.map(result => `<span class="result-item ${result.amount > 0 ? 'win' : ''}">${escapeHtml(result.name)} <b>${result.amount > 0 ? '+' : ''}${formatDelta(result.amount)}</b></span>`).join('')}</div>` : ''}
       </div></div>`;
   }
   function renderBlackjackActions(room, me) {
     if (room.phase === 'betting') {
       if (me.bet > 0) {
-        els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>Apuesta confirmada: <span>${formatChips(me.bet)}</span></b><span>Esperando a que el anfitrión reparta.</span></div><div class="action-buttons">${me.isHost ? '<button class="game-btn primary" data-event="blackjack_start">Repartir cartas</button>' : ''}</div></div>`;
+        els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>Apuesta confirmada: <span>${formatChips(me.bet)}</span></b><span>Esperando a que el anfitrión reparta.</span></div><div class="action-buttons">${me.isHost ? '<button class="game-btn primary" data-event="blackjack_start">Repartir cartas</button>' : ''}<button class="game-btn" type="button" data-invite-open-friends aria-label="Invitar amigos" title="Invita a tus amistades a esta mesa">✉ Invitar amigos</button></div></div>`;
       } else {
         const bets = [10, 25, 50, 100].filter(amount => amount <= me.chips);
-        els.actionPanel.innerHTML = `<div class="action-bar"><div class="action-info"><small>ELIGE TU APUESTA</small><b>◆ <span>${formatChips(me.chips)}</span> DISPONIBLES</b></div><div class="bet-options">${bets.map(amount => `<button class="chip-button" data-blackjack-bet="${amount}">${amount}</button>`).join('')}</div><div class="action-buttons">${me.isHost ? '<button class="game-btn" data-event="blackjack_start">Repartir</button>' : ''}</div></div>`;
+        els.actionPanel.innerHTML = `<div class="action-bar"><div class="action-info"><small>ELIGE TU APUESTA</small><b>◆ <span>${formatChips(me.chips)}</span> DISPONIBLES</b></div><div class="bet-options">${bets.map(amount => `<button class="chip-button" data-blackjack-bet="${amount}">${amount}</button>`).join('')}</div><div class="action-buttons">${me.isHost ? '<button class="game-btn" data-event="blackjack_start">Repartir</button>' : ''}<button class="game-btn" type="button" data-invite-open-friends aria-label="Invitar amigos" title="Invita a tus amistades a esta mesa">✉ Invitar amigos</button></div></div>`;
       }
       return;
     }
@@ -2368,7 +2384,7 @@
             : `<div><div class="quick-choice-grid">${quickChoiceButtons(room.game)}</div></div>`;
         const canDouble = room.game === 'roulette' || room.game === 'dice';
         const doubleBtn = canDouble ? '<button class="game-btn" type="button" data-quick-double title="Duplica la apuesta (hasta tu saldo)">×2</button>' : '';
-        els.actionPanel.innerHTML = `<div class="action-bar ${room.game === 'roulette' ? 'roulette-bar' : ''}">${chooser}<div class="quick-bet-controls"><input id="quick-bet-amount" type="number" min="10" max="${me.chips}" value="${suggested}" aria-label="Apuesta virtual">${doubleBtn}<button class="game-btn green" data-quick-bet>Confirmar apuesta</button>${hostLaunch}</div></div>`;
+        els.actionPanel.innerHTML = `<div class="action-bar ${room.game === 'roulette' ? 'roulette-bar' : ''}">${chooser}<div class="quick-bet-controls"><input id="quick-bet-amount" type="number" min="10" max="${me.chips}" value="${suggested}" aria-label="Apuesta virtual">${doubleBtn}<button class="game-btn green" data-quick-bet>Confirmar apuesta</button>${hostLaunch}<button class="game-btn" type="button" data-invite-open-friends aria-label="Invitar amigos" title="Invita a tus amistades a esta mesa">✉</button></div></div>`;
       }
       return;
     }
@@ -2400,6 +2416,7 @@
     els.actionPanel.innerHTML = `<div class="action-bar ${resultsFelt ? 'roulette-bar' : ''}"><div class="result-strip">${resultCopy}</div>${resultsFelt}<div class="action-buttons">${me.isHost ? '<button class="game-btn primary" data-event="quick_new">Abrir nueva ronda</button>' : '<span class="waiting-copy"><span>Esperando al anfitrión…</span></span>'}</div></div>`;
   }
   function bindActionButtons() {
+    $$('[data-invite-open-friends]').forEach(button => button.addEventListener('click', openInviteModal));
     $$('[data-event]').forEach(button => button.addEventListener('click', async () => {
       const response = await emitAck(button.dataset.event, {}, button);
       if (!response.ok) showToast('Jugada no disponible', response.error, 'error');
@@ -2561,6 +2578,23 @@
     showToast('Celebración en la mesa', event.text, 'achievement', 5600, event.icon || '✦', true);
   });
   socket.on('reaction', event => showFloatingReaction(event));
+  // ---------- Invitaciones de amistad ----------
+  socket.on('friend_invite_received', ({ invite } = {}) => {
+    if (!invite?.id || !invite.room?.code) return;
+    if (ui.room?.code === invite.room.code) return; // ya estamos en esa mesa
+    ui.invites = [invite, ...ui.invites.filter(item => item.id !== invite.id)].slice(0, 3);
+    renderInviteInbox();
+    playTone('notice');
+    const meta = GAME_META[invite.room.game] || GAME_META.poker;
+    showToast(`${inviteFromName(invite)} te invita`, `${meta.name} · ${invite.room.name || 'Mesa privada'}`, 'notice', 5200, '✉', true);
+  });
+  socket.on('friend_invite_accepted', ({ to, room, joined } = {}) => {
+    const who = to?.name || 'Tu amistad';
+    const where = room?.name || 'la mesa';
+    showToast(joined ? 'Llegó tu invitación' : 'Invitación aceptada',
+      joined ? `${who} entró a ${where}.` : `${who} va en camino a ${where}.`,
+      'notice', 4200, '✉');
+  });
   socket.on('removed', payload => {
     showToast('Saliste de la mesa', payload?.message || 'Tu asiento ya no está disponible.', 'error', 5000);
     leaveToLobby(false);
@@ -3298,9 +3332,13 @@
       : 'Inicia sesión o crea tu cuenta para enviar solicitudes, aceptar amistades y unirte a clubes.';
     if (login) login.hidden = unavailable;
   }
-  function communityAccountMarkup(profile) {
+  function communityAccountMarkup(profile, options = {}) {
     if (!profile) return '';
-    return `<span class="community-account"><i class="community-avatar" style="background:${avatarColor(profile.id)}">${avatarEmoji(profile.avatar)}</i><span class="community-account-copy"><b>${escapeHtml(profile.name || profile.username)}</b><small>@${escapeHtml(profile.username)}</small></span></span>`;
+    // La presencia solo llega para amistades (el servidor valida la relación).
+    const presence = options.status
+      ? `<small class="community-presence ${options.online ? 'is-online' : ''}"><i></i>${escapeHtml(options.status)}</small>`
+      : '';
+    return `<span class="community-account"><i class="community-avatar" style="background:${avatarColor(profile.id)}">${avatarEmoji(profile.avatar)}</i><span class="community-account-copy"><b>${escapeHtml(profile.name || profile.username)}</b><small>@${escapeHtml(profile.username)}</small>${presence}</span></span>`;
   }
   function setCommunityTab(tab) {
     ui.communityTab = tab;
@@ -3311,6 +3349,7 @@
       button.tabIndex = selected ? 0 : -1;
     });
     $$('.community-panel').forEach(panel => panel.classList.toggle('hidden', panel.dataset.communityPanel !== tab));
+    if (tab === 'friends') requestFriendPresence();
   }
   function renderCommunitySearchResults(users = []) {
     const container = document.getElementById('community-search-results');
@@ -3339,7 +3378,21 @@
     document.getElementById('community-friend-count').textContent = String(data.friends.length);
     document.getElementById('community-request-count').textContent = String(data.incomingRequests.length + data.outgoingRequests.length);
     document.getElementById('community-friends-subtitle').textContent = `${data.friends.length} ${data.friends.length === 1 ? 'persona' : 'personas'}`;
-    friends.innerHTML = data.friends.map(profile => `<article class="community-person-row">${communityAccountMarkup(profile)}<button type="button" class="social-action is-muted" data-social-action="remove-friend" data-profile-id="${escapeHtml(profile.id)}">Quitar</button></article>`).join('')
+    friends.innerHTML = data.friends.map(profile => {
+      const presence = currentFriendPresence(profile.id);
+      const friendRoom = presence?.room;
+      const actions = [];
+      // Unirse a la mesa de una amistad, con un clic y sin códigos.
+      if (friendRoom) {
+        actions.push(`<button type="button" class="social-action" data-social-action="join-friend-room" data-room-code="${escapeHtml(friendRoom.code)}">${presence.status === 'spectating' ? 'Ver mesa' : 'Unirse'}</button>`);
+      }
+      // Invitar solo tiene sentido si ya estás sentado en una mesa distinta.
+      if (ui.room && friendRoom?.code !== ui.room.code) {
+        actions.push(`<button type="button" class="social-action" data-social-action="invite-friend" data-profile-id="${escapeHtml(profile.id)}">Invitar</button>`);
+      }
+      actions.push(`<button type="button" class="social-action is-muted" data-social-action="remove-friend" data-profile-id="${escapeHtml(profile.id)}">Quitar</button>`);
+      return `<article class="community-person-row">${communityAccountMarkup(profile, { status: presence ? friendStatusText(presence) : '', online: Boolean(presence?.online) })}<div class="community-row-actions">${actions.join('')}</div></article>`;
+    }).join('')
       || '<div class="community-empty-card"><span>♧</span><b>Tu mesa empieza con una amistad</b><small>Busca su usuario y envíale una solicitud para tenerle a mano.</small></div>';
     incoming.innerHTML = data.incomingRequests.map(request => `<article class="community-person-row">${communityAccountMarkup(request.profile)}<div class="community-row-actions"><button type="button" class="social-action" data-social-action="accept-friend" data-request-id="${escapeHtml(request.id)}">Aceptar</button><button type="button" class="social-action is-muted" data-social-action="cancel-friend" data-request-id="${escapeHtml(request.id)}">Rechazar</button></div></article>`).join('')
       || '<p class="community-empty">No tienes solicitudes nuevas.</p>';
@@ -3468,6 +3521,8 @@
     }
     ui.communityData = { ...response, memberships: response.clubs || [], clubs: [], clubRanking: [] };
     renderCommunityFriends();
+    // La presencia llega por socket (solo para amistades) y repinta la lista.
+    requestFriendPresence(true);
     const clubs = await communityRequest('/api/social/v1/clubs');
     if (clubs.ok) ui.communityData.clubs = clubs.clubs;
     renderCommunityClubs();
@@ -3502,6 +3557,9 @@
     if (refreshButton) refreshButton.disabled = false;
     ui.csrfToken = session.csrfToken || null;
     saveAccountSession(session.profile);
+    // Si la cuenta se recuperó desde la cookie en esta pestaña, también se
+    // recuperan las invitaciones que hayan llegado mientras estaba cerrada.
+    syncFriendInvites();
     const loaded = await loadCommunityOverview();
     if (loaded) document.querySelector(`.community-tab[data-community-tab="${ui.communityTab}"]`)?.focus();
   }
@@ -3510,7 +3568,305 @@
     els.communityModal?.setAttribute('aria-hidden', 'true');
     if (!$$('.modal.open').length) document.body.classList.remove('modal-open');
   }
+
+  // ---------- Invitaciones de amistad a mesas privadas ----------
+  // La idea: si ya tienes amistades, invitar debe ser un clic, no copiar un
+  // código. El servidor entrega la invitación al instante a la cuenta de la
+  // amistad, que la acepta desde cualquier pestaña (lobby o mesa).
+  function inviteRoomUrl(code = ui.room?.code) {
+    return code ? `${location.origin}/room/${code}` : '';
+  }
+  function currentFriendPresence(profileId) {
+    return ui.friendPresence?.[profileId] || null;
+  }
+  function friendStatusText(presence) {
+    if (!presence) return '';
+    if (presence.room) {
+      const meta = GAME_META[presence.room.game] || GAME_META.poker;
+      return `${presence.status === 'spectating' ? 'Viendo' : 'Jugando'} ${meta.name.toLowerCase()} · ${presence.room.players}/${presence.room.capacity}`;
+    }
+    return presence.online ? 'En el lobby' : 'Sin conexión';
+  }
+  function setInviteStatus(message = '', type = 'success') {
+    if (!els.inviteStatus) return;
+    els.inviteStatus.textContent = message;
+    els.inviteStatus.dataset.type = message ? type : '';
+  }
+  async function copyRoomLink(button = null) {
+    const url = inviteRoomUrl();
+    if (!url) return '';
+    try { await navigator.clipboard.writeText(url); }
+    catch {
+      const input = document.createElement('input');
+      input.value = url;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      input.remove();
+    }
+    playTone('notice');
+    if (button) {
+      const original = button.innerHTML;
+      button.innerHTML = button.id === 'copy-link' ? '<span>✓</span>' : '✓ Copiado';
+      setTimeout(() => { button.innerHTML = original; }, 1600);
+    }
+    showToast('Enlace copiado', 'Compártelo o invita directo a una amistad.', 'notice');
+    return url;
+  }
+  function renderInviteRoom() {
+    const room = ui.room;
+    if (!room) return;
+    const meta = GAME_META[room.game] || GAME_META.poker;
+    const players = room.players.filter(player => player.connected).length;
+    const capacity = room.lobbyTournamentMatch ? 2 : 6;
+    if (els.inviteRoomCode) els.inviteRoomCode.textContent = room.code;
+    if (els.inviteRoomName) els.inviteRoomName.textContent = room.name || `Sala ${room.code}`;
+    if (els.inviteRoomMeta) els.inviteRoomMeta.textContent = `${meta.icon} ${meta.name} · ${players}/${capacity} en mesa`;
+    if (els.inviteLink) els.inviteLink.value = inviteRoomUrl(room.code);
+  }
+  async function ensureCommunityFriends() {
+    if (Array.isArray(ui.communityData?.friends)) return ui.communityData.friends;
+    if (!ui.accountSession?.accountId) return [];
+    const response = await communityRequest('/api/social/v1/me');
+    if (!response.ok) return null;
+    ui.communityData = {
+      ...response,
+      memberships: response.clubs || [],
+      clubs: ui.communityData?.clubs || [],
+      clubRanking: ui.communityData?.clubRanking || []
+    };
+    renderCommunityFriends();
+    return response.friends || [];
+  }
+  // La presencia recorre sockets y mesas del servidor: se pide al abrir los
+  // paneles o al cambiar de mesa, nunca en cada room_state (que llega con cada
+  // jugada) para no multiplicar ese recorrido.
+  let lastPresenceRefresh = 0;
+  function requestFriendPresence(force = false) {
+    const now = Date.now();
+    if (!force && now - lastPresenceRefresh < 8000) return;
+    lastPresenceRefresh = now;
+    refreshFriendPresence();
+  }
+  async function refreshFriendPresence() {
+    if (!socket.connected || !ui.accountSession?.accountId) return;
+    const friends = ui.communityData?.friends;
+    if (!Array.isArray(friends)) return;
+    const response = await emitAck('friend_presence_get', { profileIds: friends.map(friend => friend.id) });
+    if (!response.ok) return;
+    ui.friendPresence = response.presence || {};
+    renderCommunityFriends();
+    if (ui.inviteModalOpen) renderInviteFriends();
+  }
+  function renderInviteFriends() {
+    if (!ui.inviteModalOpen) return;
+    const list = els.inviteFriendsList;
+    if (!list) return;
+    const friends = ui.communityData?.friends || [];
+    if (!friends.length) {
+      if (els.inviteFriendsSubtitle) els.inviteFriendsSubtitle.textContent = 'Sin amistades todavía';
+      list.innerHTML = '<div class="community-empty-card invite-empty"><span>♧</span><b>Tu mesa empieza con una amistad</b><small>Busca a alguien por su @usuario y envíale una solicitud. Cuando acepte, podrás invitarle con un clic.</small><button type="button" class="social-action" data-invite-open-community>Abrir mi círculo</button></div>';
+      return;
+    }
+    const online = friends.filter(friend => currentFriendPresence(friend.id)?.online).length;
+    if (els.inviteFriendsSubtitle) els.inviteFriendsSubtitle.textContent = `${online} de ${friends.length} en línea`;
+    const roomCode = ui.room?.code;
+    const now = Date.now();
+    list.innerHTML = friends.map(friend => {
+      const presence = currentFriendPresence(friend.id);
+      const friendRoom = presence?.room;
+      const inThisRoom = friendRoom?.code && friendRoom.code === roomCode;
+      const cooling = (ui.inviteCooldowns.get(`${friend.id}:${roomCode}`) || 0) > now;
+      const action = inThisRoom
+        ? '<span class="invite-state is-here">Ya en la mesa</span>'
+        : `<button type="button" class="social-action ${cooling ? 'is-complete' : ''}" data-invite-friend="${escapeHtml(friend.id)}" ${cooling ? 'disabled' : ''}>${cooling ? 'Invitación enviada ✓' : 'Invitar'}</button>`;
+      const join = friendRoom && !inThisRoom
+        ? `<button type="button" class="social-action is-muted" data-invite-join="${escapeHtml(friendRoom.code)}">${presence.status === 'spectating' ? 'Ver mesa' : 'Unirse'}</button>`
+        : '';
+      return `<article class="community-person-row invite-person ${presence?.online ? 'is-online' : ''}" data-invite-profile="${escapeHtml(friend.id)}">${communityAccountMarkup(friend, { status: friendStatusText(presence), online: Boolean(presence?.online) })}<div class="community-row-actions">${join}${action}</div></article>`;
+    }).join('');
+  }
+  async function openInviteModal() {
+    if (!ui.room) {
+      showToast('Primero abre una mesa', 'Entra o crea una sala para invitar a tus amistades.', 'notice');
+      return;
+    }
+    ui.inviteModalOpen = true;
+    els.inviteModal?.classList.add('open');
+    els.inviteModal?.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    setInviteStatus('');
+    renderInviteRoom();
+    const logged = Boolean(ui.accountSession?.accountId);
+    els.inviteGuestNote?.classList.toggle('hidden', logged);
+    els.inviteFriendsSection?.classList.toggle('hidden', !logged);
+    if (!logged) return;
+    if (els.inviteFriendsList) els.inviteFriendsList.innerHTML = '<p class="community-empty">Cargando tus amistades…</p>';
+    const friends = await ensureCommunityFriends();
+    if (friends === null) {
+      // Sin comunidad disponible el enlace sigue siendo el camino: no se deja
+      // a la persona con un panel vacío.
+      els.inviteFriendsSection?.classList.add('hidden');
+      els.inviteGuestNote?.classList.remove('hidden');
+      setInviteStatus('No pudimos abrir tu círculo social. Puedes compartir el enlace de la sala.', 'error');
+      if (els.inviteFriendsList) els.inviteFriendsList.innerHTML = '';
+      return;
+    }
+    renderInviteFriends();
+    requestFriendPresence(true);
+  }
+  function closeInviteModal() {
+    ui.inviteModalOpen = false;
+    els.inviteModal?.classList.remove('open');
+    els.inviteModal?.setAttribute('aria-hidden', 'true');
+    if (!$$('.modal.open').length) document.body.classList.remove('modal-open');
+  }
+  async function sendFriendInvite(profileId, button = null) {
+    if (!ui.room) {
+      showToast('Primero abre una mesa', 'Entra o crea una sala para invitar a tus amistades.', 'notice');
+      return;
+    }
+    if (!ui.accountSession?.accountId) {
+      openInviteModal();
+      return;
+    }
+    if (button) button.disabled = true;
+    const response = await emitAck('friend_invite_send', { profileId, code: ui.room.code });
+    if (button) button.disabled = false;
+    if (!response.ok) {
+      setInviteStatus(response.error || 'No se pudo enviar la invitación.', 'error');
+      showToast('Invitación no enviada', response.error || 'Intenta de nuevo.', 'error');
+      return;
+    }
+    const friend = (ui.communityData?.friends || []).find(item => item.id === profileId);
+    const name = friend?.name || friend?.username || 'Tu amistad';
+    ui.inviteCooldowns.set(`${profileId}:${ui.room.code}`, Date.now() + 20000);
+    setTimeout(() => { if (ui.inviteModalOpen) renderInviteFriends(); }, 20100);
+    const message = response.online
+      ? `${name} puede entrar con un clic desde el aviso.`
+      : `${name} la verá si vuelve en los próximos 10 minutos.`;
+    setInviteStatus(response.duplicate ? 'Ya le habías enviado esta invitación.' : message, 'success');
+    if (ui.inviteModalOpen) renderInviteFriends();
+    showToast(response.duplicate ? 'Invitación repetida' : 'Invitación enviada', message, 'notice', 4200, '✉');
+    playTone('notice');
+  }
+  function pruneInvites() {
+    const now = Date.now();
+    ui.invites = (ui.invites || []).filter(invite => invite?.room?.code && (Number(invite.expiresAt) || 0) > now);
+  }
+  function inviteFromName(invite) {
+    return invite?.from?.name || invite?.from?.username || 'Una amistad';
+  }
+  function renderInviteInbox() {
+    pruneInvites();
+    const inbox = els.inviteInbox;
+    if (!inbox) return;
+    clearTimeout(ui.inviteTimer);
+    if (!ui.invites.length) {
+      inbox.innerHTML = '';
+      inbox.classList.add('hidden');
+      return;
+    }
+    const now = Date.now();
+    inbox.classList.remove('hidden');
+    inbox.innerHTML = ui.invites.slice(0, 3).map(invite => {
+      const meta = GAME_META[invite.room.game] || GAME_META.poker;
+      return `<article class="invite-card" role="group" aria-label="Invitación de ${escapeHtml(inviteFromName(invite))}">
+        <span class="invite-card-avatar" style="background:${avatarColor(invite.from?.id)}">${avatarEmoji(invite.from?.avatar)}</span>
+        <div class="invite-card-copy"><b>${escapeHtml(inviteFromName(invite))} te invita</b><span>${meta.icon} ${escapeHtml(invite.room.name || 'Mesa privada')} · ${Number(invite.room.players) || 0}/${Number(invite.room.capacity) || 6}</span></div>
+        <div class="invite-card-actions"><button type="button" class="invite-card-accept" data-invite-accept="${escapeHtml(invite.id)}">Entrar</button><button type="button" class="invite-card-dismiss" data-invite-dismiss="${escapeHtml(invite.id)}" aria-label="Descartar invitación">×</button></div>
+      </article>`;
+    }).join('');
+    const nextExpiry = Math.min(...ui.invites.map(invite => Number(invite.expiresAt) || now + 60000)) - now;
+    ui.inviteTimer = setTimeout(renderInviteInbox, Math.max(1000, Math.min(nextExpiry, 60000)));
+  }
+  async function dismissInvite(inviteId) {
+    ui.invites = ui.invites.filter(invite => invite.id !== inviteId);
+    renderInviteInbox();
+    await emitAck('friend_invite_dismiss', { inviteId });
+  }
+  async function syncFriendInvites() {
+    if (!socket.connected || !ui.accountSession?.accountId) return;
+    const response = await emitAck('friend_invites_get');
+    if (!response.ok) return;
+    const known = new Set(ui.invites.map(invite => invite.id));
+    const fresh = (response.invites || []).filter(invite => invite?.id && !known.has(invite.id));
+    if (fresh.length) {
+      ui.invites = [...fresh, ...ui.invites].slice(0, 3);
+      renderInviteInbox();
+    }
+  }
+  async function joinRoomByCode(code) {
+    const target = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+    if (!/^[A-Z0-9]{5}$/.test(target)) return;
+    if (ui.room?.code === target) { closeInviteModal(); closeCommunityModal(); return; }
+    const name = ui.playerName || ui.accountSession?.name || localStorage.getItem('montecristo-name') || '';
+    if (!name) { closeInviteModal(); updateHistory(target); openModal('join', { code: target }); return; }
+    if (!tosAccepted()) { closeInviteModal(); showTosModal(); return; }
+    closeInviteModal();
+    closeCommunityModal();
+    if (ui.room) {
+      await leaveToLobby(true);
+      // leaveToLobby hace su transición visual en 280 ms; esperar evita que
+      // el nuevo room_state se cruce con la animación de vuelta al lobby.
+      await new Promise(resolve => setTimeout(resolve, 320));
+    }
+    ui.joining = true;
+    setOverlay(true, 'ENTRANDO A LA MESA DE TU AMISTAD');
+    const response = await emitAck('join_room', {
+      name, code: target, token: deviceToken, avatar: ui.selectedAvatar,
+      accountId: ui.accountSession?.accountId, tos: localStorage.getItem(TOS_KEY)
+    });
+    ui.joining = false;
+    if (!response.ok) {
+      setOverlay(false);
+      showToast('No pudimos entrar', response.error || 'La mesa ya no está disponible.', 'error', 5000);
+      updateHistory(target);
+      openModal('join', { code: target });
+      return;
+    }
+    ui.spectating = false;
+    ui.activeCode = response.code;
+    saveSession();
+    updateHistory(response.code);
+    setTimeout(() => { if (ui.room) setOverlay(false); }, 450);
+  }
+  async function acceptFriendInvite(invite) {
+    if (!invite?.room?.code) return;
+    ui.invites = ui.invites.filter(item => item.id !== invite.id);
+    renderInviteInbox();
+    const response = await emitAck('friend_invite_accept', { inviteId: invite.id });
+    if (!response.ok && response.code !== 'invite_not_found') {
+      showToast('Invitación no disponible', response.error || 'La mesa ya no está abierta.', 'error', 5000);
+      return;
+    }
+    await joinRoomByCode(invite.room.code);
+  }
   els.communityOpenBtn?.addEventListener('click', openCommunityModal);
+  els.inviteFriendsBtn?.addEventListener('click', openInviteModal);
+  $$('[data-close-invite]').forEach(element => element.addEventListener('click', closeInviteModal));
+  els.inviteLogin?.addEventListener('click', () => { closeInviteModal(); openAccountModal(); });
+  els.inviteCopyLink?.addEventListener('click', () => copyRoomLink(els.inviteCopyLink));
+  els.inviteLink?.addEventListener('focus', event => event.target.select());
+  els.inviteLink?.addEventListener('click', event => event.target.select());
+  els.inviteFriendsList?.addEventListener('click', event => {
+    const openCircle = event.target.closest('[data-invite-open-community]');
+    if (openCircle) { closeInviteModal(); openCommunityModal(); return; }
+    const inviteButton = event.target.closest('[data-invite-friend]');
+    if (inviteButton) { sendFriendInvite(inviteButton.dataset.inviteFriend, inviteButton); return; }
+    const joinButton = event.target.closest('[data-invite-join]');
+    if (joinButton) joinRoomByCode(joinButton.dataset.inviteJoin);
+  });
+  document.addEventListener('click', event => {
+    const accept = event.target.closest?.('[data-invite-accept]');
+    if (accept) {
+      const invite = ui.invites.find(item => item.id === accept.dataset.inviteAccept);
+      if (invite) acceptFriendInvite(invite);
+      return;
+    }
+    const dismiss = event.target.closest?.('[data-invite-dismiss]');
+    if (dismiss) dismissInvite(dismiss.dataset.inviteDismiss);
+  });
   document.getElementById('community-refresh')?.addEventListener('click', () => loadCommunityOverview());
   $$('[data-close-community]').forEach(element => element.addEventListener('click', closeCommunityModal));
   document.getElementById('community-login')?.addEventListener('click', () => { closeCommunityModal(); openAccountModal(); });
@@ -3588,8 +3944,11 @@
   document.getElementById('community-modal')?.addEventListener('click', async event => {
     const button = event.target.closest('[data-social-action]');
     if (!button) return;
-    const { socialAction: action, username, requestId, profileId, clubId } = button.dataset;
+    const { socialAction: action, username, requestId, profileId, clubId, roomCode } = button.dataset;
     if (action === 'open-requests') return setCommunityTab('requests');
+    // Invitar a mi mesa o entrar a la mesa de una amistad, sin códigos.
+    if (action === 'invite-friend') return sendFriendInvite(profileId, button);
+    if (action === 'join-friend-room') return joinRoomByCode(roomCode);
     const routes = {
       'add-friend': { path: '/api/social/v1/friends/requests', method: 'POST', body: { username } },
       'accept-friend': { path: `/api/social/v1/friends/requests/${encodeURIComponent(requestId)}/accept`, method: 'POST' },
@@ -3974,21 +4333,11 @@
     const response = await emitAck('chat', { text });
     if (!response.ok) { els.chatInput.value = text; showToast('No se envió el mensaje', response.error, 'error'); }
   });
-  $('#copy-link').addEventListener('click', async event => {
-    const button = event.currentTarget;
-    const url = `${location.origin}/room/${ui.activeCode || ui.room?.code || ''}`;
-    try { await navigator.clipboard.writeText(url); }
-    catch {
-      const input = document.createElement('input'); input.value = url; document.body.appendChild(input); input.select(); document.execCommand('copy'); input.remove();
-    }
-    const original = button.innerHTML; button.innerHTML = '<span>✓</span><b>Copiado</b>'; playTone('notice');
-    showToast('Enlace copiado', 'Compártelo para llenar la mesa.', 'notice');
-    setTimeout(() => { button.innerHTML = original; }, 1600);
-  });
+  $('#copy-link').addEventListener('click', event => copyRoomLink(event.currentTarget));
   $('#leave-room').addEventListener('click', () => leaveToLobby(true));
   $('#room-logo').addEventListener('click', event => { event.preventDefault(); leaveToLobby(true); });
   async function leaveToLobby(notifyServer = true) {
-    closeProfileModal(); closeBotControls();
+    closeProfileModal(); closeBotControls(); closeInviteModal();
     // Al salir de la mesa, la caché de la sesión de cuenta adopta el último
     // estado conocido del perfil (si es el mismo de la cuenta): nombre y
     // fichas tal como quedaron tras jugar. Sin esto, el perfil del lobby
