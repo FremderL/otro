@@ -787,3 +787,51 @@ test('14 escenarios — validación integral de simulación y coherencia de jueg
   // 14. Relato generado para eventos clave
   assert.ok(r.timeline.some(e => Array.isArray(e.commentary) && e.commentary.length > 0), 'los eventos clave cuentan con comentarios sincronizados');
 });
+
+// --- Tiempo agregado del árbitro (§7 + 9.ª ronda) ---
+//
+// El cuarto árbitro levanta el tablero antes de cada silbatazo: el agregado no
+// puede quedarse en un campo interno, tiene que viajar en la línea de tiempo
+// (que es lo que se retransmite y se archiva) y llegar al relato con el número
+// exacto que dio el árbitro.
+
+test('tiempo agregado — dos anuncios por partido, antes de cada silbatazo, con el número del reloj', () => {
+  for (let k = 0; k < 12; k++) {
+    const r = generateTimeline(HOME, AWAY, ctxBase, rnd('agregado-' + k));
+    const anuncios = r.timeline.filter(e => e.type === 'stoppage_start');
+    assert.equal(anuncios.length, 2, `dos anuncios (semilla ${k})`);
+    const [primero, segundo] = anuncios;
+    assert.equal(primero.half, 1, 'el primero es del primer tiempo');
+    assert.equal(segundo.half, 2, 'el segundo es del segundo tiempo');
+    for (const e of anuncios) {
+      assert.ok(Number.isInteger(e.added) && e.added >= 1 && e.added <= 4, `agregado entre 1 y 4 (${e.added})`);
+    }
+    assert.deepEqual([primero.added, segundo.added], [r.clock.s1, r.clock.s2], 'el anuncio coincide con el reloj del partido');
+    const ht = r.timeline.find(e => e.type === 'halftime');
+    const ft = r.timeline.find(e => e.type === 'full_time');
+    assert.ok(primero.t < ht.t, 'el tablero del 1T sale antes del descanso');
+    assert.ok(segundo.t < ft.t, 'el tablero del 2T sale antes del pitazo final');
+    assert.ok(segundo.t > ht.t, 'el anuncio del 2T no se adelanta al descanso');
+    // Las dos voces dicen el número: no basta con mostrarlo.
+    for (const e of anuncios) {
+      const voces = e.commentary.map(c => c.voice).sort();
+      assert.deepEqual(voces, ['analista', 'narrador'], 'narrador y analista anuncian el agregado');
+      for (const c of e.commentary) {
+        assert.ok(c.text.includes(String(e.added) + ' minuto'), `dice ${e.added} minutos: «${c.text}»`);
+      }
+    }
+  }
+});
+
+test('tiempo agregado — es determinista con el mismo seed y no roba minutos al juego', () => {
+  const a = generateTimeline(HOME, AWAY, ctxBase, rnd('agregado-det'));
+  const b = generateTimeline(HOME, AWAY, ctxBase, rnd('agregado-det'));
+  assert.deepEqual(
+    a.timeline.filter(e => e.type === 'stoppage_start'),
+    b.timeline.filter(e => e.type === 'stoppage_start'),
+    'mismo seed ⇒ mismo agregado y mismo relato'
+  );
+  assert.deepEqual(a.score, b.score, 'el agregado no altera el marcador');
+  const ft = a.timeline.find(e => e.type === 'full_time');
+  assert.equal(ft.t, a.clock.matchEnd, 'el partido sigue terminando en 90 + s1 + s2');
+});

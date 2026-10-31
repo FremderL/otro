@@ -189,7 +189,11 @@ Los seis cues y 16 clips de nombres son WAV locales; el mismo flujo ofrece capti
 5. La escena final ofrece el CTA **Ver candidatos y hacer mi predicción**.
 
 **Implementado**
-- Audición y selección de una voz narradora femenina `es-MX`, tono de relato claro/cinematográfico. Se generó la pista fija `public/assets/ballon-dor-opening-es-mx.mp3` (44.54 s) con el guion definido; el texto idéntico está disponible como transcripción.
+- Audición y selección de una voz narradora femenina `es-MX`, tono de relato claro/cinematográfico.
+  Esta elección es **firme** y no se extiende a los comentaristas: la inauguración y la ceremonia
+  final conservan voz femenina (pista fija y cues pregrabados), mientras que la mesa que relata los
+  partidos en el Estadio usa voces masculinas. Al no hornear nombres de jugador ni clubes en la toma
+  fija, un traspaso del delantero estrella no invalida ni la locución ni los clips por `playerId`. Se generó la pista fija `public/assets/ballon-dor-opening-es-mx.mp3` (44.54 s) con el guion definido; el texto idéntico está disponible como transcripción.
 - Se reutiliza `public/assets/estadio-tunnel.jpg` —ya disponible— como fondo; CSS añade dolly, luces, transiciones y tarjetas dinámicas con colores de club. No se generan retratos por temporada.
 - La página dedicada `/balon-de-oro` abre automáticamente la primera inauguración de cada ciclo, incluso con llegada tardía; la clave local distingue `started` de `completed`, de modo que una vista interrumpida se completa al volver. Tras completarla se ocultan los accesos de inicio/reproducción y no puede repetirse durante ese ciclo.
 - Los subtítulos accesibles siguen el progreso de la presentación y la secuencia de 1:48 muestra 16 tarjetas individuales —una por ST existente— con nombre, club/colores, dorsal, atributos y estadísticas del ciclo. Se quitaron las cajas de fórmula y no se cambió la fórmula subyacente.

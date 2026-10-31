@@ -2487,3 +2487,86 @@ test('el cartel de gol no se duplica y sigue sirviendo de respaldo', async t => 
   h.handlers['football:goal']({ matchId: h.match.id, event: { type: 'goal', minute: 30, marcador: '2-0' } });
   assert.equal(bannerTimers(), 2, 'football:goal funciona como respaldo visual');
 });
+
+test('reloj — el agregado del árbitro se muestra como 45+4 y 90+3, y se limpia al cambiar de mitad', async t => {
+  const h = createHarness({ reducedMotion: true });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const id = match.id;
+  const clock = () => window.document.getElementById('est-clock').textContent;
+  const fireEvent = event => handlers['football:event']({ matchId: id, event });
+
+  handlers['football:status']({ matchId: id, code: 'live', minute: 45 });
+  fireEvent({ type: 'stoppage_start', half: 1, added: 4, minute: 45, phase: 'set_piece', playStopped: true, ball: { x: .5, y: .5 } });
+  assert.match(clock(), /45\+4'/, 'el tablero dice 45+4, igual que el relato');
+
+  // El agregado no se «gasta»: mientras corre sigue en 45+4 y no salta a 47.
+  handlers['football:tick']({
+    matchId: id, minute: 47, displayMinute: 47, phase: 'first_half', playStopped: false,
+    score: { home: 0, away: 0 }, ball: { x: .5, y: .5 }
+  });
+  assert.match(clock(), /45\+4'/, 'se mantiene el tablero del árbitro durante el agregado');
+
+  // El descanso limpia el tablero.
+  fireEvent({ type: 'halftime', minute: 45, phase: 'halftime', playStopped: true, ball: { x: .5, y: .5 } });
+  assert.ok(!/\+/.test(clock()), 'sin agregado activo el reloj vuelve al minuto normal');
+
+  // Segundo tiempo: 90+3.
+  handlers['football:status']({ matchId: id, code: 'live', minute: 90 });
+  fireEvent({ type: 'stoppage_start', half: 2, added: 3, minute: 90, phase: 'set_piece', playStopped: true, ball: { x: .5, y: .5 } });
+  assert.match(clock(), /90\+3'/, 'el segundo tablero dice 90+3');
+
+  handlers['football:status']({ matchId: id, code: 'full_time', minute: 90 });
+  assert.equal(clock(), 'Final', 'al terminar manda el estado del partido');
+});
+
+test('voces — se prefieren comentaristas masculinos en español (narrador y analista)', async t => {
+  const h = createHarness({
+    speechSynthesis: true,
+    speechVoices: [
+      { name: 'Microsoft Sabina', lang: 'es-MX' },
+      { name: 'Microsoft Raúl', lang: 'es-MX' },
+      { name: 'Google español', lang: 'es' }
+    ]
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match, speech } = h;
+  window.document.getElementById('est-commentary-voice').click();
+
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: '¡Se acerca el gol!' });
+  handlers['football:commentary']({ matchId: match.id, voice: 'analista', text: 'La defensa quedó muy abierta.' });
+  assert.equal(speech.utterances.length, 1);
+  assert.equal(speech.utterances[0].voice.name, 'Microsoft Raúl', 'el narrador toma la voz masculina aunque haya una femenina mexicana');
+  assert.ok(speech.utterances[0].pitch >= .95, 'una voz masculina no necesita retoque de tono');
+
+  speech.finish(0);
+  h.advanceTime(500);
+  assert.equal(speech.utterances.length, 2);
+  assert.notEqual(speech.utterances[1].voice.name, 'Microsoft Sabina', 'el analista no cae en la voz femenina si hay alternativa');
+  assert.ok(speech.utterances[1].pitch < .95, 'la segunda voz se mantiene en el registro masculino');
+});
+
+test('voces — si el navegador solo ofrece voces femeninas se conservan y se baja el tono', async t => {
+  const h = createHarness({
+    speechSynthesis: true,
+    speechVoices: [
+      { name: 'Microsoft Sabina', lang: 'es-MX' },
+      { name: 'Microsoft Helena', lang: 'es-MX' }
+    ]
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match, speech } = h;
+  window.document.getElementById('est-commentary-voice').click();
+
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: 'Saque de meta.' });
+  handlers['football:commentary']({ matchId: match.id, voice: 'analista', text: 'Sin alternativas masculinas.' });
+  assert.equal(speech.utterances[0].voice.name, 'Microsoft Sabina', 'nunca se queda sin voz');
+  assert.ok(speech.utterances[0].pitch <= .9, 'se baja el tono como respaldo');
+  speech.finish(0);
+  h.advanceTime(500);
+  assert.equal(speech.utterances[1].voice.name, 'Microsoft Helena', 'la segunda voz sigue siendo otra voz');
+  assert.ok(speech.utterances[1].pitch < speech.utterances[0].pitch, 'el analista queda más grave');
+});

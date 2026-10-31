@@ -159,6 +159,7 @@
     ball: { x: .5, y: .5 }, ballStart: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 },
     ballT0: 0, ballDur: 800, playerT0: 0, playerDur: 1900,
     serverMinute: 0, minuteReceivedAt: 0,
+    stoppage: null, // { half, added }: minutos que el árbitro añadió en la mitad en curso
     minute: 0, phase: 'pre', score: { home: 0, away: 0 }, possession: { home: .5, away: .5 },
     goalFlashUntil: 0, goalAnimUntil: 0, goalCueAt: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false,
     crowdLastSentAt: 0,
@@ -3915,6 +3916,15 @@
       goal_celebration: 'Gol', extra_time: 'Prórroga', shootout: 'Penales', ended: 'Final', pre: '—'
     })[ph] || ph;
   }
+  // Reloj: si el árbitro ya anunció el agregado de esta mitad, se muestra como
+  // «45+4'» / «90+3'»; si no, el minuto en juego de siempre.
+  function clockMinuteLabel() {
+    if (S.stoppage && S.stoppage.added) {
+      var base = S.stoppage.half === 1 ? 45 : 90;
+      return base + '+' + S.stoppage.added + "'";
+    }
+    return S.minute + "'";
+  }
   function renderScoreboard() {
     if (!S.match) return;
     setScoreboardCrest('crest-home', S.match.homeId, S.homeKit);
@@ -3922,9 +3932,9 @@
     el['name-home'].textContent = teamFull(S.match.homeId); el['name-away'].textContent = teamFull(S.match.awayId);
     el['score-home'].textContent = S.score.home; el['score-away'].textContent = S.score.away;
     var live = ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0;
-    el['est-clock'].textContent = live ? S.minute + "' " + phaseLabel(S.phase) : (STATUS_LABEL[S.match.status] || '—');
+    el['est-clock'].textContent = live ? clockMinuteLabel() + ' ' + phaseLabel(S.phase) : (STATUS_LABEL[S.match.status] || '—');
     el['est-market-phase'].textContent = live ? 'En vivo' : 'Pre-partido';
-    el['est-pitch'].setAttribute('aria-label', 'Cancha cenital. ' + teamFull(S.match.homeId) + ' ' + S.score.home + ' – ' + S.score.away + ' ' + teamFull(S.match.awayId) + '. Minuto ' + S.minute + ', ' + phaseLabel(S.phase) + '.');
+    el['est-pitch'].setAttribute('aria-label', 'Cancha cenital. ' + teamFull(S.match.homeId) + ' ' + S.score.home + ' – ' + S.score.away + ' ' + teamFull(S.match.awayId) + '. Minuto ' + (S.stoppage && S.stoppage.added ? clockMinuteLabel() : S.minute) + ', ' + phaseLabel(S.phase) + '.');
   }
 
   // ===== Relato hablado =====
@@ -3940,17 +3950,67 @@
     return Boolean(window.speechSynthesis && typeof window.speechSynthesis.speak === 'function' &&
       typeof window.SpeechSynthesisUtterance === 'function');
   }
+  // La Web Speech API no expone el género de la voz, así que se infiere del
+  // nombre. La mesa de comentaristas de MonteCristo es masculina: si el navegador
+  // ofrece voces masculinas en español se eligen esas; si solo hay femeninas o
+  // sin nombre reconocible, se conserva la voz y se baja el tono como respaldo.
+  // Este criterio es SOLO del relato del partido: la inauguración del Balón de Oro
+  // y la ceremonia final usan sus pistas pregrabadas en voz femenina y no pasan
+  // por aquí.
+  var COMMENTARY_MALE_NAMES = ['jorge', 'raul', 'diego', 'pablo', 'miguel', 'carlos', 'juan', 'andres',
+    'alex', 'enrique', 'santiago', 'gonzalo', 'javier', 'manuel', 'pedro', 'ricardo', 'fernando',
+    'alvaro', 'david', 'daniel', 'jose', 'mario', 'hugo', 'gerardo', 'arturo', 'roberto', 'eduardo',
+    'marco', 'antonio', 'francisco', 'sergio', 'ivan', 'rodrigo', 'emilio', 'tomas', 'julio', 'oscar',
+    'ruben', 'alfonso', 'armando', 'bruno', 'cesar', 'esteban', 'felipe', 'gabriel', 'hector', 'ignacio',
+    'joaquin', 'leonardo', 'lorenzo', 'mauricio', 'nicolas', 'ramon', 'sabino', 'salvador', 'victor'];
+  var COMMENTARY_FEMALE_NAMES = ['sabina', 'paulina', 'monica', 'marisol', 'esperanza', 'salome',
+    'helena', 'laura', 'lupe', 'penelope', 'camila', 'sofia', 'isabela', 'ximena', 'valentina',
+    'renata', 'dalia', 'elena', 'lucia', 'carmen', 'beatriz', 'clara', 'estrella', 'irene', 'nuria',
+    'pilar', 'rocio', 'triana', 'vera', 'yolanda', 'zira', 'linda', 'heather', 'samantha', 'victoria',
+    'karen', 'moira', 'tessa', 'fiona', 'milena', 'daria', 'katya', 'alva', 'klara', 'sara', 'hanna',
+    'maria', 'ana', 'andrea', 'angelica', 'carla', 'cecilia', 'daniela', 'fabiola', 'gabriela', 'ines',
+    'jimena', 'lorena', 'magdalena', 'nadia', 'olga', 'patricia', 'regina', 'silvia', 'teresa',
+    'veronica', 'mexicana', 'femenina', 'mujer'];
+  function normalizeVoiceWord(word) {
+    var text = String(word || '');
+    if (text.normalize) text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return text.toLowerCase();
+  }
+  // 'm' masculina, 'f' femenina, '' desconocida (nombre neutro o genérico).
+  function commentaryVoiceGender(voice) {
+    var words = normalizeVoiceWord(voice && voice.name).split(/[^a-z0-9]+/).filter(Boolean);
+    if (words.some(function (w) { return COMMENTARY_MALE_NAMES.indexOf(w) >= 0; })) return 'm';
+    if (words.some(function (w) { return COMMENTARY_FEMALE_NAMES.indexOf(w) >= 0; })) return 'f';
+    return '';
+  }
+  // Orden: masculina > desconocida > femenina; a igualdad, es-MX antes que otro
+  // español, y el orden del navegador como último desempate.
+  function rankCommentaryVoices(list) {
+    return list.map(function (voice, index) {
+      var gender = commentaryVoiceGender(voice);
+      var genderRank = gender === 'm' ? 0 : (gender === 'f' ? 2 : 1);
+      var mexican = /^es[-_]MX$/i.test(voice.lang || '') ? 0 : 1;
+      return { voice: voice, index: index, key: genderRank * 2 + mexican };
+    }).sort(function (a, b) { return a.key - b.key || a.index - b.index; }).map(function (entry) { return entry.voice; });
+  }
   function refreshCommentaryVoices() {
     var api = window.speechSynthesis;
     if (!api || typeof api.getVoices !== 'function') return;
     var voices = [];
     try { voices = api.getVoices() || []; } catch (_) {}
     var spanish = voices.filter(function (voice) { return /^es(?:[-_]|$)/i.test(voice.lang || ''); });
-    var mexican = spanish.filter(function (voice) { return /^es[-_]MX$/i.test(voice.lang || ''); });
-    var preferred = mexican.length >= 2 ? mexican : (spanish.length >= 2 ? spanish : (mexican.length ? mexican : spanish));
-    var first = preferred[0] || null;
+    if (!spanish.length) { commentarySpeech.voices.narrador = null; commentarySpeech.voices.analista = null; return; }
+    var ranked = rankCommentaryVoices(spanish);
+    var first = ranked[0] || null;
     commentarySpeech.voices.narrador = first;
-    commentarySpeech.voices.analista = preferred.find(function (voice) { return voice !== first; }) || first;
+    commentarySpeech.voices.analista = ranked.filter(function (voice) { return voice !== first; })[0] || first;
+  }
+  // Tono: una voz masculina se usa tal cual; si la voz es femenina o no se puede
+  // identificar, se baja el tono para acercarla a la mesa masculina.
+  function commentaryVoicePitch(role, voice) {
+    var masculine = commentaryVoiceGender(voice) === 'm';
+    if (masculine) return role === 'narrador' ? 1 : .94;
+    return role === 'narrador' ? .88 : .8;
   }
   function updateCommentaryVoiceButton() {
     var button = el['est-commentary-voice'];
@@ -4048,7 +4108,7 @@
     catch (_) { return; }
     utterance.lang = voice && voice.lang || 'es-MX';
     utterance.rate = item.voice === 'narrador' ? 1.03 : .97;
-    utterance.pitch = item.voice === 'narrador' ? 1.06 : .95;
+    utterance.pitch = commentaryVoicePitch(item.voice, voice);
     utterance.volume = 1;
     if (voice) utterance.voice = voice;
     var token = ++commentarySpeech.token;
@@ -4222,6 +4282,14 @@
       S.serverMinute = Number(ev.minute);
       S.minuteReceivedAt = performance.now();
       S.minute = Math.round(ev.minute);
+    }
+    // Agregado del árbitro: el mismo dato que dicen los comentaristas se refleja
+    // en el reloj («45+4'»). Al cambiar de mitad o al final se limpia.
+    if (ev.type === 'stoppage_start' && ev.added != null && Number(ev.added) > 0) {
+      S.stoppage = { half: ev.half === 2 ? 2 : 1, added: Number(ev.added) };
+      renderScoreboard();
+    } else if (ev.type === 'halftime' || ev.type === 'second_half' || ev.type === 'full_time') {
+      if (S.stoppage) { S.stoppage = null; renderScoreboard(); }
     }
     applyRosterEvent(ev);
 
