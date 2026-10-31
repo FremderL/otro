@@ -100,6 +100,7 @@ function setup(opts = {}) {
   installFootballAdminRoutes(app, {
     adminConfig: opts.adminConfig !== undefined ? opts.adminConfig : { enabled: true },
     guard: opts.guard || ((_req, _res, next) => next()),
+    publicDir: opts.publicDir || path.join(dir, 'public'),
     engine, betting, store, log: () => {}, audit, now: () => 1000
   });
 
@@ -123,18 +124,38 @@ test('GET /estadio sirve estadio.html', (t) => {
   assert.equal(res.headers['Cache-Control'], 'no-store');
 });
 
-test('el laboratorio sirve una vista aislada y el módulo de prueba, sin crear perfiles', t => {
+test('el laboratorio ya no es público: /estadio-simulador* responde 404, sin crear perfiles', t => {
   const ctx = setup(); t.after(ctx.cleanup);
-  const page = ctx.app.run('GET', '/estadio-simulador');
-  const module = ctx.app.run('GET', '/estadio-simulador/motor.js');
-  assert.ok(page.sentFile && page.sentFile.endsWith('estadio-simulador.html'));
-  assert.equal(page.headers['Cache-Control'], 'no-store');
-  assert.ok(module.sentFile && module.sentFile.endsWith(path.join('football', 'v2', 'simulator.js')));
-  assert.equal(module.headers['Cache-Control'], 'no-cache, must-revalidate');
-  assert.equal(ctx.spy.getOrCreate, 0);
+  assert.equal(ctx.app.run('GET', '/estadio-simulador').statusCode, 404);
+  assert.equal(ctx.app.run('GET', '/estadio-simulador/motor.js').statusCode, 404);
+  assert.equal(ctx.spy.getOrCreate, 0, 'HTTP nunca crea perfiles');
   const disabled = setup({ enabled: () => false }); t.after(disabled.cleanup);
   assert.equal(disabled.app.run('GET', '/estadio-simulador').statusCode, 404);
   assert.equal(disabled.app.run('GET', '/estadio-simulador/motor.js').statusCode, 404);
+});
+
+test('el laboratorio solo se sirve bajo /admin/estadio/laboratorio, tras la guardia admin', t => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  const page = ctx.app.run('GET', '/admin/estadio/laboratorio');
+  assert.ok(page.sentFile && page.sentFile.endsWith('estadio-simulador.html'));
+  assert.equal(page.headers['Cache-Control'], 'no-store');
+  const motor = ctx.app.run('GET', '/admin/estadio/laboratorio/motor.js');
+  assert.ok(motor.sentFile && motor.sentFile.endsWith(path.join('football', 'v2', 'simulator.js')));
+  assert.equal(motor.headers['Cache-Control'], 'no-store');
+  assert.ok(ctx.app.run('GET', '/admin/estadio/laboratorio/estadio-simulador.js').sentFile.endsWith('estadio-simulador.js'));
+  assert.ok(ctx.app.run('GET', '/admin/estadio/laboratorio/estadio-simulador.css').sentFile.endsWith('estadio-simulador.css'));
+  assert.equal(ctx.spy.getOrCreate, 0, 'el laboratorio nunca crea perfiles');
+
+  // fail-closed: ADMIN_FEATURE_ENABLED apagado -> 404 sin revelar la existencia.
+  const off = setup({ adminConfig: { enabled: false } }); t.after(off.cleanup);
+  assert.equal(off.app.run('GET', '/admin/estadio/laboratorio').statusCode, 404);
+  assert.equal(off.app.run('GET', '/admin/estadio/laboratorio/motor.js').statusCode, 404);
+
+  // guardia que rechaza (sin sesión staff) -> no se sirve ni la vista ni sus assets.
+  const denied = setup({ guard: (_req, res) => res.status(403).json({ code: 'staff_required' }) });
+  t.after(denied.cleanup);
+  assert.equal(denied.app.run('GET', '/admin/estadio/laboratorio').statusCode, 403);
+  assert.equal(denied.app.run('GET', '/admin/estadio/laboratorio/estadio-simulador.css').statusCode, 403);
 });
 
 test('GET /balon-de-oro sirve la página del evento dedicado', t => {

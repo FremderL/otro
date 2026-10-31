@@ -15,6 +15,7 @@ const { FootballStore } = require('../lib/football-store');
 const { ProfileStore } = require('../lib/profile-store');
 const { createBettingService } = require('../lib/football/betting');
 const { BallonDorMarketService } = require('../lib/football/ballon-dor-market');
+const { QuinielaService } = require('../lib/football/quiniela-service');
 const { registerFootballSockets, publicBet, matchRoom, LOBBY_ROOM, profileRoom } = require('../lib/football/sockets');
 const { monthKey } = require('../lib/football-store-shared');
 const { CLUB_BY_ID } = require('../lib/football/teams');
@@ -103,18 +104,23 @@ function setup(opts = {}) {
 
   const io = makeIo();
   const engine = makeEngine(opts.derive);
+  const quiniela = opts.quiniela === undefined ? null : opts.quiniela;
   const nameIssue = opts.nameIssue !== undefined ? opts.nameIssue
     : (name, { exceptId = null } = {}) => (profiles.findProfileByName(name, exceptId) ? 'Ese nombre ya lo usa otra persona.' : null);
   const verifyTosAcceptance = opts.verifyTos !== undefined ? opts.verifyTos : ((profile, tos) => String(tos) === TOS);
 
   const nowVal = opts.now || (() => {
+    if (opts.withQuiniela) return Math.min(...store.getMatches(month).map(item => item.scheduledKickoffAt)) - 60000;
     const m = store.getMatches(month).find(x => x.status === 'scheduled');
     return m ? m.scheduledKickoffAt : Date.now();
   });
   const betPlacements = [];
+  const quinielaService = opts.withQuiniela
+    ? new QuinielaService({ store, profiles, log: () => {}, now: () => (typeof nowVal === 'function' ? nowVal() : nowVal), enabled: true })
+    : null;
   const sockets = registerFootballSockets(io.io, {
     betting, engine, store, profiles,
-    ballonDorMarket: opts.ballonDorMarket || null, accountSessionsEnabled: opts.accountSessionsEnabled || false,
+    quiniela: quiniela || quinielaService, ballonDorMarket: opts.ballonDorMarket || null, accountSessionsEnabled: opts.accountSessionsEnabled || false,
     onBetPlaced: details => { betPlacements.push(details); opts.onBetPlaced?.(details); },
     config: opts.config || { matchCapacity: opts.matchCap || 40, lobbyCapacity: 200 },
     log: () => {}, now: typeof nowVal === 'function' ? nowVal : () => nowVal,
@@ -129,6 +135,11 @@ function setup(opts = {}) {
 
 function subscribe(ctx, socket, payload = {}) {
   return socket._fire('football:subscribe', { token: 'tok_' + socket.id, tos: TOS, scope: 'lobby', ...payload });
+}
+
+// Para handlers async: devuelve una promesa que resuelve con el ack real.
+function fireAsync(socket, event, payload = {}) {
+  return new Promise(resolve => socket._fire(event, payload, resolve));
 }
 
 // ===================== PUERTA DE IDENTIDAD (A11) =====================
@@ -818,19 +829,45 @@ test('Mi afición guarda en el perfil, exige confirmación y no expone identidad
   } finally { ctx.cleanup(); }
 });
 
-test('mercado de traspasos se revela a partir del día 15 y exige suscripción', t => {
+test('mercado de traspasos se revela a partir del día 15 y exige suscripción', async t => {
   const ctx = setup(); t.after(ctx.cleanup);
   const s = ctx.io.connect();
   assert.equal(s._fire('football:transfers_get',{}).code,'no_identity');
   assert.equal(subscribe(ctx,s,{name:'Mercado'}).ok,true);
-  const result=s._fire('football:transfers_get',{});
+  const result=await fireAsync(s,'football:transfers_get',{});
   assert.equal(result.ok,true);
   assert.ok(['scheduled','announced','effective'].includes(result.transfers.status));
-  if (result.transfers.status==='scheduled') assert.equal(result.transfers.moves.length,0);
-  else assert.equal(result.transfers.moves.length,4);
+  if (result.transfers.status==='scheduled') { assert.equal(result.transfers.moves.length,0); assert.equal(result.firstView,false); }
+  else { assert.equal(result.transfers.moves.length,8); assert.equal(result.firstView,true); }
 });
 
-test('Quiniela consulta partidos reales sin permitir inscripciones todavía', t => {
+test('la primera vista del mercado (MonteCristo News) se marca una vez por temporada y persiste', async t => {
+  const d=new Date(); d.setDate(16); d.setHours(12,0,0,0); // día 15+ del mes en curso
+  const ctx=setup({ now: d.getTime() }); t.after(ctx.cleanup);
+  const s=ctx.io.connect();
+  const sub=subscribe(ctx,s,{name:'News'}); assert.equal(sub.ok,true);
+  const first=await fireAsync(s,'football:transfers_get',{});
+  assert.equal(first.ok,true);
+  assert.equal(first.transfers.status,'announced');
+  assert.equal(first.transfers.moves.length,8);
+  assert.equal(first.firstView,true,'la primera consulta tras anunciarse abre la transmisión');
+  const second=await fireAsync(s,'football:transfers_get',{});
+  assert.equal(second.firstView,false,'la segunda ya no repite el bumper');
+  assert.equal(second.transfers.status,'announced');
+  const month=monthKey();
+  const profile=ctx.profiles.getProfile(sub.profile.id);
+  assert.equal(profile.flags.traspasosNewsSeen[month],true,'el flag quedó en el perfil');
+  const reloaded=new ProfileStore(path.join(ctx.dir,'profiles.json'));
+  try { assert.equal(reloaded.getProfile(sub.profile.id).flags.traspasosNewsSeen[month],true,'y sobrevive a un reload'); }
+  finally { clearTimeout(reloaded.saveTimer); }
+  // Otro perfil nuevo sí vuelve a recibir firstView.
+  const s2=ctx.io.connect();
+  const sub2=subscribe(ctx,s2,{name:'News2'}); assert.equal(sub2.ok,true);
+  const other=await fireAsync(s2,'football:transfers_get',{});
+  assert.equal(other.firstView,true);
+});
+
+test('Quiniela sin servicio inyectado responde no disponible (compatibilidad)', t => {
   const ctx=setup(); t.after(ctx.cleanup); const s=ctx.io.connect();
   assert.equal(s._fire('football:quiniela_get',{}).code,'no_identity');
   assert.equal(subscribe(ctx,s,{name:'Quiniela'}).ok,true);
@@ -838,6 +875,42 @@ test('Quiniela consulta partidos reales sin permitir inscripciones todavía', t 
   assert.equal(result.quiniela.available,false);
   assert.ok(result.quiniela.matches.length===8 || result.quiniela.matches.length===0);
   assert.ok(result.quiniela.matches.every(m=>m.homeId&&m.awayId));
+  assert.equal(s._fire('football:quiniela_enter',{jornada:1,picks:[],tos:TOS}).code,'unavailable');
+});
+
+test('Quiniela activa: inscripción con fichas reales, TOS y reintento idempotente', async (t) => {
+  const ctx=setup({ withQuiniela:true }); t.after(ctx.cleanup); const s=ctx.io.connect();
+  assert.equal(s._fire('football:quiniela_get',{}).code,'no_identity');
+  const sub=subscribe(ctx,s,{name:'Quiniela'}); assert.equal(sub.ok,true);
+  const profile=ctx.profiles.getProfile(sub.profile.id);
+  const get1=s._fire('football:quiniela_get',{}); assert.equal(get1.ok,true);
+  assert.equal(get1.quiniela.available,true);
+  assert.equal(get1.quiniela.matches.length,8);
+  assert.equal(get1.quiniela.entryCost,50);
+  assert.equal(get1.quiniela.myTicket,null);
+  const { jornada, matches } = get1.quiniela;
+  const picks=matches.map(m=>({matchId:m.id,pick:'home'}));
+  // Sin TOS vigente: no entra.
+  assert.equal((await fireAsync(s,'football:quiniela_enter',{season:get1.quiniela.season,jornada,picks,tos:'vieja'})).code,'tos_required');
+  // Picks incompletos: invalid_picks.
+  assert.equal((await fireAsync(s,'football:quiniela_enter',{season:get1.quiniela.season,jornada,picks:picks.slice(1),tos:TOS})).code,'invalid_picks');
+  // Entrada correcta: descuenta 50 fichas y deja boleto.
+  const chipsBefore=profile.chips;
+  const enter=await fireAsync(s,'football:quiniela_enter',{season:get1.quiniela.season,jornada,picks,tos:TOS});
+  assert.equal(enter.ok,true);
+  assert.equal(profile.chips,chipsBefore-50);
+  assert.equal(enter.quiniela.myTicket.picks.length,8);
+  // Reintento idempotente: replayed, sin cobro extra.
+  const replay=await fireAsync(s,'football:quiniela_enter',{season:get1.quiniela.season,jornada,picks,tos:TOS});
+  assert.equal(replay.ok,true); assert.equal(replay.replayed,true);
+  assert.equal(profile.chips,chipsBefore-50);
+  // Picks distintos: ya entró.
+  const other=await fireAsync(s,'football:quiniela_enter',{season:get1.quiniela.season,jornada,picks:picks.map(p=>({...p,pick:'away'})),tos:TOS});
+  assert.equal(other.code,'already_entered');
+  // La inscripción avisó al lobby (sin datos de nadie en el broadcast).
+  const updates=ctx.io.emittedTo('football:lobby','football:quiniela_updated');
+  assert.ok(updates.length>=1);
+  assert.ok(!JSON.stringify(updates[0].payload).includes(profile.id));
 });
 
 test('destacados no se filtran antes del final y viajan con el resultado asentado', t=>{

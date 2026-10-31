@@ -2364,7 +2364,9 @@
           : room.game === 'slots'
             ? '<div class="waiting-copy"><b>🎰 Un giro por ronda</b><span>Confirma tu apuesta virtual y tira de la palanca: la tabla de pagos está en la máquina.</span></div>'
             : `<div><div class="quick-choice-grid">${quickChoiceButtons(room.game)}</div></div>`;
-        els.actionPanel.innerHTML = `<div class="action-bar ${room.game === 'roulette' ? 'roulette-bar' : ''}">${chooser}<div class="quick-bet-controls"><input id="quick-bet-amount" type="number" min="10" max="${me.chips}" value="${suggested}" aria-label="Apuesta virtual"><button class="game-btn green" data-quick-bet>Confirmar apuesta</button>${hostLaunch}</div></div>`;
+        const canDouble = room.game === 'roulette' || room.game === 'dice';
+        const doubleBtn = canDouble ? '<button class="game-btn" type="button" data-quick-double title="Duplica la apuesta (hasta tu saldo)">×2</button>' : '';
+        els.actionPanel.innerHTML = `<div class="action-bar ${room.game === 'roulette' ? 'roulette-bar' : ''}">${chooser}<div class="quick-bet-controls"><input id="quick-bet-amount" type="number" min="10" max="${me.chips}" value="${suggested}" aria-label="Apuesta virtual">${doubleBtn}<button class="game-btn green" data-quick-bet>Confirmar apuesta</button>${hostLaunch}</div></div>`;
       }
       return;
     }
@@ -2436,6 +2438,17 @@
       const button = event.currentTarget;
       const response = await emitAck('quick_bet', { amount, choice: ui.quickChoice }, button);
       if (!response.ok) showToast('Apuesta no válida', response.error, 'error'); else playTone('notice');
+    });
+    // ×2: duplica la apuesta escrita (tope = saldo disponible, mínimo 10).
+    $('[data-quick-double]')?.addEventListener('click', () => {
+      const input = $('#quick-bet-amount');
+      if (!input) return;
+      const max = Number(input.max) || 0;
+      const current = Math.floor(Number(input.value) || 0);
+      const doubled = Math.min(max > 0 ? max : current * 2, Math.max(10, current * 2));
+      input.value = String(doubled);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      playTone('notice');
     });
   }
 

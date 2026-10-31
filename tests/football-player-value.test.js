@@ -78,11 +78,11 @@ test('el mercado publica la valoración de cada traspaso, también tras aplicars
   withLeague(({ store, league }) => {
     const announced = publicTransfers(league, Date.parse('2026-10-15T07:00:00Z'));
     assert.equal(announced.status, 'announced');
-    assert.equal(announced.moves.length, 4);
+    assert.equal(announced.moves.length, 8);
     for (const move of announced.moves) {
       const player = league.config.find(c => c.id === move.fromId).squad.find(p => p.id === move.playerId);
       assert.equal(move.playerValue, playerValue(player), 'el precio sale de los atributos del jugador');
-      assert.equal(move.position, 'CM');
+      assert.equal(move.position, player.pos);
       assert.equal(move.playerName, player.name);
     }
     // Al entrar en vigor la temporada siguiente el acuerdo se sigue mostrando igual
@@ -101,8 +101,11 @@ test('los candidatos del Balón de Oro se leen después de aplicar los traspasos
     for (const move of plan.moves) {
       const origin = next.config.find(c => c.id === move.fromId);
       assert.ok(!origin.squad.some(p => p.id === move.playerId), 'el traspasado ya no figura en su club de origen');
-      assert.ok(!next.ballonDor.candidates.some(c => c.playerId === move.playerId),
-        'un jugador que cambió de club no puede aparecer como candidato de ningún club');
+      const asCandidate = next.ballonDor.candidates.find(c => c.playerId === move.playerId);
+      assert.ok(!asCandidate || asCandidate.clubId === move.toId,
+        'si el traspasado es candidato del Balón de Oro, lo es de su club NUEVO');
+      assert.ok(!next.ballonDor.candidates.some(c => c.playerId === move.playerId && c.clubId === move.fromId),
+        'nunca aparece como candidato de su club de origen');
     }
     for (const candidate of next.ballonDor.candidates) {
       const club = next.config.find(c => c.id === candidate.clubId);

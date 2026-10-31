@@ -483,6 +483,11 @@
     S.socket.on('football:commentary', onCommentary);
     S.socket.on('football:odds', onOdds);
     S.socket.on('football:settlement', onSettlement);
+    // La quiniela se liquidó o entró un boleto: refresca el panel si está abierto.
+    S.socket.on('football:quiniela_updated', function () {
+      var panel = document.querySelector('[data-hub-panel="quiniela"]');
+      if (panel && !panel.hidden) refreshQuiniela();
+    });
     S.socket.on('bet_ranking_state', function (snapshot) {
       if (!snapshot || !snapshot.ranking) return;
       S.betRanking = snapshot;
@@ -3212,17 +3217,83 @@
     else if (event.shiftKey && active === first) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus(); }
   }
+  function quinielaResultMarkup(result) {
+    if (!result) return '';
+    if (result.status === 'cancelled') return '<p class="est-quiniela-result">Jornada ' + Number(result.jornada) + ' aplazada: entradas reembolsadas' + (result.carry > 0 ? ' · acumulado ' + fmt(result.carry) + ' fichas' : '') + '.</p>';
+    return '<p class="est-quiniela-result">Jornada ' + Number(result.jornada) + ' liquidada: bote de ' + fmt(result.pot || 0) + ' fichas entre ' + Number(result.winners) + ' acertante(s)' + (result.carry > 0 ? ' · sobrante acumulado ' + fmt(result.carry) + ' fichas' : '') + '.</p>';
+  }
+  function quinielaTicketMarkup(ticket) {
+    if (!ticket) return '';
+    var labels = { home: '1', draw: 'X', away: '2' };
+    var picks = ticket.picks.map(function (p) { return labels[p.pick] || '?'; }).join(' · ');
+    var status = ticket.status === 'won' ? 'acertaste: +' + fmt(ticket.payout) + ' fichas'
+      : ticket.status === 'lost' ? 'sin premio'
+      : ticket.status === 'refunded' ? 'entrada reembolsada' : 'boleto registrado';
+    return '<p class="est-quiniela-ticket">Tu boleto: <b>' + esc(picks) + '</b> — ' + esc(status) + '.</p>';
+  }
+  function renderQuiniela(list, data) {
+    var rows = '<ul class="est-quiniela-matches">' + (data.matches || []).map(function (match) {
+      var myPick = data.myTicket ? (data.myTicket.picks.filter(function (p) { return p.matchId === match.id; })[0] || {}).pick : null;
+      return '<li data-quiniela-match="' + esc(match.id) + '">' +
+        '<span class="est-quiniela-teams">' + clubCrestMarkup(match.homeId, 'est-inline-crest') + esc(teamName(match.homeId)) +
+        ' <em>vs</em> ' + clubCrestMarkup(match.awayId, 'est-inline-crest') + esc(teamName(match.awayId)) + '</span>' +
+        '<span class="est-quiniela-picks">' + ['home', 'draw', 'away'].map(function (pick) {
+          var label = pick === 'home' ? '1' : pick === 'draw' ? 'X' : '2';
+          var attrs = ' name="quiniela_' + esc(match.id) + '" value="' + pick + '"' + (myPick === pick ? ' checked' : '') + (data.available ? '' : ' disabled');
+          return '<label class="est-quiniela-pick"><input type="radio"' + attrs + '> ' + label + '</label>';
+        }).join('') + '</span></li>';
+    }).join('') + '</ul>';
+    if (!data.matches || !data.matches.length) {
+      list.innerHTML = '<p>No hay otra jornada programada en esta temporada.</p>' + quinielaResultMarkup(data.lastResult);
+      return;
+    }
+    var head = '<p class="est-quiniela-head"><b>Jornada ' + Number(data.jornada) + '</b> · entrada ' + fmt(data.entryCost) + ' fichas' +
+      (data.carry > 0 ? ' · bote acumulado ' + fmt(data.carry) + ' fichas' : '') +
+      (data.closesAt ? ' · cierra al primer saque, ' + esc(kickoffTime(data.closesAt)) : '') + '</p>';
+    if (!data.available) {
+      list.innerHTML = '<p>Jornada ' + Number(data.jornada) + ' · La inscripción no está disponible.</p>' + rows +
+        quinielaTicketMarkup(data.myTicket) + quinielaResultMarkup(data.lastResult);
+      return;
+    }
+    // Jornada abierta: formulario de 8 selecciones 1/X/2.
+    list.innerHTML = head + '<form id="est-quiniela-form">' + rows +
+      '<button type="submit" id="est-quiniela-submit" disabled>Registrar quiniela (' + fmt(data.entryCost) + ' fichas)</button>' +
+      '<p id="est-quiniela-feedback" role="status" aria-live="polite"></p></form>' +
+      quinielaTicketMarkup(data.myTicket) + quinielaResultMarkup(data.lastResult);
+    var form = list.querySelector('#est-quiniela-form');
+    var submit = list.querySelector('#est-quiniela-submit');
+    var feedback = list.querySelector('#est-quiniela-feedback');
+    function allPicked() {
+      return data.matches.every(function (m) { return Boolean(form.querySelector('input[name="quiniela_' + m.id + '"]:checked')); });
+    }
+    form.addEventListener('change', function () { submit.disabled = !allPicked(); });
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      if (!allPicked()) { feedback.textContent = 'Elige 1, X o 2 en los ocho partidos.'; return; }
+      var picks = data.matches.map(function (m) {
+        return { matchId: m.id, pick: form.querySelector('input[name="quiniela_' + m.id + '"]:checked').value };
+      });
+      submit.disabled = true;
+      feedback.textContent = 'Registrando tu quiniela…';
+      S.socket.emit('football:quiniela_enter', { season: data.season, jornada: data.jornada, picks: picks, tos: S.tosVersion }, function (res) {
+        if (!res || !res.ok) {
+          submit.disabled = !allPicked();
+          feedback.textContent = (res && res.error) || 'No se pudo registrar la quiniela.';
+          return;
+        }
+        if (Number.isFinite(Number(res.chips))) { S.chips = Number(res.chips); updateChips(); }
+        renderQuiniela(list, res.quiniela || data);
+      });
+    });
+  }
   function refreshQuiniela() {
     var list = $('est-quiniela-list');
-    if (!list || !S.socket || !S.socket.connected) { if (list) list.textContent = 'Conéctate para consultar la jornada.'; return; }
+    if (!list) return;
+    if (!S.socket || !S.socket.connected) { list.textContent = 'Conéctate para consultar la jornada.'; return; }
     list.textContent = 'Consultando la próxima jornada…';
     S.socket.emit('football:quiniela_get', {}, function (res) {
       if (!res || !res.ok || !res.quiniela) { list.textContent = res && res.error || 'No se pudo consultar la jornada.'; return; }
-      var data = res.quiniela;
-      if (!data.matches || !data.matches.length) { list.textContent = 'No hay otra jornada programada en esta temporada.'; return; }
-      list.innerHTML = '<p>Jornada ' + Number(data.jornada) + ' · La inscripción no está disponible.</p><ul class="est-transfer-list">' + data.matches.map(function (match) {
-        return '<li><span>' + clubCrestMarkup(match.homeId, 'est-inline-crest') + esc(teamName(match.homeId)) + ' vs ' + clubCrestMarkup(match.awayId, 'est-inline-crest') + esc(teamName(match.awayId)) + '</span></li>';
-      }).join('') + '</ul>';
+      renderQuiniela(list, res.quiniela);
     });
   }
   // Conferencia de prensa del mercado: los acuerdos de la temporada con el valor
@@ -3233,25 +3304,129 @@
     if (!Number.isFinite(n) || n <= 0) return '—';
     return n.toFixed(1).replace('.', ',') + ' M';
   }
+  // Lista habitual de la conferencia de prensa del mercado.
+  function renderTransfersList(list, market) {
+    if (market.status === 'scheduled') { list.textContent = 'Los traspasos se anunciarán el día 15 de este mes.'; return; }
+    if (!Array.isArray(market.moves) || !market.moves.length) { list.textContent = 'No hay acuerdos disponibles para esta temporada.'; return; }
+    var stage = market.status === 'effective'
+      ? 'Acuerdos en vigor desde la temporada ' + market.effectiveSeason + '.'
+      : 'Acuerdos anunciados; se hacen efectivos en la temporada ' + market.effectiveSeason + '.';
+    list.innerHTML = '<p>' + esc(stage) + '</p><ul class="est-transfer-list">' + market.moves.map(function (move) {
+      var position = move.position ? ' · ' + esc(move.position) : '';
+      return '<li><b>' + esc(move.playerName) + '</b>' + position +
+        '<span>' + clubCrestMarkup(move.fromId, 'est-inline-crest') + esc(teamName(move.fromId)) + ' → ' +
+        clubCrestMarkup(move.toId, 'est-inline-crest') + esc(teamName(move.toId)) + '</span>' +
+        '<span class="est-transfer-value">Valoración ' + esc(transferValueLabel(move.playerValue)) + '</span></li>';
+    }).join('') + '</ul>';
+  }
+  // Guion del narrador de MonteCristo News para los traspasos anunciados.
+  function transfersNewsScript(market) {
+    var lines = ['Bienvenidos a MonteCristo News. Estas son las noticias del mercado de traspasos de la temporada ' + (market.seasonMonth || '') + '.'];
+    (market.moves || []).forEach(function (move) {
+      lines.push(String(move.playerName || '') + (move.position ? ', ' + move.position : '') + ', deja ' + teamName(move.fromId) +
+        ' y firma por ' + teamName(move.toId) + '. Valoración de mercado: ' + transferValueLabel(move.playerValue) + '.');
+    });
+    if (market.status === 'effective') lines.push('Los fichajes ya están en vigor desde la temporada ' + (market.effectiveSeason || '') + '.');
+    else lines.push('Los acuerdos se harán efectivos en la temporada ' + (market.effectiveSeason || '') + '.');
+    lines.push('La valoración es informativa: no altera partidos, cuotas, apuestas ni premios. Esto fue MonteCristo News.');
+    return lines;
+  }
+  // Cola mínima de voz para la transmisión (independiente del relato del partido).
+  var newsSpeech = { queue: [], active: false };
+  function speakNewsLine(text) {
+    if (!S.commentaryVoiceOn || S.muted || !commentarySpeechSupported()) return;
+    newsSpeech.queue.push(String(text));
+    if (newsSpeech.active) return;
+    var next = function () {
+      var line = newsSpeech.queue.shift();
+      if (line == null) { newsSpeech.active = false; return; }
+      var voice = commentarySpeech.voices.narrador;
+      var utterance;
+      try { utterance = new window.SpeechSynthesisUtterance(line); } catch (_) { setTimeout(next, 0); return; }
+      utterance.lang = voice && voice.lang || 'es-MX';
+      utterance.rate = 1.03;
+      utterance.pitch = commentaryVoicePitch('narrador', voice);
+      utterance.volume = 1;
+      if (voice) utterance.voice = voice;
+      var done = function () { setTimeout(next, 160); };
+      utterance.onend = done; utterance.onerror = done;
+      try { window.speechSynthesis.speak(utterance); } catch (_) { done(); }
+    };
+    newsSpeech.active = true;
+    next();
+  }
+  var newsTimers = [];
+  function clearNewsTimers() {
+    newsTimers.forEach(clearTimeout); newsTimers = [];
+    newsSpeech.queue.length = 0; newsSpeech.active = false;
+    if (window.speechSynthesis && typeof window.speechSynthesis.cancel === 'function') { try { window.speechSynthesis.cancel(); } catch (_) {} }
+  }
+  // Transmisión "sintonizando el canal": bumper MONTECRISTO NEWS + narrador que
+  // explica cada traspaso y su valoración; al terminar (o con "Saltar") aparece
+  // la lista habitual. Solo ocurre la primera vez que se ven los traspasos.
+  function renderTransfersNews(list, market) {
+    clearNewsTimers();
+    list.innerHTML = '';
+    var overlay = document.createElement('div');
+    overlay.className = 'est-news';
+    overlay.setAttribute('role', 'status');
+    overlay.innerHTML =
+      '<div class="est-news-bumper"><div class="est-news-logo">MONTECRISTO <em>NEWS</em></div>' +
+      '<div class="est-news-tuning">SINTONIZANDO CANAL…</div></div>' +
+      '<div class="est-news-studio" hidden>' +
+      '<div class="est-news-header"><span class="est-news-live">● EN DIRECTO</span><span class="est-news-channel">MONTECRISTO NEWS</span></div>' +
+      '<div class="est-news-screen"><p class="est-news-kicker">MERCADO DE TRASPASOS · TEMPORADA ' + esc(market.seasonMonth || '') + '</p>' +
+      '<div class="est-news-lines"></div></div>' +
+      '<div class="est-news-lower"><span class="est-news-narrador">NARRADOR</span><span class="est-news-ticker"></span></div></div>' +
+      '<button type="button" class="est-news-skip">Saltar la transmisión →</button>';
+    list.appendChild(overlay);
+    var bumper = overlay.querySelector('.est-news-bumper');
+    var studio = overlay.querySelector('.est-news-studio');
+    var ticker = overlay.querySelector('.est-news-ticker');
+    var linesBox = overlay.querySelector('.est-news-lines');
+    var skip = overlay.querySelector('.est-news-skip');
+    var lines = transfersNewsScript(market);
+    var idx = 0;
+    function alive() { return overlay.isConnected; }
+    function finish() {
+      if (!alive()) return;
+      clearNewsTimers();
+      renderTransfersList(list, market);
+    }
+    function showNext() {
+      if (!alive()) { clearNewsTimers(); return; }
+      if (idx >= lines.length) { newsTimers.push(setTimeout(finish, 3400)); return; }
+      var line = lines[idx++];
+      ticker.textContent = line;
+      var p = document.createElement('p');
+      p.className = 'est-news-line';
+      p.textContent = line;
+      linesBox.appendChild(p);
+      while (linesBox.children.length > 6) linesBox.removeChild(linesBox.firstChild);
+      speakNewsLine(line);
+      newsTimers.push(setTimeout(showNext, Math.max(2800, line.length * 42)));
+    }
+    skip.addEventListener('click', finish);
+    newsTimers.push(setTimeout(function () {
+      if (!alive()) { clearNewsTimers(); return; }
+      bumper.hidden = true;
+      studio.hidden = false;
+      showNext();
+    }, 1900));
+  }
   function refreshTransfers() {
     var list = $('est-transfers-list');
-    if (!list || !S.socket || !S.socket.connected) { if (list) list.textContent = 'Conéctate para consultar el mercado.'; return; }
+    if (!list) return;
+    if (!S.socket || !S.socket.connected) { list.textContent = 'Conéctate para consultar el mercado.'; return; }
     list.textContent = 'Consultando el mercado…';
     S.socket.emit('football:transfers_get', {}, function (res) {
       if (!res || !res.ok || !res.transfers) { list.textContent = res && res.error || 'No se pudo consultar el mercado.'; return; }
       var market = res.transfers;
-      if (market.status === 'scheduled') { list.textContent = 'Los traspasos se anunciarán el día 15 de este mes.'; return; }
-      if (!Array.isArray(market.moves) || !market.moves.length) { list.textContent = 'No hay acuerdos disponibles para esta temporada.'; return; }
-      var stage = market.status === 'effective'
-        ? 'Acuerdos en vigor desde la temporada ' + market.effectiveSeason + '.'
-        : 'Acuerdos anunciados; se hacen efectivos en la temporada ' + market.effectiveSeason + '.';
-      list.innerHTML = '<p>' + esc(stage) + '</p><ul class="est-transfer-list">' + market.moves.map(function (move) {
-        var position = move.position ? ' · ' + esc(move.position) : '';
-        return '<li><b>' + esc(move.playerName) + '</b>' + position +
-          '<span>' + clubCrestMarkup(move.fromId, 'est-inline-crest') + esc(teamName(move.fromId)) + ' → ' +
-          clubCrestMarkup(move.toId, 'est-inline-crest') + esc(teamName(move.toId)) + '</span>' +
-          '<span class="est-transfer-value">Valoración ' + esc(transferValueLabel(move.playerValue)) + '</span></li>';
-      }).join('') + '</ul>';
+      if (res.firstView && market.status !== 'scheduled' && Array.isArray(market.moves) && market.moves.length) {
+        renderTransfersNews(list, market);
+        return;
+      }
+      renderTransfersList(list, market);
     });
   }
   function refreshFan() {
@@ -4752,7 +4927,9 @@
     'win_to_nil_home': 'Local gana a cero', 'win_to_nil_away': 'Visita gana a cero',
     'team_total_home_0.5': 'Goles local 0.5', 'team_total_home_1.5': 'Goles local 1.5',
     'team_total_away_0.5': 'Goles visita 0.5', 'team_total_away_1.5': 'Goles visita 1.5',
-    'ht_ft': 'Descanso / final', 'first_scorer': 'Primer goleador'
+    'ht_ft': 'Descanso / final', 'first_scorer': 'Primer goleador',
+    'yellow_cards_over_under_3.5': 'Amarillas 3.5', 'yellow_cards_over_under_4.5': 'Amarillas 4.5',
+    'both_teams_booked': 'Ambos equipos amonestados', 'red_card': 'Tarjeta roja en el partido'
   };
   // Hándicap asiático: la línea vive en la clave del mercado («minus0.75» → −0,75)
   // porque la escalera se calcula por partido. Cuarto de línea = empuje parcial.
