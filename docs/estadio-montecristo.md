@@ -2462,6 +2462,44 @@ las mesas actuales. Si algún día se escala a 2+ instancias:
   corre los barridos del motor, las demás instancias sirven lectura y reenvían apuestas.
 - Se deja documentado como prerrequisito obligatorio, no como mejora opcional.
 
+#### 14.4.1 La concesión ya existe, y los despliegues rolling la necesitan en espera
+
+La concesión de escritor único está implementada en `lib/football/pg-single-writer.js`:
+`pg_try_advisory_xact_lock` **dentro de una transacción dedicada** y retenida durante toda la vida
+del proceso (compatible con poolers transaccionales tipo Neon), más una tabla de *fencing*
+`football_writer_fence(id = 1, token)` que cada escritura comprueba con `FOR SHARE`. La toma
+`PgProfileStore._init()` (`lib/profile-store-pg.js`) cuando `footballSingleWriter` está activo, y
+`withWriterFence()` la exige en cada escritura puntual.
+
+Un detalle la hacía **fatal en producción**: el error `otra instancia ya controla el Estadio en esta
+base de datos` se lanzaba al instante. En un despliegue *rolling* de Render la instancia nueva
+arranca y debe pasar `GET /healthz` **antes** de que Render detenga la vieja, así que durante unos
+segundos conviven dos procesos sobre la misma base. Con fallo inmediato, el nuevo proceso moría en
+`bootstrap()` (`process.exit(1)`) antes de abrir el puerto, Render lo declaraba muerto y volvía a
+intentar con el mismo resultado: **ningún despliegue automático podía completarse**.
+
+Corrección (`acquireFootballWriterWithWait`), activada por `FOOTBALL_WRITER_WAIT_MS` (180000 en
+`render.yaml`, 0 = comportamiento histórico):
+
+1. Se intenta la concesión de inmediato. Libre → arranque normal de siempre.
+2. Ocupada y con margen → el proceso **arranca igual**, con un handle *pendiente*
+   (`active === false`, `pending === true`) y reintenta en segundo plano cada 2 s. Mientras espera
+   sirve lecturas y `/healthz`; toda escritura falla en cerrado: `assertTransaction()` lanza
+   `FOOTBALL_WRITER_PENDING` y `withWriterFence()` no ejecuta el trabajo. `persistProfile()` ya
+   devuelve `false` en ese estado (fail-soft de las rutas de dinero), y `server.js` no llama a
+   `footballStore.ensureSeason()` en ese arranque, para no escribir antes de tener la concesión.
+3. Al adquirirla, `onAcquired` **recarga desde Postgres** los perfiles y, por el gancho
+   `onFootballWriterAcquired` de `bootstrap()`, también el estado del Estadio (`_loadOnce()` +
+   `ensureSeason()`), y **solo después** se habilitan las escrituras. Así la instancia nueva no
+   sobrescribe con una copia vieja lo que alcanzó a escribir la saliente.
+4. Si el margen se agota sin conseguirla, se dispara `onLost` (en `server.js`: log + `exit(1)`), el
+   mismo final fail-closed que antes, pero sin matar un despliegue que solo estaba solapándose.
+
+Por eso también `render.yaml` fija `previews.generation: off`: un *preview* de PR hereda el
+`DATABASE_URL` del servicio (vive en el dashboard) y competiría por la misma concesión que
+producción. Cubierto por `tests/pg-single-writer.test.js` (pool simulado) y, con base real, por
+`tests/football-v2-pg-real.test.js`.
+
 ---
 
 ## 15. Scheduler autónomo y watchdogs

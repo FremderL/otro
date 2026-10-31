@@ -3479,7 +3479,24 @@ async function initFootball() {
   //    DATABASE_URL está definida antes de la Fase F (backend PG del Estadio).
   footballStore = await createFootballStore(footballConfig.storePath, process.env.DATABASE_URL,
     profiles.footballWriter ? { writerLease: profiles.footballWriter } : {});
-  footballStore.ensureSeason(new Date());
+  // Deploy rolling de Render: la instancia nueva convive unos segundos con la
+  // vieja. Si la concesión de escritura del Estadio aún es "pendiente", este
+  // proceso solo lee (el store ya rehidrató todo y el health check puede pasar);
+  // NO se escribe aquí, y al adquirir la concesión se recarga el estado desde
+  // Postgres (ver el gancho onFootballWriterAcquired más abajo) antes de que
+  // ningún barrido vuelva a escribir.
+  const writerPending = profiles.footballWriter && profiles.footballWriter.pending;
+  if (!writerPending) footballStore.ensureSeason(new Date());
+  // Simétrico al arranque: al adquirir la concesión en segundo plano, se relee
+  // el estado del Estadio (lo que alcanzó a escribir la instancia saliente)
+  // antes de que las escrituras queden habilitadas.
+  if (writerPending) {
+    profiles.onFootballWriterAcquired = async () => {
+      await footballStore._loadOnce();
+      footballStore.ensureSeason(new Date());
+      logEvent('football_writer_acquired_after_wait', { seasonMonth: footballStore.getCurrentSeasonMonth() });
+    };
+  }
 
   // 2. Log estructurado que ADEMÁS reenvía cada liquidación al socket del perfil
   //    (football:settlement). El log de betting no trae profileId, así que se
@@ -3675,6 +3692,10 @@ async function bootstrap() {
   profiles = await createProfileStore(process.env.PROFILE_STORE_PATH, process.env.DATABASE_URL, {
     deferSeasonCheck: true,
     footballSingleWriter: footballConfig.enabled,
+    // Deploy rolling: esperar (en segundo plano, sin bloquear el health check)
+    // a que la instancia saliente suelte la concesión de escritura del Estadio.
+    // Sin esto, cada auto-deploy de Render fallaba con exit 1.
+    footballWriterWaitMs: Number(process.env.FOOTBALL_WRITER_WAIT_MS) || 0,
     onFootballWriterLost: error => {
       console.error('Se perdió la exclusión de escritura del Estadio; cerrando el proceso:', error.message);
       process.exit(1);
