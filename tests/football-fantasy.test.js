@@ -87,8 +87,10 @@ test('participar incluso menos de un minuto suma y tarjetas, goles y asistencia 
     {t:90,half:2,type:'full_time'}
   ];
   const rows=fantasy.matchStats(match,timeline,lineups,{home:1,away:0});
-  assert.deepEqual(rows.find(p=>p.id==='A'),{id:'A',teamId:'home',played:true,goals:1,assists:0,reds:0});
-  assert.deepEqual(rows.find(p=>p.id==='B'),{id:'B',teamId:'home',played:true,goals:0,assists:1,reds:1});
+  // El archivo guarda también minutos y amarillas: es lo que permite auditar el
+  // acumulado del Balón de Oro contra el partido (ver docs/estadio-estadisticas-del-resumen.md).
+  assert.deepEqual(rows.find(p=>p.id==='A'),{id:'A',teamId:'home',played:true,goals:1,assists:0,yellows:0,minutes:89,reds:0});
+  assert.deepEqual(rows.find(p=>p.id==='B'),{id:'B',teamId:'home',played:true,goals:0,assists:1,yellows:0,minutes:10,reds:1});
   assert.equal(rows.find(p=>p.id==='C').played,true);
   assert.equal(fantasy.matchStats(match,timeline,lineups,{home:2,away:0}),null);
 });

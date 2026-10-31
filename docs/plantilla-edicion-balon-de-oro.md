@@ -10,7 +10,7 @@ Duplica esta plantilla **una vez por edición**. Rellena los campos entre corche
 - **Fecha/hora de apertura publicada (America/Mexico_City):** `[fecha y hora]`
 - **Responsable operativo:** `[nombre o equipo; conservar en el reporte interno, nunca en telemetría pública]`
 - **Fecha/hora del aviso aprobado:** `[fecha y hora / no publicado]`
-- **Duración comunicada:** inauguración `45 s`; ceremonia final `20–21 s` aprox. (dinámica según los clips de nombre).
+- **Duración comunicada:** inauguración `1:48` (≈49,5 s de narración + tema instrumental hasta el cierre); ceremonia final `20–21 s` aprox. (dinámica según los clips de nombre).
 - **Fichas:** virtuales; sin depósitos, dinero real ni retiros.
 
 ## 2. Lista previa al ciclo
@@ -71,6 +71,6 @@ No usar solo logs repetidos para contar créditos: la operación contable idempo
 
 ## 6. Copia del aviso de la próxima edición
 
-> **Balón de Oro MonteCristo · edición [MES AAAA].** Una temporada de 30 jornadas, 16 delanteros `ST` (uno por club) y una predicción por perfil con fichas 100 % virtuales. El resultado se determina por las estadísticas de juego y la posición final del club. Las predicciones cierran al liquidarse J20. Después del último partido, el resultado oficial y la liquidación se anuncian a las 10:00 p. m. de Ciudad de México; si el último partido termina a esa hora o después, se anuncian a las 10:00 p. m. del siguiente día local. Si la edición debe cancelarse antes de completarse, el stake se reembolsa. La inauguración dura aproximadamente 45 segundos; la ceremonia final dura unos 20–21 segundos según los nombres pronunciados. Ambas son comprensibles sin audio.
+> **Balón de Oro MonteCristo · edición [MES AAAA].** Una temporada de 30 jornadas, 16 delanteros `ST` (uno por club) y una predicción por perfil con fichas 100 % virtuales. El resultado se determina por las estadísticas de juego y la posición final del club. Las predicciones cierran al liquidarse J20. Después del último partido, el resultado oficial y la liquidación se anuncian a las 10:00 p. m. de Ciudad de México; si el último partido termina a esa hora o después, se anuncian a las 10:00 p. m. del siguiente día local. Si la edición debe cancelarse antes de completarse, el stake se reembolsa. La inauguración dura aproximadamente 1 minuto 48 segundos; la ceremonia final dura unos 20–21 segundos según los nombres pronunciados. Ambas son comprensibles sin audio.
 
 **Fecha aprobada para publicar:** `[FECHA]` · **Canales/página:** `[URL/ruta]` · **Aprobación:** `[referencia interna]`.

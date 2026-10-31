@@ -70,9 +70,11 @@ test('T3: el peso del dinero baja la cuota de lo muy apostado y respeta el tope 
   assert.ok(moved.capped.includes('home'), 'el local debió tocar el tope con esa responsabilidad');
 });
 
-test('T22: la ventaja real medida coincide con el margen declarado (7 % → 6,54 %)', () => {
+test('T22: la ventaja real medida coincide con el margen declarado', () => {
   // EV de apostar 1 al local = P_home · cuota_home; agregado sobre muchos λ da la
-  // ventaja real. Con margen m, EV → 1/(1+m) y la ventaja → m/(1+m) = 6,54 %.
+  // ventaja real. Con margen m, EV → 1/(1+m) y la ventaja → m/(1+m). Se deriva
+  // del margen configurado, así el test sigue valiendo cuando se recalibra
+  // contra las casas reales (docs/estadio-cuotas-realistas.md).
   let sumEV = 0, n = 0;
   for (let lh = 0.6; lh <= 3.2; lh += 0.1) {
     for (let la = 0.6; la <= 3.2; la += 0.1) {
@@ -82,8 +84,10 @@ test('T22: la ventaja real medida coincide con el margen declarado (7 % → 6,54
       n++;
     }
   }
+  const margin = O.MARGINS['1x2'];
+  const expected = margin / (1 + margin);
   const edge = 1 - sumEV / n;
-  assert.ok(Math.abs(edge - 0.0654) < 0.004, `ventaja real ${edge.toFixed(4)} lejos de 0.0654`);
+  assert.ok(Math.abs(edge - expected) < 0.004, `ventaja real ${edge.toFixed(4)} lejos de ${expected.toFixed(4)}`);
 });
 
 test('derivación de mercados: particiones suman 1 y la doble oportunidad suma 2', () => {
@@ -127,7 +131,9 @@ test('catálogo pre-partido: genera los mercados y la doble oportunidad es indep
         assert.ok(cover >= 1 - 1e-9, `doble oportunidad arbitrable en ${oc}: ${cover}`);
       }
     } else {
-      assert.ok(m.overround >= 1 + O.MIN_MARGIN - 1e-9, `${key} arbitrable: ${m.overround}`);
+      // El hándicap asiático cotiza con su propio piso (2 %), más fino que el general.
+      const floor = key.startsWith('asian_handicap') ? O.ASIAN_MIN_MARGIN : O.MIN_MARGIN;
+      assert.ok(m.overround >= 1 + floor - 1e-9, `${key} arbitrable: ${m.overround}`);
     }
   }
 });

@@ -28,7 +28,7 @@ const FULL_VARS = {
   jugador: 'Kenji Kovac', equipo: 'Real Mandril', rival: 'Farselona FC', estadio: 'Arena Boreal',
   minuto: 32, marcador: '1-0', goles: 5, xgFavor: '0.38', xg: '0.38', posesion: '55 %',
   tiros: '12-9', asistencia: 'Santiago Novak', resultado: '¡gol!', marcadorTanda: '3-2',
-  equipoRival: 'Farselona FC', puestoRival: 'ST'
+  equipoRival: 'Farselona FC', puestoRival: 'ST', agregado: 4
 };
 
 const ALL_TYPES = Object.keys(POOLS);
@@ -257,4 +257,33 @@ test('matices — con datos mínimos el matiz cae al repertorio base (nunca sale
       assert.ok(!/\bde :|:\s*[,.;]|  /.test(line.text), `sin hueco («${line.text}»)`);
     }
   }
+});
+
+// --- Tiempo agregado del árbitro (9.ª ronda) ---
+
+test('tiempo agregado — el narrador y el analista dicen cuántos minutos dio el árbitro', () => {
+  for (const added of [1, 2, 3, 4]) {
+    for (let k = 0; k < 20; k++) {
+      const memory = createMemory();
+      const lines = generateCommentary('stoppage_start', { ...FULL_VARS, agregado: added }, rnd(`add-${added}-${k}`), memory);
+      assert.deepStrictEqual(voicesOf(lines).sort(), ['analista', 'narrador'], `narrador y analista (${added} min, intento ${k})`);
+      for (const line of lines) {
+        assert.ok(line.text.includes(String(added) + ' minuto'), `dice «${added} minutos»: «${line.text}»`);
+        assert.ok(line.text.length <= MAX_LEN, 'dentro del límite de 140');
+      }
+    }
+  }
+});
+
+test('tiempo agregado — se dice en voz alta (no queda como dato mudo) y nunca se inventa', () => {
+  const lines = generateCommentary('stoppage_start', { ...FULL_VARS, agregado: 3 }, rnd('add-altavoz'), createMemory());
+  assert.ok(lines.length >= 2, 'al menos las dos voces hablan');
+  // Sin el dato del árbitro no se improvisa un número: mejor silencio que inventar.
+  const sinDato = generateCommentary('stoppage_start',
+    { equipo: FULL_VARS.equipo, rival: FULL_VARS.rival, estadio: FULL_VARS.estadio, marcador: FULL_VARS.marcador },
+    rnd('add-sindato'), createMemory());
+  assert.deepStrictEqual(sinDato, [], 'sin {agregado} no hay relato de agregado');
+  // Determinista: el mismo dado repite la misma frase.
+  const otra = generateCommentary('stoppage_start', { ...FULL_VARS, agregado: 3 }, rnd('add-altavoz'), createMemory());
+  assert.deepStrictEqual(textsOf(otra), textsOf(lines), 'mismo seed ⇒ mismo anuncio');
 });

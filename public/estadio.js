@@ -14,7 +14,16 @@
   var PRESHOW_WINDOW_MS = 30 * 60 * 1000;
   var PROMOTION_ROTATION_MS = 15 * 1000;
   var SHOWCASE_ROTATION_MS = PROMOTION_ROTATION_MS;
-  var BALLON_DOR_OPENING_SECONDS = 45;
+  // Inauguración del Balón de Oro. Antes duraba 45 s y cada candidato aparecía
+  // 2 s: se sentía apurada. Ahora se reparte en actos y son ~1:48, con casi 5 s
+  // por jugador. La narración (≈49,5 s) cubre el primer bloque; el tema instrumental
+  // del Balón de Oro acompaña el segundo, así que el tiempo extra no es silencio.
+  var BALLON_DOR_OPENING_SECONDS = 108;
+  // Reparto por actos (fracciones de la duración total): apertura, alineación de
+  // los 16 clubes y cierre. Las 16 presentaciones se llevan el resto.
+  var BALLON_DOR_OPENING_ACTS = { intro: 0.065, lineup: 0.09, final: 0.14 };
+  var BALLON_DOR_OPENING_MIN_REVEAL = 3;   // segundos mínimos por candidato
+  var BALLON_DOR_OPENING_BED_VOLUME = 0.35; // el tema acompaña, no tapa
   var BALLON_DOR_CEREMONY_CUE_BASE = '/assets/ballon-dor-ceremony/cues/';
   var BALLON_DOR_CEREMONY_NAME_BASE = '/assets/ballon-dor-ceremony/names/';
   var BALLON_DOR_OPENING_KEY = 'montecristo-bdo-opening-v2:';
@@ -150,9 +159,12 @@
     ball: { x: .5, y: .5 }, ballStart: { x: .5, y: .5 }, ballDest: { x: .5, y: .5 },
     ballT0: 0, ballDur: 800, playerT0: 0, playerDur: 1900,
     serverMinute: 0, minuteReceivedAt: 0,
+    stoppage: null, // { half, added }: minutos que el árbitro añadió en la mitad en curso
     minute: 0, phase: 'pre', score: { home: 0, away: 0 }, possession: { home: .5, away: .5 },
     goalFlashUntil: 0, goalAnimUntil: 0, goalCueAt: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false,
-    crowdLastSentAt: 0
+    crowdLastSentAt: 0,
+    // Grada: votación de moderación y autorización de insultos del partido.
+    stands: null
   };
 
   var el = {};
@@ -170,6 +182,9 @@
       'est-scoreboard', 'crest-home', 'crest-away', 'name-home', 'name-away', 'score-home', 'score-away',
       'est-clock', 'est-pitch', 'est-goal-banner', 'est-commentary', 'est-commentary-voice', 'est-text-state', 'est-market-phase',
       'est-crowd-feed', 'est-crowd-form', 'est-crowd-input', 'est-crowd-send', 'est-crowd-message', 'est-crowd-reactions',
+      'est-countdown-season', 'est-countdown-season-note', 'est-countdown-bdo', 'est-countdown-bdo-note',
+      'est-danmaku', 'est-stands-vote', 'est-stands-status', 'est-stands-open', 'est-stands-yes',
+      'est-stands-no', 'est-stands-tally',
       'est-markets', 'est-bet-slip', 'est-slip-pick', 'est-slip-clear', 'est-slip-odds', 'est-slip-implied',
       'est-stake', 'est-denoms', 'est-slip-range', 'est-place-bet', 'est-bet-msg', 'est-mybets',
       'est-mybets-count', 'est-bets-link-note', 'est-bets-link-dot',
@@ -191,7 +206,7 @@
       'est-bdo-opening-stage', 'est-bdo-opening-kicker', 'est-bdo-opening-title', 'est-bdo-opening-description', 'est-bdo-opening-cta',
       'est-bdo-opening-clubs', 'est-bdo-opening-cards', 'est-bdo-opening-caption',
       'est-bdo-opening-progress', 'est-bdo-opening-progress-bar', 'est-bdo-opening-time', 'est-bdo-opening-play',
-      'est-bdo-opening-mute', 'est-bdo-opening-enable-audio', 'est-bdo-opening-skip', 'est-bdo-opening-close', 'est-bdo-opening-audio', 'est-bdo-opening-transcript-copy',
+      'est-bdo-opening-mute', 'est-bdo-opening-enable-audio', 'est-bdo-opening-skip', 'est-bdo-opening-close', 'est-bdo-opening-audio', 'est-bdo-opening-bed', 'est-bdo-opening-transcript-copy',
       'est-nav-badge', 'est-ledger', 'est-ledger-title', 'est-ledger-sub', 'est-ledger-unseen', 'est-ledger-stats', 'est-ledger-chips',
       'est-ledger-history-view', 'est-ledger-ranking-view', 'est-ledger-tab-history', 'est-ledger-tab-ranking', 'est-ledger-ranking-back',
       'est-bet-ranking-live', 'est-bet-ranking-personal', 'est-bet-ranking-updated', 'est-bet-ranking-list',
@@ -290,8 +305,8 @@
     if (skipLink) skipLink.textContent = 'Ir al evento Balón de Oro';
     var launchKicker = document.querySelector('.est-bdo-opening-launch-kicker');
     if (launchKicker) launchKicker.textContent = IS_BDO_DEMO_PREVIEW
-      ? 'Demo sintética · inauguración de 45 segundos'
-      : 'Inauguración oficial · 45 segundos';
+      ? 'Demo sintética · inauguración de 1:48'
+      : 'Inauguración oficial · 1:48';
     var launchCopy = document.querySelector('.est-bdo-opening-launch-copy');
     if (launchCopy) launchCopy.textContent = 'En la primera visita se abre una presentación individual de los 16 candidatos. La fecha de llegada no importa: puedes conocer el evento aunque entres avanzado el ciclo.';
   }
@@ -463,6 +478,7 @@
     S.socket.on('football:event', onEvent);
     S.socket.on('football:goal', onGoalCue);
     S.socket.on('football:chat', onCrowdChat);
+    S.socket.on('football:stands_state', onStandsState);
     S.socket.on('football:reaction', onCrowdReaction);
     S.socket.on('football:commentary', onCommentary);
     S.socket.on('football:odds', onOdds);
@@ -1917,6 +1933,13 @@
         facts.appendChild(item);
       });
       content.appendChild(facts);
+      // La ficha es el acumulado de la temporada del premio, no lo que el
+      // jugador hizo en este partido: sin la aclaración, el acumulado (2 goles)
+      // parece contradecir al resumen del partido (1 gol).
+      var factsWindow = document.createElement('p');
+      factsWindow.className = 'est-bdo-opening-card-window';
+      factsWindow.textContent = 'Acumulado de la temporada, no de este partido.';
+      content.appendChild(factsWindow);
     }
 
     var skillSet = document.createElement('div');
@@ -1950,25 +1973,46 @@
     container.setAttribute('aria-label', 'Presentación individual, jugador ' + (candidateIndex + 1) + ' de 16');
   }
 
+  // Reparto del tiempo de la inauguración en actos. Todo se deriva de la
+  // duración total, así que alargar o acortar la presentación no obliga a tocar
+  // los umbrales de cada escena (el error clásico: 16 candidatos en 32 s).
+  function ballonDorOpeningPlan(total) {
+    var seconds = Number(total);
+    if (!Number.isFinite(seconds) || seconds <= 0) seconds = BALLON_DOR_OPENING_SECONDS;
+    var introEnd = Math.max(4, seconds * BALLON_DOR_OPENING_ACTS.intro);
+    var lineupEnd = introEnd + Math.max(6, seconds * BALLON_DOR_OPENING_ACTS.lineup);
+    var finalLength = Math.max(8, seconds * BALLON_DOR_OPENING_ACTS.final);
+    var revealEach = Math.max(BALLON_DOR_OPENING_MIN_REVEAL,
+      (seconds - lineupEnd - finalLength) / 16);
+    return {
+      total: seconds,
+      introEnd: introEnd,
+      lineupEnd: lineupEnd,
+      revealEach: revealEach,
+      finalStart: lineupEnd + revealEach * 16
+    };
+  }
+
   function renderBallonDorOpeningScene(seconds) {
     var stage = el['est-bdo-opening-stage'];
     if (!stage) return;
     var scene, playerIndex = -1, kicker, title, description, caption;
     var month = ballonDorMonthLabel(S.ballonDorOpeningMonth);
-    if (seconds < 4) {
+    var plan = ballonDorOpeningPlan(BALLON_DOR_OPENING_SECONDS);
+    if (seconds < plan.introEnd) {
       scene = 'opening';
       kicker = 'INICIO DE TEMPORADA · ' + month;
       title = 'Una carrera. Una corona.';
       description = 'La Liga MonteCristo presenta el premio individual más esperado de la temporada.';
       caption = 'La Liga MonteCristo presenta una nueva carrera por el Balón de Oro.';
-    } else if (seconds < 8) {
+    } else if (seconds < plan.lineupEnd) {
       scene = 'lineup';
       kicker = '16 CLUBES · 16 DELANTEROS';
       title = 'Un representante por club';
       description = 'La inauguración presenta a cada candidato del ciclo, uno por uno.';
       caption = 'Dieciséis clubes. Dieciséis delanteros. Un solo ganador.';
-    } else if (seconds < 40) {
-      playerIndex = Math.min(15, Math.floor((seconds - 8) / 2));
+    } else if (seconds < plan.finalStart) {
+      playerIndex = Math.max(0, Math.min(15, Math.floor((seconds - plan.lineupEnd) / plan.revealEach)));
       var candidate = S.ballonDorOpeningCandidates[playerIndex] || {};
       scene = 'reveal-' + (playerIndex + 1);
       kicker = 'PRESENTACIÓN ' + String(playerIndex + 1).padStart(2, '0') + ' DE 16 · ' + (candidate.clubName || 'MONTECRISTO');
@@ -1981,8 +2025,8 @@
       var status = S.ballonDorMarket && S.ballonDorMarket.status;
       if (status === 'active') {
         title = 'Observa. Elige. Vive la temporada.';
-        description = 'Predicciones con fichas virtuales · mercado hasta J20 · anuncio final al cierre del ciclo.';
-        caption = 'Revisa las estadísticas de cada candidato, elige tu pronóstico y acompaña la carrera hasta el anuncio final.';
+        description = 'Predicciones con fichas virtuales · mercado hasta J20 · anuncio final al cierre del ciclo. La conferencia de prensa del Estadio presenta los traspasos y el valor de cada jugador.';
+        caption = 'Revisa las estadísticas de cada candidato, elige tu pronóstico y acompaña la carrera hasta el anuncio final. La conferencia de prensa del mercado, en la pestaña Mercado, muestra los traspasos y la valoración de los jugadores.';
         el['est-bdo-opening-cta'].textContent = 'Ver candidatos y hacer mi predicción ›';
       } else if (status === 'locked') {
         title = 'La temporada sigue en juego.';
@@ -2076,6 +2120,7 @@
     S.ballonDorOpeningComplete = true;
     S.ballonDorOpeningPaused = true;
     S.ballonDorOpeningMandatory = false;
+    stopBallonDorOpeningAudio();
     if (el['est-bdo-opening']) el['est-bdo-opening'].classList.remove('is-mandatory');
     var completionKey = BALLON_DOR_OPENING_KEY + S.ballonDorOpeningMonth;
     try { localStorage.setItem(completionKey, 'completed'); }
@@ -2087,7 +2132,8 @@
     renderBallonDorOpeningScene(BALLON_DOR_OPENING_SECONDS);
     el['est-bdo-opening-progress'].setAttribute('aria-valuenow', '100');
     el['est-bdo-opening-progress-bar'].style.width = '100%';
-    el['est-bdo-opening-time'].textContent = '0:45 / 0:45';
+    var total = formatBallonDorOpeningTime(BALLON_DOR_OPENING_SECONDS);
+    el['est-bdo-opening-time'].textContent = total + ' / ' + total;
     el['est-bdo-opening-status'].textContent = 'Inauguración completada · no se repite durante este ciclo.';
     updateBallonDorOpeningControls();
   }
@@ -2096,10 +2142,10 @@
     if (!el['est-bdo-opening'] || el['est-bdo-opening'].hidden || S.ballonDorOpeningPaused) return;
     var total = Number(duration);
     if (!Number.isFinite(total) || total <= 0) total = BALLON_DOR_OPENING_SECONDS;
-    var current = Math.max(0, Number(elapsed) || 0);
+    var current = Math.max(0, Math.min(total, Number(elapsed) || 0));
+    S.ballonDorOpeningElapsed = current;
+    renderBallonDorOpeningScene(current);
     var progress = clamp(current / total, 0, 1);
-    S.ballonDorOpeningElapsed = progress * BALLON_DOR_OPENING_SECONDS;
-    renderBallonDorOpeningScene(S.ballonDorOpeningElapsed);
     var percent = Math.round(progress * 100);
     el['est-bdo-opening-progress'].setAttribute('aria-valuenow', String(percent));
     el['est-bdo-opening-progress-bar'].style.width = percent + '%';
@@ -2107,50 +2153,80 @@
     if (progress >= 1) finishBallonDorOpening();
   }
 
-  function onBallonDorOpeningTimeUpdate() {
-    if (S.ballonDorOpeningMode !== 'audio' || S.ballonDorOpeningPaused) return;
-    var audio = el['est-bdo-opening-audio'];
-    updateBallonDorOpeningFrame(audio.currentTime, audio.duration);
+  // El reloj de la inauguración es de pared, no el del audio: la narración dura
+  // ~49,5 s y la presentación 1:48. Antes el avance se desprendía de currentTime,
+  // lo que ataba la duración total al MP3 y aceleraba las escenas.
+  function startBallonDorOpeningClock(session) {
+    clearBallonDorOpeningTimer();
+    S.ballonDorOpeningStartedAt = Date.now() - S.ballonDorOpeningElapsed * 1000;
+    S.ballonDorOpeningTimer = window.setInterval(function () {
+      if (session !== S.ballonDorOpeningSession || S.ballonDorOpeningPaused) return;
+      var elapsed = Math.max(0, (Date.now() - S.ballonDorOpeningStartedAt) / 1000);
+      updateBallonDorOpeningFrame(elapsed, BALLON_DOR_OPENING_SECONDS);
+    }, 100);
+  }
+
+  function stopBallonDorOpeningAudio() {
+    ['est-bdo-opening-audio', 'est-bdo-opening-bed'].forEach(function (id) {
+      var audio = el[id];
+      if (!audio) return;
+      try { audio.pause(); } catch (_) { /* el navegador puede no exponer media */ }
+    });
+  }
+
+  // Segunda mitad: el tema instrumental del Balón de Oro (el mismo de la
+  // ceremonia) entra cuando termina la narración y se repite hasta el cierre.
+  function startBallonDorOpeningBed() {
+    var bed = el['est-bdo-opening-bed'];
+    if (!bed || S.ballonDorOpeningPaused || S.ballonDorOpeningComplete) return;
+    if (S.ballonDorOpeningMuted) { S.ballonDorOpeningMode = 'visual'; return; }
+    S.ballonDorOpeningMode = 'bed';
+    el['est-bdo-opening-status'].textContent = 'Tema instrumental · segunda mitad de la presentación.';
+    try {
+      bed.volume = BALLON_DOR_OPENING_BED_VOLUME;
+      bed.muted = false;
+      bed.currentTime = 0;
+      var playback = bed.play();
+      if (playback && typeof playback.catch === 'function') {
+        playback.catch(function () { S.ballonDorOpeningMode = 'visual'; });
+      }
+    } catch (_) { S.ballonDorOpeningMode = 'visual'; }
+  }
+
+  function onBallonDorOpeningNarrationEnded() {
+    reportBallonDorAudio('opening_narration', 'completed', S.ballonDorOpeningMonth);
+    // La narración termina a mitad de la presentación: sigue el tema, no el cierre.
+    if (!S.ballonDorOpeningComplete) startBallonDorOpeningBed();
   }
 
   function startBallonDorOpeningFallback(session, statusText, audioBlocked) {
     if (session !== S.ballonDorOpeningSession || !el['est-bdo-opening'] || el['est-bdo-opening'].hidden) return;
     if (audioBlocked !== false) reportBallonDorAudio('opening_narration', 'blocked', S.ballonDorOpeningMonth);
-    var audio = el['est-bdo-opening-audio'];
-    try { audio.pause(); } catch (_) { /* el navegador puede no exponer media */ }
+    stopBallonDorOpeningAudio();
     S.ballonDorOpeningMode = 'visual';
     S.ballonDorOpeningAudioBlocked = audioBlocked !== false;
     S.ballonDorOpeningDuration = BALLON_DOR_OPENING_SECONDS;
-    S.ballonDorOpeningPaused = false;
-    S.ballonDorOpeningStartedAt = Date.now() - S.ballonDorOpeningElapsed * 1000;
+    if (el['est-bdo-opening-status']) el['est-bdo-opening-status'].textContent = statusText || 'Narración no disponible · escenas y guion en pantalla.';
     el['est-bdo-opening-stage'].classList.remove('is-paused');
-    el['est-bdo-opening-status'].textContent = statusText || 'Narración no disponible · escenas y guion en pantalla.';
-    clearBallonDorOpeningTimer();
-    S.ballonDorOpeningTimer = window.setInterval(function () {
-      if (S.ballonDorOpeningPaused) return;
-      var elapsed = Math.max(0, (Date.now() - S.ballonDorOpeningStartedAt) / 1000);
-      updateBallonDorOpeningFrame(elapsed, BALLON_DOR_OPENING_SECONDS);
-    }, 100);
+    startBallonDorOpeningClock(session);
     updateBallonDorOpeningFrame(S.ballonDorOpeningElapsed, BALLON_DOR_OPENING_SECONDS);
     updateBallonDorOpeningControls();
   }
 
-  function playBallonDorOpeningAudio(session) {
+  function playBallonDorOpeningNarration(session, seekTo) {
     var audio = el['est-bdo-opening-audio'];
-    clearBallonDorOpeningTimer();
-    S.ballonDorOpeningMode = 'audio';
+    S.ballonDorOpeningMode = 'narration';
     S.ballonDorOpeningAudioBlocked = false;
-    S.ballonDorOpeningPaused = false;
     el['est-bdo-opening-stage'].classList.remove('is-paused');
-    el['est-bdo-opening-status'].textContent = 'Reproduciendo narración · español de México.';
+    el['est-bdo-opening-status'].textContent = 'Narración · bloque 1 de 2 (español de México).';
     updateBallonDorOpeningControls();
+    try { audio.currentTime = Math.max(0, Number(seekTo) || 0); } catch (_) { /* metadata aún no cargada */ }
     try {
       var playback = audio.play();
       if (playback && typeof playback.then === 'function') {
         playback.then(function () {
           if (session !== S.ballonDorOpeningSession || el['est-bdo-opening'].hidden) return;
           reportBallonDorAudio('opening_narration', 'started', S.ballonDorOpeningMonth);
-          onBallonDorOpeningTimeUpdate();
         }, function () {
           startBallonDorOpeningFallback(session,
             'Audio no disponible automáticamente · activa la narración si la quieres escuchar. La presentación continúa con texto.', true);
@@ -2182,7 +2258,7 @@
     S.ballonDorOpeningMandatory = Boolean(settings.mandatory);
     S.ballonDorOpeningAudioBlocked = false;
     S.ballonDorOpeningPaused = false;
-    S.ballonDorOpeningMode = 'audio';
+    S.ballonDorOpeningMode = 'narration';
     S.ballonDorOpeningAutoShown[market.seasonMonth] = true;
     clearBallonDorOpeningTimer();
     overlay.hidden = false;
@@ -2196,62 +2272,69 @@
     } catch (_) { /* la presentación funciona aunque no se pueda persistir */ }
     renderBallonDorOpeningButton();
     audio.muted = S.ballonDorOpeningMuted;
-    try { audio.currentTime = 0; } catch (_) { /* metadata aún no cargada */ }
+    if (el['est-bdo-opening-bed']) el['est-bdo-opening-bed'].muted = S.ballonDorOpeningMuted;
     renderBallonDorOpeningScene(0);
     el['est-bdo-opening-progress'].setAttribute('aria-valuenow', '0');
     el['est-bdo-opening-progress-bar'].style.width = '0%';
-    el['est-bdo-opening-time'].textContent = '0:00 / 0:45';
+    el['est-bdo-opening-time'].textContent = '0:00 / ' + formatBallonDorOpeningTime(BALLON_DOR_OPENING_SECONDS);
     el['est-bdo-opening-transcript-copy'].textContent = BALLON_DOR_OPENING_SCRIPT;
     updateBallonDorOpeningControls();
-    playBallonDorOpeningAudio(S.ballonDorOpeningSession);
+    startBallonDorOpeningClock(S.ballonDorOpeningSession);
+    playBallonDorOpeningNarration(S.ballonDorOpeningSession, 0);
     if (S.ballonDorOpeningMandatory) el['est-bdo-opening-play'].focus();
     else el['est-bdo-opening-close'].focus();
   }
 
+  // Un gesto del usuario puede desbloquear el audio del navegador. Se reanuda en
+  // el punto de la presentación en que esté: si la narración ya terminó, entra el
+  // tema instrumental en vez de repetir la voz desde el principio.
   function activateBallonDorOpeningAudio() {
     if (!S.ballonDorOpeningAudioBlocked || S.ballonDorOpeningComplete) return;
     var audio = el['est-bdo-opening-audio'];
-    if (!S.ballonDorOpeningPaused) {
-      S.ballonDorOpeningElapsed = Math.min(BALLON_DOR_OPENING_SECONDS,
-        Math.max(0, (Date.now() - S.ballonDorOpeningStartedAt) / 1000));
-    }
-    var duration = Number(audio.duration);
-    var progress = clamp(S.ballonDorOpeningElapsed / BALLON_DOR_OPENING_SECONDS, 0, 1);
-    try { audio.currentTime = Number.isFinite(duration) && duration > 0 ? duration * progress : BALLON_DOR_OPENING_SECONDS * progress; }
-    catch (_) { /* el navegador puede no permitir seek antes de cargar metadata */ }
     S.ballonDorOpeningPaused = false;
-    playBallonDorOpeningAudio(S.ballonDorOpeningSession);
+    var narrationEnd = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null;
+    if (narrationEnd != null && S.ballonDorOpeningElapsed >= narrationEnd) {
+      startBallonDorOpeningBed();
+      startBallonDorOpeningClock(S.ballonDorOpeningSession);
+      return;
+    }
+    playBallonDorOpeningNarration(S.ballonDorOpeningSession, S.ballonDorOpeningElapsed);
+    startBallonDorOpeningClock(S.ballonDorOpeningSession);
   }
 
   function toggleBallonDorOpeningPlayback() {
     if (S.ballonDorOpeningComplete) return;
-    var audio = el['est-bdo-opening-audio'];
+    var bed = el['est-bdo-opening-bed'];
     if (!S.ballonDorOpeningPaused) {
-      if (S.ballonDorOpeningMode === 'audio') {
-        try { audio.pause(); } catch (_) { /* audio opcional */ }
-        S.ballonDorOpeningElapsed = Number.isFinite(audio.duration) && audio.duration > 0
-          ? clamp(audio.currentTime / audio.duration, 0, 1) * BALLON_DOR_OPENING_SECONDS
-          : S.ballonDorOpeningElapsed;
-      } else {
-        S.ballonDorOpeningElapsed = Math.min(BALLON_DOR_OPENING_SECONDS,
-          Math.max(0, (Date.now() - S.ballonDorOpeningStartedAt) / 1000));
-        clearBallonDorOpeningTimer();
-      }
+      stopBallonDorOpeningAudio();
+      S.ballonDorOpeningElapsed = Math.min(BALLON_DOR_OPENING_SECONDS,
+        Math.max(0, (Date.now() - S.ballonDorOpeningStartedAt) / 1000));
+      clearBallonDorOpeningTimer();
       S.ballonDorOpeningPaused = true;
       el['est-bdo-opening-stage'].classList.add('is-paused');
       el['est-bdo-opening-status'].textContent = 'Inauguración en pausa.';
     } else {
       S.ballonDorOpeningPaused = false;
-      if (S.ballonDorOpeningMode === 'audio') playBallonDorOpeningAudio(S.ballonDorOpeningSession);
-      else startBallonDorOpeningFallback(S.ballonDorOpeningSession,
-        'Audio no disponible · escenas y guion en pantalla. Activa la narración si la quieres escuchar.', true);
+      startBallonDorOpeningClock(S.ballonDorOpeningSession);
+      if (S.ballonDorOpeningMode === 'narration' && !S.ballonDorOpeningAudioBlocked) {
+        playBallonDorOpeningNarration(S.ballonDorOpeningSession, S.ballonDorOpeningElapsed);
+      } else if (S.ballonDorOpeningMode === 'bed') {
+        try { bed.play(); } catch (_) { /* audio opcional */ }
+        el['est-bdo-opening-stage'].classList.remove('is-paused');
+      } else if (S.ballonDorOpeningAudioBlocked) {
+        el['est-bdo-opening-stage'].classList.remove('is-paused');
+        el['est-bdo-opening-status'].textContent = 'Audio no disponible · escenas y guion en pantalla. Activa la narración si la quieres escuchar.';
+      } else {
+        el['est-bdo-opening-stage'].classList.remove('is-paused');
+      }
     }
     updateBallonDorOpeningControls();
   }
 
   function muteBallonDorOpening() {
     S.ballonDorOpeningMuted = !S.ballonDorOpeningMuted;
-    el['est-bdo-opening-audio'].muted = S.ballonDorOpeningMuted;
+    if (el['est-bdo-opening-audio']) el['est-bdo-opening-audio'].muted = S.ballonDorOpeningMuted;
+    if (el['est-bdo-opening-bed']) el['est-bdo-opening-bed'].muted = S.ballonDorOpeningMuted;
     updateBallonDorOpeningControls();
   }
 
@@ -2260,9 +2343,10 @@
     if (!overlay || overlay.hidden || (S.ballonDorOpeningMandatory && !S.ballonDorOpeningComplete)) return;
     S.ballonDorOpeningSession++;
     clearBallonDorOpeningTimer();
+    stopBallonDorOpeningAudio();
     try {
-      el['est-bdo-opening-audio'].pause();
       el['est-bdo-opening-audio'].currentTime = 0;
+      if (el['est-bdo-opening-bed']) el['est-bdo-opening-bed'].currentTime = 0;
     } catch (_) { /* audio opcional */ }
     overlay.hidden = true;
     overlay.setAttribute('aria-hidden', 'true');
@@ -3065,7 +3149,16 @@
       li.className = 'est-match-item' + (live ? ' live' : '') + (m.id === S.currentMatchId ? ' active' : '');
       li.tabIndex = 0; li.setAttribute('role', 'button');
       li.setAttribute('aria-label', teamFull(m.homeId) + ' contra ' + teamFull(m.awayId) + ', ' + (STATUS_LABEL[m.status] || m.status));
-      var score = (m.status === 'settled' || m.status === 'finished' || live) && m.result ? (m.result.score ? m.result.score.home + '–' + m.result.score.away : '') : (m.minute != null ? '' : kickoffTime(m.scheduledKickoffAt));
+      // El marcador final sale del resultado ASENTADO del partido (home/away), que
+      // es el mismo que pinta la ficha, la tabla y el boleto. Antes solo se leía
+      // m.result.score, una forma que el servidor no envía, así que los partidos
+      // cerrados aparecían sin marcador en la lista.
+      var finalScore = m.result && (m.result.score || (m.result.home != null && m.result.away != null))
+        ? (m.result.score
+          ? Number(m.result.score.home) + '–' + Number(m.result.score.away)
+          : Number(m.result.home) + '–' + Number(m.result.away))
+        : '';
+      var score = finalScore || (m.minute != null ? '' : kickoffTime(m.scheduledKickoffAt));
       li.innerHTML =
         '<div><div class="est-match-teams">' + clubCrestMarkup(m.homeId, 'est-match-crest') + '<span style="color:' + preshowTeamColor(m.homeId) + '">' + esc(teamName(m.homeId)) + '</span> vs ' + clubCrestMarkup(m.awayId, 'est-match-crest') + '<span style="color:' + preshowTeamColor(m.awayId) + '">' + esc(teamName(m.awayId)) + '</span>' + (m.featured ? ' ★' : '') + '</div>' +
         '<div class="est-match-meta">' + esc(blockLabel(m.block)) + ' · J' + m.jornada + '</div></div>' +
@@ -3131,6 +3224,14 @@
       }).join('') + '</ul>';
     });
   }
+  // Conferencia de prensa del mercado: los acuerdos de la temporada con el valor
+  // de cada jugador. La valoración viene del servidor (atributos del jugador), no
+  // se calcula aquí: dos fórmulas distintas acabarían mostrando dos precios.
+  function transferValueLabel(value) {
+    var n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return '—';
+    return n.toFixed(1).replace('.', ',') + ' M';
+  }
   function refreshTransfers() {
     var list = $('est-transfers-list');
     if (!list || !S.socket || !S.socket.connected) { if (list) list.textContent = 'Conéctate para consultar el mercado.'; return; }
@@ -3140,8 +3241,15 @@
       var market = res.transfers;
       if (market.status === 'scheduled') { list.textContent = 'Los traspasos se anunciarán el día 15 de este mes.'; return; }
       if (!Array.isArray(market.moves) || !market.moves.length) { list.textContent = 'No hay acuerdos disponibles para esta temporada.'; return; }
-      list.innerHTML = '<p>Acuerdos para la temporada ' + esc(market.effectiveSeason) + '.</p><ul class="est-transfer-list">' + market.moves.map(function (move) {
-        return '<li><b>' + esc(move.playerName) + '</b><span>' + clubCrestMarkup(move.fromId, 'est-inline-crest') + esc(teamName(move.fromId)) + ' → ' + clubCrestMarkup(move.toId, 'est-inline-crest') + esc(teamName(move.toId)) + '</span></li>';
+      var stage = market.status === 'effective'
+        ? 'Acuerdos en vigor desde la temporada ' + market.effectiveSeason + '.'
+        : 'Acuerdos anunciados; se hacen efectivos en la temporada ' + market.effectiveSeason + '.';
+      list.innerHTML = '<p>' + esc(stage) + '</p><ul class="est-transfer-list">' + market.moves.map(function (move) {
+        var position = move.position ? ' · ' + esc(move.position) : '';
+        return '<li><b>' + esc(move.playerName) + '</b>' + position +
+          '<span>' + clubCrestMarkup(move.fromId, 'est-inline-crest') + esc(teamName(move.fromId)) + ' → ' +
+          clubCrestMarkup(move.toId, 'est-inline-crest') + esc(teamName(move.toId)) + '</span>' +
+          '<span class="est-transfer-value">Valoración ' + esc(transferValueLabel(move.playerValue)) + '</span></li>';
       }).join('') + '</ul>';
     });
   }
@@ -3304,6 +3412,78 @@
       tb.appendChild(tr);
     });
   }
+  // ===== Cuentas regresivas largas (DD:HH:MM:SS) =====
+  // Dos relojes independientes, alimentados por instantes absolutos del
+  // servidor (S.lobby.countdowns): el final de la temporada del casino (con el
+  // reinicio de fichas) y el ciclo del Balón de Oro (cierre de apuestas de la
+  // J20 y ceremonia de las 22:00 posteriores al último partido).
+  function pad2(n) { return Number(n) < 10 ? '0' + Number(n) : String(n); }
+  function formatDdhhmmss(ms) {
+    var total = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+    var d = Math.floor(total / 86400);
+    var h = Math.floor((total % 86400) / 3600);
+    var m = Math.floor((total % 3600) / 60);
+    var s = total % 60;
+    return pad2(d) + ':' + pad2(h) + ':' + pad2(m) + ':' + pad2(s);
+  }
+  function shortMoment(ms) {
+    if (!Number.isFinite(Number(ms)) || Number(ms) <= 0) return '';
+    try {
+      return new Date(Number(ms)).toLocaleString('es-MX', {
+        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+      });
+    } catch (_) { return ''; }
+  }
+  function tickSeasonCountdowns(nowMs) {
+    var counts = S.lobby && S.lobby.countdowns ? S.lobby.countdowns : null;
+    var seasonClock = el['est-countdown-season'];
+    var seasonNote = el['est-countdown-season-note'];
+    var bdoClock = el['est-countdown-bdo'];
+    var bdoNote = el['est-countdown-bdo-note'];
+    if (!counts) {
+      if (seasonClock) seasonClock.textContent = '--:--:--:--';
+      if (seasonNote) seasonNote.textContent = 'Sin fecha de cierre publicada.';
+      if (bdoClock) bdoClock.textContent = '--:--:--:--';
+      if (bdoNote) bdoNote.textContent = 'Sin ciclo publicado.';
+      return;
+    }
+    var casino = counts.casino || {};
+    var endsAt = Number(casino.endsAt || casino.chipsResetAt || 0);
+    if (seasonClock) seasonClock.textContent = endsAt ? formatDdhhmmss(endsAt - nowMs) : '--:--:--:--';
+    if (seasonNote) {
+      if (casino.resetDeferred) seasonNote.textContent = 'El reinicio espera apuestas de fútbol abiertas.';
+      else if (endsAt) seasonNote.textContent = 'Fichas nuevas el ' + shortMoment(endsAt) + '.';
+      else seasonNote.textContent = '';
+    }
+
+    var bdo = counts.ballonDor || null;
+    if (!bdo) {
+      if (bdoClock) bdoClock.textContent = '--:--:--:--';
+      if (bdoNote) bdoNote.textContent = 'Sin ciclo del Balón de Oro.';
+      return;
+    }
+    var ceremonyAt = Number(bdo.ceremonyAt || 0);
+    var betsCloseAt = Number(bdo.betsCloseAt || 0);
+    if (bdo.status === 'settled') {
+      if (bdoClock) bdoClock.textContent = '00:00:00:00';
+      if (bdoNote) bdoNote.textContent = 'Ceremonia celebrada: resultado y premios publicados.';
+      return;
+    }
+    if (bdo.status === 'cancelled') {
+      if (bdoClock) bdoClock.textContent = '--:--:--:--';
+      if (bdoNote) bdoNote.textContent = 'Ciclo cancelado.';
+      return;
+    }
+    if (bdoClock) bdoClock.textContent = ceremonyAt ? formatDdhhmmss(ceremonyAt - nowMs) : '--:--:--:--';
+    if (bdoNote) {
+      if (bdo.status === 'scheduled') bdoNote.textContent = 'El ciclo abre el día 1 del mes.';
+      else if (bdo.status === 'locked') bdoNote.textContent = 'Cuotas cerradas: la ceremonia espera el último partido.';
+      else if (betsCloseAt && betsCloseAt > nowMs) bdoNote.textContent = 'Apuestas abiertas · cierran en ' + formatDdhhmmss(betsCloseAt - nowMs) + '.';
+      else if (ceremonyAt) bdoNote.textContent = 'Ceremonia a las 22:00 del último partido · ' + shortMoment(ceremonyAt) + '.';
+      else bdoNote.textContent = '';
+    }
+  }
+
   function tickCountdown() {
     var nowMs = currentServerTime();
     if (!S.countdownTo) {
@@ -3316,6 +3496,7 @@
         el['est-countdown'].innerHTML = 'Próximo kickoff en <b>' + (h > 0 ? h + 'h ' : '') + m + 'm ' + s + 's</b>';
       }
     }
+    tickSeasonCountdowns(nowMs);
     renderPreshow(nowMs);
   }
 
@@ -3334,11 +3515,12 @@
     $('est-highlights-goals').innerHTML=(data.goals || []).map(line).join('') || '<li>No hubo goles.</li>';
     $('est-highlights-moments').innerHTML=(data.moments || []).map(line).join('') || '<li>No hubo jugadas destacadas registradas.</li>';
     var star=data.star, club=star && sideId(star.side);
-    $('est-highlights-star').innerHTML=star ? '<b>Figura estadística:</b> ' + esc(star.name) + ' · ' + clubCrestMarkup(club,'est-inline-crest') + esc(teamName(club)) + ' · ' + Number(star.goals) + ' goles · ' + Number(star.assists) + ' asistencias' : 'Figura estadística no disponible.';
+    $('est-highlights-star').innerHTML=star ? '<b>Figura estadística del partido:</b> ' + esc(star.name) + ' · ' + clubCrestMarkup(club,'est-inline-crest') + esc(teamName(club)) + ' · ' + Number(star.goals) + ' goles · ' + Number(star.assists) + ' asistencias' : 'Figura estadística no disponible.';
   }
 
   function applyMatchState(ms) {
     if (!ms) return;
+    if (ms.stands !== undefined) renderStands(ms.stands);
     if (S.match && ms.match && S.match.id !== ms.match.id) cancelCommentarySpeech();
     S.match = ms.match; S.markets = ms.markets || {}; S.movement = {};
     S.myBets = (ms.myBets || []).slice();
@@ -3734,6 +3916,15 @@
       goal_celebration: 'Gol', extra_time: 'Prórroga', shootout: 'Penales', ended: 'Final', pre: '—'
     })[ph] || ph;
   }
+  // Reloj: si el árbitro ya anunció el agregado de esta mitad, se muestra como
+  // «45+4'» / «90+3'»; si no, el minuto en juego de siempre.
+  function clockMinuteLabel() {
+    if (S.stoppage && S.stoppage.added) {
+      var base = S.stoppage.half === 1 ? 45 : 90;
+      return base + '+' + S.stoppage.added + "'";
+    }
+    return S.minute + "'";
+  }
   function renderScoreboard() {
     if (!S.match) return;
     setScoreboardCrest('crest-home', S.match.homeId, S.homeKit);
@@ -3741,9 +3932,9 @@
     el['name-home'].textContent = teamFull(S.match.homeId); el['name-away'].textContent = teamFull(S.match.awayId);
     el['score-home'].textContent = S.score.home; el['score-away'].textContent = S.score.away;
     var live = ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0;
-    el['est-clock'].textContent = live ? S.minute + "' " + phaseLabel(S.phase) : (STATUS_LABEL[S.match.status] || '—');
+    el['est-clock'].textContent = live ? clockMinuteLabel() + ' ' + phaseLabel(S.phase) : (STATUS_LABEL[S.match.status] || '—');
     el['est-market-phase'].textContent = live ? 'En vivo' : 'Pre-partido';
-    el['est-pitch'].setAttribute('aria-label', 'Cancha cenital. ' + teamFull(S.match.homeId) + ' ' + S.score.home + ' – ' + S.score.away + ' ' + teamFull(S.match.awayId) + '. Minuto ' + S.minute + ', ' + phaseLabel(S.phase) + '.');
+    el['est-pitch'].setAttribute('aria-label', 'Cancha cenital. ' + teamFull(S.match.homeId) + ' ' + S.score.home + ' – ' + S.score.away + ' ' + teamFull(S.match.awayId) + '. Minuto ' + (S.stoppage && S.stoppage.added ? clockMinuteLabel() : S.minute) + ', ' + phaseLabel(S.phase) + '.');
   }
 
   // ===== Relato hablado =====
@@ -3759,17 +3950,67 @@
     return Boolean(window.speechSynthesis && typeof window.speechSynthesis.speak === 'function' &&
       typeof window.SpeechSynthesisUtterance === 'function');
   }
+  // La Web Speech API no expone el género de la voz, así que se infiere del
+  // nombre. La mesa de comentaristas de MonteCristo es masculina: si el navegador
+  // ofrece voces masculinas en español se eligen esas; si solo hay femeninas o
+  // sin nombre reconocible, se conserva la voz y se baja el tono como respaldo.
+  // Este criterio es SOLO del relato del partido: la inauguración del Balón de Oro
+  // y la ceremonia final usan sus pistas pregrabadas en voz femenina y no pasan
+  // por aquí.
+  var COMMENTARY_MALE_NAMES = ['jorge', 'raul', 'diego', 'pablo', 'miguel', 'carlos', 'juan', 'andres',
+    'alex', 'enrique', 'santiago', 'gonzalo', 'javier', 'manuel', 'pedro', 'ricardo', 'fernando',
+    'alvaro', 'david', 'daniel', 'jose', 'mario', 'hugo', 'gerardo', 'arturo', 'roberto', 'eduardo',
+    'marco', 'antonio', 'francisco', 'sergio', 'ivan', 'rodrigo', 'emilio', 'tomas', 'julio', 'oscar',
+    'ruben', 'alfonso', 'armando', 'bruno', 'cesar', 'esteban', 'felipe', 'gabriel', 'hector', 'ignacio',
+    'joaquin', 'leonardo', 'lorenzo', 'mauricio', 'nicolas', 'ramon', 'sabino', 'salvador', 'victor'];
+  var COMMENTARY_FEMALE_NAMES = ['sabina', 'paulina', 'monica', 'marisol', 'esperanza', 'salome',
+    'helena', 'laura', 'lupe', 'penelope', 'camila', 'sofia', 'isabela', 'ximena', 'valentina',
+    'renata', 'dalia', 'elena', 'lucia', 'carmen', 'beatriz', 'clara', 'estrella', 'irene', 'nuria',
+    'pilar', 'rocio', 'triana', 'vera', 'yolanda', 'zira', 'linda', 'heather', 'samantha', 'victoria',
+    'karen', 'moira', 'tessa', 'fiona', 'milena', 'daria', 'katya', 'alva', 'klara', 'sara', 'hanna',
+    'maria', 'ana', 'andrea', 'angelica', 'carla', 'cecilia', 'daniela', 'fabiola', 'gabriela', 'ines',
+    'jimena', 'lorena', 'magdalena', 'nadia', 'olga', 'patricia', 'regina', 'silvia', 'teresa',
+    'veronica', 'mexicana', 'femenina', 'mujer'];
+  function normalizeVoiceWord(word) {
+    var text = String(word || '');
+    if (text.normalize) text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return text.toLowerCase();
+  }
+  // 'm' masculina, 'f' femenina, '' desconocida (nombre neutro o genérico).
+  function commentaryVoiceGender(voice) {
+    var words = normalizeVoiceWord(voice && voice.name).split(/[^a-z0-9]+/).filter(Boolean);
+    if (words.some(function (w) { return COMMENTARY_MALE_NAMES.indexOf(w) >= 0; })) return 'm';
+    if (words.some(function (w) { return COMMENTARY_FEMALE_NAMES.indexOf(w) >= 0; })) return 'f';
+    return '';
+  }
+  // Orden: masculina > desconocida > femenina; a igualdad, es-MX antes que otro
+  // español, y el orden del navegador como último desempate.
+  function rankCommentaryVoices(list) {
+    return list.map(function (voice, index) {
+      var gender = commentaryVoiceGender(voice);
+      var genderRank = gender === 'm' ? 0 : (gender === 'f' ? 2 : 1);
+      var mexican = /^es[-_]MX$/i.test(voice.lang || '') ? 0 : 1;
+      return { voice: voice, index: index, key: genderRank * 2 + mexican };
+    }).sort(function (a, b) { return a.key - b.key || a.index - b.index; }).map(function (entry) { return entry.voice; });
+  }
   function refreshCommentaryVoices() {
     var api = window.speechSynthesis;
     if (!api || typeof api.getVoices !== 'function') return;
     var voices = [];
     try { voices = api.getVoices() || []; } catch (_) {}
     var spanish = voices.filter(function (voice) { return /^es(?:[-_]|$)/i.test(voice.lang || ''); });
-    var mexican = spanish.filter(function (voice) { return /^es[-_]MX$/i.test(voice.lang || ''); });
-    var preferred = mexican.length >= 2 ? mexican : (spanish.length >= 2 ? spanish : (mexican.length ? mexican : spanish));
-    var first = preferred[0] || null;
+    if (!spanish.length) { commentarySpeech.voices.narrador = null; commentarySpeech.voices.analista = null; return; }
+    var ranked = rankCommentaryVoices(spanish);
+    var first = ranked[0] || null;
     commentarySpeech.voices.narrador = first;
-    commentarySpeech.voices.analista = preferred.find(function (voice) { return voice !== first; }) || first;
+    commentarySpeech.voices.analista = ranked.filter(function (voice) { return voice !== first; })[0] || first;
+  }
+  // Tono: una voz masculina se usa tal cual; si la voz es femenina o no se puede
+  // identificar, se baja el tono para acercarla a la mesa masculina.
+  function commentaryVoicePitch(role, voice) {
+    var masculine = commentaryVoiceGender(voice) === 'm';
+    if (masculine) return role === 'narrador' ? 1 : .94;
+    return role === 'narrador' ? .88 : .8;
   }
   function updateCommentaryVoiceButton() {
     var button = el['est-commentary-voice'];
@@ -3867,7 +4108,7 @@
     catch (_) { return; }
     utterance.lang = voice && voice.lang || 'es-MX';
     utterance.rate = item.voice === 'narrador' ? 1.03 : .97;
-    utterance.pitch = item.voice === 'narrador' ? 1.06 : .95;
+    utterance.pitch = commentaryVoicePitch(item.voice, voice);
     utterance.volume = 1;
     if (voice) utterance.voice = voice;
     var token = ++commentarySpeech.token;
@@ -4041,6 +4282,14 @@
       S.serverMinute = Number(ev.minute);
       S.minuteReceivedAt = performance.now();
       S.minute = Math.round(ev.minute);
+    }
+    // Agregado del árbitro: el mismo dato que dicen los comentaristas se refleja
+    // en el reloj («45+4'»). Al cambiar de mitad o al final se limpia.
+    if (ev.type === 'stoppage_start' && ev.added != null && Number(ev.added) > 0) {
+      S.stoppage = { half: ev.half === 2 ? 2 : 1, added: Number(ev.added) };
+      renderScoreboard();
+    } else if (ev.type === 'halftime' || ev.type === 'second_half' || ev.type === 'full_time') {
+      if (S.stoppage) { S.stoppage = null; renderScoreboard(); }
     }
     applyRosterEvent(ev);
 
@@ -4262,6 +4511,8 @@
     var who = data.name || 'Aficionado';
     var mine = Boolean(S.profile && data.name && data.name === S.profile.name);
     pushCrowdLine('chat', mine ? 'Tú' : who, data.text);
+    // El mismo mensaje cruza el campo como comentario bala (§ producto).
+    pushDanmaku(mine ? 'Tú' : who, data.text, { soft: Boolean(data.soft) });
     if (mine && el['est-crowd-message'] && el['est-crowd-message'].textContent === 'Enviando…') setCrowdMessage('', '');
   }
 
@@ -4269,6 +4520,121 @@
     if (!data || data.matchId !== S.currentMatchId) return;
     pushCrowdLine('reaction', data.from || 'Aficionado', data.emoji);
   }
+
+  // ===== Comentarios bala sobre la cancha =====
+  // Cada mensaje de la grada cruza el campo una vez y se va. Cada comentario
+  // trae SU propio botón ✕: se quita ese comentario, no todos (no hay
+  // interruptor global). El contenido se inserta con textContent.
+  var DANMAKU_MAX = 6;
+  var danmakuSeq = 0;
+  function removeDanmaku(node) {
+    if (node && node.parentNode) node.parentNode.removeChild(node);
+  }
+  function pushDanmaku(who, text, opts) {
+    var layer = el['est-danmaku'];
+    if (!layer) return;
+    var item = document.createElement('div');
+    item.className = 'est-danmaku-item' + (opts && opts.soft ? ' is-soft' : '');
+    item.style.top = (6 + ((danmakuSeq++ * 17) % 58)) + '%';
+    var body = document.createElement('span');
+    body.className = 'est-danmaku-text';
+    body.textContent = String(who || 'Aficionado').slice(0, 40) + ': ' + String(text || '').slice(0, 120);
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'est-danmaku-close';
+    close.textContent = '×';
+    close.title = 'Quitar este comentario del campo';
+    close.setAttribute('aria-label', 'Quitar este comentario del campo');
+    close.addEventListener('click', function () { removeDanmaku(item); });
+    item.appendChild(body);
+    item.appendChild(close);
+    layer.appendChild(item);
+    while (layer.children.length > DANMAKU_MAX) removeDanmaku(layer.firstElementChild);
+    if (typeof item.addEventListener === 'function') {
+      item.addEventListener('animationend', function () { removeDanmaku(item); });
+    }
+    // Red de seguridad: si la animación no dispara (pestaña en segundo plano),
+    // el comentario no se queda pegado a la cancha para siempre.
+    setTimeout(function () { removeDanmaku(item); }, 16000);
+  }
+
+  // ===== Votación de la grada (moderación opt-in) =====
+  function standsLive() {
+    return Boolean(S.currentMatchId && S.match
+      && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0);
+  }
+  function renderStands(state) {
+    var box = el['est-stands-vote'];
+    if (!box) return;
+    S.stands = state || null;
+    var st = state || {};
+    box.hidden = !S.currentMatchId;
+    if (box.hidden) return;
+    var status = el['est-stands-status'];
+    var tally = el['est-stands-tally'];
+    var openBtn = el['est-stands-open'];
+    var yes = el['est-stands-yes'];
+    var no = el['est-stands-no'];
+    var votes = st.votes || { yes: 0, no: 0, total: 0 };
+    var quorum = Number(st.quorum || 3);
+    var isOpen = st.status === 'open';
+    var voted = st.yourVote != null;
+    if (status) {
+      if (st.allowsInsults) {
+        status.textContent = 'Grada picante: la mayoría aceptó y en este partido se puede insultar sin censura.';
+        status.className = 'est-stands-status is-allowed';
+      } else if (isOpen) {
+        var missing = Math.max(0, quorum - Number(votes.yes || 0));
+        status.textContent = 'Votación en curso para permitir insultos en la grada.'
+          + (missing ? ' Faltan ' + missing + ' voto(s) a favor.' : '');
+        status.className = 'est-stands-status is-open';
+      } else if (st.status === 'rejected') {
+        status.textContent = 'La grada decidió mantener la censura en este partido.';
+        status.className = 'est-stands-status is-rejected';
+      } else {
+        status.textContent = 'La grada está censurada. Si la mayoría acepta, este partido permite insultos.';
+        status.className = 'est-stands-status';
+      }
+    }
+    if (openBtn) {
+      openBtn.hidden = Boolean(st.allowsInsults);
+      openBtn.textContent = isOpen ? 'Votación en curso…' : 'Pedir votación';
+      openBtn.disabled = isOpen || !standsLive();
+      openBtn.title = standsLive() ? 'Abre una votación para permitir insultos en este partido' : 'La votación se abre con el partido en juego';
+    }
+    if (yes) { yes.hidden = !isOpen || voted; yes.disabled = !isOpen || voted; }
+    if (no) { no.hidden = !isOpen || voted; no.disabled = !isOpen || voted; }
+    if (tally) {
+      tally.textContent = votes.total
+        ? 'A favor ' + Number(votes.yes || 0) + ' · En contra ' + Number(votes.no || 0) + ' · Quórum ' + quorum
+        : 'Quórum: ' + quorum + ' votos a favor para habilitar los insultos.';
+    }
+  }
+  function onStandsState(data) {
+    if (!data || data.matchId !== S.currentMatchId) return;
+    renderStands(data.stands || null);
+  }
+  function emitStands(event, allow) {
+    if (!crowdReady()) { setCrowdMessage('Elige un partido para participar.', 'error'); return; }
+    try {
+      S.socket.emit(event, { matchId: S.currentMatchId, allow: allow !== false }, function (res) {
+        if (!res || !res.ok) {
+          var code = res && res.code;
+          setCrowdMessage(code === 'not_live'
+            ? 'La votación de la grada se abre con el partido en juego.'
+            : code === 'ya_votaste' ? 'Ya votaste en esta votación.'
+            : code === 'espera_para_repetir' ? 'Espera un momento antes de repetir la votación.'
+            : 'No se pudo registrar el voto.', 'error');
+          if (res && res.stands) renderStands(res.stands);
+          return;
+        }
+        if (res.stands) renderStands(res.stands);
+        setCrowdMessage('', '');
+      });
+    } catch (_) { setCrowdMessage('No se pudo registrar el voto.', 'error'); }
+  }
+  function openStandsVote() { emitStands('football:stands_open', true); }
+  function castStandsVote(allow) { emitStands('football:stands_vote', allow); }
 
   function bindCrowdControls() {
     var form = el['est-crowd-form'];
@@ -4282,6 +4648,18 @@
         sendCrowdReaction(button.getAttribute('data-crowd-reaction'));
       });
     }
+    var standsBox = el['est-stands-vote'];
+    if (standsBox) {
+      standsBox.addEventListener('click', function (event) {
+        var target = event.target;
+        var button = target && typeof target.closest === 'function' ? target.closest('button') : null;
+        if (!button) return;
+        if (button.id === 'est-stands-open') return openStandsVote();
+        var vote = button.getAttribute('data-stands-vote');
+        if (vote) castStandsVote(vote === 'si');
+      });
+    }
+    renderStands(S.stands);
     resetCrowdFeed();
     updateCrowdAvailability();
   }
@@ -4350,12 +4728,34 @@
     'over_under_3.5': 'Goles 3.5', 'btts': 'Ambos anotan', 'correct_score': 'Marcador exacto',
     'win_to_nil_home': 'Local gana a cero', 'win_to_nil_away': 'Visita gana a cero',
     'team_total_home_0.5': 'Goles local 0.5', 'team_total_home_1.5': 'Goles local 1.5',
-    'team_total_away_0.5': 'Goles visita 0.5', 'team_total_away_1.5': 'Goles visita 1.5'
+    'team_total_away_0.5': 'Goles visita 0.5', 'team_total_away_1.5': 'Goles visita 1.5',
+    'ht_ft': 'Descanso / final', 'first_scorer': 'Primer goleador'
   };
-  function selLabel(market, key) {
-    var map = { home: 'Local', draw: 'Empate', away: 'Visita', over: 'Más', under: 'Menos', yes: 'Sí', no: 'No', other: 'Otro' };
+  // Hándicap asiático: la línea vive en la clave del mercado («minus0.75» → −0,75)
+  // porque la escalera se calcula por partido. Cuarto de línea = empuje parcial.
+  function asianLineLabel(market) {
+    var m = /^asian_handicap_home_(minus|plus)(\d+(?:\.\d+)?)$/.exec(String(market || ''));
+    if (!m) return null;
+    var line = (m[1] === 'minus' ? '−' : '+') + String(m[2]).replace('.', ',');
+    var devuelve = /\.[257]5$/.test(m[2]) || m[2].indexOf('.25') >= 0 || m[2].indexOf('.75') >= 0;
+    return 'Hándicap asiático ' + line + (devuelve ? ' (empuje)' : '');
+  }
+  function selLabel(market, key, selection) {
+    // El servidor manda el nombre cuando el mercado no se puede leer de la clave
+    // (primer goleador: la selección es el id del jugador).
+    if (selection && selection.label) return selection.label;
+    var map = { home: 'Local', draw: 'Empate', away: 'Visita', over: 'Más', under: 'Menos', yes: 'Sí', no: 'No', other: 'Otro jugador' };
+    if (key === 'none') return 'Sin goles (0-0)';
+    if (market === 'asian_handicap_home' || market.indexOf('asian_handicap_home_') === 0) {
+      return ({ home: 'Local', away: 'Visita' })[key] || map[key] || key;
+    }
     if (map[key]) return map[key];
     if (market === 'double_chance') return ({ home_draw: 'Local o Empate', home_away: 'Local o Visita', draw_away: 'Empate o Visita' })[key] || key;
+    if (market === 'ht_ft') {
+      var names = { home: 'Local', draw: 'Empate', away: 'Visita' };
+      var parts = String(key).split('_');
+      return (names[parts[0]] || parts[0]) + ' / ' + (names[parts[1]] || parts[1]);
+    }
     if (market.indexOf('handicap') === 0) return ({ home: 'Local −1', draw: 'Empate hándicap', away: 'Visita +1' })[key] || key;
     return key;
   }
@@ -4391,7 +4791,7 @@
       var sels = S.markets[mk] || []; if (!sels.length) return;
       var lockedBy = taken[mk];
       var group = document.createElement('div'); group.className = 'est-market-group';
-      var head = document.createElement('div'); head.className = 'est-market-name'; head.textContent = MARKET_LABEL[mk] || mk; group.appendChild(head);
+      var head = document.createElement('div'); head.className = 'est-market-name'; head.textContent = MARKET_LABEL[mk] || asianLineLabel(mk) || mk; group.appendChild(head);
       var row = document.createElement('div'); row.className = 'est-selections';
       sels.forEach(function (s) {
         var mv = S.movement[mk + ':' + s.key];
@@ -4402,7 +4802,7 @@
         if (suspended) btn.title = 'Mercado suspendido durante la pausa del juego.';
         else if (locked) btn.title = 'Ya apostaste en esta categoría. Solo se permite una selección por mercado.';
         var arrow = mv && mv.dir === 'up' ? '<span class="est-sel-move up">▲</span>' : mv && mv.dir === 'down' ? '<span class="est-sel-move down">▼</span>' : '';
-        btn.innerHTML = '<span class="est-sel-key">' + esc(selLabel(mk, s.key)) + '</span>' +
+        btn.innerHTML = '<span class="est-sel-key">' + esc(selLabel(mk, s.key, s)) + '</span>' +
           '<span class="est-sel-odds">' + Number(s.price).toFixed(2) + arrow + '</span>' +
           '<span class="est-sel-implied">impl. ' + pct(s.implied) + '</span>';
         btn.setAttribute('aria-label', (MARKET_LABEL[mk] || mk) + ' ' + selLabel(mk, s.key) + ', cuota ' + Number(s.price).toFixed(2) + ', probabilidad implícita ' + pct(s.implied));
@@ -5621,12 +6021,14 @@
     el['est-bdo-opening'].addEventListener('click', function (event) {
       if (event.target.classList.contains('est-bdo-opening-scrim')) closeBallonDorOpening();
     });
-    el['est-bdo-opening-audio'].addEventListener('timeupdate', onBallonDorOpeningTimeUpdate);
-    el['est-bdo-opening-audio'].addEventListener('durationchange', onBallonDorOpeningTimeUpdate);
-    el['est-bdo-opening-audio'].addEventListener('ended', function () {
-      reportBallonDorAudio('opening_narration', 'completed', S.ballonDorOpeningMonth);
-      finishBallonDorOpening();
-    });
+    // La narración ya no marca el final de la presentación: al terminar entra el
+    // tema instrumental y la inauguración sigue hasta su propio cierre.
+    el['est-bdo-opening-audio'].addEventListener('ended', onBallonDorOpeningNarrationEnded);
+    if (el['est-bdo-opening-bed']) {
+      el['est-bdo-opening-bed'].addEventListener('error', function () {
+        S.ballonDorOpeningMode = 'visual';
+      });
+    }
     el['est-bdo-opening-audio'].addEventListener('error', function () {
       reportBallonDorAudio('opening_narration', 'error', S.ballonDorOpeningMonth);
       startBallonDorOpeningFallback(S.ballonDorOpeningSession, 'Audio no disponible · las escenas y el guion siguen disponibles.');

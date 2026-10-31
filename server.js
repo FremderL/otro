@@ -3519,6 +3519,51 @@ async function initFootball() {
   // 5. Reconciliación de arranque (§15.6): reconstruye el estado de los partidos no
   //    terminales desde (seed, now) y cuadra el escrow. ANTES de aceptar tráfico.
   footballEngine.reconcile(Date.now());
+
+  // 5b. Auditoría del acumulado del Balón de Oro contra el archivo por partido.
+  //     El premio suma la contribución de cada partido al asentarse; si un club se
+  //     asentó dos veces (la guarda vieja del store lo permitía), su delantero
+  //     arrastra goles/asistencias de más y la ficha del premio contradice al
+  //     resumen del partido. Se repara solo mientras el evento sigue acumulando:
+  //     un evento ya `settled` tiene ceremonia y pagos y no se toca en silencio.
+  try {
+    const seasonMonth = footballStore.getCurrentSeasonMonth();
+    const audit = footballStore.auditBallonDor(seasonMonth);
+    if (audit.ok && audit.mismatched > 0) {
+      const detail = audit.candidates
+        .filter(item => item.verifiable && !item.consistent)
+        .map(item => ({
+          player: item.playerName,
+          clubId: item.clubId,
+          event: { goals: item.event.goals, assists: item.event.assists },
+          archived: { goals: item.archived.goals, assists: item.archived.assists },
+          delta: { goals: item.delta.goals, assists: item.delta.assists }
+        }));
+      logEvent('football_ballon_dor_stats_mismatch', {
+        seasonMonth, status: audit.status, checked: audit.checked, mismatched: audit.mismatched, detail
+      });
+      if (audit.repairable) {
+        const repair = await footballStore.repairBallonDor(seasonMonth, { apply: true });
+        logEvent(repair.ok && !repair.already ? 'football_ballon_dor_stats_repaired'
+          : 'football_ballon_dor_stats_repair_skipped', {
+          seasonMonth,
+          reason: repair.reason || null,
+          skipped: repair.skipped || 0,
+          changes: (repair.changes || []).map(change => ({
+            player: change.playerName,
+            clubId: change.clubId,
+            from: { goals: change.from.goals, assists: change.from.assists },
+            to: { goals: change.to.goals, assists: change.to.assists },
+            pointsFrom: change.pointsFrom,
+            pointsTo: change.pointsTo
+          }))
+        });
+      }
+    }
+  } catch (error) {
+    logEvent('football_ballon_dor_stats_audit_error', { message: String(error?.message || error) });
+  }
+
   // Recupera/transiciona ciclos BDO antes de aceptar tráfico y antes del reset
   // mensual de perfiles. Un fallo del premio se registra, pero nunca impide casino.
   try {
