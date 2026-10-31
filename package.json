@@ -23,7 +23,8 @@
     "test:postgres": "node --test tests/postgres-real.test.js",
     "test:football": "node --test tests/football-*.test.js",
     "test:football-release": "node --test tests/football-ballon-dor-release.test.js tests/football-rollout-telemetry.test.js tests/football-release-config.test.js tests/football-http.test.js tests/football-stadium-ui.test.js",
-    "football:audit-bdo": "node scripts/audit-ballon-dor.js"
+    "football:audit-bdo": "node scripts/audit-ballon-dor.js",
+    "football:calendar": "node scripts/estadio-calendario.js"
   },
   "engines": {
     "node": ">=18"
