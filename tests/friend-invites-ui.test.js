@@ -40,7 +40,7 @@ function roomFixture() {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-async function createPage(t) {
+async function createPage(t, { presenceMap } = {}) {
   const dom = new JSDOM(HTML, { url: 'http://localhost:3000/', runScripts: 'outside-only', pretendToBeVisual: true });
   t.after(() => dom.window.close());
   const { window } = dom;
@@ -66,7 +66,7 @@ async function createPage(t) {
   };
   const handlers = {};
   const emitted = [];
-  const presence = {
+  const presence = presenceMap || {
     'bob-id': { online: true, status: 'playing', room: BOB_ROOM }
   };
   const socket = {
@@ -88,6 +88,7 @@ async function createPage(t) {
         friend_invite_send: { ok: true, code: 'invite_sent', online: true, invite: { id: 'invite-1', room: { ...BOB_ROOM, code: 'MY123' } } },
         friend_invite_accept: { ok: true, code: 'ABC12', room: BOB_ROOM },
         friend_invite_dismiss: { ok: true },
+        create_room: { ok: true, code: 'NEW42', game: 'poker' },
         join_room: { ok: true, code: 'ABC12', game: 'poker' }
       };
       if (typeof ack === 'function') ack(replies[event] || { ok: true });
@@ -170,6 +171,31 @@ test('una invitación recibida se acepta desde cualquier vista y entra a la sala
   const join = emitted.find(item => item.event === 'join_room');
   assert.ok(join, 'aceptar entra directo a la mesa');
   assert.equal(join.payload.code, 'ABC12');
+});
+
+test('desde el lobby, «Jugar» crea la mesa y envía la invitación sola', async t => {
+  const { window, emitted, document } = await createPage(t, {
+    presenceMap: { 'bob-id': { online: true, status: 'lobby', room: null } }
+  });
+  document.getElementById('community-open-btn').click();
+  await sleep(50);
+  const play = document.querySelector('[data-social-action="play-with-friend"][data-profile-id="bob-id"]');
+  assert.ok(play, 'una amistad en línea ofrece jugar sin tener que crear la mesa antes');
+  play.click();
+  await sleep(30);
+  const modal = document.getElementById('join-modal');
+  assert.equal(modal.classList.contains('open'), true);
+  assert.match(document.getElementById('modal-subtitle').textContent, /Roberto recibirá la invitación/);
+  assert.equal(document.getElementById('community-modal').classList.contains('open'), false);
+
+  document.getElementById('join-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  await sleep(450);
+  const create = emitted.find(item => item.event === 'create_room');
+  assert.ok(create, 'se crea la mesa con el juego elegido');
+  const sent = emitted.find(item => item.event === 'friend_invite_send');
+  assert.ok(sent, 'la invitación sale automáticamente al crear la mesa');
+  assert.equal(sent.payload.profileId, 'bob-id');
+  assert.equal(sent.payload.code, 'NEW42', 'se invita al código de la mesa recién creada');
 });
 
 test('el marcado y los estilos publican el panel de invitación accesible', () => {

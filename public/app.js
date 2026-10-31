@@ -288,6 +288,7 @@
     communityTab: 'friends', communityData: null,
     // Invitaciones de amistad a mesas privadas (efímeras, en memoria).
     invites: [], inviteTimer: null, inviteModalOpen: false, friendPresence: {}, inviteCooldowns: new Map(),
+    pendingFriendInvite: null, // amistad elegida en el lobby para invitar al crear la mesa
     rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null, resultQueue: [],
     fortuneAngle: 0, fortuneLanded: null, fortuneSpin: null, fortuneTimer: null,
     spectating: false
@@ -949,6 +950,7 @@
     if (els.setupPreviewAvatar) els.setupPreviewAvatar.textContent = avatarEmoji(ui.selectedAvatar);
   }
   function openModal(mode = 'create', options = {}) {
+    if (mode !== 'create') ui.pendingFriendInvite = null;
     ui.modalMode = mode;
     ui.selectedGame = options.game === 'blackjack' ? 'blackjack' : (options.game || ui.selectedGame || 'poker');
     els.playerName.value = ui.playerName || localStorage.getItem('montecristo-name') || '';
@@ -990,6 +992,9 @@
     els.modal.setAttribute('aria-hidden', 'true');
     if (!ui.profileOpen) document.body.classList.remove('modal-open');
     setButtonLoading(els.modalSubmit, false);
+    // Se cancela la invitación pactada al cerrar el formulario; el envío
+    // automático la captura antes de llamar a closeModal().
+    ui.pendingFriendInvite = null;
   }
   $$('[data-open-mode]').forEach(button => button.addEventListener('click', () => openModal(button.dataset.openMode, { game: button.dataset.game })));
   $$('[data-close-modal]').forEach(element => element.addEventListener('click', closeModal));
@@ -1090,9 +1095,13 @@
       if (!joining && ui.selectedGame === 'fortune') refreshFortuneAvailability();
       return;
     }
+    // «Jugar» desde la lista de amistades: la mesa se crea y la invitación
+    // sale sola, sin que la persona tenga que volver a buscar a su amistad.
+    const friendToInvite = !joining ? ui.pendingFriendInvite : null;
     ui.spectating = spectating;
     ui.activeCode = response.code;
     saveSession(); updateHistory(response.code); closeModal();
+    if (friendToInvite) setTimeout(() => sendFriendInvite(friendToInvite.profileId, null, response.code), 260);
     // room_state completes the visual transition.
     setTimeout(() => { if (ui.room) setOverlay(false); }, 450);
   });
@@ -3390,6 +3399,11 @@
       if (ui.room && friendRoom?.code !== ui.room.code) {
         actions.push(`<button type="button" class="social-action" data-social-action="invite-friend" data-profile-id="${escapeHtml(profile.id)}">Invitar</button>`);
       }
+      // Desde el lobby: crear la mesa y enviar la invitación en un solo paso.
+      if (!ui.room && !friendRoom && presence?.online) {
+        const friendName = profile.name || profile.username;
+        actions.push(`<button type="button" class="social-action" data-social-action="play-with-friend" data-profile-id="${escapeHtml(profile.id)}" data-profile-name="${escapeHtml(friendName)}" title="Crear una mesa e invitar a ${escapeHtml(friendName)}" aria-label="Crear una mesa e invitar a ${escapeHtml(friendName)}">Jugar</button>`);
+      }
       actions.push(`<button type="button" class="social-action is-muted" data-social-action="remove-friend" data-profile-id="${escapeHtml(profile.id)}">Quitar</button>`);
       return `<article class="community-person-row">${communityAccountMarkup(profile, { status: presence ? friendStatusText(presence) : '', online: Boolean(presence?.online) })}<div class="community-row-actions">${actions.join('')}</div></article>`;
     }).join('')
@@ -3721,8 +3735,21 @@
     els.inviteModal?.setAttribute('aria-hidden', 'true');
     if (!$$('.modal.open').length) document.body.classList.remove('modal-open');
   }
-  async function sendFriendInvite(profileId, button = null) {
-    if (!ui.room) {
+  // Un clic desde el lobby: prepara la creación de la mesa y deja la
+  // invitación en cola; al crearla, se envía automáticamente.
+  function startTableWithFriend(profileId, displayName = '') {
+    const friend = (ui.communityData?.friends || []).find(item => item.id === profileId);
+    const name = displayName || friend?.name || friend?.username || 'tu amistad';
+    ui.pendingFriendInvite = { profileId, name };
+    closeCommunityModal();
+    openModal('create');
+    if (els.modalSubtitle) {
+      els.modalSubtitle.textContent = `Elige el juego y el nombre de la mesa. Al crearla, ${name} recibirá la invitación al instante.`;
+    }
+  }
+  async function sendFriendInvite(profileId, button = null, roomCode = ui.room?.code) {
+    const targetRoom = String(roomCode || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+    if (!/^[A-Z0-9]{5}$/.test(targetRoom)) {
       showToast('Primero abre una mesa', 'Entra o crea una sala para invitar a tus amistades.', 'notice');
       return;
     }
@@ -3731,7 +3758,7 @@
       return;
     }
     if (button) button.disabled = true;
-    const response = await emitAck('friend_invite_send', { profileId, code: ui.room.code });
+    const response = await emitAck('friend_invite_send', { profileId, code: targetRoom });
     if (button) button.disabled = false;
     if (!response.ok) {
       setInviteStatus(response.error || 'No se pudo enviar la invitación.', 'error');
@@ -3740,7 +3767,7 @@
     }
     const friend = (ui.communityData?.friends || []).find(item => item.id === profileId);
     const name = friend?.name || friend?.username || 'Tu amistad';
-    ui.inviteCooldowns.set(`${profileId}:${ui.room.code}`, Date.now() + 20000);
+    ui.inviteCooldowns.set(`${profileId}:${targetRoom}`, Date.now() + 20000);
     setTimeout(() => { if (ui.inviteModalOpen) renderInviteFriends(); }, 20100);
     const message = response.online
       ? `${name} puede entrar con un clic desde el aviso.`
@@ -3949,6 +3976,7 @@
     // Invitar a mi mesa o entrar a la mesa de una amistad, sin códigos.
     if (action === 'invite-friend') return sendFriendInvite(profileId, button);
     if (action === 'join-friend-room') return joinRoomByCode(roomCode);
+    if (action === 'play-with-friend') return startTableWithFriend(profileId, button.dataset.profileName);
     const routes = {
       'add-friend': { path: '/api/social/v1/friends/requests', method: 'POST', body: { username } },
       'accept-friend': { path: `/api/social/v1/friends/requests/${encodeURIComponent(requestId)}/accept`, method: 'POST' },
