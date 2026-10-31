@@ -334,3 +334,125 @@ test('PostgreSQL: dos servidores con Estadio activo no arrancan como escritores 
     await wait(third, child => /MonteCristo lista/.test(child.text));
     assert.equal(third.exitCode, null, third.text);
   });
+
+test('PostgreSQL: V2 usa la temporada anterior persistida y conserva datos y cuota tras resultados posteriores',
+  { skip: !URL, timeout: 30000 }, async t => {
+    const { prepareMatchInputs } = require('../lib/football/v2/inputs');
+    const schema = `v2_history_${randomUUID().replace(/-/g, '')}`;
+    const admin = new Pool({ connectionString: URL });
+    await admin.query(`CREATE SCHEMA ${schema}`);
+    class ScopedPool extends Pool { constructor(options) { super({ ...options, options: `-c search_path=${schema}` }); } }
+    let store, profiles;
+    const start = async () => {
+      store = new PgFootballStore(URL, { pool: new ScopedPool({ connectionString: URL }) });
+      profiles = new PgProfileStore(URL, { Pool: ScopedPool, deferSeasonCheck: true });
+      await Promise.all([store.ready, profiles.ready]);
+    };
+    const stop = async () => {
+      if (store) { await store.close(); await store.pool.end(); store = null; }
+      if (profiles) { await profiles.close(); profiles = null; }
+    };
+    t.after(async () => { await stop(); await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end(); });
+    await start();
+    const october = store.generateSeason('2026-10', { force: true, createdAt: Date.UTC(2026, 9, 1) });
+    const clubId = october.config[0].id;
+    const initialAttack = october.config[0].ratings.att;
+    const playedOctober = october.calendar.matches.filter(match => match.homeId === clubId || match.awayId === clubId)
+      .sort((a, b) => a.scheduledKickoffAt - b.scheduledKickoffAt).slice(0, 3);
+    for (const match of playedOctober) {
+      const score = match.homeId === clubId ? { home: 4, away: 0 } : { home: 0, away: 4 };
+      assert.equal(store.settleMatch(match.id, score, { seasonMonth: '2026-10', now: match.scheduledKickoffAt + 1800000 }).ok, true);
+    }
+    const previousRating = { ...october.config.find(club => club.id === clubId).ratings };
+    assert.notEqual(previousRating.att, initialAttack, 'los resultados asentados actualizan el ataque');
+    assert.equal(await store.saveStrict(), true);
+    await stop();
+
+    // La temporada anterior se recupera desde PostgreSQL, no desde la copia del test.
+    await start();
+    const recoveredOctober = store.getLeague('2026-10');
+    assert.deepEqual(recoveredOctober.config.find(club => club.id === clubId).ratings, previousRating);
+    assert.equal(recoveredOctober.calendar.matches.filter(match => match.status === 'settled').length, 3);
+    const november = store.generateSeason('2026-11', { force: true, createdAt: Date.UTC(2026, 10, 1) });
+    const teamMatches = november.calendar.matches.filter(match => match.homeId === clubId || match.awayId === clubId)
+      .sort((a, b) => a.scheduledKickoffAt - b.scheduledKickoffAt);
+    const [first, second] = teamMatches;
+    const target = teamMatches.find(match => match.homeId === clubId && match.jornada >= 5);
+    assert.ok(first && second && target && second.scheduledKickoffAt < target.scheduledKickoffAt);
+    const scoreFor = match => match.homeId === clubId ? { home: 3, away: 0 } : { home: 0, away: 3 };
+    const firstFinishedAt = first.scheduledKickoffAt + 1800000;
+    assert.equal(store.settleMatch(first.id, scoreFor(first), { seasonMonth: '2026-11', now: firstFinishedAt }).ok, true);
+    const asOf = firstFinishedAt + 1000;
+    assert.ok(asOf < second.scheduledKickoffAt && asOf < target.scheduledKickoffAt);
+    const current = { ...november.config.find(club => club.id === clubId).ratings };
+    const prepared = await prepareV2Match({ store, match: target, asOf, keyFactory: () => '46'.repeat(32) });
+    assert.equal(prepared.ok, true, prepared.reason);
+    const snapshot = JSON.parse(JSON.stringify(target.simulation.inputs));
+    assert.equal(snapshot.source.previousSeason, '2026-10');
+    assert.equal(snapshot.source.home.previousMatches, 3);
+    assert.equal(snapshot.source.home.currentMatches, 1);
+    const weight = snapshot.source.home.previousWeight;
+    assert.ok(weight > 0 && weight < 1);
+    // El peso exacto se redondea solo para el reporte; tolerar su redondeo.
+    const expectedAttack = current.att * (1 - weight) + previousRating.att * weight;
+    assert.ok(Math.abs(snapshot.home.ratings.att - expectedAttack) < 0.0002);
+    assert.equal(snapshot.home.ratings.gk, current.gk);
+    const oldPlayers = new Map(recoveredOctober.config.flatMap(club => club.squad).map(player => [player.id, player]));
+    for (const player of snapshot.home.lineup.players) {
+      assert.ok(oldPlayers.has(player.id), 'la plantilla conserva jugadores de la temporada anterior');
+      assert.deepEqual(player.attrs, oldPlayers.get(player.id).attrs, 'se conservan sus atributos tras los traspasos');
+    }
+    const withoutHistory = prepareMatchInputs({ league: november, match: target, asOf, seed: 0 });
+    assert.notEqual(snapshot.home.ratings.att, withoutHistory.home.ratings.att);
+
+    // Los histogramas son sintéticos y prueban solo el vínculo al hash, no la
+    // exactitud económica de las cuotas.
+    const sample = { version: C.VERSION, simulatorVersion: VERSION, inputHash: C.hashInputs(withoutHistory), samples: 2048,
+      counts: { '0-0': 400, '1-0': 500, '0-1': 360, '1-1': 420, '2-0': 150, '2-1': 130, '1-2': 88 }, liveByState: [] };
+    const training = { ...sample, keyCommitment: 'aa'.repeat(32) };
+    const holdout = { ...sample, keyCommitment: 'bb'.repeat(32) };
+    assert.equal((await attachV2Pricing({ store, match: target, asOf, training, holdout })).reason, 'calibracion_invalida');
+    training.inputHash = target.simulation.inputsHash; holdout.inputHash = target.simulation.inputsHash;
+    assert.equal((await attachV2Pricing({ store, match: target, asOf, training, holdout })).ok, true);
+    const profile = profiles.getOrCreate('history-v2-player', 'Jugador');
+    profile.chips = 1000;
+    profile.achievements = P.ACHIEVEMENTS.map(item => item.id);
+    profile.challenges = Object.fromEntries(P.CHALLENGES.map(item => [item.id, { completedAt: 1, reward: item.reward }]));
+    P.recordOutcome(profile, { game: 'dice', net: 0, eligible: false });
+    profile.rotatingChallenges.daily.completed = true; profile.rotatingChallenges.weekly.completed = true;
+    assert.equal(await profiles.persistProfile(profile), true);
+    let betting = createBettingService({ store, profiles, now: () => asOf });
+    let engine = new FootballEngine(store, { settleBets: (match, score) => betting.settleMatchBets(match, score) });
+    const replay = engine._ensureTimeline(target);
+    const selection = replay.score.home > replay.score.away ? 'home' : replay.score.home < replay.score.away ? 'away' : 'draw';
+    const placed = await betting.placeBet({ profile, matchId: target.id, market: '1x2', selection, stake: 100,
+      placedAt: asOf, idempotencyKey: 'history-v2-bet' });
+    assert.equal(placed.ok, true, placed.code);
+    const acceptedOdds = placed.bet.oddsAtPlacement;
+
+    // Un partido posterior actualiza la liga, pero no modifica una obligación
+    // ya aceptada ni la instantánea de este replay experimental.
+    const secondFinishedAt = second.scheduledKickoffAt + 1800000;
+    assert.equal(store.settleMatch(second.id, scoreFor(second), { seasonMonth: '2026-11', now: secondFinishedAt }).ok, true);
+    const newer = prepareMatchInputs({ league: november, previousLeague: recoveredOctober, match: target, asOf: secondFinishedAt + 1, seed: 0 });
+    assert.equal(newer.source.home.currentMatches, 2);
+    assert.notDeepEqual(newer.home.ratings, snapshot.home.ratings, 'el siguiente encuentro usa los nuevos resultados');
+    assert.deepEqual(target.simulation.inputs, snapshot);
+    assert.equal(store.getBet(placed.bet.id).oddsAtPlacement, acceptedOdds);
+    assert.equal(await store.saveStrict(), true);
+    const matchId = target.id, betId = placed.bet.id, profileId = profile.id;
+    await stop();
+    await start();
+    const loaded = store.getMatch(matchId, '2026-11');
+    assert.deepEqual(loaded.simulation.inputs, snapshot);
+    assert.equal(store.getBet(betId).oddsAtPlacement, acceptedOdds);
+    betting = createBettingService({ store, profiles, now: () => asOf });
+    engine = new FootballEngine(store, { settleBets: (match, score) => betting.settleMatchBets(match, score) });
+    const replayAfterRestart = engine._ensureTimeline(loaded);
+    assert.deepEqual(replayAfterRestart.score, replay.score);
+    assert.equal(engine.startMatch(loaded, loaded.scheduledKickoffAt), true);
+    assert.equal(engine.advance(loaded, loaded.scheduledKickoffAt + replayAfterRestart.clock.matchEnd * 15000 + 1).ended, true);
+    await Promise.all([...betting.ticketPayouts.values()]);
+    assert.equal(profiles.getProfile(profileId).chips, 900 + placed.bet.potentialPayout);
+    assert.equal(store.getBet(betId).payoutApplied, true);
+  });
