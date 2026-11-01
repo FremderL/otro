@@ -11,11 +11,14 @@ const {
   calculateBallonDorResult,
   candidateIdFor,
   cleanBallonDorEvent,
+  compareBallonDorCandidates,
   createBallonDorEvent,
   eventIdFor,
   finalizeBallonDorEvent,
+  isDegenerateOddsSnapshot,
   selectBallonDorCandidates,
-  transitionBallonDorStatus
+  transitionBallonDorStatus,
+  updateBallonDorOdds
 } = require('../lib/football/ballon-dor');
 
 function seasonClubs(month = '2026-10') {
@@ -242,4 +245,108 @@ test('cleanLeague mantiene temporadas antiguas sin evento y rehidrata contratos 
   assert.deepEqual(cleanLeague({ ...baseLeague, ballonDor: event }).ballonDor, event);
   assert.equal(cleanLeague({ ...baseLeague, ballonDor: { ...event, seasonMonth: '2026-11', id: 'bdo_2026-11' } }).ballonDor,
     null, 'un evento de otro mes no se adhiere a la liga');
+});
+
+test('compareBallonDorCandidates está exportado y ordena de mayor a menor', () => {
+  // El mercado BDO importa este comparador para ordenar cada simulación: si no
+  // se exporta, sort(undefined) conserva el orden original y el «ganador» de
+  // las 2,000 simulaciones siempre es el primer candidato por clubId (cuota
+  // 1.01 y todos los demás a 51). Regresión de ese bug.
+  assert.equal(typeof compareBallonDorCandidates, 'function',
+    'compareBallonDorCandidates debe exportarse: el mercado BDO lo importa');
+  const row = (club, number, total, goals = 0, assists = 0) => ({
+    clubId: club, playerNumber: number,
+    stats: { goals, assists, appearances: 20, yellowCards: 0, redCards: 0 },
+    points: { total }
+  });
+  const rows = [
+    row('c', 17, 21, 1, 0),
+    row('b', 9, 48, 5, 1),
+    row('a', 9, 48, 5, 1),
+    row('d', 9, 70, 9, 0)
+  ];
+  assert.deepEqual(rows.slice().sort(compareBallonDorCandidates).map(item => item.clubId),
+    ['d', 'a', 'b', 'c'], 'descendente por puntos; los empates caen en la clave estable club:dorsal');
+});
+
+function validOddsSnapshot(event, { afterJornada = 0, updatedAt, wins = null } = {}) {
+  const total = 2000;
+  return {
+    updatedAt,
+    afterJornada,
+    simulations: total,
+    seed: hash32(`test|${event.seasonMonth}|${afterJornada}`),
+    overround: 1.1,
+    selections: event.candidates.map((candidate, index) => {
+      const candidateWins = wins ? wins[index] : total / 16;
+      const probability = candidateWins / total;
+      const raw = probability > 0 ? 1 / (probability * 1.1) : 51;
+      const odds = Math.max(1.01, Math.min(51, Math.floor(raw * 100 + 1e-10) / 100));
+      return { candidateId: candidate.id, wins: candidateWins, probability, odds };
+    }).sort((a, b) => a.candidateId < b.candidateId ? -1 : a.candidateId > b.candidateId ? 1 : 0)
+  };
+}
+
+test('isDegenerateOddsSnapshot detecta el monopolio de un candidato y nada más', () => {
+  const event = createBallonDorEvent('2026-10', seasonClubs(), 1000);
+  const parejo = validOddsSnapshot(event, { afterJornada: 0, updatedAt: 1001 });
+  assert.equal(isDegenerateOddsSnapshot(parejo), false, 'un campo parejo no es degenerado');
+  const reparto = validOddsSnapshot(event, { afterJornada: 0, updatedAt: 1001,
+    wins: [400, 400, 400, 400, 400, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] });
+  assert.equal(isDegenerateOddsSnapshot(reparto), false, 'un favorito del 20 % es un precio legítimo');
+  const casi = validOddsSnapshot(event, { afterJornada: 0, updatedAt: 1001,
+    wins: [1990, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] });
+  assert.equal(isDegenerateOddsSnapshot(casi), true, '99,5 % de simulaciones ya es monopolio');
+  const solo = validOddsSnapshot(event, { afterJornada: 0, updatedAt: 1001,
+    wins: [2000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] });
+  assert.equal(isDegenerateOddsSnapshot(solo), true);
+  assert.equal(isDegenerateOddsSnapshot(null), false);
+  assert.equal(isDegenerateOddsSnapshot({ selections: [] }), false);
+});
+
+test('una foto degenerada persistida se repara dentro de la misma jornada', () => {
+  const DEGENERADA = [2000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+  // Contrato vigente con foto sana: un precio DIFERENTE para la misma jornada
+  // se rechaza (no se re-precia una jornada asentada), pero el idéntico es
+  // idempotente.
+  const event = createBallonDorEvent('2026-10', seasonClubs(), 1000);
+  const active = transitionBallonDorStatus(event, 'active', { at: 1001 });
+  assert.equal(active.ok, true);
+  const parejo = validOddsSnapshot(active.event, { afterJornada: 0, updatedAt: 1002 });
+  const first = updateBallonDorOdds(active.event, parejo, 1002);
+  assert.equal(first.ok, true);
+  assert.equal(first.already, false);
+  const replay = updateBallonDorOdds(first.event, parejo, 1002);
+  assert.equal(replay.ok, true);
+  assert.equal(replay.already, true);
+  const otro = validOddsSnapshot(first.event, { afterJornada: 0, updatedAt: 1003,
+    wins: [1000, 1000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] });
+  const duplicate = updateBallonDorOdds(first.event, otro, 1003);
+  assert.equal(duplicate.ok, false);
+  assert.equal(duplicate.reason, 'jornada_de_cuotas_duplicada');
+
+  // Excepción de reparación: si la foto persistida es degenerada (patrón del
+  // sort roto: un candidato con ~100 % de las simulaciones), la reproyección
+  // de la misma jornada sí la reemplaza.
+  const fresh = transitionBallonDorStatus(createBallonDorEvent('2026-10', seasonClubs(), 1000),
+    'active', { at: 1001 }).event;
+  const rota = validOddsSnapshot(fresh, { afterJornada: 0, updatedAt: 1002, wins: DEGENERADA });
+  assert.equal(isDegenerateOddsSnapshot(rota), true);
+  const storedRota = updateBallonDorOdds(fresh, rota, 1002);
+  assert.equal(storedRota.ok, true, 'la foto rota era la primera del ciclo, como en producción');
+  const reparacion = validOddsSnapshot(storedRota.event, { afterJornada: 0, updatedAt: 1003 });
+  const fixed = updateBallonDorOdds(storedRota.event, reparacion, 1003);
+  assert.equal(fixed.ok, true, 'la reproyección de la misma jornada repara la foto degenerada');
+  assert.equal(fixed.already, false);
+  assert.equal(isDegenerateOddsSnapshot(fixed.event.oddsSnapshot), false);
+  // Con la foto ya sana vuelve a regir la regla normal de un precio por jornada.
+  const otroMas = validOddsSnapshot(fixed.event, { afterJornada: 0, updatedAt: 1004, wins: DEGENERADA });
+  assert.equal(updateBallonDorOdds(fixed.event, otroMas, 1004).reason, 'jornada_de_cuotas_duplicada');
+  // La jornada siguiente sigue con la regla normal.
+  const siguiente = validOddsSnapshot(fixed.event, { afterJornada: 1, updatedAt: 1005 });
+  const avanzar = updateBallonDorOdds(fixed.event, siguiente, 1005);
+  assert.equal(avanzar.ok, true);
+  const otroSiguiente = validOddsSnapshot(avanzar.event, { afterJornada: 1, updatedAt: 1006, wins: DEGENERADA });
+  assert.equal(updateBallonDorOdds(avanzar.event, otroSiguiente, 1006).reason, 'jornada_de_cuotas_duplicada');
 });
