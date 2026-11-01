@@ -2507,6 +2507,17 @@ Corrección (`acquireFootballWriterWithWait`), activada por `FOOTBALL_WRITER_WAI
    `FOOTBALL_WRITER_PENDING` y `withWriterFence()` no ejecuta el trabajo. `persistProfile()` ya
    devuelve `false` en ese estado (fail-soft de las rutas de dinero), y `server.js` no llama a
    `footballStore.ensureSeason()` en ese arranque, para no escribir antes de tener la concesión.
+   Igual de estricta es la preparación V2 de arranque: `officialV2.prepareUpcoming()` devuelve
+   `{ok: true, deferred: true}` —sin tocar estado— mientras `store.writerLease.pending`. Antes
+   intentaba fijar/migrar la política de temporada con `saveStrict`, y un deploy que cambiaba la
+   versión del simulador o de las cuotas mataba el boot con
+   `No se pudo preparar V2: persistencia_pendiente` (evento
+   `football_v2_policy_migration_persist_error`) en bucle, porque el guardado estricto falla con
+   la concesión en espera. La migración la completa después el barrido de kickoff (≤5 s) una vez
+   adquirida la concesión (el gancho `onFootballWriterAcquired` recarga antes el Estadio), y
+   `prepareMatch` y las rutas de dinero siguen exigiendo el guardado real: mientras espera no se
+   aceptan apuestas ni se arranca un encuentro. Cubierto por
+   `tests/football-v2-official.test.js`.
 3. Al adquirirla, `onAcquired` **recarga desde Postgres** los perfiles y, por el gancho
    `onFootballWriterAcquired` de `bootstrap()`, también el estado del Estadio (`_loadOnce()` +
    `ensureSeason()`), y **solo después** se habilitan las escrituras. Así la instancia nueva no
