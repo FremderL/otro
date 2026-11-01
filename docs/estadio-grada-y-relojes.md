@@ -263,3 +263,32 @@ Flujo completo usado en la vista previa: parar el servidor → `football:demo-ma
 servidor → esperar el kickoff → abrir `/estadio`, elegir el partido y escribir en la grada. Cada mensaje
 se desliza por la cancha de derecha a izquierda; con una ráfaga, solo cruzan unos pocos y el aviso de
 omitidos aparece en la grada.
+
+### Modo `--v2`: la misma demo sobre el motor nuevo
+
+El motor se elige por **mes de temporada**, no por un interruptor: `seasonMonth >= '2026-11'` ⇒ V2
+(`lib/football/v2/official.js`). Un partido de demo en octubre es V1 por diseño. Para probar el motor
+nuevo hay que crear la demo en noviembre y arrancar el servidor con ese mismo reloj:
+
+```bash
+export DEMO_NOW=2026-11-01T17:00:00-06:00
+export FOOTBALL_STORE_PATH=$PWD/data/demo/football-v2.json
+
+node scripts/estadio-partido-demo.js --v2 --in 3
+FOOTBALL_ENABLED=on PORT=4173 \
+  NODE_OPTIONS=--require=./scripts/estadio-demo-clock.cjs node server.js
+```
+
+- `scripts/estadio-demo-clock.cjs` mantiene el reloj avanzando a velocidad normal, anclado a `DEMO_NOW`
+  (por defecto 1/11/2026 17:00 CDMX).
+- El primer arranque genera la temporada de noviembre, crea la `simulationPolicy` durable y prepara los
+  compromisos V2 (8 partidos en el horizonte de 24 h; 65 ms medidos). El partido de demo es uno más de
+  esa parrilla: `prepareUpcoming` le asigna su compromiso y la ficha responde `engine: 'v2'` con
+  `secondsPerMinute: 15`.
+- `--v2` **se niega a escribir** si el reloj aún no está en noviembre o si la temporada de noviembre no
+  existe todavía (hace falta un arranque previo del servidor que la genere).
+- El store de demo (`data/demo/`) queda ignorado por Git, así que estas pruebas no ensucian
+  `data/football.json`.
+
+Verificado en la vista previa: `m_demo_202611_01` (United Vanguard vs CS Verdania) en `live`, `engine: v2`,
+minuto 3.5 y los mensajes de la grada aceptados con `{ok:true}`.

@@ -39,3 +39,6 @@ Thumbs.db
 .vscode/
 # Scratch local (repros y tiendas temporales)
 .tmpwork/
+
+# Demos locales de la vista previa (reloj desplazado y stores aislados)
+data/demo/

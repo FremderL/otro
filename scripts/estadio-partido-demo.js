@@ -15,13 +15,31 @@
 // indistinguible de uno de la parrilla para el cliente.
 //
 // Uso:
-//   node scripts/estadio-partido-demo.js                 # kickoff en 2 minutos
-//   node scripts/estadio-partido-demo.js --in 300        # kickoff en 5 min
-//   node scripts/estadio-partido-demo.js --status=live   # ya en juego (kickoff pasado)
+//   node scripts/estadio-partido-demo.js                 # kickoff en 2 minutos (V1, mes en curso)
+//   node scripts/estadio-partido-demo.js --in 5          # kickoff en 5 minutos
+//   node scripts/estadio-partido-demo.js --status=live   # ya en juego al arrancar el servidor
 //   node scripts/estadio-partido-demo.js --remove        # quita el partido de demo
+//   node scripts/estadio-partido-demo.js --v2            # demo V2 (noviembre +, motor nuevo)
 //
 // La ruta del store es la misma que usa el servidor (`FOOTBALL_STORE_PATH`).
 // El partido se marca `demo: true` para que sea evidente de dónde salió.
+//
+// `--v2`: el motor se elige por MES de temporada (`>= 2026-11` ⇒ V2), así que
+// este modo escribe el partido en la temporada de noviembre con su reloj de
+// demo. Hay que ejecutarlo con el MISMO reloj y el MISMO store con los que se
+// arranca el servidor, y el servidor tiene que estar parado:
+//
+//   export DEMO_NOW=2026-11-01T17:00:00-06:00
+//   export FOOTBALL_STORE_PATH=$PWD/data/demo/football-v2.json
+//   node scripts/estadio-partido-demo.js --v2 --in 3
+//   FOOTBALL_ENABLED=on PORT=4173 \
+//     NODE_OPTIONS=--require=./scripts/estadio-demo-clock.cjs node server.js
+//
+// El primer arranque del servidor genera la temporada de noviembre y prepara los
+// compromisos V2 (política durable + cuotas estimadas); el partido de demo es uno
+// más de esa parrilla y corre a 15 s reales por minuto simulado. Se niega a
+// escribir si la temporada de noviembre aún no existe (arranca el servidor una
+// vez primero).
 
 const path = require('path');
 
@@ -31,6 +49,8 @@ const { calendarParts, monthKey } = require('../lib/football-store-shared');
 const TZ = process.env.CASINO_TIME_ZONE || 'America/Mexico_City';
 const STORE = process.env.FOOTBALL_STORE_PATH || path.join(process.cwd(), 'data', 'football.json');
 const DEMO_PREFIX = 'm_demo_';
+// Temporada desde la que el motor oficial es V2 (lib/football/v2/official.js).
+const V2_FROM_MONTH = '2026-11';
 
 function arg(name, fallback = null) {
   const flag = `--${name}=`;
@@ -45,20 +65,33 @@ function minutes(name, fallback) {
 }
 
 function main() {
+  const v2 = has('v2');
   const store = new FootballStore(STORE);
   store.load();
-  const seasonMonth = store.getCurrentSeasonMonth();
   const now = Date.now();
   const month = monthKey(now);
-  if (seasonMonth !== month) {
+  // En modo V2 la temporada de referencia es noviembre (o posterior): ahí vive el
+  // motor nuevo. En modo normal es la temporada en curso del store.
+  let seasonMonth = store.getCurrentSeasonMonth();
+  if (v2) {
+    if (month < V2_FROM_MONTH) {
+      console.error(`--v2 necesita un reloj de noviembre o posterior; hoy es ${month}. Arranca con NODE_OPTIONS=--require=./scripts/estadio-demo-clock.cjs.`);
+      process.exitCode = 1;
+      store.close();
+      return;
+    }
+    seasonMonth = month;
+  } else if (seasonMonth !== month) {
     console.error(`El store está en ${seasonMonth} pero hoy es ${month}. Arranca el servidor una vez para que ruede la temporada y reintenta.`);
     process.exitCode = 1;
+    store.close();
     return;
   }
   const league = store.getLeague(seasonMonth);
   if (!league || !league.calendar) {
     console.error(`No hay calendario para ${seasonMonth}. Arranca el servidor una vez (FOOTBALL_ENABLED=on) y reintenta.`);
     process.exitCode = 1;
+    store.close();
     return;
   }
 
@@ -130,11 +163,13 @@ function main() {
     event: 'estadio_demo_match_ready',
     id: match.id,
     seasonMonth,
+    engine: v2 ? 'v2 (compromiso al arrancar el servidor)' : 'v1 (temporada anterior a ' + V2_FROM_MONTH + ')',
     home: homeClub.name,
     away: awayClub.name,
     status: match.status,
     kickoffLocal: new Date(kickoff).toLocaleString('es-MX', { timeZone: TZ }),
     inMinutes: Math.round((kickoff - now) / 60000),
+    store: STORE,
     url: '/estadio'
   }, null, 2));
   store.close();
