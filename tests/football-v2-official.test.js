@@ -9,7 +9,7 @@ const { ProfileStore } = require('../lib/profile-store');
 const { FootballEngine } = require('../lib/football/engine');
 const { FootballScheduler } = require('../lib/football/scheduler');
 const { createBettingService } = require('../lib/football/betting');
-const { createOfficialV2 } = require('../lib/football/v2/official');
+const { createOfficialV2, HORIZON_MS } = require('../lib/football/v2/official');
 const { makeCommitment, verifyCommitment, commitmentId } = require('../lib/football/v2/commitment');
 const { prepareMatchInputs } = require('../lib/football/v2/inputs');
 const Policy = require('../lib/football/v2/season-policy');
@@ -169,6 +169,58 @@ test('fallos durables conservan las mismas claves y no permiten una caída silen
     assert.equal((await h.officialV2.prepareMatch(match)).ok, true);
     assert.equal(match.simulation, pending);
     assert.ok(h.betting.getMarket(match, '1x2'));
+  } finally { h.close(); }
+});
+
+test('con la concesión de escritura en espera, el arranque pospone V2 sin migrar a medias', async () => {
+  const h = setup();
+  try {
+    const events = [];
+    const v2 = createOfficialV2({ store: h.store, now: h.now, log: (event, data) => events.push({ event, ...data }) });
+    assert.equal((await v2.ensureSeason('2026-11')).ok, true);
+    const oldPolicy = { ...h.league.simulationPolicy, simulatorVersion: 'v2-causal-3', pricingVersion: 'v2-estimated-1' };
+    oldPolicy.id = Policy.policyId(oldPolicy);
+    h.league.simulationPolicy = oldPolicy;
+    assert.ok(await h.store.saveStrict());
+
+    // Solape de un deploy rolling: el handle pendiente hace fallar todo guardado
+    // estricto (en Postgres, saveStrict devuelve false vía FOOTBALL_WRITER_PENDING).
+    const lease = { pending: true };
+    h.store.writerLease = lease;
+    const realSaveStrict = h.store.saveStrict.bind(h.store);
+    h.store.saveStrict = () => false;
+
+    const deferred = await v2.prepareUpcoming();
+    assert.equal(deferred.ok, true, 'el arranque no puede morir por persistencia mientras solo lee');
+    assert.equal(deferred.deferred, true);
+    assert.equal(h.league.simulationPolicy.id, oldPolicy.id, 'sin escrituras no se migra la política a medias');
+    assert.equal(h.league.simulationPolicyUnconfirmed, undefined);
+    assert.equal(h.league.calendar.matches.some(match => match.simulation), false);
+    assert.equal((await v2.prepareUpcoming()).deferred, true, 'los barridos pueden volver a preguntar');
+    assert.equal(events.filter(item => item.event === 'football_v2_preparation_deferred').length, 1,
+      'un solo aviso de posposición, no uno por barrido');
+
+    // El contrato de dinero sigue fallando en cerrado mientras espera.
+    assert.equal((await v2.ensureSeason('2026-11')).reason, 'persistencia_pendiente');
+    const match = h.league.calendar.matches[0];
+    assert.equal((await v2.prepareMatch(match)).reason, 'persistencia_pendiente');
+    assert.equal(match.simulation, undefined, 'no se arranca un encuentro sin compromiso durable');
+
+    // Al adquirir la concesión, el siguiente barrido migra y prepara con las
+    // escrituras ya habilitadas (igual que hace el kickoff sweep tras el gancho).
+    lease.pending = false;
+    h.store.saveStrict = realSaveStrict;
+    const ready = await v2.prepareUpcoming();
+    assert.equal(ready.ok, true);
+    assert.equal(ready.deferred, undefined);
+    assert.equal(h.league.simulationPolicyUnconfirmed, undefined);
+    assert.equal(h.league.simulationPolicy.simulatorVersion, 'v2-causal-4');
+    assert.equal(h.league.simulationPolicy.pricingVersion, Q.ESTIMATED_VERSION);
+    assert.ok(Policy.verifyPolicy(h.league.simulationPolicy, '2026-11'));
+    const upcoming = h.league.calendar.matches
+      .filter(item => item.status === 'scheduled' && item.scheduledKickoffAt <= h.now() + HORIZON_MS);
+    assert.ok(upcoming.length > 0);
+    assert.ok(upcoming.every(item => item.simulation && verifyCommitment(item.simulation, item)));
   } finally { h.close(); }
 });
 
