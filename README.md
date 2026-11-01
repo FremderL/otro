@@ -15,6 +15,7 @@ Casino social multijugador para jugar con amigos mediante una URL privada. Inclu
 - Chat libre, mensajes rápidos y reacciones (`🔥`, `👏`, `😂`, `🍀`, `😱`, `💎`).
 - Comunidad de cuentas: búsqueda segura, amistades y solicitudes; clubes públicos o privados con aprobación, gestión de miembros y persistencia JSON/Postgres.
 - Invitaciones entre amistades a mesas privadas: la cabecera de la mesa y la lista de amistades muestran quién está en línea y en qué mesa juega; invitar o entrar es un clic, sin copiar códigos. La invitación llega al instante a todas las pestañas de la cuenta (o se conserva hasta 10 minutos), se acepta desde un aviso flotante y avisa a quien invitó cuando la persona entra.
+- Fichas en la mesa: cada asiento, fila de la clasificación y nombre de la tribuna abre la ficha pública de esa persona (avatar, saldo virtual, estadísticas, logros y amistades en común) sin salir de la partida; entre cuentas se puede mandar, aceptar, retirar o rechazar la solicitud de amistad desde la misma ventana, con la relación actualizada al instante en las dos cuentas.
 - Calendario visual estacional: 12 diseños originales (uno por mes) que rotan automáticamente, editables por separado con animación e intensidad; zona `CASINO_TIME_ZONE`, activación global opcional y control solo para administradores con MFA.
 - Historial reciente de ganadores y celebraciones breves para grandes resultados.
 - Retos, logros, recompensas por explorar juegos y bono diario.
