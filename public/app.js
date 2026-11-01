@@ -184,8 +184,14 @@
     inviteLink: $('#invite-link'), inviteCopyLink: $('#invite-copy-link'), inviteGuestNote: $('#invite-guest-note'),
     inviteLogin: $('#invite-login'), inviteFriendsSection: $('#invite-friends-section'), inviteFriendsList: $('#invite-friends-list'),
     inviteFriendsSubtitle: $('#invite-friends-subtitle'), inviteStatus: $('#invite-status'),
+    tableProfileModal: $('#table-profile-modal'), tableProfileLoading: $('#table-profile-loading'), tableProfileBody: $('#table-profile-body'),
+    tableProfileAvatar: $('#table-profile-avatar'), tableProfileName: $('#table-profile-name'), tableProfileHandle: $('#table-profile-handle'),
+    tableProfileBadges: $('#table-profile-badges'), tableProfileSeat: $('#table-profile-seat'), tableProfileStats: $('#table-profile-stats'),
+    tableProfileAchievementsSection: $('#table-profile-achievements-section'), tableProfileAchievements: $('#table-profile-achievements'),
+    tableProfileAchievementCount: $('#table-profile-achievement-count'), tableProfileSocial: $('#table-profile-social'), tableProfileStatus: $('#table-profile-status'),
     roomFriendsSection: $('#room-friends-section'), roomFriendsStrip: $('#room-friends-strip'),
     roomFriendsCount: $('#room-friends-count'), roomFriendsRefresh: $('#room-friends-refresh'), roomFriendsOpen: $('#room-friends-open'),
+    roomSocialNote: $('#room-social-note'), roomSocialNoteCopy: $('#room-social-note-copy'),
     accountOpenBtn: $('#account-open-btn'), accountModal: $('#account-modal'), accountForm: $('#account-form'),
     accountModalTitle: $('#account-modal-title'), accountModalCopy: $('#account-modal-copy'),
     accountUsername: $('#account-username'), accountPassword: $('#account-password'), accountError: $('#account-error'),
@@ -291,6 +297,8 @@
     // Invitaciones de amistad a mesas privadas (efímeras, en memoria).
     invites: [], inviteTimer: null, inviteModalOpen: false, friendPresence: {}, inviteCooldowns: new Map(),
     pendingFriendInvite: null, // amistad elegida en el lobby para invitar al crear la mesa
+    // Ficha de una persona de la misma mesa (ver perfil / pedir amistad).
+    tableProfile: null, tableProfileFor: null, tableProfileRequest: 0, tableProfileOpener: null,
     rouletteAngle: 0, rouletteSpin: null, rouletteRaf: null, slotsSpin: null, slotsRaf: null, resultQueue: [],
     fortuneAngle: 0, fortuneLanded: null, fortuneSpin: null, fortuneTimer: null,
     spectating: false
@@ -1023,7 +1031,7 @@
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
     if (bettingSpaceModalIsOpen()) { closeBettingSpaceModal(); return; }
-    closeCollectionModal(); closeModal(); closeProfileModal(); closeAccountModal(); closeInviteModal(); toggleShortcutHelp(false);
+    closeCollectionModal(); closeModal(); closeProfileModal(); closeAccountModal(); closeInviteModal(); closeTableProfile(); toggleShortcutHelp(false);
   });
   // Fases 5 y 6: saltar animaciones (botones presentes en mesa o panel de acciones)
   document.addEventListener('click', event => {
@@ -1689,20 +1697,29 @@
       const removeControl = ui.me?.isHost && player.id !== ui.me.id
         ? player.isBot ? `<button class="kick-btn remove-bot-btn" data-remove-bot="${escapeHtml(player.id)}" title="Retirar bot">×</button>` : `<button class="kick-btn" data-kick="${escapeHtml(player.id)}" title="Retirar jugador">×</button>`
         : '';
-      return `<div class="player-row ${player.isBot ? 'bot-player' : ''} ${isTurn ? 'turn' : ''} ${botThinking ? 'bot-thinking' : ''} ${rank === 1 ? 'rank-leader' : ''} ${chipsClass}">
+      // Cada asiento ajeno es una puerta a su ficha: ver el perfil y, entre
+      // cuentas, mandar o aceptar la solicitud de amistad sin salir de la mesa.
+      // La fila entera responde al clic, pero el foco de teclado va por el
+      // botón ♧ —la fila contiene el botón de retirar y no debe anidarlo.
+      const viewable = player.id !== ui.me?.id;
+      const rowAttrs = viewable ? ` data-table-profile="${escapeHtml(player.id)}"` : '';
+      return `<div class="player-row ${player.isBot ? 'bot-player' : ''} ${isTurn ? 'turn' : ''} ${botThinking ? 'bot-thinking' : ''} ${rank === 1 ? 'rank-leader' : ''} ${chipsClass} ${viewable ? 'is-viewable' : ''}"${rowAttrs}>
         <span class="player-rank ${rank === 1 ? 'top' : ''}">${rank === 1 ? '♛' : '#' + rank}</span>
         ${avatarMarkup(player)}
         <div class="player-meta"><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${fanPinMarkup(player.fanPin)}${botBadge} ${player.id === ui.me?.id ? '<small>(tú)</small>' : ''}</b>${passportTitleMarkup(player.passport)}${botDescriptor}<span>${escapeHtml(status)}</span>${bet ? `<span class="player-bet-mini">◆ ${formatChips(bet)} en juego</span>` : ''}</div>
         <span class="rank-change ${rankClass}">${rankCopy}</span>
-        ${player.isHost ? '<span class="host-crown" title="Anfitrión">♛</span>' : ''}${removeControl}
+        ${player.isHost ? '<span class="host-crown" title="Anfitrión">♛</span>' : ''}${viewable ? `<button type="button" class="player-card-hint" data-table-profile="${escapeHtml(player.id)}" aria-label="Ver la ficha de ${escapeHtml(player.name)}" title="Ver su perfil y pedir amistad">♧</button>` : ''}${removeControl}
       </div>`;
     }).join('');
     // Fase 8: tribuna de espectadores conectados.
     const spectators = room.spectators || [];
     if (spectators.length) {
-      const names = spectators.map(spectator => escapeHtml(spectator.name)).join(', ');
+      const names = spectators.map(spectator => spectator.id === ui.me?.id
+        ? escapeHtml(spectator.name)
+        : `<button type="button" class="spectator-name" data-table-profile="${escapeHtml(spectator.id)}" title="Ver la ficha de ${escapeHtml(spectator.name)}">${escapeHtml(spectator.name)}</button>`).join(', ');
       els.playersList.insertAdjacentHTML('beforeend', `<div class="spectators-row" title="Espectadores conectados">👁 Tribuna (${spectators.length}): ${names}</div>`);
     }
+    renderRoomSocialNote();
     ui.previousRanks = nextRanks;
     ui.previousChips = new Map(room.players.map(player => [player.id, Number(player.chips)]));
     $$('[data-kick]').forEach(button => button.addEventListener('click', async () => {
@@ -1792,11 +1809,15 @@
     const cards = player.hand?.length ? player.hand.map(card => cardHtml(card, true)).join('') : '';
     const bet = player.roundBet > 0 ? `<div class="seat-bet"><i></i>${formatChips(player.roundBet)}</div>` : '';
     const status = seatStatus(player, room);
-    return `<div class="table-seat seat-${index} ${classes}"><div class="seat-cards">${cards}</div><div class="seat-head">
+    const headTag = player.id === ui.me?.id ? 'div' : 'button';
+    const headAttrs = headTag === 'button'
+      ? ` type="button" class="seat-head is-viewable" data-table-profile="${escapeHtml(player.id)}" aria-label="Ver la ficha de ${escapeHtml(player.name)}" title="Ver la ficha de ${escapeHtml(player.name)}"`
+      : ' class="seat-head"';
+    return `<div class="table-seat seat-${index} ${classes}"><div class="seat-cards">${cards}</div><${headTag}${headAttrs}>
       ${equippedAvatarMarkup(player, 'seat-avatar')}
       <div class="seat-info"><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${fanPinMarkup(player.fanPin)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}</b>${passportTitleMarkup(player.passport)}<span>◆ ${formatChips(player.chips)}</span></div>
       ${index === room.dealerIndex ? '<i class="dealer-button">D</i>' : ''}${status ? `<span class="seat-status">${escapeHtml(status)}</span>` : ''}
-      </div>${bet}</div>`;
+      </${headTag}>${bet}</div>`;
   }
   function renderPokerTable() {
     const room = ui.room;
@@ -1823,10 +1844,14 @@
     const status = player.id === room.turnId
       ? `${player.id === ui.me?.id ? 'TU TURNO' : 'EN TURNO'}${player.split ? ` · MANO ${player.split.active === 'split' ? '2' : '1'}` : ''}`
       : result?.label || (player.status === 'blackjack' ? 'BLACKJACK' : '');
-    return `<div class="table-seat blackjack-seat seat-${index} ${classes}"><div class="seat-cards ${player.split && mainActive ? 'active-hand' : ''}">${cards}</div>${splitRow}<div class="seat-head">
+    const headTag = player.id === ui.me?.id ? 'div' : 'button';
+    const headAttrs = headTag === 'button'
+      ? ` type="button" class="seat-head is-viewable" data-table-profile="${escapeHtml(player.id)}" aria-label="Ver la ficha de ${escapeHtml(player.name)}" title="Ver la ficha de ${escapeHtml(player.name)}"`
+      : ' class="seat-head"';
+    return `<div class="table-seat blackjack-seat seat-${index} ${classes}"><div class="seat-cards ${player.split && mainActive ? 'active-hand' : ''}">${cards}</div>${splitRow}<${headTag}${headAttrs}>
       ${equippedAvatarMarkup(player, 'seat-avatar')}<div class="seat-info"><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${fanPinMarkup(player.fanPin)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}${insuranceBadge}</b>${passportTitleMarkup(player.passport)}<span>◆ ${formatChips(player.chips)}</span></div>
       ${score !== '' ? `<i class="hand-total">${score}</i>` : ''}${status ? `<span class="seat-status">${escapeHtml(status)}</span>` : ''}
-      </div>${bet}</div>`;
+      </${headTag}>${bet}</div>`;
   }
   function renderBlackjackTable() {
     const room = ui.room;
@@ -2179,7 +2204,9 @@
     const result = room.results?.find(item => item.id === player.id);
     const choice = quickChoiceLabel(room.game, player.quickChoice);
     const suspense = (room.game === 'roulette' && ui.rouletteSpin) || (room.game === 'slots' && ui.slotsSpin); // sin brillo de ganador hasta que termine la animación
-    return `<div class="quick-bet-seat ${player.bot?.thinking ? 'bot-thinking' : ''} ${!suspense && result?.amount > 0 ? 'winner' : ''}" style="--seat:${index}">
+    const viewable = player.id !== ui.me?.id;
+    const attrs = viewable ? ` role="button" tabindex="0" data-table-profile="${escapeHtml(player.id)}" aria-label="Ver la ficha de ${escapeHtml(player.name)}" title="Ver la ficha de ${escapeHtml(player.name)}"` : '';
+    return `<div class="quick-bet-seat ${player.bot?.thinking ? 'bot-thinking' : ''} ${!suspense && result?.amount > 0 ? 'winner' : ''} ${viewable ? 'is-viewable' : ''}" style="--seat:${index}"${attrs}>
       ${equippedAvatarMarkup(player, 'seat-avatar')}
       <div><b>${escapeHtml(player.name)}${passportBadgeMarkup(player.passport)}${fanPinMarkup(player.fanPin)}${player.isBot ? '<i class="seat-bot-badge">BOT</i>' : ''}</b>${passportTitleMarkup(player.passport)}<span>${player.bot?.thinking ? 'Pensando…' : player.bet ? `◆ ${formatChips(player.bet)} · ${escapeHtml(choice)}` : `${formatChips(player.chips)} fichas`}</span></div>
     </div>`;
@@ -3643,8 +3670,8 @@
     if (els.inviteRoomMeta) els.inviteRoomMeta.textContent = `${meta.icon} ${meta.name} · ${players}/${capacity} en mesa`;
     if (els.inviteLink) els.inviteLink.value = inviteRoomUrl(room.code);
   }
-  async function ensureCommunityFriends() {
-    if (Array.isArray(ui.communityData?.friends)) return ui.communityData.friends;
+  async function ensureCommunityFriends(force = false) {
+    if (!force && Array.isArray(ui.communityData?.friends)) return ui.communityData.friends;
     if (!ui.accountSession?.accountId) return [];
     const response = await communityRequest('/api/social/v1/me');
     if (!response.ok) return null;
@@ -3787,6 +3814,347 @@
     renderRoomFriends();
     if (friends !== null && friends.length) await refreshFriendPresence();
     renderRoomFriends();
+  }
+  // ---------- Ficha de una persona de la misma mesa ----------
+  // Ver quién juega contigo no debe obligar a salir de la partida ni a copiar
+  // un @usuario. El servidor arma la ficha pública del asiento (y la relación
+  // de comunidad) y aquí solo se pinta. Los regalos del lobby (presencia de
+  // amistades y bandeja de solicitudes) se actualizan en cuanto la solicitud
+  // sale, para que la lista de Amigos de la mesa lo refleje sin recargar.
+  const TABLE_RELATION_COPY = {
+    self: 'Esta ficha es tuya.',
+    bot: 'Asistente del casino · sin cuenta.',
+    guest: 'Juega sin cuenta · la amistad necesita una cuenta.',
+    unknown: 'Inicia sesión con tu cuenta para ver su ficha completa y mandar solicitudes.',
+    friend: 'Ya son amistades.',
+    outgoing: 'Solicitud enviada · esperando respuesta.',
+    incoming: 'Te envió una solicitud.',
+    none: 'Todavía no hay relación entre sus cuentas.'
+  };
+  function isTableProfileOpen() {
+    return Boolean(els.tableProfileModal?.classList.contains('open'));
+  }
+  function currentTablePlayer(playerId) {
+    if (!playerId) return null;
+    return (ui.room?.players || []).find(player => player.id === playerId)
+      || (ui.room?.spectators || []).find(spectator => spectator.id === playerId)
+      || null;
+  }
+  function tableProfileCompanionsSeat() {
+    return (ui.room?.players || []).filter(player => player.id !== ui.me?.id).length
+      + (ui.room?.spectators || []).filter(spectator => spectator.id !== ui.me?.id).length;
+  }
+  function renderTableProfileEmpty(message) {
+    if (els.tableProfileLoading) {
+      els.tableProfileLoading.textContent = message;
+      els.tableProfileLoading.classList.remove('hidden');
+    }
+    els.tableProfileBody?.classList.add('hidden');
+  }
+  function tableProfileBadgesMarkup(profile) {
+    const badges = [];
+    if (profile.isBot) badges.push('<span class="table-profile-badge is-bot">🤖 BOT</span>');
+    else if (profile.account === true) badges.push('<span class="table-profile-badge is-account">✓ Cuenta</span>');
+    else if (profile.account === false) badges.push('<span class="table-profile-badge">Invitado</span>');
+    else badges.push('<span class="table-profile-badge">♧ Comunidad</span>');
+    if (profile.seat?.isHost) badges.push('<span class="table-profile-badge is-host">♛ Anfitrión</span>');
+    if (profile.seat?.isSpectator) badges.push('<span class="table-profile-badge">👁 Tribuna</span>');
+    if (profile.championBanner) badges.push('<span class="table-profile-badge is-gold">🎖️ Ganó una temporada</span>');
+    if (profile.medals > 0) badges.push(`<span class="table-profile-badge is-gold">🥇 ×${formatChips(profile.medals)}</span>`);
+    if (profile.mutualFriends > 0) badges.push(`<span class="table-profile-badge is-account">♧ ${profile.mutualFriends} ${profile.mutualFriends === 1 ? 'amistad' : 'amistades'} en común</span>`);
+    return badges.join('');
+  }
+  function renderTableProfile() {
+    const profile = ui.tableProfile;
+    if (!profile) return;
+    els.tableProfileLoading?.classList.add('hidden');
+    els.tableProfileBody?.classList.remove('hidden');
+    if (els.tableProfileAvatar) {
+      els.tableProfileAvatar.innerHTML = cosmeticAvatarContents(profile);
+      els.tableProfileAvatar.style.background = profile.collection?.equipped?.avatar?.art ? 'transparent' : avatarColor(profile.id);
+    }
+    if (els.tableProfileName) els.tableProfileName.textContent = profile.name || 'Jugador';
+    if (els.tableProfileHandle) {
+      els.tableProfileHandle.textContent = profile.account && profile.username
+        ? `@${profile.username}`
+        : profile.isBot ? 'Asistente automático del casino'
+          : profile.account === false ? 'Cuenta no vinculada en este perfil'
+            : 'Ficha pública de la mesa';
+    }
+    if (els.tableProfileBadges) els.tableProfileBadges.innerHTML = tableProfileBadgesMarkup(profile);
+    if (els.tableProfileSeat) {
+      const seat = profile.seat || {};
+      const where = seat.isSpectator ? 'En la tribuna' : seat.index != null ? `En el asiento ${seat.index + 1}` : 'En la mesa';
+      const chips = `◆ ${formatChips(profile.chips)} fichas virtuales`;
+      els.tableProfileSeat.innerHTML = `<span>${escapeHtml(where)}</span><span>${chips}</span>`;
+    }
+    const stats = profile.stats || {};
+    if (els.tableProfileStats) {
+      els.tableProfileStats.innerHTML = [
+        ['RONDAS', formatChips(stats.roundsPlayed)],
+        ['VICTORIAS', formatChips(stats.wins)],
+        ['% DE VICTORIAS', `${Number(stats.winRate) || 0}%`],
+        ['MAYOR GANANCIA', `+${formatChips(stats.biggestWin)}`],
+        ['MEJOR RACHA', formatChips(stats.bestStreak)],
+        ['JUEGOS', `${formatChips(stats.differentGames)} / 6`]
+      ].map(([label, value]) => `<div class="table-profile-stat"><small>${label}</small><b>${value}</b></div>`).join('');
+    }
+    if (els.tableProfileAchievementsSection) {
+      const shown = profile.achievements || [];
+      els.tableProfileAchievementsSection.classList.toggle('hidden', profile.isBot);
+      if (els.tableProfileAchievementCount) {
+        els.tableProfileAchievementCount.textContent = `${formatChips(profile.achievementCount)} / ${formatChips(profile.achievementTotal)}`;
+      }
+      if (els.tableProfileAchievements) {
+        els.tableProfileAchievements.innerHTML = shown.length
+          ? shown.map(item => `<span class="table-profile-achievement" title="${escapeHtml(item.description)}">${escapeHtml(item.icon)} ${escapeHtml(item.name)}</span>`).join('')
+            + (profile.achievementCount > shown.length ? `<span class="table-profile-achievement is-more">+${formatChips(profile.achievementCount - shown.length)} más</span>` : '')
+          // En la ficha de respaldo (sin sesión) los logros no viajan en
+          // room_state: mejor decirlo que insinuar que no tiene ninguno.
+          : profile.localOnly
+            ? '<p class="community-empty">Inicia sesión para ver sus logros.</p>'
+            : '<p class="community-empty">Aún no desbloqueó logros.</p>';
+      }
+    }
+    renderTableProfileSocial();
+  }
+  function setTableProfileStatus(message = '', type = 'success') {
+    if (!els.tableProfileStatus) return;
+    els.tableProfileStatus.textContent = message;
+    els.tableProfileStatus.dataset.type = message ? type : '';
+  }
+  function renderTableProfileSocial() {
+    const container = els.tableProfileSocial;
+    const profile = ui.tableProfile;
+    if (!container || !profile) return;
+    const targetId = escapeHtml(profile.id);
+    const targetName = escapeHtml(profile.name || 'Jugador');
+    const logged = Boolean(ui.accountSession?.accountId);
+    // La ficha llega del servidor; una relación «bot» o «guest» manda sobre el
+    // estado de amistad porque esa persona no tiene cuenta que agregar. La
+    // relación efectiva se recalcula sin volver a escribir ui.tableProfile:
+    // sobrescribir la ficha aquí deshacía la relación recién guardada en el
+    // acuse de la solicitud (quedaba «Mandar solicitud» después de enviarla).
+    const relationship = profile.isBot ? 'bot' : profile.account === false ? 'guest' : profile.relationship;
+    let actions = '';
+    if (relationship === 'bot') {
+      actions = '<span class="table-profile-note">Asistente automático del casino: no tiene cuenta ni recibe solicitudes.</span>';
+    } else if (relationship === 'guest') {
+      actions = '<span class="table-profile-note">Juega sin cuenta, así que todavía no puede recibir una solicitud. Puedes invitarle a otra mesa compartiendo el enlace.</span>';
+    } else if (relationship === 'unknown' || (relationship === 'none' && !logged)) {
+      actions = '<span class="table-profile-note">Inicia sesión con una cuenta para mandar solicitudes desde la mesa.</span><button type="button" class="social-action" data-table-profile-login>Iniciar sesión</button>';
+    } else if (relationship === 'none') {
+      actions = `<button type="button" class="social-action" data-table-friend-request="${targetId}" aria-label="Mandarle una solicitud de amistad a ${targetName}">＋ Mandar solicitud</button>`;
+    } else if (relationship === 'incoming') {
+      actions = `<button type="button" class="social-action" data-table-friend-accept="${escapeHtml(profile.requestId || '')}" aria-label="Aceptar la solicitud de ${targetName}">✓ Aceptar solicitud</button>`
+        + `<button type="button" class="social-action is-muted" data-table-friend-decline="${escapeHtml(profile.requestId || '')}" aria-label="Rechazar la solicitud de ${targetName}">Rechazar</button>`;
+    } else if (relationship === 'outgoing') {
+      actions = '<span class="table-profile-state is-pending">⏳ Solicitud enviada</span>'
+        + `<button type="button" class="social-action is-muted" data-table-friend-cancel="${escapeHtml(profile.requestId || '')}" aria-label="Retirar la solicitud enviada a ${targetName}">Retirar</button>`;
+    } else if (relationship === 'friend') {
+      actions = '<span class="table-profile-state is-friend">♧ Ya son amistades</span>';
+      if (ui.room && !profile.seat?.isSpectator) {
+        actions += `<button type="button" class="social-action is-muted" data-table-friend-invite="${targetId}" aria-label="Invitar a ${targetName} a otra mesa">Invitar a mi mesa</button>`;
+      }
+    }
+    const note = TABLE_RELATION_COPY[relationship] || '';
+    container.innerHTML = `<div class="table-profile-social-copy"><small>COMUNIDAD</small><p>${escapeHtml(note)}</p></div><div class="table-profile-actions">${actions}</div>`;
+  }
+  function closeTableProfile() {
+    const wasOpen = isTableProfileOpen();
+    ui.tableProfile = null;
+    ui.tableProfileFor = null;
+    ui.tableProfileRequest += 1;
+    els.tableProfileModal?.classList.remove('open');
+    els.tableProfileModal?.setAttribute('aria-hidden', 'true');
+    if (!$$('.modal.open').length) document.body.classList.remove('modal-open');
+    // El foco vuelve a quien abrió la ficha (asiento, fila o tribuna) para no
+    // perder el lugar al cerrar con Escape.
+    const opener = ui.tableProfileOpener;
+    ui.tableProfileOpener = null;
+    if (wasOpen && opener?.isConnected && typeof opener.focus === 'function') opener.focus();
+  }
+  // Ficha de respaldo con lo que ya viaja en room_state. Sirve cuando el
+  // servidor tiene la comunidad apagada (sesiones no habilitadas): se puede
+  // ver quién juega contigo aunque todavía no se pueda pedir amistad. Nunca
+  // inventa datos privados: solo reusa los campos públicos del asiento.
+  function localTableProfile(playerId) {
+    const player = (ui.room?.players || []).find(item => item.id === playerId);
+    const spectator = (ui.room?.spectators || []).find(item => item.id === playerId);
+    const seat = player || spectator;
+    if (!seat) return null;
+    return {
+      id: seat.id,
+      name: seat.name,
+      avatar: seat.avatar || 'fox',
+      // `null` = no se sabe: sin sesión de cuenta el navegador no puede
+      // distinguir a una cuenta real de un invitado, y la ficha no debe
+      // afirmar lo contrario.
+      account: null,
+      username: null,
+      isBot: Boolean(player?.isBot),
+      bot: player?.bot || null,
+      seat: {
+        index: player ? ui.room.players.indexOf(player) : null,
+        isHost: Boolean(player && player.id === ui.room.hostId),
+        isSpectator: Boolean(spectator)
+      },
+      chips: Math.max(0, Number(player?.chips) || 0),
+      stats: player?.stats || seat.stats || {},
+      achievementCount: 0,
+      achievementTotal: 0,
+      achievements: [],
+      passport: seat.passport || null,
+      collection: seat.collection || null,
+      fanPin: seat.fanPin || null,
+      medals: Number(seat.medals) || 0,
+      championBanner: Boolean(seat.championBanner),
+      relationship: player?.isBot ? 'bot' : 'unknown',
+      requestId: null,
+      mutualFriends: 0,
+      localOnly: true
+    };
+  }
+  async function openTableProfile(playerId) {
+    if (!playerId) return;
+    ui.tableProfileRequest += 1;
+    const request = ui.tableProfileRequest;
+    ui.tableProfileFor = playerId;
+    ui.tableProfile = null;
+    ui.tableProfileOpener = document.activeElement?.closest?.('[data-table-profile]')
+      || document.querySelector(`[data-table-profile="${playerId}"]`);
+    els.tableProfileModal?.classList.add('open');
+    els.tableProfileModal?.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    els.tableProfileModal?.querySelector('.modal-close')?.focus();
+    renderTableProfileEmpty('Cargando la ficha…');
+    setTableProfileStatus('');
+    if (!ui.accountSession?.accountId) {
+      // Sin cuenta no hay nada que pedirle al servidor: la ficha pública del
+      // asiento ya está en room_state.
+      const local = localTableProfile(playerId);
+      if (!local) { renderTableProfileEmpty('Esa persona ya no está en la mesa.'); return; }
+      ui.tableProfile = local;
+      renderTableProfile();
+      return;
+    }
+    const response = await emitAck('table_profile_get', { playerId });
+    if (request !== ui.tableProfileRequest) return; // se abrió otra ficha entretanto
+    if (!response.ok || !response.profile) {
+      const local = localTableProfile(playerId);
+      if (local && (response.code === 'account_required' || response.code === 'social_unavailable')) {
+        ui.tableProfile = local;
+        renderTableProfile();
+        return;
+      }
+      renderTableProfileEmpty(response.error || 'No se pudo abrir la ficha de esa persona.');
+      return;
+    }
+    ui.tableProfile = response.profile;
+    renderTableProfile();
+  }
+  // Refresca la ficha abierta si la relación cambió por otro camino (la bandeja
+  // del lobby, otra pestaña o el aviso `social_refresh`).
+  async function refreshOpenTableProfile() {
+    if (!isTableProfileOpen() || !ui.tableProfileFor) return;
+    const response = await emitAck('table_profile_get', { playerId: ui.tableProfileFor });
+    if (!response.ok || !response.profile) return;
+    ui.tableProfile = response.profile;
+    renderTableProfile();
+  }
+  async function requestFriendFromTable(button = null) {
+    const profile = ui.tableProfile;
+    if (!profile?.id) return;
+    if (!ui.accountSession?.accountId) {
+      setTableProfileStatus('Inicia sesión con tu cuenta para mandar solicitudes desde la mesa.', 'error');
+      return;
+    }
+    const response = await emitAck('table_friend_request', { playerId: profile.id }, button);
+    if (!response.ok) {
+      setTableProfileStatus(response.error || 'No se pudo enviar la solicitud.', 'error');
+      showToast('Solicitud no enviada', response.error || 'Intenta de nuevo.', 'error');
+      return;
+    }
+    // El acuse ya dice la relación resultante (solicitud enviada o amistad, si
+    // la otra persona había escrito antes). Se conserva el resto de la ficha y
+    // solo se refrescan los datos de comunidad.
+    const relationship = response.relationship === 'friend' ? 'friend' : 'outgoing';
+    ui.tableProfile = { ...ui.tableProfile, relationship, requestId: null, account: true };
+    renderTableProfile();
+    const name = profile.name || profile.username || 'Tu compañero de mesa';
+    if (response.mutual) {
+      setTableProfileStatus('Esa persona ya te había escrito: ahora son amistades.', 'success');
+      showToast('Ya son amistades', `${name} también te había mandado solicitud. La aceptaste desde la mesa.`, 'reward', 4600, '♧');
+    } else if (response.relationship === 'friend') {
+      setTableProfileStatus('Ya son amistades.', 'success');
+    } else if (response.code === 'duplicate_request') {
+      // Doble clic (o la misma solicitud enviada desde otra pestaña): no es un
+      // error, simplemente ya estaba pendiente.
+      setTableProfileStatus('Esa solicitud ya estaba enviada.', 'success');
+    } else {
+      setTableProfileStatus('Solicitud enviada. Le llegará al instante a su cuenta.', 'success');
+      showToast('Solicitud enviada', `${name} la verá en su Comunidad, incluso si sale de la mesa.`, 'notice', 4200, '✚');
+    }
+    playTone('notice');
+    await Promise.all([ensureCommunityFriends(true), refreshOpenTableProfile()]);
+  }
+  async function respondFriendFromTable(requestId, accept) {
+    if (!requestId) return;
+    const response = await communityRequest(`/api/social/v1/friends/requests/${encodeURIComponent(requestId)}${accept ? '/accept' : ''}`, {
+      method: accept ? 'POST' : 'DELETE'
+    });
+    if (!response.ok) {
+      setTableProfileStatus(response.error || 'No se pudo actualizar la solicitud.', 'error');
+      return;
+    }
+    if (accept) {
+      setTableProfileStatus('Solicitud aceptada: ya son amistades.', 'success');
+      showToast('Amistad aceptada', `Ahora puedes invitar a ${ui.tableProfile?.name || 'esta persona'} a tus mesas.`, 'reward', 4200, '♧');
+      playTone('notice');
+    } else {
+      setTableProfileStatus('Solicitud rechazada.', 'success');
+    }
+    await Promise.all([ensureCommunityFriends(true), refreshOpenTableProfile()]);
+  }
+  async function cancelFriendFromTable(requestId) {
+    if (!requestId) return;
+    const response = await communityRequest(`/api/social/v1/friends/requests/${encodeURIComponent(requestId)}`, { method: 'DELETE' });
+    if (!response.ok) {
+      setTableProfileStatus(response.error || 'No se pudo retirar la solicitud.', 'error');
+      return;
+    }
+    setTableProfileStatus('Solicitud retirada.', 'success');
+    await Promise.all([ensureCommunityFriends(true), refreshOpenTableProfile()]);
+  }
+  // Invitar a quien ya es amistad a OTRA mesa (la propia sala siempre se ofrece
+  // desde el panel de invitaciones, porque aquí ya comparten mesa).
+  async function inviteFriendFromTable(profile) {
+    if (!profile?.id) return;
+    closeTableProfile();
+    openInviteModal();
+    const list = els.inviteFriendsList;
+    if (!list) return;
+    await new Promise(resolve => setTimeout(resolve, 60));
+    const button = list.querySelector(`[data-invite-friend="${profile.id}"]`);
+    if (button) { button.click(); return; }
+    setTableProfileStatus(`${profile.name || 'Esa persona'} ya está en esta mesa.`, 'notice');
+  }
+  // Aviso de la barra lateral: qué ofrece la mesa a nivel social y, cuando no
+  // hay amistades todavía, cómo empezar con la gente que ya está sentada.
+  function renderRoomSocialNote() {
+    const note = els.roomSocialNote;
+    if (!note) return;
+    const companions = tableProfileCompanionsSeat();
+    // Sin cuenta la ficha sigue sirviendo (perfil público del asiento) salvo
+    // para mandar solicitudes: el aviso lo explica en lugar de ocultarse.
+    if (!ui.room || companions < 1) { note.classList.add('hidden'); return; }
+    note.classList.remove('hidden');
+    note.dataset.account = ui.accountSession?.accountId ? 'yes' : 'no';
+    if (els.roomSocialNoteCopy) {
+      els.roomSocialNoteCopy.textContent = companions === 1
+        ? 'Compartes mesa con 1 persona. Pulsa su ficha para ver su perfil o mandarle una solicitud.'
+        : `Compartes mesa con ${companions} personas. Pulsa cualquier ficha para ver su perfil o pedir amistad.`;
+    }
   }
   // Un clic desde el lobby: prepara la creación de la mesa y deja la
   // invitación en cola; al crearla, se envía automáticamente.
@@ -3932,6 +4300,49 @@
   els.inviteLink?.addEventListener('click', event => event.target.select());
   els.roomFriendsOpen?.addEventListener('click', openInviteModal);
   els.roomFriendsRefresh?.addEventListener('click', () => { loadRoomFriends(); });
+  // Cualquier ficha de la mesa (lista de clasificación, asiento, tribuna o
+  // barra lateral) abre la misma ventana: un solo lugar para ver el perfil y
+  // gestionar la amistad.
+  document.addEventListener('click', event => {
+    // Los controles del anfitrión (retirar jugador o bot) viven dentro de la
+    // fila: su clic no debe abrir la ficha de nadie.
+    if (event.target.closest?.('[data-kick], [data-remove-bot], .kick-btn')) return;
+    const trigger = event.target.closest?.('[data-table-profile]');
+    if (trigger) { event.preventDefault(); openTableProfile(trigger.dataset.tableProfile); }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const trigger = event.target.closest?.('[data-table-profile]');
+    if (!trigger || trigger.tagName === 'BUTTON') return;
+    event.preventDefault();
+    openTableProfile(trigger.dataset.tableProfile);
+  });
+  $$('[data-close-table-profile]').forEach(element => element.addEventListener('click', closeTableProfile));
+  els.tableProfileSocial?.addEventListener('click', event => {
+    const login = event.target.closest('[data-table-profile-login]');
+    if (login) { closeTableProfile(); openAccountModal(); return; }
+    const request = event.target.closest('[data-table-friend-request]');
+    if (request) { requestFriendFromTable(request); return; }
+    const accept = event.target.closest('[data-table-friend-accept]');
+    if (accept) { respondFriendFromTable(accept.dataset.tableFriendAccept, true); return; }
+    const decline = event.target.closest('[data-table-friend-decline]');
+    if (decline) { respondFriendFromTable(decline.dataset.tableFriendDecline, false); return; }
+    const cancel = event.target.closest('[data-table-friend-cancel]');
+    if (cancel) { cancelFriendFromTable(cancel.dataset.tableFriendCancel); return; }
+    const invite = event.target.closest('[data-table-friend-invite]');
+    if (invite) { inviteFriendFromTable(ui.tableProfile); }
+  });
+  // La bandeja de la comunidad avisa cuando la relación cambió en otra vista o
+  // en otra pestaña de la misma cuenta: la ficha abierta se repinta sin cerrar.
+  socket.on('social_refresh', payload => {
+    if (!ui.accountSession?.accountId) return;
+    if (isTableProfileOpen()) refreshOpenTableProfile();
+    if (payload?.reason === 'friend_request_received' && payload.profileId && ui.room) {
+      const sender = currentTablePlayer(payload.profileId);
+      if (sender) showToast('Solicitud de amistad', `${sender.name} te la mandó desde tu mesa. Ábrela en su ficha.`, 'notice', 5200, '♧', true);
+    }
+    if (payload?.reason === 'friend_added' && Array.isArray(ui.communityData?.friends)) ensureCommunityFriends(true);
+  });
   els.roomFriendsStrip?.addEventListener('click', event => {
     const invite = event.target.closest('[data-room-invite]');
     if (invite) { sendFriendInvite(invite.dataset.roomInvite, invite); return; }
@@ -4426,7 +4837,7 @@
   $('#leave-room').addEventListener('click', () => leaveToLobby(true));
   $('#room-logo').addEventListener('click', event => { event.preventDefault(); leaveToLobby(true); });
   async function leaveToLobby(notifyServer = true) {
-    closeProfileModal(); closeBotControls(); closeInviteModal();
+    closeProfileModal(); closeBotControls(); closeInviteModal(); closeTableProfile();
     // Al salir de la mesa, la caché de la sesión de cuenta adopta el último
     // estado conocido del perfil (si es el mismo de la cuenta): nombre y
     // fichas tal como quedaron tras jugar. Sin esto, el perfil del lobby

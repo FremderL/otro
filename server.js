@@ -52,6 +52,7 @@ const { installCommunityRoutes } = require('./lib/community-http');
 const Community = require('./lib/community');
 const { FriendInviteService } = require('./lib/friend-invites');
 const { presenceFor } = require('./lib/friend-presence');
+const { tableProfileCard, requestFriendshipFromTable } = require('./lib/table-social');
 const { installSeasonalThemeRoutes } = require('./lib/seasonal-theme-http');
 const { LoteriaService } = require('./lib/loteria/service');
 const { CARDS: LOTERIA_CARDS } = require('./lib/loteria/cards');
@@ -2780,6 +2781,82 @@ io.on('connection', socket => {
     if (!actor) return ackResult(ack, actionError('Inicia sesión con tu cuenta para gestionar invitaciones.', 'account_required'));
     friendInvites.dismiss(actor.id, inviteId);
     return ackOk(ack);
+  });
+
+  // ---- Fichas de personas en la misma mesa (ver / pedir amistad sin salir) ----
+  // Solo se comparte lo que ya es público del asiento y, entre cuentas, el
+  // @usuario que la comunidad permite buscar. La relación (amistad, solicitud
+  // enviada o recibida) sale del store de comunidad, no del navegador.
+  socket.on('table_profile_get', ({ playerId } = {}, ack) => {
+    const viewer = accountProfileForSocket(socket);
+    const { room, player } = playerForSocket(socket);
+    if (!room) return ackResult(ack, actionError('Abre una mesa para ver el perfil de sus jugadores.', 'room_required'));
+    const spectator = !player && room.spectators?.find(s => s.id === socket.data.spectatorId && s.connected);
+    if (!player && !spectator) return ackResult(ack, actionError('Únete a la mesa para ver los perfiles de sus jugadores.', 'seat_required'));
+    if (!viewer) return ackResult(ack, actionError('Inicia sesión con tu cuenta para ver el perfil de otras cuentas.', 'account_required'));
+    const wanted = String(playerId || '').slice(0, 80);
+    const seated = room.players.find(item => item.id === wanted);
+    const watcher = (room.spectators || []).find(item => item.id === wanted && item.connected);
+    if (!seated && !watcher) return ackResult(ack, actionError('Esa persona ya no está en la mesa.', 'player_not_found'));
+    const card = tableProfileCard({
+      viewer,
+      target: seated?._profile || watcher?._profile,
+      state: communityStore?.getState?.(),
+      seat: seated
+        ? { index: room.players.indexOf(seated), isHost: seated.id === room.hostId, chips: seated.chips }
+        : { index: null, isHost: false, isSpectator: true },
+      bot: seated?.isBot ? publicBot(seated) : null
+    });
+    if (!card) return ackResult(ack, actionError('Esa persona ya no está en la mesa.', 'player_not_found'));
+    return ackOk(ack, { profile: card.profile });
+  });
+
+  // Envía (o deja pendiente) la solicitud de amistad desde la mesa. Reutiliza la
+  // misma regla de comunidad que la búsqueda y la bandeja de Solicitudes; la
+  // única diferencia es que aquí la persona se identifica por su asiento, que
+  // el servidor ya conoce.
+  socket.on('table_friend_request', ({ playerId } = {}, ack) => {
+    const viewer = accountProfileForSocket(socket);
+    if (!viewer) return ackResult(ack, actionError('Inicia sesión con tu cuenta para mandar solicitudes desde la mesa.', 'account_required'));
+    const { room, player } = playerForSocket(socket);
+    if (!room) return ackResult(ack, actionError('Abre una mesa para mandar solicitudes desde ella.', 'room_required'));
+    const spectator = !player && room.spectators?.find(s => s.id === socket.data.spectatorId && s.connected);
+    if (!player && !spectator) return ackResult(ack, actionError('Únete a la mesa para mandar solicitudes desde ella.', 'seat_required'));
+    const target = room.players.find(item => item.id === String(playerId || '').slice(0, 80));
+    const watcher = (room.spectators || []).find(item => item.id === String(playerId || '').slice(0, 80) && item.connected);
+    const targetProfile = target?._profile || watcher?._profile;
+    if (!targetProfile) return ackResult(ack, actionError('Esa persona ya no está en la mesa.', 'player_not_found'));
+    if (target?.isBot || !targetProfile.username) {
+      return ackResult(ack, actionError('Esa persona juega sin cuenta: la amistad necesita una cuenta.', 'account_target_required'));
+    }
+    if (!communityStore) return ackResult(ack, actionError('La comunidad no está disponible en este servidor.', 'community_unavailable'));
+    // La transacción y la regla de amistad viven en lib/table-social.js: la
+    // misma función cubierta por las pruebas unitarias es la que corre aquí.
+    const outcome = communityStore.transact(state => requestFriendshipFromTable({
+      viewer, target: targetProfile, state, profiles: profiles.profiles
+    }));
+    return Promise.resolve(outcome).then(result => {
+      if (!result?.ok) return ackResult(ack, actionError(result?.error || 'No se pudo enviar la solicitud.', result?.code));
+      const friendship = result.relationship === 'friend';
+      // La bandeja de ambas cuentas (y su lista de amistades) se entera en el
+      // mismo instante, sin esperar a que nadie abra la Comunidad.
+      io.to(`account:${viewer.id}`).emit('social_refresh', { reason: friendship ? 'friend_added' : 'friend_request_sent', profileId: targetProfile.id });
+      io.to(`account:${targetProfile.id}`).emit('social_refresh', { reason: friendship ? 'friend_added' : 'friend_request_received', profileId: viewer.id });
+      logEvent('table_friend_request', {
+        room: room.code, game: room.game, from: viewer.id, to: targetProfile.id,
+        code: result.code, mutual: Boolean(result.mutual)
+      });
+      return ackOk(ack, {
+        code: result.code,
+        message: result.error,
+        mutual: Boolean(result.mutual),
+        relationship: result.relationship,
+        target: { id: targetProfile.id, name: targetProfile.name, username: targetProfile.username }
+      });
+    }).catch(error => {
+      console.warn('No se pudo registrar la solicitud desde la mesa:', error.message);
+      return ackResult(ack, actionError('No se pudo registrar la solicitud. Inténtalo de nuevo.', 'server_error'));
+    });
   });
 
   socket.on('create_room', ({ name, roomName, game, token, avatar, tos } = {}, ack) => {

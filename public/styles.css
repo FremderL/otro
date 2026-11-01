@@ -2173,3 +2173,79 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 .room-friends-empty button { margin-top:3px; border:0; color:var(--mint-2); background:transparent; font-size:8.5px; font-weight:800; text-decoration:underline; }
 .room-friends-open { width:100%; min-height:25px; margin:5px 0 2px; border:1px solid var(--line); border-radius:7px; color:var(--muted); background:rgba(255,255,255,.02); font-size:8px; font-weight:800; transition:.15s; }
 .room-friends-open:hover { color:var(--mint-2); border-color:rgba(82,224,174,.3); background:rgba(82,224,174,.05); }
+
+/* ---------- Ficha de una persona de la misma mesa (ver / pedir amistad) ---------- */
+/* Las fichas ya eran visibles; ahora son la puerta al perfil del asiento. El
+   foco de teclado y el contorno solo aparecen al interactuar, para no llenar la
+   mesa de adornos mientras se juega. */
+.table-seat .seat-head.is-viewable { appearance:none; -webkit-appearance:none; font:inherit; color:inherit; cursor:pointer; text-align:left; }
+.table-seat .seat-head.is-viewable:hover { border-color:rgba(82,224,174,.38); box-shadow:0 0 0 2px rgba(82,224,174,.1),0 8px 18px rgba(0,0,0,.46); }
+.table-seat .seat-head.is-viewable:focus-visible { outline:2px solid var(--mint); outline-offset:3px; }
+.quick-bet-seat.is-viewable { cursor:pointer; transition:border-color .2s,box-shadow .2s; }
+.quick-bet-seat.is-viewable:hover { border-color:rgba(82,224,174,.4); box-shadow:0 0 0 2px rgba(82,224,174,.09),0 8px 18px rgba(0,0,0,.36); }
+.quick-bet-seat.is-viewable:focus-visible { outline:2px solid var(--mint); outline-offset:3px; }
+.player-row.is-viewable { cursor:pointer; }
+.player-card-hint { width:21px; height:21px; flex:none; display:grid; place-items:center; padding:0; border:1px solid rgba(82,224,174,.22); border-radius:6px; color:var(--mint); background:rgba(82,224,174,.05); font-size:9.5px; line-height:1; opacity:.55; transition:opacity .15s,border-color .15s,background .15s; }
+.player-row.is-viewable:hover .player-card-hint, .player-card-hint:focus-visible { opacity:1; }
+.player-card-hint:hover { border-color:rgba(82,224,174,.55); background:rgba(82,224,174,.16); }
+.player-card-hint:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+.spectator-name { padding:0; border:0; color:var(--mint-2); background:transparent; font:inherit; text-decoration:underline dotted rgba(82,224,174,.45); text-underline-offset:2px; cursor:pointer; }
+.spectator-name:hover { color:var(--mint); }
+
+.room-social-note { margin-top:4px; }
+.room-social-note.hidden { display:none; }
+.room-social-note-inner { display:flex; align-items:flex-start; gap:7px; padding:7px 8px; border:1px dashed rgba(82,224,174,.2); border-radius:8px; background:rgba(82,224,174,.035); }
+.room-social-note-inner > span { flex:none; color:var(--mint); font-size:11px; line-height:1.4; }
+.room-social-note-inner p { margin:0; color:var(--muted-2); font-size:8.5px; line-height:1.5; }
+.room-social-note[data-account="no"] .room-social-note-inner { border-color:rgba(229,189,114,.22); background:rgba(229,189,114,.04); }
+.room-social-note[data-account="no"] .room-social-note-inner > span { color:var(--gold); }
+
+.table-profile-card { width:min(520px,calc(100% - 28px)); max-height:min(760px,calc(100dvh - 28px)); padding:26px 28px 22px; border-color:rgba(82,224,174,.24); }
+.table-profile-loading { min-height:120px; display:grid; place-items:center; color:var(--muted); font-size:11px; text-align:center; }
+.table-profile-loading.hidden { display:none; }
+.table-profile-body.hidden { display:none; }
+.table-profile-head { display:flex; align-items:center; gap:14px; padding-right:26px; }
+.table-profile-avatar { width:62px; height:62px; flex:none; display:grid; place-items:center; overflow:hidden; border:1px solid rgba(229,189,114,.4); border-radius:18px; box-shadow:0 0 26px rgba(229,189,114,.1),inset 0 1px rgba(255,255,255,.1); font-size:29px; }
+.table-profile-avatar .equipped-avatar-art { border-radius:inherit; }
+.table-profile-copy { min-width:0; display:grid; gap:2px; }
+.table-profile-copy .kicker { font-size:8.5px; letter-spacing:.16em; }
+.table-profile-copy h2 { margin:3px 0 0; color:#f0f5f1; font:800 clamp(21px,3.4vw,26px) var(--display); letter-spacing:-.03em; }
+.table-profile-handle { margin:2px 0 0; color:var(--muted); font-size:10px; }
+.table-profile-badges { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
+.table-profile-badge { padding:3px 7px; border:1px solid rgba(255,255,255,.1); border-radius:20px; color:#b9c8c4; background:rgba(255,255,255,.03); font-size:8px; font-weight:800; letter-spacing:.03em; }
+.table-profile-badge.is-account { border-color:rgba(82,224,174,.3); color:var(--mint-2); background:rgba(82,224,174,.07); }
+.table-profile-badge.is-host, .table-profile-badge.is-gold { border-color:rgba(229,189,114,.32); color:var(--gold-2); background:rgba(229,189,114,.07); }
+.table-profile-badge.is-bot { border-color:rgba(77,219,232,.28); color:#8fe3ec; background:rgba(77,219,232,.07); }
+.table-profile-seat { display:flex; flex-wrap:wrap; gap:6px 14px; margin:14px 0 0; padding:9px 11px; border:1px solid rgba(255,255,255,.07); border-radius:9px; background:rgba(255,255,255,.02); color:var(--muted); font-size:9.5px; }
+.table-profile-seat span:last-child { color:var(--gold-2); }
+.table-profile-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin:13px 0; }
+.table-profile-stat { padding:9px 10px; border:1px solid rgba(255,255,255,.07); border-radius:9px; background:rgba(255,255,255,.02); }
+.table-profile-stat small { display:block; color:var(--muted-2); font-size:7px; font-weight:800; letter-spacing:.1em; }
+.table-profile-stat b { display:block; margin-top:5px; color:#e7efeb; font:750 15px var(--display); }
+.table-profile-section { margin:0 0 13px; }
+.table-profile-section.hidden { display:none; }
+.table-profile-section-title { min-height:26px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); }
+.table-profile-section-title span { color:var(--muted); font-size:8px; font-weight:900; letter-spacing:.14em; }
+.table-profile-section-title small { color:var(--muted-2); font-size:8.5px; }
+.table-profile-achievements { display:flex; flex-wrap:wrap; gap:5px; margin-top:9px; }
+.table-profile-achievement { padding:4px 8px; border:1px solid rgba(229,189,114,.2); border-radius:20px; color:#e3d6b4; background:rgba(229,189,114,.055); font-size:8.5px; }
+.table-profile-achievement.is-more { border-color:rgba(255,255,255,.09); color:var(--muted-2); background:rgba(255,255,255,.02); }
+.table-profile-social { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; margin-top:14px; padding:12px; border:1px solid rgba(82,224,174,.18); border-radius:11px; background:linear-gradient(115deg,rgba(82,224,174,.055),rgba(255,255,255,.012)); }
+.table-profile-social-copy { min-width:0; flex:1 1 190px; display:grid; gap:3px; }
+.table-profile-social-copy small { color:var(--mint); font-size:7.5px; font-weight:900; letter-spacing:.14em; }
+.table-profile-social-copy p { margin:0; color:var(--muted); font-size:9.5px; line-height:1.5; }
+.table-profile-actions { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.table-profile-actions .social-action { min-height:33px; font-size:9.5px; }
+.table-profile-state { display:inline-flex; align-items:center; padding:0 8px; font-size:9.5px; font-weight:800; }
+.table-profile-state.is-friend { color:var(--mint-2); }
+.table-profile-state.is-pending { color:var(--gold-2); }
+.table-profile-note { color:var(--muted-2); font-size:9px; line-height:1.5; }
+.table-profile-footnote { margin:8px 0 0; color:var(--muted-2); font-size:8px; line-height:1.5; }
+.table-profile-modal .community-status { min-height:15px; margin:6px 0 0; font-size:9.5px; }
+@media (max-width:720px) {
+  .table-profile-card { width:calc(100% - 16px); max-height:calc(100dvh - 16px); padding:20px 15px 16px; border-radius:15px; }
+  .table-profile-head { gap:10px; }
+  .table-profile-avatar { width:50px; height:50px; border-radius:14px; font-size:24px; }
+  .table-profile-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .table-profile-social { flex-direction:column; align-items:stretch; }
+}

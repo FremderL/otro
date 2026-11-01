@@ -14,6 +14,7 @@ virtuales. `FOOTBALL_ENABLED` sigue apagado en producción (`render.yaml`).
 | Traspasos | Conectado al Estadio: anuncio del día 15 y cambios para el siguiente ciclo | Pruebas JSON, Socket.IO, interfaz y persistencia PostgreSQL real aislada; Estadio apagado en producción. |
 | Destacados y horarios | Resúmenes al finalizar desde la cronología oficial; calendario escalonado y día doble a +30 min | Sin resúmenes inventados para partidos antiguos; la nueva parrilla se usa al generar nuevas temporadas. |
 | Moderación y seguridad | Migración aditiva y prueba PostgreSQL de reportes, evidencia, acciones y revocación; protección de cuentas verificadas en sockets de Estadio | La administración requiere configuración segura y migración para habilitarse; las rutas legadas y la concurrencia del saldo requieren revisión. |
+| Fichas en la mesa | **Disponible en código**: asientos, filas de la clasificación y tribuna abren la ficha pública de la persona; la solicitud de amistad se manda y se responde sin salir de la partida. Pruebas unitarias de la regla (`lib/table-social.js`), de interfaz en JSDOM y de socket real (mismo dispositivo, sesiones de cuenta apagadas) | La petición de amistad exige cuenta verificada a ambos lados; con `ACCOUNT_SESSIONS_ENABLED=off` la ficha se arma solo con lo público de `room_state` y no ofrece amistad. Un flujo completo de dos cuentas necesita PostgreSQL (`DATABASE_URL` + `APP_ORIGIN` HTTPS) y no se probó con dos navegadores reales. |
 
 ## Rueda
 
