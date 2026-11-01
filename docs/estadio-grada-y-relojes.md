@@ -127,14 +127,61 @@ En el panel *Reacciones y charla* hay una franja nueva:
 Los mensajes de la grada cruzan el terreno de juego mientras el partido se juega (`public/estadio.js`,
 `pushDanmaku()`; estilos en `public/estadio.css`).
 
-- Cada comentario es un elemento independiente con **su propio botón ✕**: se quita *ese* comentario,
-  no todos. No hay interruptor global.
-- Máximo 6 en pantalla; los más viejos salen solos.
-- El recorrido dura 11 s y el elemento se elimina al terminar la animación (con un temporizador de
-  seguridad por si la pestaña queda en segundo plano).
-- `prefers-reduced-motion`: sin desplazamiento; los comentarios se apilan en una lista breve.
-- Accesibilidad: la capa es `aria-hidden` porque el mismo texto ya está en el registro accesible
-  (`role="log"`) del panel de la grada; el botón ✕ sí es alcanzable con teclado.
+- Recorrido **de derecha a izquierda** (`@keyframes estDanmaku`: `left: 100%` → `left: -100%`), 11 s.
+  Solo cruzan la cancha los mensajes de la charla (`football:chat`); las reacciones rápidas se quedan
+  en el registro de la grada. El elemento se elimina al terminar la animación, con un temporizador de
+  seguridad de 16 s por si la pestaña queda en segundo plano.
+- Cada comentario es un elemento independiente con **su propio botón ✕** (etiquetado con el nombre de
+  quien lo escribió): se quita *ese* comentario, no todos.
+
+### Control de cantidad: si la grada se acelera, se silencia sola la mayoría
+
+Pedido: los comentarios deben deslizarse por la cancha, pero **la cantidad no puede tapar el partido**.
+`pushDanmaku()` no pinta todo lo que llega: lo pasa por una cola corta y unos carriles.
+
+| Límite | Valor | Qué evita |
+| --- | --- | --- |
+| `DANMAKU_LANES` | 5 carriles (uno por altura) | Dos comentarios nunca comparten altura: la animación solo mueve `left`, así que el carril se conserva todo el trayecto |
+| `DANMAKU_MAX` | 5 en pantalla (uno por carril) | Una nube de comentarios sobre la jugada |
+| `DANMAKU_MIN_GAP` | 900 ms entre salidas | Ráfagas ilegibles |
+| `DANMAKU_QUEUE_MAX` | 3 en espera | Colas infinitas: lo que no cabe **se silencia al momento** |
+| `DANMAKU_QUEUE_TTL` | 6 s de espera máxima | Comentarios viejos que llegan cuando ya cambió la jugada |
+| `DANMAKU_LIFETIME` | 16 s | Que un comentario se quede pegado si la pestaña se va a segundo plano |
+
+Consecuencia práctica: si entran 15 mensajes de golpe, **cruzan 4** y los otros 11 se descartan de la
+cancha (siguen, todos, en el registro accesible de la grada). Un carril se libera cuando su comentario
+termina de cruzar (`getAnimations()`; si el navegador no lo soporta, 11 s por reloj). El contador de
+omitidos se anuncia por `role="status"` (*«11 comentarios omitidos: la grada iba demasiado rápido»*),
+de modo que el silencio no es silencioso: se explica. Al cambiar de partido la cola se vacía y la
+cancha no arrastra comentarios del partido anterior.
+
+Con `prefers-reduced-motion` no hay deslizamiento: los comentarios se apilan como lista breve y **solo
+se ven los tres más recientes** (el resto se oculta igual que en el modo animado).
+
+### Silenciar la grada (interruptor global)
+
+Pedido: además del ✕ por comentario, un botón para que cualquier usuario **silencie** los comentarios
+bala de una vez. Está en la cabecera del panel *Reacciones y charla*, junto a las reacciones:
+**«Silenciar grada» / «Activar grada»** (`#est-danmaku-mute`, `aria-pressed`, `aria-controls="est-danmaku"`).
+
+- Al silenciar se **vacía la capa** y se oculta; los mensajes que sigan llegando **no** cruzan la
+  cancha, pero **sí** se apuntan en el registro accesible de la grada: no se pierde la conversación.
+- La preferencia se guarda en `localStorage` (`montecristo-danmaku-muted = 'off'`) y sobrevive a
+  recargar la página; al arrancar con la grada silenciada se avisa una vez por lector de pantalla.
+- Al reactivar **no se rellena** con lo que llegó durante el silencio: la cancha se repuebla con los
+  mensajes nuevos.
+- Un aviso `role="status"` oculto visualmente (`#est-danmaku-note`, `.est-sr-only`) anuncia el cambio.
+
+**Accesibilidad**: la capa ya **no** es `aria-hidden` —antes lo era y eso dejaba el botón ✕ fuera del
+alcance de los lectores de pantalla—. Ahora la capa es un `role="group"` etiquetado
+(*«Comentarios de la grada sobre la cancha»*) y cada ✕ se anuncia con el nombre de quien escribió;
+el texto no se duplica como texto navegable de la capa, porque ya está en el `role="log"` de la grada.
+
+**Pruebas** (`tests/football-stadium-ui.test.js`): «la charla de la grada cruza la cancha como
+comentario bala, de derecha a izquierda», «si la grada se acelera, solo cruzan unos pocos comentarios y
+el resto se silencia», «un comentario que esperó demasiado ya no sale cuando la cancha se libera»,
+««Silenciar grada» apaga los comentarios bala, los recuerda y se puede reactivar» y «el silencio de la
+grada sobrevive a recargar la página».
 
 ---
 
@@ -175,9 +222,73 @@ misma pasada».
 | `lib/football/stands.js` | Módulo de moderación opt-in (votación, censura dura, limpieza de texto) |
 | `lib/football/sockets.js` | `countdowns` en el lobby, `stands` en el estado del partido, eventos de votación, chat con `soft` |
 | `lib/football/ballon-dor-market.js` | Apertura tardía del ciclo en vez de cancelación |
-| `public/estadio.html` | Relojes DD:HH:MM:SS, capa de comentarios bala, franja de votación |
-| `public/estadio.js` | `tickSeasonCountdowns()`, `pushDanmaku()`, `renderStands()` y cableado de sockets |
-| `public/estadio.css` | Estilos de relojes, comentarios bala y votación |
+| `public/estadio.html` | Relojes DD:HH:MM:SS, capa de comentarios bala (ya accesible), botón «Silenciar grada», franja de votación |
+| `public/estadio.js` | `tickSeasonCountdowns()`, `pushDanmaku()` con cola y carriles (`drainDanmaku()`), `setDanmakuMuted()` / `renderDanmakuMute()`, `renderStands()` y cableado de sockets |
+| `public/estadio.css` | Estilos de relojes, comentarios bala, interruptor de silencio (`.est-crowd-mute`, `.est-sr-only`) y votación |
 | `tests/football-stands.test.js` | 9 pruebas del módulo de grada |
+| `tests/football-stadium-ui.test.js` | 5 pruebas de los comentarios bala, el control de cantidad y el botón de silencio |
 | `tests/football-fixtures.test.js` | Invariante del muro de las 22:00 + `matchRealMs` |
 | `tests/football-ballon-dor-market.test.js` | Apertura tardía y ceremonia con el servidor apagado |
+
+---
+
+## 7. Partido de prueba para la vista previa
+
+El store de fútbol nace vacío y la parrilla es determinista a partir de la fecha, así que un entorno
+recién creado puede no tener **ningún partido en juego** donde probar la grada, el «Silenciar grada» o
+los comentarios bala. `scripts/estadio-partido-demo.js` (`npm run football:demo-match`) escribe ese
+partido de prueba **sin tocar el calendario oficial ni el motor**:
+
+```bash
+node scripts/estadio-partido-demo.js              # kickoff en 2 minutos
+node scripts/estadio-partido-demo.js --in 5       # kickoff en 5 minutos
+node scripts/estadio-partido-demo.js --status=live --elapsed 2   # ya en juego
+node scripts/estadio-partido-demo.js --remove     # quitar el partido de demo
+```
+
+- Crea un partido `scheduled` marcado `demo: true`, con `id` `m_demo_<AAAAMM>_<día>` y dos clubes de la
+  temporada en curso. **No** entra en ninguna jornada (`jornada: 0`), así que no altera la tabla, el
+  Balón de Oro ni la quiniela.
+- El barrido de kickoff del scheduler lo arranca solo al llegar su hora, igual que un partido real: a
+  partir de ahí la ficha, la grada y los comentarios bala se comportan igual que con un partido de
+  parrilla.
+- Es idempotente: reejecutarlo reemplaza el partido de demo del día; `--remove` lo elimina.
+- **Ejecutar con el servidor parado** (o reiniciarlo después): el servidor mantiene el store en
+  memoria y al guardar pisaría el archivo. Lo mismo vale para el reloj: si la fecha del sandbox cae
+  fuera del mes de la temporada (p. ej. ya es noviembre), arranca el servidor con un reloj desplazado
+  (`NODE_OPTIONS=--require=./reloj-demo.cjs`) para que «hoy» siga dentro de la temporada que quieres
+  probar.
+
+Flujo completo usado en la vista previa: parar el servidor → `football:demo-match --in 2` → arrancar el
+servidor → esperar el kickoff → abrir `/estadio`, elegir el partido y escribir en la grada. Cada mensaje
+se desliza por la cancha de derecha a izquierda; con una ráfaga, solo cruzan unos pocos y el aviso de
+omitidos aparece en la grada.
+
+### Modo `--v2`: la misma demo sobre el motor nuevo
+
+El motor se elige por **mes de temporada**, no por un interruptor: `seasonMonth >= '2026-11'` ⇒ V2
+(`lib/football/v2/official.js`). Un partido de demo en octubre es V1 por diseño. Para probar el motor
+nuevo hay que crear la demo en noviembre y arrancar el servidor con ese mismo reloj:
+
+```bash
+export DEMO_NOW=2026-11-01T17:00:00-06:00
+export FOOTBALL_STORE_PATH=$PWD/data/demo/football-v2.json
+
+node scripts/estadio-partido-demo.js --v2 --in 3
+FOOTBALL_ENABLED=on PORT=4173 \
+  NODE_OPTIONS=--require=./scripts/estadio-demo-clock.cjs node server.js
+```
+
+- `scripts/estadio-demo-clock.cjs` mantiene el reloj avanzando a velocidad normal, anclado a `DEMO_NOW`
+  (por defecto 1/11/2026 17:00 CDMX).
+- El primer arranque genera la temporada de noviembre, crea la `simulationPolicy` durable y prepara los
+  compromisos V2 (8 partidos en el horizonte de 24 h; 65 ms medidos). El partido de demo es uno más de
+  esa parrilla: `prepareUpcoming` le asigna su compromiso y la ficha responde `engine: 'v2'` con
+  `secondsPerMinute: 15`.
+- `--v2` **se niega a escribir** si el reloj aún no está en noviembre o si la temporada de noviembre no
+  existe todavía (hace falta un arranque previo del servidor que la genere).
+- El store de demo (`data/demo/`) queda ignorado por Git, así que estas pruebas no ensucian
+  `data/football.json`.
+
+Verificado en la vista previa: `m_demo_202611_01` (United Vanguard vs CS Verdania) en `live`, `engine: v2`,
+minuto 3.5 y los mensajes de la grada aceptados con `{ok:true}`.

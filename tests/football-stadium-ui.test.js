@@ -245,6 +245,8 @@ function createHarness(options = {}) {
   style.textContent = STYLES;
   window.document.head.appendChild(style);
   window.localStorage.setItem('montecristo-tos', options.localTosVersion || '2026-09-28');
+  // Preferencia previa de la grada: el cliente la lee al evaluarse.
+  if (options.danmakuMuted) window.localStorage.setItem('montecristo-danmaku-muted', 'off');
   if (options.openingCompleted && currentBallonDorMarket) {
     window.localStorage.setItem('montecristo-bdo-opening-v2:' + currentBallonDorMarket.seasonMonth, 'completed');
   }
@@ -2652,6 +2654,171 @@ test('la grada del Estadio pinta la charla y las reacciones del partido', async 
   assert.match(lines[1].textContent, /⚽/);
   assert.match(lines[1].textContent, /Ana/);
   assert.doesNotMatch(feed.textContent, /no debe verse/);
+});
+
+test('la charla de la grada cruza la cancha como comentario bala, de derecha a izquierda', async t => {
+  const h = createHarness();
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+  const { document } = h.window;
+  const layer = document.getElementById('est-danmaku');
+  assert.ok(layer, 'existe la capa de comentarios bala');
+  assert.equal(layer.getAttribute('aria-hidden'), null, 'la capa no se oculta a los lectores: su ✕ debe ser alcanzable');
+
+  h.handlers['football:chat']({ matchId: h.match.id, text: '¡Vamos!', name: 'Beti', at: 1 });
+  h.handlers['football:reaction']({ matchId: h.match.id, emoji: '⚽', from: 'Ana' });
+  await h.flush();
+
+  const items = [...layer.querySelectorAll('.est-danmaku-item')];
+  assert.equal(items.length, 1, 'solo el chat cruza la cancha; las reacciones no son comentarios');
+  assert.match(items[0].textContent, /Beti: ¡Vamos!/);
+  assert.ok(Number.parseFloat(items[0].style.top) >= 0, 'cada comentario recibe su carril vertical');
+
+  // El recorrido va de derecha a izquierda: el keyframe original arranca pegado
+  // al borde derecho (left: 100%) y termina fuera del borde izquierdo.
+  const keyframe = STYLES.match(/@keyframes estDanmaku \{[\s\S]*?\n\}/);
+  assert.ok(keyframe, 'la animación de los comentarios bala existe');
+  assert.match(keyframe[0], /from \{[^}]*left: 100%/);
+  assert.match(keyframe[0], /to \{[^}]*left: -100%/);
+  assert.match(STYLES, /\.est-danmaku-item \{[^}]*animation: estDanmaku/);
+
+  // El ✕ quita ESE comentario, no los demás.
+  h.handlers['football:chat']({ matchId: h.match.id, text: 'Segundo', name: 'Ana', at: 2 });
+  h.advanceTime(900); // las salidas se espacian: el segundo sale en el siguiente hueco
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 2);
+  const close = layer.querySelector('.est-danmaku-close');
+  assert.match(close.getAttribute('aria-label'), /Beti/, 'el ✕ dice de qué comentario es');
+  close.click();
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 1, 'el ✕ quitó solo su comentario');
+  assert.match(layer.textContent, /Segundo/);
+});
+
+test('si la grada se acelera, solo cruzan unos pocos comentarios y el resto se silencia', async t => {
+  const h = createHarness({ reducedMotion: true });
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+  const { document } = h.window;
+  const layer = document.getElementById('est-danmaku');
+  const note = document.getElementById('est-danmaku-note');
+  const items = () => [...layer.querySelectorAll('.est-danmaku-item')];
+
+  // Ráfaga: 10 mensajes en el mismo instante.
+  for (let i = 1; i <= 10; i++) {
+    h.handlers['football:chat']({ matchId: h.match.id, text: 'Mensaje ' + i, name: 'Aficionado ' + i, at: i });
+  }
+  assert.equal(items().length, 1, 'solo el primero cruza al instante: no se apila una nube de comentarios');
+  assert.match(note.textContent, /6 comentarios omitidos/, 'la cola corta silencia la mayoría de la ráfaga');
+  assert.match(document.getElementById('est-crowd-feed').textContent, /Mensaje 10/,
+    'los mensajes descartados de la cancha siguen en el registro de la grada');
+
+  // La cola (máximo 3) sale de una en una, cada 900 ms, en carriles distintos.
+  for (let i = 0; i < 4; i++) h.advanceTime(900);
+  const shown = items();
+  assert.equal(shown.length, 4, 'solo salen el primero y los tres que esperaban');
+  const lanes = shown.map(item => item.getAttribute('data-lane'));
+  assert.deepEqual(lanes, ['0', '1', '2', '3'], 'cada comentario ocupa un carril libre');
+  const tops = shown.map(item => item.style.top);
+  assert.equal(new Set(tops).size, tops.length, 'dos comentarios nunca comparten altura');
+  assert.match(note.textContent, /6 comentarios omitidos/);
+
+  // Nada más cruza: los otros seis se quedaron fuera, no en una cola infinita.
+  for (let i = 0; i < 6; i++) h.advanceTime(1000);
+  assert.equal(items().length, 4);
+  assert.doesNotMatch(layer.textContent, /Mensaje (5|6|7|8|9|10)/);
+});
+
+test('un comentario que esperó demasiado ya no sale cuando la cancha se libera', async t => {
+  const h = createHarness({ reducedMotion: true });
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+  const { document } = h.window;
+  const layer = document.getElementById('est-danmaku');
+  const note = document.getElementById('est-danmaku-note');
+  const fire = (i) => h.handlers['football:chat']({ matchId: h.match.id, text: 'Tarde ' + i, name: 'Beti', at: i });
+
+  // Cinco mensajes espaciados: ocupan los cinco carriles.
+  for (let i = 1; i <= 5; i++) { fire(i); h.advanceTime(900); }
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 5, 'los cinco carriles quedan ocupados');
+
+  // Con la cancha llena, solo tres esperan y el cuarto ya se silencia.
+  for (let i = 6; i <= 9; i++) fire(i);
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 5, 'no se añade nada a la cancha');
+  assert.match(note.textContent, /1 comentario omitido/, 'el que no cabe en la cola se silencia al momento');
+
+  // A los 6 s lo encolado caduca: cuando la cancha se libere ya no sale nada viejo.
+  for (let i = 0; i < 10; i++) h.advanceTime(900);
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 5, 'lo encolado caducó antes de salir');
+  assert.doesNotMatch(layer.textContent, /Tarde (6|7|8|9)/);
+  assert.match(note.textContent, /4 comentarios omitidos/);
+});
+
+test('«Silenciar grada» apaga los comentarios bala, los recuerda y se puede reactivar', async t => {
+  const h = createHarness();
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+  const { document } = h.window;
+  const button = document.getElementById('est-danmaku-mute');
+  const layer = document.getElementById('est-danmaku');
+  assert.ok(button, 'hay un botón global de silencio en el panel de la grada');
+  assert.ok(button.compareDocumentPosition(document.getElementById('est-crowd-reactions')) & h.window.Node.DOCUMENT_POSITION_FOLLOWING,
+    'el interruptor está junto a las reacciones de la grada');
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
+  assert.match(button.textContent, /Silenciar grada/);
+
+  h.handlers['football:chat']({ matchId: h.match.id, text: 'Antes de silenciar', name: 'Beti', at: 1 });
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 1);
+
+  button.click();
+  await h.flush();
+  assert.equal(button.getAttribute('aria-pressed'), 'true');
+  assert.match(button.textContent, /Activar grada/);
+  assert.equal(layer.hidden, true, 'la capa se oculta');
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 0, 'lo que ya estaba en la cancha se retira');
+  assert.equal(h.window.localStorage.getItem('montecristo-danmaku-muted'), 'off', 'la elección se guarda');
+  assert.match(document.getElementById('est-danmaku-note').textContent, /silenciados/);
+
+  h.handlers['football:chat']({ matchId: h.match.id, text: 'Mientras está en silencio', name: 'Ana', at: 2 });
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 0, 'sin silencio no se pintan nuevos comentarios');
+  assert.match(document.getElementById('est-crowd-feed').textContent, /Mientras está en silencio/,
+    'el mensaje sigue llegando al registro de la grada');
+
+  button.click();
+  await h.flush();
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
+  assert.equal(layer.hidden, false);
+  assert.match(button.textContent, /Silenciar grada/);
+  assert.equal(h.window.localStorage.getItem('montecristo-danmaku-muted'), null, 'al reactivar se borra la preferencia');
+  h.handlers['football:chat']({ matchId: h.match.id, text: 'De vuelta', name: 'Ana', at: 3 });
+  h.advanceTime(900);
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 1, 'vuelven a cruzar la cancha');
+  assert.doesNotMatch(layer.textContent, /Mientras está en silencio/, 'no se rellena con lo que llegó en silencio');
+});
+
+test('el silencio de la grada sobrevive a recargar la página', async t => {
+  const first = createHarness();
+  await first.connectToMatch();
+  await first.flush();
+  first.window.document.getElementById('est-danmaku-mute').click();
+  const stored = first.window.localStorage.getItem('montecristo-danmaku-muted');
+  first.close();
+  assert.equal(stored, 'off');
+
+  // Segundo arranque con la misma preferencia guardada.
+  const second = createHarness({ danmakuMuted: true });
+  t.after(second.close);
+  await second.connectToMatch();
+  await second.flush();
+  const { document } = second.window;
+  assert.equal(document.getElementById('est-danmaku-mute').getAttribute('aria-pressed'), 'true');
+  assert.equal(document.getElementById('est-danmaku').hidden, true);
+  assert.match(document.getElementById('est-danmaku-note').textContent, /silenciados/,
+    'se avisa una vez al arrancar que la grada está silenciada');
+  second.handlers['football:chat']({ matchId: second.match.id, text: 'Sigue en silencio', name: 'Beti', at: 1 });
+  assert.equal(document.querySelectorAll('.est-danmaku-item').length, 0);
 });
 
 test('las reacciones de la grada se envían al partido abierto', async t => {

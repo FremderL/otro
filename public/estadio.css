@@ -790,6 +790,47 @@
 }
 .est-crowd-title { margin: 3px 0 0; color: #f4f7f2; font-family: var(--display); font-size: 17px; letter-spacing: .02em; }
 .est-crowd-reactions { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Solo para lectores de pantalla: los anuncios del interruptor de comentarios
+   bala no deben verse (el estado ya está en el botón, con aria-pressed). */
+.est-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+}
+.est-crowd-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.est-crowd-mute {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: 1px solid rgba(194,223,216,.22);
+  border-radius: 11px;
+  background: rgba(12,22,24,.9);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: border-color .16s ease, background .16s ease, color .16s ease;
+}
+.est-crowd-mute:hover,
+.est-crowd-mute:focus-visible { border-color: rgba(229,189,114,.6); background: rgba(229,189,114,.12); color: var(--gold-2); }
+.est-crowd-mute[aria-pressed="true"] {
+  border-color: rgba(255,154,166,.6);
+  background: rgba(255,120,120,.14);
+  color: #ff9aa6;
+}
+.est-crowd-mute-icon { font-size: 11px; line-height: 1; }
 .est-crowd-react {
   display: grid;
   width: 38px;
@@ -2374,10 +2415,10 @@ body.est-hub-open { overflow:hidden; }
 .est-danmaku-item {
   position: absolute;
   left: 100%;
+  max-width: 78%;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 78%;
   padding: 3px 4px 3px 9px;
   border: 1px solid rgba(194,223,216,.22);
   border-radius: 999px;
@@ -2389,6 +2430,7 @@ body.est-hub-open { overflow:hidden; }
   pointer-events: auto;
   animation: estDanmaku 11s linear forwards;
   box-shadow: 0 4px 12px rgba(0,0,0,.35);
+  will-change: left;
 }
 .est-danmaku-item.is-soft { border-color: rgba(229,189,114,.55); background: rgba(28,17,6,.78); }
 .est-danmaku-text { overflow: hidden; text-overflow: ellipsis; }
@@ -2409,7 +2451,9 @@ body.est-hub-open { overflow:hidden; }
 }
 .est-danmaku-close:hover, .est-danmaku-close:focus-visible { background: rgba(255,120,120,.28); color: #fff; }
 /* Recorrido real de la capa: de borde derecho a fuera del borde izquierdo
-   (porcentajes del contenedor, no del texto). */
+   (porcentajes del contenedor, no del texto). La animación solo mueve `left`:
+   la altura del carril la fija `top` en línea y se conserva durante el trayecto,
+   de modo que dos comentarios que coinciden nunca se pisan. */
 @keyframes estDanmaku {
   from { left: 100%; }
   to { left: -100%; }
@@ -2444,9 +2488,13 @@ body.est-hub-open { overflow:hidden; }
 .est-stands-btn:disabled { opacity: .45; cursor: not-allowed; }
 .est-stands-tally { margin: 0; font-size: 9px; letter-spacing: .04em; color: var(--muted-2); }
 
+/* Movimiento reducido: nada se desliza. Los comentarios se apilan como una lista
+   breve y solo se ven los tres últimos (el resto, silenciado como en el modo
+   animado, para no tapar la cancha). */
 @media (prefers-reduced-motion: reduce) {
-  .est-danmaku-item { animation: none; left: auto; right: 8px; position: relative; display: flex; margin: 4px 8px 0; max-width: none; }
-  .est-danmaku { display: grid; align-content: start; }
+  .est-danmaku-item { animation: none; left: auto; right: 8px; top: auto !important; position: relative; display: flex; margin: 4px 8px 0; max-width: none; }
+  .est-danmaku { display: grid; align-content: start; justify-items: end; }
+  .est-danmaku-item:nth-last-child(n+4) { display: none; } /* solo los tres más recientes */
 }
 
 /* Selector de voz del narrador: solo aparece si el equipo tiene más de una voz
