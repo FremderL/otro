@@ -25,6 +25,7 @@
     "preview:estadio-v2": "node preview/estadio-v2/server.js",
     "football:audit-bdo": "node scripts/audit-ballon-dor.js",
     "football:calendar": "node scripts/estadio-calendario.js",
+    "football:demo-match": "node scripts/estadio-partido-demo.js",
     "football:odds-audit": "node scripts/estadio-cuotas.js"
   },
   "engines": {

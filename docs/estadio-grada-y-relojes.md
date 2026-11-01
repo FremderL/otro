@@ -229,3 +229,37 @@ misma pasada».
 | `tests/football-stadium-ui.test.js` | 5 pruebas de los comentarios bala, el control de cantidad y el botón de silencio |
 | `tests/football-fixtures.test.js` | Invariante del muro de las 22:00 + `matchRealMs` |
 | `tests/football-ballon-dor-market.test.js` | Apertura tardía y ceremonia con el servidor apagado |
+
+---
+
+## 7. Partido de prueba para la vista previa
+
+El store de fútbol nace vacío y la parrilla es determinista a partir de la fecha, así que un entorno
+recién creado puede no tener **ningún partido en juego** donde probar la grada, el «Silenciar grada» o
+los comentarios bala. `scripts/estadio-partido-demo.js` (`npm run football:demo-match`) escribe ese
+partido de prueba **sin tocar el calendario oficial ni el motor**:
+
+```bash
+node scripts/estadio-partido-demo.js              # kickoff en 2 minutos
+node scripts/estadio-partido-demo.js --in 5       # kickoff en 5 minutos
+node scripts/estadio-partido-demo.js --status=live --elapsed 2   # ya en juego
+node scripts/estadio-partido-demo.js --remove     # quitar el partido de demo
+```
+
+- Crea un partido `scheduled` marcado `demo: true`, con `id` `m_demo_<AAAAMM>_<día>` y dos clubes de la
+  temporada en curso. **No** entra en ninguna jornada (`jornada: 0`), así que no altera la tabla, el
+  Balón de Oro ni la quiniela.
+- El barrido de kickoff del scheduler lo arranca solo al llegar su hora, igual que un partido real: a
+  partir de ahí la ficha, la grada y los comentarios bala se comportan igual que con un partido de
+  parrilla.
+- Es idempotente: reejecutarlo reemplaza el partido de demo del día; `--remove` lo elimina.
+- **Ejecutar con el servidor parado** (o reiniciarlo después): el servidor mantiene el store en
+  memoria y al guardar pisaría el archivo. Lo mismo vale para el reloj: si la fecha del sandbox cae
+  fuera del mes de la temporada (p. ej. ya es noviembre), arranca el servidor con un reloj desplazado
+  (`NODE_OPTIONS=--require=./reloj-demo.cjs`) para que «hoy» siga dentro de la temporada que quieres
+  probar.
+
+Flujo completo usado en la vista previa: parar el servidor → `football:demo-match --in 2` → arrancar el
+servidor → esperar el kickoff → abrir `/estadio`, elegir el partido y escribir en la grada. Cada mensaje
+se desliza por la cancha de derecha a izquierda; con una ráfaga, solo cruzan unos pocos y el aviso de
+omitidos aparece en la grada.
