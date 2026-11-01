@@ -2741,13 +2741,14 @@ test('reloj — el agregado del árbitro se muestra como 45+4 y 90+3, y se limpi
   assert.equal(clock(), 'Final', 'al terminar manda el estado del partido');
 });
 
-test('voces — se prefieren comentaristas masculinos en español (narrador y analista)', async t => {
+test('voces — el narrador toma la voz más natural y el analista conserva la suya', async t => {
   const h = createHarness({
     speechSynthesis: true,
     speechVoices: [
-      { name: 'Microsoft Sabina', lang: 'es-MX' },
-      { name: 'Microsoft Raúl', lang: 'es-MX' },
-      { name: 'Google español', lang: 'es' }
+      { name: 'Microsoft Sabina', lang: 'es-MX', localService: true },
+      { name: 'Microsoft Raúl', lang: 'es-MX', localService: true },
+      { name: 'Google español', lang: 'es', localService: false },
+      { name: 'Microsoft Dalia Online (Natural)', lang: 'es-MX', localService: false }
     ]
   });
   t.after(h.close);
@@ -2758,14 +2759,59 @@ test('voces — se prefieren comentaristas masculinos en español (narrador y an
   handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: '¡Se acerca el gol!' });
   handlers['football:commentary']({ matchId: match.id, voice: 'analista', text: 'La defensa quedó muy abierta.' });
   assert.equal(speech.utterances.length, 1);
-  assert.equal(speech.utterances[0].voice.name, 'Microsoft Raúl', 'el narrador toma la voz masculina aunque haya una femenina mexicana');
-  assert.ok(speech.utterances[0].pitch >= .95, 'una voz masculina no necesita retoque de tono');
+  // La voz neuronal gana aunque la cabina histórica prefiriera la masculina
+  // concatenada: el narrador es quien más habla y no debe sonar a robot.
+  assert.equal(speech.utterances[0].voice.name, 'Microsoft Dalia Online (Natural)');
+  assert.equal(speech.utterances[0].pitch, 1, 'a una voz natural no se le retoca el tono: retocarlo la vuelve metálica');
+  assert.ok(!['Microsoft Sabina', 'Microsoft Raúl'].includes(speech.utterances[0].voice.name), 'nunca arranca con una voz concatenada habiendo una natural');
 
   speech.finish(0);
   h.advanceTime(500);
   assert.equal(speech.utterances.length, 2);
-  assert.notEqual(speech.utterances[1].voice.name, 'Microsoft Sabina', 'el analista no cae en la voz femenina si hay alternativa');
-  assert.ok(speech.utterances[1].pitch < .95, 'la segunda voz se mantiene en el registro masculino');
+  // El analista ya sonaba bien: sigue con la misma segunda voz de siempre.
+  assert.equal(speech.utterances[1].voice.name, 'Google español');
+  assert.ok(speech.utterances[1].pitch < .95, 'el analista se mantiene en el registro de siempre');
+});
+
+test('voces — el narrador prefiere la voz que ya suena natural antes que una metálica', async t => {
+  // Caso reportado: el analista suena natural y el narrador, no. Cuando el
+  // navegador solo tiene UNA voz buena, el narrador la reutiliza en vez de
+  // caer en una voz concatenada solo por tener otro timbre.
+  const h = createHarness({
+    speechSynthesis: true,
+    speechVoices: [
+      { name: 'Microsoft Sabina', lang: 'es-MX', localService: true },
+      { name: 'Microsoft Raúl', lang: 'es-MX', localService: true },
+      { name: 'Microsoft Jorge Online (Natural)', lang: 'es-MX', localService: false }
+    ]
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match, speech } = h;
+  window.document.getElementById('est-commentary-voice').click();
+
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: '¡Gol de MonteCristo! 1-0 al 23.' });
+  assert.equal(speech.utterances[0].voice.name, 'Microsoft Jorge Online (Natural)', 'la voz natural es la del narrador');
+  assert.ok(!/Raúl|Sabina/.test(speech.utterances[0].voice.name));
+});
+
+test('voces — el narrador evita las voces metálicas aunque no haya neuronales', async t => {
+  const h = createHarness({
+    speechSynthesis: true,
+    speechVoices: [
+      { name: 'Microsoft Sabina', lang: 'es-MX', localService: true },
+      { name: 'Microsoft Raúl', lang: 'es-MX', localService: true }
+    ]
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match, speech } = h;
+  window.document.getElementById('est-commentary-voice').click();
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: 'Saque de meta.' });
+  // Ambas son concatenadas: se conserva el respaldo histórico (masculina) y se
+  // corrige el tono solo lo mínimo para que no suene plana.
+  assert.equal(speech.utterances[0].voice.name, 'Microsoft Raúl');
+  assert.ok(speech.utterances[0].pitch >= .95, 'no se baja el tono de una voz masculina: eso la robotiza');
 });
 
 test('voces — si el navegador solo ofrece voces femeninas se conservan y se baja el tono', async t => {
@@ -2788,7 +2834,58 @@ test('voces — si el navegador solo ofrece voces femeninas se conservan y se ba
   speech.finish(0);
   h.advanceTime(500);
   assert.equal(speech.utterances[1].voice.name, 'Microsoft Helena', 'la segunda voz sigue siendo otra voz');
-  assert.ok(speech.utterances[1].pitch < speech.utterances[0].pitch, 'el analista queda más grave');
+  assert.ok(speech.utterances[1].pitch <= .8, 'el analista conserva su tono de siempre');
+});
+
+test('voces — el selector permite cambiar la voz del narrador sin tocar al analista', async t => {
+  const h = createHarness({
+    speechSynthesis: true,
+    speechVoices: [
+      { name: 'Microsoft Sabina', lang: 'es-MX', localService: true },
+      { name: 'Microsoft Raúl', lang: 'es-MX', localService: true },
+      { name: 'Microsoft Dalia Online (Natural)', lang: 'es-MX', localService: false }
+    ]
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match, speech } = h;
+  const picker = window.document.getElementById('est-commentary-voice-picker');
+  const wrap = window.document.getElementById('est-commentary-voice-picker-wrap');
+  assert.equal(wrap.hidden, false, 'con varias voces en español se ofrece el selector');
+  assert.equal(picker.options.length, 3);
+  assert.match(picker.options[picker.selectedIndex].textContent, /Dalia/, 'arranca en la voz natural elegida por la cabina');
+
+  // El oyente prefiere otra: la elección manda y se guarda entre visitas.
+  const raul = Array.from(picker.options).find(option => /Raúl/.test(option.textContent));
+  picker.value = raul.value;
+  picker.dispatchEvent(new window.Event('change'));
+  assert.equal(window.localStorage.getItem('montecristo-estadio-narrator-voice'), raul.value);
+  // Elegir voz en silencio enciende el relato hablado: el cambio es el gesto
+  // que el navegador exige y el oyente quiere oír lo que acaba de elegir.
+  assert.equal(window.document.getElementById('est-commentary-voice').getAttribute('aria-pressed'), 'true');
+
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: '¡Se acerca el gol!' });
+  assert.equal(speech.utterances[0].voice.name, 'Microsoft Raúl', 'se respeta la voz elegida');
+  speech.finish(0);
+  h.advanceTime(500);
+  assert.equal(speech.utterances.length, 1, 'la cola anterior se vació al cambiar de voz');
+  handlers['football:commentary']({ matchId: match.id, voice: 'analista', text: 'La defensa quedó abierta.' });
+  h.advanceTime(500);
+  const analystUtterance = speech.utterances[speech.utterances.length - 1];
+  assert.notEqual(analystUtterance.voice.name, 'Microsoft Raúl', 'el analista conserva su propia voz');
+  assert.equal(analystUtterance.voice.name, 'Microsoft Sabina');
+});
+
+test('voces — sin alternativas el selector no aparece', async t => {
+  const h = createHarness({
+    speechSynthesis: true,
+    speechVoices: [{ name: 'Microsoft Dalia Online (Natural)', lang: 'es-MX', localService: false }]
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  const wrap = h.window.document.getElementById('est-commentary-voice-picker-wrap');
+  assert.equal(wrap.hidden, true, 'con una sola voz no se muestra un control inútil');
+  h.handlers['football:commentary']({ matchId: h.match.id, voice: 'narrador', text: 'Saque de meta.' });
 });
 
 // La pista fija de la inauguración se regrabó (voz femenina es-MX, misma

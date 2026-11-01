@@ -813,14 +813,26 @@ resultado. `eventVars()` y `buildVars()` exponen `{agregado}`, y las plantillas 
 como `45+4'` / `90+3'` y se limpia al cambiar de mitad. Sin `{agregado}` no se genera relato: mejor
 silencio que inventar el número.
 
-**Voz de la mesa.** Los dos comentaristas del partido son voces masculinas cuando el navegador las
-ofrece: la Web Speech API no expone género, así que se infiere del nombre de la voz (`Jorge`,
-`Raúl`, `Diego`, `Pablo`…) y se prefieren sobre las femeninas aunque estas sean `es-MX`; a igualdad
-de género gana `es-MX` y después el orden del navegador. Si solo hay voces femeninas o sin nombre
-reconocible se conserva la voz y se baja el `pitch` (0,88 / 0,80) como respaldo, de modo que la mesa
-nunca se queda muda. Este criterio es solo del relato: la **inauguración del Balón de Oro** y la
-**ceremonia final** siguen con sus pistas pregrabadas en **voz femenina** (`ballon-dor-opening-es-mx.mp3`
-y los cues de la ceremonia), que no pasan por el sintetizador del navegador.
+**Voz de la mesa.** La Web Speech API no expone ni género ni calidad del motor, así que el navegador
+se ordena por el **nombre** que publica cada voz:
+
+- **Narrador — prioridad: naturalidad.** Se puntúa cada voz por marcas de motor neuronal
+  (`Natural`, `Neural`, `Online`, `Multilingual`, `Premium`, `Enhanced`, `Wavenet`, `Journey`…) y se
+  penalizan las concatenadas conocidas (`Sabina`, `Raúl`, `Helena`, `Laura`, `Pablo`, `eSpeak`…).
+  Una voz de red (`localService === false`) suma, porque en Windows/Chrome las neuronales son en
+  línea; una voz que no es `es-MX` resta sin descartarse. El narrador toma siempre la voz mejor
+  puntuada y **con una voz natural no se le retoca el `pitch`** (1,00), porque bajarle el tono es
+  justo lo que la vuelve a sonar robótica; el ritmo queda en 1,02. Si solo hay voces metálicas,
+  se conserva la masculina de siempre y se corrige el tono lo mínimo (0,98).
+- **Analista — sin cambios.** Conserva la misma voz y el mismo tono de siempre (0,94 masculina,
+  0,80 femenina) y ritmo 0,97: ya suena natural y no se mueve. Si el navegador solo ofrece una voz
+  buena, el narrador la reutiliza antes que caer en una voz metálica solo por tener otro timbre.
+
+Cuando solo hay voces femeninas o sin nombre reconocible la mesa nunca se queda muda: se usa la que
+haya y se baja el tono como respaldo. Este criterio es solo del relato del partido: la
+**inauguración del Balón de Oro** y la **ceremonia final** siguen con sus pistas pregrabadas en
+**voz femenina** (`ballon-dor-opening-es-mx.mp3` y los cues de la ceremonia), que no pasan por el
+sintetizador del navegador.
 
 Generación por plantillas con variables `{jugador}`, `{equipo}`, `{rival}`, `{minuto}`,
 `{marcador}`, `{estadística}`, `{racha}`:

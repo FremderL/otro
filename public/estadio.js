@@ -180,7 +180,8 @@
       'est-promo-copy-input', 'est-promo-image-input', 'est-promo-target', 'est-promo-room-field', 'est-promo-room-code',
       'est-promo-submit', 'est-promo-message',
       'est-scoreboard', 'crest-home', 'crest-away', 'name-home', 'name-away', 'score-home', 'score-away',
-      'est-clock', 'est-pitch', 'est-goal-banner', 'est-commentary', 'est-commentary-voice', 'est-text-state', 'est-market-phase',
+      'est-clock', 'est-pitch', 'est-goal-banner', 'est-commentary', 'est-commentary-voice',
+      'est-commentary-voice-picker', 'est-commentary-voice-picker-wrap', 'est-text-state', 'est-market-phase',
       'est-crowd-feed', 'est-crowd-form', 'est-crowd-input', 'est-crowd-send', 'est-crowd-message', 'est-crowd-reactions',
       'est-countdown-season', 'est-countdown-season-note', 'est-countdown-bdo', 'est-countdown-bdo-note',
       'est-danmaku', 'est-stands-vote', 'est-stands-status', 'est-stands-open', 'est-stands-yes',
@@ -3424,7 +3425,7 @@
       catch (_) { voiceFailed(); return; }
       var voice = commentarySpeech.voices[line.role];
       utterance.lang = voice && voice.lang || 'es-MX';
-      utterance.rate = line.role === 'analista' ? .97 : 1.03;
+      utterance.rate = commentaryVoiceRate(line.role, voice);
       utterance.pitch = commentaryVoicePitch(line.role, voice);
       if (voice) utterance.voice = voice;
       newsSpeech.active = true;
@@ -4182,9 +4183,13 @@
   // oyente decide cuándo activarlo. Las intervenciones usan una cola propia para
   // mantener los turnos (narrador -> analista), nunca se lanzan en paralelo.
   var COMMENTARY_SPEECH_QUEUE_LIMIT = 8;
+  // Elección manual de la voz del narrador: se guarda para que la próxima visita
+  // respete lo que el oyente prefirió escuchar.
+  var COMMENTARY_NARRATOR_VOICE_KEY = 'montecristo-estadio-narrator-voice';
   var commentarySpeech = {
     queue: [], active: null, activeCard: null, timer: null, token: 0, lastVoice: null,
-    voices: { narrador: null, analista: null }, listenersBound: false, buttonBound: false
+    voices: { narrador: null, analista: null }, narratorProfile: null, narratorChoice: null,
+    options: [], listenersBound: false, buttonBound: false
   };
   function commentarySpeechSupported() {
     return Boolean(window.speechSynthesis && typeof window.speechSynthesis.speak === 'function' &&
@@ -4223,9 +4228,39 @@
     if (words.some(function (w) { return COMMENTARY_FEMALE_NAMES.indexOf(w) >= 0; })) return 'f';
     return '';
   }
-  // Orden: masculina > desconocida > femenina; a igualdad, es-MX antes que otro
-  // español, y el orden del navegador como último desempate.
-  function rankCommentaryVoices(list) {
+  // Un catálogo de voces del sistema no dice cuál suena natural: unas son
+  // concatenativas viejas (Microsoft Sabina/Raúl o Google español de la era
+  // antigua) y otras son neuronales. Aquí se puntúa la naturalidad por el nombre
+  // que publica cada navegador y se le da al NARRADOR la voz más natural
+  // disponible, que es quien habla más y a quien el oyente nota metálico.
+  // El ANALISTA conserva la misma voz y el mismo tono de siempre: suena natural
+  // y no debe moverse al tocar la cabina.
+  var COMMENTARY_NEURAL_MARKS = ['natural', 'neural', 'online', 'multilingual', 'premium',
+    'enhanced', 'wavenet', 'journey', 'generative', 'studio', 'cloud', 'expressive'];
+  // Solo voces concatenativas conocidas del español (Windows SAPI y motores de
+  // código abierto). Todo lo demás se juzga por las marcas de arriba y por si
+  // la voz es local o de red.
+  var COMMENTARY_LEGACY_VOICES = ['sabina', 'helena', 'laura', 'pablo', 'raul', 'raulito',
+    'espeak', 'festival', 'pico', 'compact', 'monotone'];
+  function commentaryVoiceNaturalness(voice) {
+    var words = normalizeVoiceWord(voice && voice.name).split(/[^a-z0-9]+/).filter(Boolean);
+    var score = 0;
+    words.forEach(function (word) {
+      if (COMMENTARY_NEURAL_MARKS.indexOf(word) >= 0) score += 5;
+      if (COMMENTARY_LEGACY_VOICES.indexOf(word) >= 0) score -= 5;
+    });
+    // Las voces de red suelen ser las neuronales de Microsoft/Google; las voces
+    // locales suelen ser las viejas del sistema. Es la señal más fiable en los
+    // navegadores que no dicen nada del motor.
+    if (voice && voice.localService === false) score += 3;
+    // Una voz que no es de español de México se nota forzada en «¡Gol de…!»; se
+    // castiga sin descartarla.
+    if (!/^es[-_]MX$/i.test(voice && voice.lang || '')) score -= 1;
+    return score;
+  }
+  // Orden histórico (masculina > desconocida > femenina; es-MX antes que otro
+  // español; después el orden del navegador). Es el que fija al analista.
+  function legacyRankCommentaryVoices(list) {
     return list.map(function (voice, index) {
       var gender = commentaryVoiceGender(voice);
       var genderRank = gender === 'm' ? 0 : (gender === 'f' ? 2 : 1);
@@ -4233,24 +4268,126 @@
       return { voice: voice, index: index, key: genderRank * 2 + mexican };
     }).sort(function (a, b) { return a.key - b.key || a.index - b.index; }).map(function (entry) { return entry.voice; });
   }
+  // Orden del narrador: naturalidad primero y, entre iguales, el orden histórico.
+  function rankCommentaryVoices(list) {
+    var legacyOrder = legacyRankCommentaryVoices(list);
+    return list.map(function (voice) {
+      return { voice: voice, score: commentaryVoiceNaturalness(voice), legacy: legacyOrder.indexOf(voice) };
+    }).sort(function (a, b) { return (b.score - a.score) || (a.legacy - b.legacy); })
+      .map(function (entry) { return entry.voice; });
+  }
   function refreshCommentaryVoices() {
     var api = window.speechSynthesis;
     if (!api || typeof api.getVoices !== 'function') return;
     var voices = [];
     try { voices = api.getVoices() || []; } catch (_) {}
     var spanish = voices.filter(function (voice) { return /^es(?:[-_]|$)/i.test(voice.lang || ''); });
-    if (!spanish.length) { commentarySpeech.voices.narrador = null; commentarySpeech.voices.analista = null; return; }
-    var ranked = rankCommentaryVoices(spanish);
-    var first = ranked[0] || null;
-    commentarySpeech.voices.narrador = first;
-    commentarySpeech.voices.analista = ranked.filter(function (voice) { return voice !== first; })[0] || first;
+    if (!spanish.length) {
+      commentarySpeech.voices.narrador = null;
+      commentarySpeech.voices.analista = null;
+      commentarySpeech.narratorProfile = null;
+      return;
+    }
+    // Analista: la segunda voz del orden histórico, EXACTAMENTE igual que antes.
+    // Esa voz ya suena natural para el oyente y no se debe mover.
+    var legacy = legacyRankCommentaryVoices(spanish);
+    var analyst = legacy[1] || legacy[0] || null;
+    commentarySpeech.voices.analista = analyst;
+    // Narrador: la voz más natural del navegador. Si empata con la del analista
+    // y hay otra igual de buena, se toma esa para no perder el segundo timbre;
+    // si no hay otra, se reusa la del analista —la que el oyente ya aprobó—
+    // antes que caer en una voz metálica.
+    var natural = rankCommentaryVoices(spanish);
+    var top = natural[0] || null;
+    if (top && top === analyst) {
+      // La mejor voz ya la usa el analista: se toma otra igual de natural, pero
+      // solo si no es femenina (la cabina histórica es masculina).
+      var alternate = natural.filter(function (voice) {
+        return voice !== top && commentaryVoiceNaturalness(voice) === commentaryVoiceNaturalness(top) &&
+          commentaryVoiceGender(voice) !== 'f';
+      })[0];
+      if (alternate) top = alternate;
+    }
+    // La elección manual manda: si la voz elegida sigue instalada, se usa esa.
+    var chosen = commentaryChosenVoice(spanish);
+    if (chosen) top = chosen;
+    commentarySpeech.voices.narrador = top;
+    commentarySpeech.narratorProfile = commentaryNarratorProfile(top);
+    commentarySpeech.options = natural;
+    updateCommentaryVoicePicker();
   }
-  // Tono: una voz masculina se usa tal cual; si la voz es femenina o no se puede
-  // identificar, se baja el tono para acercarla a la mesa masculina.
-  function commentaryVoicePitch(role, voice) {
+  // Voz elegida por el oyente (guardada entre visitas). Se identifica por nombre
+  // y idioma porque los objetos SpeechSynthesisVoice no sobreviven a la recarga.
+  function commentaryVoiceKey(voice) {
+    return voice ? String(voice.name || '') + '|' + String(voice.lang || '') : '';
+  }
+  function readCommentaryVoiceChoice() {
+    if (commentarySpeech.narratorChoice !== null) return commentarySpeech.narratorChoice;
+    var stored = null;
+    try { stored = localStorage.getItem(COMMENTARY_NARRATOR_VOICE_KEY); } catch (_) { stored = null; }
+    commentarySpeech.narratorChoice = stored || '';
+    return commentarySpeech.narratorChoice;
+  }
+  function commentaryChosenVoice(list) {
+    var wanted = readCommentaryVoiceChoice();
+    if (!wanted) return null;
+    return list.filter(function (voice) { return commentaryVoiceKey(voice) === wanted; })[0] || null;
+  }
+  // El selector solo aparece cuando hay de dónde elegir; con una sola voz en
+  // español no se muestra un control inútil.
+  function updateCommentaryVoicePicker() {
+    var wrap = el['est-commentary-voice-picker-wrap'];
+    var select = el['est-commentary-voice-picker'];
+    if (!wrap || !select) return;
+    var options = commentarySpeech.options || [];
+    if (options.length < 2) { wrap.hidden = true; select.innerHTML = ''; return; }
+    var current = commentaryVoiceKey(commentarySpeech.voices.narrador);
+    var chosen = readCommentaryVoiceChoice();
+    select.innerHTML = options.map(function (voice) {
+      var key = commentaryVoiceKey(voice);
+      var natural = commentaryVoiceNaturalness(voice) >= 0;
+      var label = String(voice.name || 'Voz').replace(/\s*\(Natural\)\s*/i, ' ');
+      if (!natural) label += ' (voz antigua)';
+      return '<option value="' + esc(key) + '"' + (chosen ? key === chosen : key === current ? ' selected' : '') + '>' + esc(label) + '</option>';
+    }).join('');
+    wrap.hidden = false;
+  }
+  function setCommentaryNarratorVoice(key) {
+    commentarySpeech.narratorChoice = String(key || '');
+    try {
+      if (commentarySpeech.narratorChoice) localStorage.setItem(COMMENTARY_NARRATOR_VOICE_KEY, commentarySpeech.narratorChoice);
+      else localStorage.removeItem(COMMENTARY_NARRATOR_VOICE_KEY);
+    } catch (_) { /* almacenamiento bloqueado: la elección vale solo esta sesión */ }
+    refreshCommentaryVoices();
+    if (!S.commentaryVoiceOn) { setCommentaryVoiceEnabled(true); return; }
+    // Se corta el turno actual para no mezclar dos voces en la misma frase; la
+    // cola se vacía porque ya pertenece a la voz anterior.
+    cancelCommentarySpeech();
+    toast('Voz del narrador cambiada.', '');
+  }
+  // Cómo debe sonar el narrador. Con una voz natural se usa tal cual —sin bajar
+  // ni forzar el tono—, que es justo lo que la hace sonar humana; con una voz
+  // metálica se corrige lo mínimo para que no suene plana.
+  function commentaryNarratorProfile(voice) {
+    if (!voice) return { voice: null, natural: false, pitch: 1, rate: 1.03 };
+    var natural = commentaryVoiceNaturalness(voice) >= 0;
     var masculine = commentaryVoiceGender(voice) === 'm';
-    if (masculine) return role === 'narrador' ? 1 : .94;
-    return role === 'narrador' ? .88 : .8;
+    if (natural) return { voice: voice, natural: true, pitch: 1, rate: 1.02 };
+    return { voice: voice, natural: false, pitch: masculine ? .98 : .9, rate: 1 };
+  }
+  // Tono: el analista conserva el criterio de siempre, una voz masculina se usa
+  // tal cual y una femenina o sin identificar se baja para acercarla a la mesa.
+  function commentaryVoicePitch(role, voice) {
+    if (role === 'narrador') {
+      var profile = commentarySpeech.narratorProfile;
+      return (profile && profile.voice === voice ? profile : commentaryNarratorProfile(voice)).pitch;
+    }
+    return commentaryVoiceGender(voice) === 'm' ? .94 : .8;
+  }
+  function commentaryVoiceRate(role, voice) {
+    if (role !== 'narrador') return .97;
+    var profile = commentarySpeech.narratorProfile;
+    return (profile && profile.voice === voice ? profile : commentaryNarratorProfile(voice)).rate;
   }
   function updateCommentaryVoiceButton() {
     var button = el['est-commentary-voice'];
@@ -4347,7 +4484,7 @@
     try { utterance = new window.SpeechSynthesisUtterance(item.text); }
     catch (_) { return; }
     utterance.lang = voice && voice.lang || 'es-MX';
-    utterance.rate = item.voice === 'narrador' ? 1.03 : .97;
+    utterance.rate = commentaryVoiceRate(item.voice, voice);
     utterance.pitch = commentaryVoicePitch(item.voice, voice);
     utterance.volume = 1;
     if (voice) utterance.voice = voice;
@@ -6244,6 +6381,12 @@
       el['est-commentary-voice'].addEventListener('click', function () {
         setCommentaryVoiceEnabled(!S.commentaryVoiceOn);
       });
+      var picker = el['est-commentary-voice-picker'];
+      if (picker) {
+        picker.addEventListener('change', function () {
+          setCommentaryNarratorVoice(picker.value);
+        });
+      }
     }
     el['est-showcase-prev'].addEventListener('click', function () {
       setShowcaseIndex(S.showcaseIndex - 1);

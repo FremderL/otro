@@ -2448,3 +2448,43 @@ body.est-hub-open { overflow:hidden; }
   .est-danmaku-item { animation: none; left: auto; right: 8px; position: relative; display: flex; margin: 4px 8px 0; max-width: none; }
   .est-danmaku { display: grid; align-content: start; }
 }
+
+/* Selector de voz del narrador: solo aparece si el equipo tiene más de una voz
+   en español. La cabina elige la más natural; esto permite probar otra sin
+   tocar la voz del analista. */
+.est-commentary-voice-picker {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 9px;
+  background: rgba(255,255,255,.035);
+}
+.est-commentary-voice-picker[hidden] { display: none; }
+.est-commentary-voice-picker-label {
+  color: var(--muted-2, #8b9a96);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.est-commentary-voice-picker select {
+  max-width: 190px;
+  min-height: 26px;
+  padding: 0 6px;
+  border: 1px solid rgba(82,224,174,.28);
+  border-radius: 7px;
+  color: #e7efeb;
+  background: rgba(5,23,20,.86);
+  font-size: 10px;
+  font-family: inherit;
+}
+.est-commentary-voice-picker select:focus-visible { outline: 2px solid var(--gold-2, #e5bd72); outline-offset: 2px; }
+.est-commentary-voice-picker select option { color: #0a1214; background: #e7efeb; }
+@media (max-width: 1080px) {
+  .est-commentary-voice-picker { width: 100%; justify-content: space-between; }
+  .est-commentary-voice-picker select { max-width: none; flex: 1; }
+}

@@ -165,6 +165,13 @@
               <span class="est-commentary-voice-icon" aria-hidden="true">◖</span>
               <span class="est-commentary-voice-label">Activar voces</span>
             </button>
+            <!-- Selector de voz del narrador: la cabina elige la más natural
+                 disponible, y aquí el oyente puede probar otra si su equipo
+                 trae varias. El analista no se toca. -->
+            <label class="est-commentary-voice-picker" id="est-commentary-voice-picker-wrap" hidden>
+              <span class="est-commentary-voice-picker-label">Voz del narrador</span>
+              <select id="est-commentary-voice-picker" aria-label="Elegir la voz del narrador"></select>
+            </label>
           </div>
         </div>
         <div class="est-commentary" id="est-commentary" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Comentarios del narrador y el analista">
