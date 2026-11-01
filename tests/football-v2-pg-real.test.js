@@ -587,7 +587,7 @@ test('PostgreSQL: V2 oficial progresiva conserva política, futuros, cuotas y pa
     assert.equal(commitmentId(loaded.simulation), id);
     assert.equal(loaded.simulation.privateSeed, key);
     assert.equal(key, matchKey(restoredPolicy, loaded));
-    assert.equal(loaded.simulation.pricing.version, 'v2-estimated-1');
+    assert.equal(loaded.simulation.pricing.version, 'v2-estimated-2');
     assert.equal(store.getFuture(future.future.id).simulationPolicyId, restoredPolicy.id);
     const recovered = profiles.getProfile(profile.id);
     assert.equal(recovered.chips, 900);

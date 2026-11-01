@@ -10,7 +10,8 @@ const { FootballEngine } = require('../lib/football/engine');
 const { FootballScheduler } = require('../lib/football/scheduler');
 const { createBettingService } = require('../lib/football/betting');
 const { createOfficialV2 } = require('../lib/football/v2/official');
-const { verifyCommitment, commitmentId } = require('../lib/football/v2/commitment');
+const { makeCommitment, verifyCommitment, commitmentId } = require('../lib/football/v2/commitment');
+const { prepareMatchInputs } = require('../lib/football/v2/inputs');
 const Policy = require('../lib/football/v2/season-policy');
 const Q = require('../lib/football/v2/quotes');
 const P = require('../lib/progression');
@@ -57,6 +58,10 @@ test('noviembre selecciona automáticamente V2, usa octubre y congela solo el pa
     assert.ok(Policy.verifyPolicy(h.league.simulationPolicy, '2026-11'));
     assert.equal(match.simulation.privateSeed, Policy.matchKey(h.league.simulationPolicy, match));
     const frozen = JSON.stringify(match.simulation.inputs), firstPrice = h.betting.getMarket(match, '1x2');
+    assert.ok(Math.abs(firstPrice.overround - 1.06) < 0.002);
+    assert.ok(Math.abs(firstPrice.margin - (firstPrice.overround - 1)) < 1e-8);
+    assert.ok(Math.abs(firstPrice.hold - firstPrice.margin / firstPrice.overround) < 1e-5);
+    assert.ok(Math.abs(firstPrice.selections.reduce((sum, item) => sum + item.prob, 0) - 1) < 1e-5);
     const newResult = h.league.calendar.matches.find(item => item.id !== match.id);
     h.setNow(h.now() + 1000);
     assert.ok(h.store.settleMatch(newResult.id, { home: 5, away: 0 }, { seasonMonth: '2026-11', now: h.now() }).ok);
@@ -70,6 +75,47 @@ test('noviembre selecciona automáticamente V2, usa octubre y congela solo el pa
     assert.deepEqual(loaded.getMatch(match.id).simulation, match.simulation);
     assert.equal(h.engine._ensureTimeline(match).version, match.simulation.version);
     loaded.close();
+  } finally { h.close(); }
+});
+
+test('migra política y futuros legados a v4 sin alterar cuotas ni compromisos por partido previos', async () => {
+  const h = setup();
+  try {
+    assert.equal((await h.officialV2.ensureSeason('2026-11')).ok, true);
+    const oldPolicy = { ...h.league.simulationPolicy, simulatorVersion: 'v2-causal-3', pricingVersion: 'v2-estimated-1' };
+    oldPolicy.id = Policy.policyId(oldPolicy);
+    h.league.simulationPolicy = oldPolicy;
+    const previousMatch = h.league.calendar.matches[0];
+    const oldInputs = prepareMatchInputs({ league: h.league, previousLeague: h.previous, match: previousMatch,
+      asOf: h.now(), seed: 0 });
+    oldInputs.version = 'v2-causal-3';
+    previousMatch.simulation = makeCommitment(oldInputs, '66'.repeat(32), h.now(), Q.createEstimatedModel(oldInputs));
+    assert.ok(verifyCommitment(previousMatch.simulation, previousMatch));
+    assert.equal(previousMatch.simulation.version, 'v2-causal-3');
+    assert.equal(previousMatch.simulation.pricing.version, Q.ESTIMATED_LEGACY_VERSION);
+    const oldCommitment = JSON.parse(JSON.stringify(previousMatch.simulation));
+    const inserted = h.store.insertFuture({ id: 'migration-future-1', profileId: h.profile.id,
+      seasonMonth: '2026-11', market: 'champion', selection: 'club1', odds: 3.4, stake: 100,
+      potentialPayout: 340, status: 'open', debited: true, simulationPolicyId: oldPolicy.id,
+      simulationCommitments: [{ matchId: previousMatch.id, id: commitmentId(previousMatch.simulation) }],
+      placedAt: h.now() });
+    assert.equal(inserted.ok, true);
+    const future = inserted.future;
+    const oldFutureOdds = future.odds;
+    const oldFutureCommitments = JSON.parse(JSON.stringify(future.simulationCommitments));
+
+    assert.equal((await h.officialV2.ensureSeason('2026-11')).ok, true);
+    assert.equal(h.league.simulationPolicy.simulatorVersion, 'v2-causal-4');
+    assert.equal(h.league.simulationPolicy.pricingVersion, Q.ESTIMATED_VERSION);
+    assert.equal(future.simulationPolicyId, h.league.simulationPolicy.id);
+    assert.equal(future.odds, oldFutureOdds);
+    assert.deepEqual(future.simulationCommitments, oldFutureCommitments);
+    assert.deepEqual(previousMatch.simulation, oldCommitment);
+
+    const nextMatch = h.league.calendar.matches.find(match => match.id !== previousMatch.id && match.status === 'scheduled');
+    assert.equal((await h.officialV2.prepareMatch(nextMatch)).ok, true);
+    assert.equal(nextMatch.simulation.version, 'v2-causal-4');
+    assert.equal(nextMatch.simulation.pricing.version, Q.ESTIMATED_VERSION);
   } finally { h.close(); }
 });
 

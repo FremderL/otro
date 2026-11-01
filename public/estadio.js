@@ -5366,10 +5366,12 @@
         if (suspended) btn.title = 'Mercado suspendido durante la pausa del juego.';
         else if (locked) btn.title = 'Ya apostaste en esta categoría. Solo se permite una selección por mercado.';
         var arrow = mv && mv.dir === 'up' ? '<span class="est-sel-move up">▲</span>' : mv && mv.dir === 'down' ? '<span class="est-sel-move down">▼</span>' : '';
+        var modelProbability = s.prob == null ? '' : 'modelo ' + pct(s.prob) + ' · ';
         btn.innerHTML = '<span class="est-sel-key">' + esc(selLabel(mk, s.key, s)) + '</span>' +
           '<span class="est-sel-odds">' + Number(s.price).toFixed(2) + arrow + '</span>' +
-          '<span class="est-sel-implied">impl. ' + pct(s.implied) + '</span>';
-        btn.setAttribute('aria-label', (MARKET_LABEL[mk] || mk) + ' ' + selLabel(mk, s.key, s) + ', cuota ' + Number(s.price).toFixed(2) + ', probabilidad implícita ' + pct(s.implied));
+          '<span class="est-sel-implied">' + modelProbability + 'impl. ' + pct(s.implied) + '</span>';
+        btn.setAttribute('aria-label', (MARKET_LABEL[mk] || mk) + ' ' + selLabel(mk, s.key, s) + ', cuota ' + Number(s.price).toFixed(2)
+          + (s.prob == null ? '' : ', probabilidad del modelo ' + pct(s.prob)) + ', probabilidad implícita ' + pct(s.implied));
         btn.addEventListener('click', function () { if (!ended && !suspended && !locked) openSlip(mk, s); });
         row.appendChild(btn);
       });
