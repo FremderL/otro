@@ -26,9 +26,16 @@ for (let i = 0; i < 12; i++) {
 store.closeSeason('2026-10');
 const league = store.generateSeason('2026-11', { createdAt: epoch - 60000 });
 const today = league.calendar.matches.filter(match => match.day === 1).sort((a, b) => a.scheduledKickoffAt - b.scheduledKickoffAt);
+// `ESTADIO_PREVIEW_SPEED` acelera el reloj (segundos reales por minuto simulado)
+// para revisar jugadas concretas —goles, cambios, faltas— sin esperar el ritmo
+// oficial de 15 s/min. Con reloj acelerado los partidos se encadenan: cada uno
+// arranca cuando el anterior termina, en vez de dejar huecos de 12 minutos.
+const previewSpeed = Number(process.env.ESTADIO_PREVIEW_SPEED);
+const accelerated = Number.isFinite(previewSpeed) && previewSpeed > 0 && previewSpeed < 15;
+const spacingMs = accelerated ? Math.round(90 * previewSpeed * 1000) + 20000 : 12 * 60 * 1000;
 // Un encuentro ya está en juego y los siguientes arrancan progresivamente para
 // que la vista siga teniendo fútbol mientras el usuario explora el Estadio.
-today.forEach((match, index) => { match.scheduledKickoffAt = epoch - 15000 + index * 12 * 60 * 1000; });
+today.forEach((match, index) => { match.scheduledKickoffAt = epoch - 15000 + index * spacingMs; });
 store.close();
 
 const childEnv = {
@@ -36,6 +43,7 @@ const childEnv = {
   PORT: '39271', NODE_OPTIONS: `--require=${path.join(__dirname, 'runtime.js')}`,
   ESTADIO_PREVIEW_EPOCH: String(epoch), ESTADIO_PREVIEW_SOCKET: socketPath,
   CASINO_TIME_ZONE: 'America/Mexico_City', FOOTBALL_ENABLED: 'on',
+  ...(accelerated ? { FOOTBALL_SIM_SECONDS_PER_MINUTE: String(previewSpeed) } : {}),
   PROFILE_STORE_PATH: path.join(dir, 'profiles.json'), FOOTBALL_STORE_PATH: path.join(dir, 'football.json'),
   COMMUNITY_STORE_PATH: path.join(dir, 'community.json'), LOBBY_TOURNAMENT_STORE_PATH: path.join(dir, 'tournaments.json'),
   PROMOTION_MEDIA_DIR: path.join(dir, 'promotions'), LOTERIA_ENABLED: 'off', FORTUNE_ENABLED: 'off', LOG_JSON: 'off'

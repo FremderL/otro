@@ -770,6 +770,18 @@ equipo que se mueve junto, con 0 bytes extra de red.
 - Jugadores como círculos con dorsal, color de kit del club (`colors.primary/secondary`, patrones
   `stripes|solid|hoops|sash`), sombra suave y contorno del equipo en posesión.
 - Balón con estela corta y destello en tiros.
+- **Porterías con red dibujada hacia fuera del rectángulo de juego** (`GOAL_NET_PX`): el motor deja
+  el balón de un gol apenas traspasada la línea (`x<0` o `x>1`), y el cliente lo acomoda **dentro**
+  de esa red en vez de recortarlo sobre la línea, que es lo que lo mostraba «cerca pero fuera».
+  El balón se clava en la red al llegar el evento de gol y se retiene ahí un instante
+  (`ballHoldUntil`) para que el saque no lo arrastre al centro antes de verse.
+- **Cambios y expulsiones se ven**: el círculo que sale camina hasta la banda más cercana y se
+  desvanece (sin dorsal, con flecha de salida), y el relevo aparece en ese mismo punto de la banda,
+  espera un instante y camina hasta su puesto con un aro discontinuo mientras llega. Nada aparece
+  ni desaparece de golpe.
+- **Marca de jugada**: todo evento con relato (falta, tiro libre, córner, fuera de juego, saque de
+  banda o de meta, penal, tarjeta, cambio, atajada…) deja durante ~2,8 s un anillo y un rótulo
+  sobre el punto donde ocurrió. Lo que los comentaristas dicen tiene que verse en la cancha.
 - Overlays: marcador y reloj arriba al centro, indicadores de tarjetas y cambios en los laterales,
   destello de pantalla y banner «¡GOOOL!» en goles, viñeta roja momentánea en expulsiones.
 - **Modo destacado**: el partido estelar ocupa ~65 % del ancho; los otros en vivo van en una franja
@@ -870,6 +882,21 @@ Reglas de calidad:
   `censorProfanity` y `displayNameIssue` antes de entrar al relato.
 - Volumen objetivo: **1 mensaje cada 25–45 s simulados** (~2,5–4 mensajes por minuto real), con
   picos en goles. Suficiente para sentir transmisión continua sin saturar.
+
+**La cabina habla de lo que está pasando.** Cada línea de relato viaja por socket con el **minuto**
+del hecho, su **relevancia** (`high|medium|normal`) y la marca `catchUp` (historia ya ocurrida al
+entrar tarde o tras un corte). Con esos datos el cliente mantiene la voz sincronizada con la cancha:
+
+- La **historia** se muestra en el panel pero **no se narra**: leer en voz alta todo el catch-up
+  dejaba a los comentaristas minutos por detrás del partido.
+- Una línea se locuta solo si cabe antes de que su jugada quede atrás (`COMMENTARY_SPEECH_MAX_WAIT_MS`,
+  estimando ~55 ms por carácter); si no cabe, se omite en voz alta y el texto sigue en el panel. Lo
+  mismo si envejece esperando turno (`COMMENTARY_SPEECH_STALE_MS`).
+- Un **gol, un penal o una expulsión** (`importance: high`) adelantan a la cola: se descartan las
+  líneas pendientes de menor categoría y, si lo que suena no es relevante, se corta el turno para
+  anunciarlo ya. El analista cede siempre ante el narrador.
+- Cada mensaje del panel lleva el **minuto** del hecho, para que se pueda comprobar de un vistazo
+  que el relato va al ritmo del partido.
 
 ---
 

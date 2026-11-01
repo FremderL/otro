@@ -193,11 +193,14 @@ function createHarness(options = {}) {
   const drawnText = [];
   const playerTextTrace = [];
   const ballTrace = [];
+  const fillRects = [];
   const canvasContext = new Proxy({}, {
     get(_target, key) {
       if (key === 'fillText') return (value, x, y) => { drawnText.push(String(value)); playerTextTrace.push({ value: String(value), x, y }); };
       // El balón se dibuja con radio BALL_R (6): se registra su posición para medir la trayectoria.
       if (key === 'arc') return (x, y, r) => { if (r === 6) ballTrace.push({ x, y }); };
+      // Rectángulos rellenos (áreas, redes y rótulos) para medir geometría.
+      if (key === 'fillRect') return (x, y, width, height) => { fillRects.push({ x, y, width, height }); };
       return () => {};
     },
     set() { return true; }
@@ -406,7 +409,7 @@ function createHarness(options = {}) {
   window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
 
   return {
-    dom, window, socket, handlers, match, matchState, players, drawnText, playerTextTrace, requests, ballTrace, socketEmitted, scheduledTimeouts,
+    dom, window, socket, handlers, match, matchState, players, drawnText, playerTextTrace, requests, ballTrace, fillRects, socketEmitted, scheduledTimeouts,
     audioTelemetryAttempts, ballonDorSocketAttempts, ballonDorHttpAttempts,
     speech: speechApi ? {
       utterances: speechUtterances,
@@ -3111,4 +3114,194 @@ test('los mercados muestran nombres inequívocos también para lectores de panta
   const scorer = buttons.find(button => button.textContent.includes('Jugadora Nueve'));
   assert.ok(scorer);
   assert.match(scorer.getAttribute('aria-label'), /Jugadora Nueve/);
+});
+
+test('el gol se ve dentro de la portería: el balón descansa en la red, no por fuera del arco', async t => {
+  const h = createHarness({ reducedMotion: false });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { handlers, match, ballTrace, fillRects } = h;
+  const id = match.id;
+  // Geometría de la cancha: rectángulo de juego entre PAD y PAD + ancho, con la
+  // red dibujada por fuera de cada línea de meta.
+  const GOAL_LINE_RIGHT = 18 + (1050 - 36);
+  const GOAL_LINE_LEFT = 18;
+  handlers['football:status']({ matchId: id, code: 'live', minute: 60 });
+  handlers['football:event']({
+    matchId: id,
+    event: {
+      type: 'kickoff', team: 'home', minute: 0, phase: 'kickoff', playStopped: false,
+      ball: { x: .5, y: .5 }, ballFrom: { x: .5, y: .5 }, ballCarrierId: 'h2', possessionTeam: 'home'
+    }
+  });
+  h.advanceTime(200);
+
+  // Gol local: el motor deja el balón justo tras la línea (x = 1.01).
+  handlers['football:event']({
+    matchId: id,
+    event: {
+      type: 'goal', team: 'home', playerId: 'h9', playerName: 'Delantero Local', minute: 61,
+      phase: 'goal_celebration', playStopped: true, marcador: '1-0',
+      ball: { x: 1.01, y: .5 }, ballFrom: { x: .88, y: .5 }, actorPosition: { x: .88, y: .5 },
+      ballCarrierId: null, possessionTeam: null
+    }
+  });
+  h.advanceTime(400);
+  ballTrace.length = 0;
+  h.draw(0);
+  const home = ballTrace.at(-1);
+  assert.ok(home, 'el balón se dibuja en la cancha');
+  // La red derecha se dibuja desde la línea de meta hacia la banda y tiene que
+  // ser honda: un simple travesaño no deja sitio para el balón del gol.
+  const homeNet = fillRects.find(rect => Math.abs(rect.x - GOAL_LINE_RIGHT) < 2 && rect.width >= 12);
+  assert.ok(homeNet, 'la portería local se dibuja con red suficiente para contener el balón');
+  assert.ok(home.x > homeNet.x, 'el balón traspasa la línea de meta: ' + home.x);
+  assert.ok(home.x < homeNet.x + homeNet.width, 'y se ve dentro de la red: ' + home.x);
+
+  // Gol visitante: mismo criterio en el arco opuesto.
+  handlers['football:event']({
+    matchId: id,
+    event: {
+      type: 'goal', team: 'away', playerId: 'a9', playerName: 'Delantero Visita', minute: 74,
+      phase: 'goal_celebration', playStopped: true, marcador: '1-1',
+      ball: { x: -0.01, y: .5 }, ballFrom: { x: .12, y: .5 }, actorPosition: { x: .12, y: .5 },
+      ballCarrierId: null, possessionTeam: null
+    }
+  });
+  h.advanceTime(400);
+  ballTrace.length = 0;
+  h.draw(0);
+  const away = ballTrace.at(-1);
+  assert.ok(away, 'el balón se dibuja en la cancha');
+  const awayNet = fillRects.find(rect => Math.abs(rect.x + rect.width - GOAL_LINE_LEFT) < 2 && rect.width >= 12);
+  assert.ok(awayNet, 'la portería visitante se dibuja con red suficiente para contener el balón');
+  assert.ok(away.x < awayNet.x + awayNet.width, 'el balón traspasa la línea de meta: ' + away.x);
+  assert.ok(away.x > awayNet.x, 'y se ve dentro de la red: ' + away.x);
+});
+
+test('un cambio se ve en la cancha: el que sale camina a la banda y el relevo entra por ella', async t => {
+  const h = createHarness({ reducedMotion: false });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { handlers, match } = h;
+  const id = match.id;
+  handlers['football:status']({ matchId: id, code: 'live', minute: 60 });
+  handlers['football:event']({
+    matchId: id,
+    event: {
+      type: 'kickoff', team: 'home', minute: 0, phase: 'kickoff', playStopped: false,
+      ball: { x: .5, y: .5 }, ballFrom: { x: .5, y: .5 }, ballCarrierId: 'h2', possessionTeam: 'home'
+    }
+  });
+  h.advanceTime(200);
+  h.draw(0);
+  const starting = h.playerTextTrace.find(item => item.value === '9');
+  assert.ok(starting, 'el titular h9 está en la cancha antes del cambio');
+
+  handlers['football:event']({
+    matchId: id,
+    event: {
+      type: 'substitution', team: 'home', playerId: 'h12', playerInId: 'h12', playerOutId: 'h9',
+      minute: 72, phase: 'set_piece', playStopped: true, ball: { x: .5, y: .5 },
+      ballFrom: { x: .5, y: .5 }, ballCarrierId: null, possessionTeam: 'home'
+    }
+  });
+
+  // Justo al producirse: el sustituido sigue dibujado (flecha de salida) y el
+  // relevo aparece en la banda, no materializado sobre el puesto.
+  h.draw(0);
+  const leaving = h.drawnText.filter(value => value === '▲' || value === '▼');
+  assert.ok(leaving.length > 0, 'el jugador que sale se ve retirándose por la banda');
+  const entering = h.playerTextTrace.filter(item => item.value === '12').at(-1);
+  assert.ok(entering, 'el relevo ya está en la cancha');
+  assert.ok(entering.y < 60 || entering.y > 620, 'el relevo entra desde la banda: y=' + entering.y);
+
+  // A mitad del recorrido el sustituido todavía se despide.
+  h.advanceTime(900);
+  h.draw(0);
+  assert.ok(h.drawnText.some(value => value === '▲' || value === '▼'), 'la salida dura lo que tarda el recorrido');
+
+  // Al terminar, el relevo ocupa el puesto y el que salió ya no se dibuja.
+  h.advanceTime(2600);
+  h.draw(0);
+  const settled = h.playerTextTrace.filter(item => item.value === '12').at(-1);
+  assert.ok(settled, 'el relevo sigue en la cancha');
+  assert.ok(Math.abs(settled.y - entering.y) > 20, 'el relevo caminó hasta su puesto (y ' + entering.y + ' → ' + settled.y + ')');
+  assert.ok(!h.drawnText.some(value => value === '▲' || value === '▼'), 'el sustituido ya abandonó el campo');
+});
+
+test('la jugada que el relato menciona se ve en la cancha con una marca', async t => {
+  const h = createHarness({ reducedMotion: false });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { handlers, match } = h;
+  const id = match.id;
+  handlers['football:status']({ matchId: id, code: 'live', minute: 8 });
+  handlers['football:event']({
+    matchId: id,
+    event: {
+      type: 'foul', team: 'home', playerId: 'h3', minute: 9, phase: 'set_piece', playStopped: true,
+      ball: { x: .40, y: .30 }, ballFrom: { x: .40, y: .30 }, ballCarrierId: null, possessionTeam: 'away'
+    }
+  });
+  h.draw(0);
+  const marks = h.drawnText.filter(value => String(value).indexOf('FALTA') >= 0);
+  assert.ok(marks.length > 0, 'la falta deja un rótulo visible en la cancha');
+  // La marca es efímera: no se queda pegada durante el resto del partido.
+  h.advanceTime(3000);
+  h.draw(0);
+  assert.ok(!h.drawnText.some(value => String(value).indexOf('FALTA') >= 0), 'la marca se retira al poco tiempo');
+});
+
+test('la cabina habla de lo que pasa: la historia no se narra y un gol adelanta a la cola', async t => {
+  const h = createHarness({ speechSynthesis: true });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match, speech } = h;
+  const id = match.id;
+  const feed = window.document.getElementById('est-commentary');
+  const button = window.document.getElementById('est-commentary-voice');
+  button.click();
+
+  // 1. Historia ya ocurrida (catch-up al entrar o tras un corte): se muestra…
+  handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'Minuto 12: llegada del local.', minute: 12, importance: 'normal', catchUp: true });
+  assert.match(feed.textContent, /Minuto 12: llegada del local/, 'el panel conserva el relato');
+  assert.equal(speech.utterances.length, 0, 'pero no se lee: narrarla dejaría la cabina minutos atrás');
+
+  // 2. Un gol interrumpe lo que esté sonando para anunciarse en el acto.
+  handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'El local mueve el balón de un lado a otro buscando el hueco.', minute: 55, importance: 'normal' });
+  assert.equal(speech.utterances.length, 1, 'la jugada menor empieza a narrarse');
+  handlers['football:commentary']({ matchId: id, voice: 'narrador', text: '¡Gol del local en el 56!', minute: 56, importance: 'high' });
+  assert.equal(speech.utterances.length, 2, 'el gol adelanta a la cola');
+  assert.equal(speech.utterances[1].text, '¡Gol del local en el 56!');
+  assert.ok(speech.cancelCount > 0, 'se corta el turno anterior para narrar el gol');
+  speech.finish(1);
+  h.advanceTime(1000);
+  assert.equal(speech.utterances.length, 2, 'la línea menor descartada no se cuela después del gol');
+});
+
+test('la cabina no se atrasa: lo que ya no cabe se omite en voz alta pero queda en el panel', async t => {
+  const h = createHarness({ speechSynthesis: true });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match, speech } = h;
+  const id = match.id;
+  const feed = window.document.getElementById('est-commentary');
+  const button = window.document.getElementById('est-commentary-voice');
+  button.click();
+
+  const long = 'El local mueve el balón de un lado a otro buscando el hueco mientras la defensa espera ordenada y el reloj corre sin que nadie se atreva a romper líneas.';
+  handlers['football:commentary']({ matchId: id, voice: 'narrador', text: long, minute: 30, importance: 'normal' });
+  handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'Segunda jugada intrascendente.', minute: 31, importance: 'normal' });
+  handlers['football:commentary']({ matchId: id, voice: 'analista', text: 'Tercera jugada intrascendente.', minute: 32, importance: 'normal' });
+  assert.equal(speech.utterances.length, 1, 'solo se narra lo que cabe antes de que la jugada pase');
+  assert.match(feed.textContent, /Segunda jugada intrascendente/, 'el panel conserva el texto omitido en voz alta');
+  assert.match(feed.textContent, /Tercera jugada intrascendente/);
+
+  // Una línea que envejece esperando turno tampoco se lee después.
+  handlers['football:commentary']({ matchId: id, voice: 'narrador', text: 'Comentario corto.', minute: 33, importance: 'normal' });
+  h.advanceTime(9000);
+  speech.finish(0);
+  h.advanceTime(1000);
+  assert.equal(speech.utterances.length, 1, 'una línea que ya describe el pasado se salta');
 });
