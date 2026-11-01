@@ -765,6 +765,21 @@
 .est-cmt-voice { color: var(--gold-2); font-size: 8px; font-weight: 900; letter-spacing: .1em; line-height: 1.25; text-transform: uppercase; }
 .est-cmt.analista .est-cmt-voice { color: var(--mint); }
 .est-cmt-text { color: #f2f5ef; font-size: 14px; font-weight: 650; line-height: 1.5; }
+/* Minuto del hecho narrado: permite comprobar de un vistazo que el relato va al
+   ritmo del partido y no dos minutos por detrás de la jugada. */
+.est-cmt-minute {
+  display: inline-block;
+  margin-right: 7px;
+  padding: 1px 6px;
+  border: 1px solid rgba(194,223,216,.16);
+  border-radius: 7px;
+  background: rgba(255,255,255,.06);
+  color: #a9bcb6;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  vertical-align: 1px;
+}
 .est-cmt.analista .est-cmt-text { color: #d9f3e9; }
 .est-cmt.is-entering { animation: estCommentaryEnter .38s cubic-bezier(.2,.7,.2,1) both; }
 .est-cmt.muted-all { opacity: .4; }

@@ -973,3 +973,29 @@ test('el reloj de cierre del Balón de Oro usa el ritmo público V2 y lo identif
   assert.equal(bdo.betsCloseAt, lastKickoff + 90 * 15 * 1000);
   assert.equal(bdo.betsCloseEstimated, true);
 });
+
+test('relato: cada línea viaja con su minuto, su relevancia y la marca de historia', (t) => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const s = ctx.io.connect();
+  subscribe(ctx, s, { scope: 'match', matchId: ctx.scheduled.id, name: 'Nuria' });
+  const room = matchRoom(ctx.scheduled.id);
+  ctx.engine.emit('football:event', { matchId: ctx.scheduled.id, event: { t: 0, type: 'kickoff', team: 'home', half: 1 }, catchUp: false, replay: false });
+  ctx.engine.emit('football:event', {
+    matchId: ctx.scheduled.id,
+    event: { t: 56, type: 'goal', team: 'home', half: 2, playerId: 'h9', playerName: 'A. Vitale' },
+    catchUp: true, replay: false
+  });
+  const lines = ctx.io.emittedTo(room, 'football:commentary').map(e => e.payload);
+  const goals = lines.filter(line => line.type === 'goal');
+  assert.ok(goals.length > 0, 'el gol produjo relato');
+  // La cabina del cliente necesita estos datos para no hablar del pasado:
+  // minuto del hecho, relevancia y si el texto es historia ya ocurrida.
+  assert.ok(goals.every(line => line.minute === 56), 'cada línea sabe en qué minuto ocurrió el hecho');
+  assert.ok(goals.every(line => line.importance === 'high'), 'un gol viaja como jugada relevante');
+  assert.ok(goals.every(line => line.catchUp === true), 'la historia se marca para no narrarse en voz alta');
+  const kickoff = lines.filter(line => line.type === 'kickoff');
+  assert.ok(kickoff.length > 0, 'el saque inicial también se relata');
+  assert.ok(kickoff.every(line => line.catchUp === false), 'lo que ocurre en vivo no se marca como historia');
+  assert.ok(kickoff.every(line => line.importance === 'normal'), 'y conserva su relevancia real');
+});
