@@ -69,7 +69,7 @@ test('servidor real pasa de octubre a V2 automático antes de publicar y conserv
   assert.ok(verifyCommitment(match.simulation, match), 'el compromiso está durable antes de escuchar');
   assert.equal(match.simulation.inputs.source.previousSeason, '2026-10');
   assert.ok(match.simulation.inputs.context.previousSample > 0);
-  assert.equal(match.simulation.pricing.version, 'v2-estimated-1');
+  assert.equal(match.simulation.pricing.version, 'v2-estimated-2');
   const response = await fetch(`http://127.0.0.1:${server.port}/api/estadio/matches/${match.id}`);
   assert.equal(response.status, 200);
   const publicData = await response.json();

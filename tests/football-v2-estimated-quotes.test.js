@@ -106,24 +106,26 @@ function legacyMatrixOf(input) {
 
 test('los modelos preparados con la fórmula anterior siguen validándose (compatibilidad)', () => {
   const { data, match } = input();
-  const legacy = { version: Q.ESTIMATED_VERSION, simulatorVersion: data.version,
-    inputHash: require('../lib/football/v2/calibration').hashInputs(data),
+  const legacyInputs = { ...data, version: require('../lib/football/v2/versions').causal3.VERSION };
+  const legacy = { version: Q.ESTIMATED_LEGACY_VERSION, simulatorVersion: legacyInputs.version,
+    inputHash: require('../lib/football/v2/calibration').hashInputs(legacyInputs),
     priorVersion: require('../lib/football/v2/score-prior.json').version,
-    knockout: false, matrix: legacyMatrixOf(data) };
+    knockout: false, matrix: legacyMatrixOf(legacyInputs) };
   assert.ok(Q.validModel(legacy), 'sin entrada: consistencia interna');
-  assert.ok(Q.validModel(legacy, data), 'con entrada: matriz recalculada con la fórmula congelada');
+  assert.ok(Q.validModel(legacy, legacyInputs), 'con entrada: matriz recalculada con la fórmula congelada');
   assert.ok(Q.preMatchMarkets(legacy), 'mercados desde la matriz congelada');
-  const record = { version: data.version, inputs: JSON.parse(JSON.stringify(data)),
-    inputsHash: require('../lib/football/v2/calibration').hashInputs(data),
+  const record = { version: legacyInputs.version, inputs: JSON.parse(JSON.stringify(legacyInputs)),
+    inputsHash: require('../lib/football/v2/calibration').hashInputs(legacyInputs),
     privateSeed: '42'.repeat(32), preparedAt: data.asOf, pricing: legacy };
   assert.equal(verifyCommitment(record, match), true);
   const loaded = cleanCommitment(JSON.parse(JSON.stringify(record)), match);
   assert.ok(!loaded.invalid, 'rehidrata sin invalidar');
-  // Rehidratar reconstruye la cuota desde las entradas congeladas con la
-  // fórmula vigente; el compromiso y su huella no cambian.
+  // Rehidratar un compromiso antiguo mantiene exactamente su versión y su
+  // matriz; el prior nuevo solo aplica a compromisos nuevos de v2-causal-4.
   assert.equal(loaded.version, record.version);
   assert.equal(loaded.inputsHash, record.inputsHash);
   assert.equal(loaded.privateSeed, record.privateSeed);
+  assert.deepEqual(loaded.pricing, legacy);
   assert.ok(Q.validModel(loaded.pricing, loaded.inputs));
   // El drift de la fórmula anterior debe detectarse: matriz alterada -> inválido.
   const drifted = JSON.parse(JSON.stringify(record));
@@ -131,7 +133,7 @@ test('los modelos preparados con la fórmula anterior siguen validándose (compa
   assert.equal(verifyCommitment(drifted, match), false);
 });
 
-test('calibración v2-tilt-2: baseline de gemelos, pendiente att/def y clima de goles', () => {
+test('v2-mc-1 usa el prior Monte Carlo de v2-causal-4 y publica probabilidades y margen correctos', () => {
   const { data } = input();
   const oneX2 = matrix => {
     let h = 0, x = 0, a = 0;
@@ -139,16 +141,16 @@ test('calibración v2-tilt-2: baseline de gemelos, pendiente att/def y clima de 
       if (i > j) h += matrix[i][j]; else if (i === j) x += matrix[i][j]; else a += matrix[i][j];
     return { h, x, a };
   };
-  // Baseline de gemelos del motor: H .367 / X .276 / A .357 (Monte Carlo 16×200).
+  // Baseline de gemelos tras inclinar el prior v4 por contexto: H .364 / X .290 / A .345.
   const twin = JSON.parse(JSON.stringify(data));
   twin.away = JSON.parse(JSON.stringify(twin.home));
   twin.away.id = 'clone_de_local';
   twin.away.lineup.teamId = 'clone_de_local';
   twin.away.lineup.players.forEach(p => { p.id = 'clone_' + p.id; });
   const base = oneX2(Q.scoreMatrix(Q.createEstimatedModel(twin)));
-  assert.ok(Math.abs(base.h - 0.367) < 0.015 && Math.abs(base.x - 0.276) < 0.015 && Math.abs(base.a - 0.357) < 0.015,
+  assert.ok(Math.abs(base.h - 0.364) < 0.01 && Math.abs(base.x - 0.290) < 0.01 && Math.abs(base.a - 0.345) < 0.01,
     `baseline ${JSON.stringify(base)}`);
-  // Pendiente att/def espejo ±0.18: el motor da +12 pts al local (Monte Carlo 300).
+  // Los cambios espejo de ataque/defensa inclinan el resultado al local.
   const mirror = JSON.parse(JSON.stringify(twin));
   mirror.home.ratings.att = Number(mirror.home.ratings.att.toFixed(3)) + 0;
   const attBase = mirror.home.ratings.att;
@@ -158,13 +160,22 @@ test('calibración v2-tilt-2: baseline de gemelos, pendiente att/def y clima de 
   mirror.away.ratings.def = Math.min(1.35, mirror.away.ratings.def + 0.18);
   const shifted = oneX2(Q.scoreMatrix(Q.createEstimatedModel(mirror)));
   assert.ok(shifted.h - base.h > 0.08, `pendiente att/def ${JSON.stringify({ base, shifted })}`);
-  // Clima: leagueAvg alto baja los empates (motor: .276 -> .200 con avg 1.6).
+  // Clima de goles más alto reduce la proporción de empates en el pronóstico.
   const wet = JSON.parse(JSON.stringify(twin));
   wet.context.leagueAvg = 1.6;
   const wetProbs = oneX2(Q.scoreMatrix(Q.createEstimatedModel(wet)));
   assert.ok(wetProbs.x < base.x - 0.03, `clima ${JSON.stringify({ base, wetProbs })}`);
   // El modelo nuevo lleva etiqueta de fórmula; el prior no se toca.
   const model = Q.createEstimatedModel(data);
-  assert.equal(model.formula, 'v2-tilt-2');
-  assert.equal(model.priorVersion, require('../lib/football/v2/score-prior.json').version);
+  assert.equal(model.version, 'v2-estimated-2');
+  assert.equal(model.formula, 'v2-mc-1');
+  assert.equal(model.simulatorVersion, 'v2-causal-4');
+  assert.equal(model.priorVersion, require('../lib/football/v2/score-prior-causal-4.json').version);
+  assert.equal(model.monteCarloSamples, 2048);
+  assert.equal(model.holdoutSamples, 2048);
+  const market = Q.preMatchMarket(model, '1x2');
+  assert.ok(Math.abs(market.overround - 1.06) < 0.002);
+  assert.ok(Math.abs(market.margin - 0.06) < 0.002);
+  assert.ok(Math.abs(market.hold - market.margin / (1 + market.margin)) < 1e-5);
+  assert.ok(Math.abs(market.selections.reduce((sum, selection) => sum + selection.prob, 0) - 1) < 1e-5);
 });

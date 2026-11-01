@@ -38,7 +38,7 @@ test('calibración empírica usa corrientes independientes y es repetible para l
 test('la calibración incluye goles del añadido y cuenta el resultado tras el pitido final', () => {
   const simulator = require('../lib/football/v2/simulator');
   const { derivedKey, secureRandom } = require('../lib/football/v2/secure-random');
-  const match = input(), key = '02'.repeat(32), samples = 4;
+  const match = input(), key = '01'.repeat(32), samples = 4;
   const actual = C.createCalibration(match, key, samples);
   const expected = {};
   let addedGoal = false;

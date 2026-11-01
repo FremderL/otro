@@ -35,6 +35,36 @@ test('simulador V2 es determinista, versionado y reproduce el mismo prefijo y fi
   assert.notDeepEqual(different.snapshot().players, createMatch({ ...fixture, seed: 123456 }).step(1000).players);
 });
 
+test('v2-causal-4 amplifica de forma medible la calidad individual sin romper el contrato versionado', () => {
+  const { current, causal3, simulatorFor } = require('../lib/football/v2/versions');
+  assert.equal(current.VERSION, 'v2-causal-4');
+  assert.equal(simulator.VERSION, 'v2-causal-4');
+  assert.equal(simulatorFor('v2-causal-3'), causal3);
+  assert.equal(causal3.VERSION, 'v2-causal-3');
+
+  const roles = ['GK', 'DF', 'DF', 'DF', 'DF', 'MF', 'MF', 'MF', 'MF', 'FW', 'FW'];
+  const makeTeam = (id, shooting) => ({ id, formation: '4-4-2', ratings: { att: 1, def: 1, gk: 1, elo: 1500 },
+    lineup: { teamId: id, formation: '4-4-2', players: roles.map((role, slotIndex) => ({
+      id: `${id}-p${slotIndex}`, name: `${id} ${slotIndex}`, number: slotIndex + 1, slotIndex, role,
+      initialStatus: 'active', attrs: { pac: 65, pas: 70, sho: shooting, def: 65, gk: role === 'GK' ? 80 : 20 }
+    })) } });
+  const aggregate = quality => {
+    let shots = 0, onTarget = 0;
+    for (let seed = 1; seed <= 32; seed++) {
+      const match = createMatch({ seed, home: makeTeam('home', quality), away: makeTeam('away', quality) });
+      const state = finish(match).state;
+      for (const side of ['home', 'away']) {
+        shots += state.stats[side].shots; onTarget += state.stats[side].shotsOnTarget;
+      }
+    }
+    return { shots, onTarget };
+  };
+  const weak = aggregate(35), strong = aggregate(95);
+  assert.ok(weak.shots > 0 && strong.shots > 0);
+  assert.ok(strong.onTarget / strong.shots > weak.onTarget / weak.shots + 0.025,
+    `calidad de tiro: ${weak.onTarget}/${weak.shots} frente a ${strong.onTarget}/${strong.shots}`);
+});
+
 test('intercepciones requieren coincidir en posición y tiempo, no solo cruzar una trayectoria', () => {
   const { movingContact } = simulator;
   const ballFrom = { x: 0, y: 0 }, ballTo = { x: 10, y: 0 };
@@ -207,7 +237,7 @@ test('el corpus exploratorio evita partidos bloqueados o marcadores sistemática
 });
 
 test('un 0–0 es un partido válido que termina sin reintentar ni retrasar', () => {
-  const match = createMatch({ seed: 14 });
+  const match = createMatch({ seed: 27 });
   const { state, events } = finish(match);
   assert.deepEqual(state.score, { home: 0, away: 0 });
   assert.equal(state.time, state.clock.matchEnd * 60);

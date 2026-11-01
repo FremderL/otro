@@ -2,7 +2,7 @@
 
 > **Alcance de las mediciones:** este diagnóstico se tomó sobre el motor V1 y una
 > temporada sintética antes de integrar V2. Desde noviembre de 2026 la auditoría
-> usa la matriz estimada V2 del partido (`v2-estimated-1`), no Poisson V1; las
+> usa la matriz estimada V2 del partido (`v2-estimated-2`), no Poisson V1; las
 > cifras históricas de este documento no son una medición de la política actual.
 > La matriz V2, el descanso/final y el primer goleador son aproximaciones, no
 > una garantía de calibración económica o de margen por encuentro.
@@ -16,6 +16,16 @@
 3. **Comportamiento del libro** — catálogo de mercados, movimiento por dinero y precio en vivo.
 
 Este documento mide las tres con un instrumento que ya está en el repo (`npm run football:odds-audit`) y propone cómo cerrar cada brecha.
+
+## Estado actual de la nueva cotización Monte Carlo (v2-estimated-2)
+
+El prior del motor v4 se generó con **2.048 partidos sintéticos completos** y se contrastó con **2.048 semillas independientes**: 16 espejos de plantillas más 16 cruces de equipos, con 64 réplicas de entrenamiento y 64 de control por cruce. El control difirió como máximo 1,90 puntos porcentuales en 1X2; los goles medios visitantes difirieron 0,047. Son chequeos de estabilidad del simulador, **no una calibración con resultados reales ni con precios de casas**. La proyección sigue ponderando ratings, Elo, atributos y promedio goleador disponibles en el producto.
+
+Para 1X2 el sistema publica el **6 % de overround**: si las probabilidades justas son `pᵢ`, los precios parten de `1 / pᵢ` y se acortan para que `Σ(1 / cuotaᵢ) ≈ 1,06`. La probabilidad justa se conserva separada del porcentaje implícito de la cuota; la interfaz/API devuelve ambos, junto al overround y el hold teórico. El hold proporcional es `(overround − 1) / overround`: con 1,06 equivale a `0,06 / 1,06 ≈ 5,66 %`, no a 6 %.
+
+**¿Todos los partidos deberían tener Local 2.00 / Empate 4.00 / Visitante 2.00? No.** Esos precios implican 50 % + 25 % + 50 % = **125 %** (25 % de overround, hold proporcional de 20 %). Al quitar el margen representan un partido con probabilidades 40/20/40. Además, no reflejan la fuerza de cada equipo; un favorito claro no debe cotizar igual que un duelo parejo.
+
+Como referencia de metodología, Pinnacle explica la conversión `1/cuota`, la incorporación de margen y el uso de información de equipo y mercado para ajustar precios ([guía de cuotas](https://pinnacle.com/en/betting-articles/betting-strategy/betting-odds-explained/qen2dcqrvncnv4jf), [cómo operan los bookmakers](https://pinnacle.com/en/betting-articles/Betting-Strategy/how-bookmakers-make-money/MFT2YXK5C98V4HT5)). Pinnacle publica márgenes estrechos en mercados líquidos (su tabla histórica anuncia 1,5 % para 1X2 de Premier League), mientras que esta simulación usa 6 % como objetivo recreativo del producto ([tabla de márgenes de Pinnacle](https://pinnacle.com/en/betting-articles/Soccer/new-soccer-season/L5K2F8FLQU43428L)). No se copian cuotas en vivo ni se afirma que el simulador tenga sus datos: no tenemos feed de lesiones, árbitros, apuestas o movimiento de mercado. También Betfair Exchange es distinto: sus precios los emparejan participantes y cobra comisión, no es el mismo esquema de overround fijo ([ayuda de Betfair Exchange](https://content.betfair.com/xgHelp/?product=games&sWhichKey=cdr.general)).
 
 ---
 
