@@ -790,6 +790,47 @@
 }
 .est-crowd-title { margin: 3px 0 0; color: #f4f7f2; font-family: var(--display); font-size: 17px; letter-spacing: .02em; }
 .est-crowd-reactions { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Solo para lectores de pantalla: los anuncios del interruptor de comentarios
+   bala no deben verse (el estado ya está en el botón, con aria-pressed). */
+.est-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+}
+.est-crowd-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.est-crowd-mute {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: 1px solid rgba(194,223,216,.22);
+  border-radius: 11px;
+  background: rgba(12,22,24,.9);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: border-color .16s ease, background .16s ease, color .16s ease;
+}
+.est-crowd-mute:hover,
+.est-crowd-mute:focus-visible { border-color: rgba(229,189,114,.6); background: rgba(229,189,114,.12); color: var(--gold-2); }
+.est-crowd-mute[aria-pressed="true"] {
+  border-color: rgba(255,154,166,.6);
+  background: rgba(255,120,120,.14);
+  color: #ff9aa6;
+}
+.est-crowd-mute-icon { font-size: 11px; line-height: 1; }
 .est-crowd-react {
   display: grid;
   width: 38px;

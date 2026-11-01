@@ -245,6 +245,8 @@ function createHarness(options = {}) {
   style.textContent = STYLES;
   window.document.head.appendChild(style);
   window.localStorage.setItem('montecristo-tos', options.localTosVersion || '2026-09-28');
+  // Preferencia previa de la grada: el cliente la lee al evaluarse.
+  if (options.danmakuMuted) window.localStorage.setItem('montecristo-danmaku-muted', 'off');
   if (options.openingCompleted && currentBallonDorMarket) {
     window.localStorage.setItem('montecristo-bdo-opening-v2:' + currentBallonDorMarket.seasonMonth, 'completed');
   }
@@ -2652,6 +2654,108 @@ test('la grada del Estadio pinta la charla y las reacciones del partido', async 
   assert.match(lines[1].textContent, /⚽/);
   assert.match(lines[1].textContent, /Ana/);
   assert.doesNotMatch(feed.textContent, /no debe verse/);
+});
+
+test('la charla de la grada cruza la cancha como comentario bala, de derecha a izquierda', async t => {
+  const h = createHarness();
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+  const { document } = h.window;
+  const layer = document.getElementById('est-danmaku');
+  assert.ok(layer, 'existe la capa de comentarios bala');
+  assert.equal(layer.getAttribute('aria-hidden'), null, 'la capa no se oculta a los lectores: su ✕ debe ser alcanzable');
+
+  h.handlers['football:chat']({ matchId: h.match.id, text: '¡Vamos!', name: 'Beti', at: 1 });
+  h.handlers['football:reaction']({ matchId: h.match.id, emoji: '⚽', from: 'Ana' });
+  await h.flush();
+
+  const items = [...layer.querySelectorAll('.est-danmaku-item')];
+  assert.equal(items.length, 1, 'solo el chat cruza la cancha; las reacciones no son comentarios');
+  assert.match(items[0].textContent, /Beti: ¡Vamos!/);
+  assert.ok(Number.parseFloat(items[0].style.top) >= 0, 'cada comentario recibe su carril vertical');
+
+  // El recorrido va de derecha a izquierda: el keyframe original arranca pegado
+  // al borde derecho (left: 100%) y termina fuera del borde izquierdo.
+  const keyframe = STYLES.match(/@keyframes estDanmaku \{[\s\S]*?\n\}/);
+  assert.ok(keyframe, 'la animación de los comentarios bala existe');
+  assert.match(keyframe[0], /from \{[^}]*left: 100%/);
+  assert.match(keyframe[0], /to \{[^}]*left: -100%/);
+  assert.match(STYLES, /\.est-danmaku-item \{[^}]*animation: estDanmaku/);
+
+  // El ✕ quita ESE comentario, no los demás.
+  h.handlers['football:chat']({ matchId: h.match.id, text: 'Segundo', name: 'Ana', at: 2 });
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 2);
+  const close = layer.querySelector('.est-danmaku-close');
+  assert.match(close.getAttribute('aria-label'), /Beti/, 'el ✕ dice de qué comentario es');
+  close.click();
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 1, 'el ✕ quitó solo su comentario');
+  assert.match(layer.textContent, /Segundo/);
+});
+
+test('«Silenciar grada» apaga los comentarios bala, los recuerda y se puede reactivar', async t => {
+  const h = createHarness();
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+  const { document } = h.window;
+  const button = document.getElementById('est-danmaku-mute');
+  const layer = document.getElementById('est-danmaku');
+  assert.ok(button, 'hay un botón global de silencio en el panel de la grada');
+  assert.ok(button.compareDocumentPosition(document.getElementById('est-crowd-reactions')) & h.window.Node.DOCUMENT_POSITION_FOLLOWING,
+    'el interruptor está junto a las reacciones de la grada');
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
+  assert.match(button.textContent, /Silenciar grada/);
+
+  h.handlers['football:chat']({ matchId: h.match.id, text: 'Antes de silenciar', name: 'Beti', at: 1 });
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 1);
+
+  button.click();
+  await h.flush();
+  assert.equal(button.getAttribute('aria-pressed'), 'true');
+  assert.match(button.textContent, /Activar grada/);
+  assert.equal(layer.hidden, true, 'la capa se oculta');
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 0, 'lo que ya estaba en la cancha se retira');
+  assert.equal(h.window.localStorage.getItem('montecristo-danmaku-muted'), 'off', 'la elección se guarda');
+  assert.match(document.getElementById('est-danmaku-note').textContent, /silenciados/);
+
+  h.handlers['football:chat']({ matchId: h.match.id, text: 'Mientras está en silencio', name: 'Ana', at: 2 });
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 0, 'sin silencio no se pintan nuevos comentarios');
+  assert.match(document.getElementById('est-crowd-feed').textContent, /Mientras está en silencio/,
+    'el mensaje sigue llegando al registro de la grada');
+
+  button.click();
+  await h.flush();
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
+  assert.equal(layer.hidden, false);
+  assert.match(button.textContent, /Silenciar grada/);
+  assert.equal(h.window.localStorage.getItem('montecristo-danmaku-muted'), null, 'al reactivar se borra la preferencia');
+  h.handlers['football:chat']({ matchId: h.match.id, text: 'De vuelta', name: 'Ana', at: 3 });
+  assert.equal(layer.querySelectorAll('.est-danmaku-item').length, 1, 'vuelven a cruzar la cancha');
+  assert.doesNotMatch(layer.textContent, /Mientras está en silencio/, 'no se rellena con lo que llegó en silencio');
+});
+
+test('el silencio de la grada sobrevive a recargar la página', async t => {
+  const first = createHarness();
+  await first.connectToMatch();
+  await first.flush();
+  first.window.document.getElementById('est-danmaku-mute').click();
+  const stored = first.window.localStorage.getItem('montecristo-danmaku-muted');
+  first.close();
+  assert.equal(stored, 'off');
+
+  // Segundo arranque con la misma preferencia guardada.
+  const second = createHarness({ danmakuMuted: true });
+  t.after(second.close);
+  await second.connectToMatch();
+  await second.flush();
+  const { document } = second.window;
+  assert.equal(document.getElementById('est-danmaku-mute').getAttribute('aria-pressed'), 'true');
+  assert.equal(document.getElementById('est-danmaku').hidden, true);
+  assert.match(document.getElementById('est-danmaku-note').textContent, /silenciados/,
+    'se avisa una vez al arrancar que la grada está silenciada');
+  second.handlers['football:chat']({ matchId: second.match.id, text: 'Sigue en silencio', name: 'Beti', at: 1 });
+  assert.equal(document.querySelectorAll('.est-danmaku-item').length, 0);
 });
 
 test('las reacciones de la grada se envían al partido abierto', async t => {

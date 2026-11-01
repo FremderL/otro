@@ -127,14 +127,37 @@ En el panel *Reacciones y charla* hay una franja nueva:
 Los mensajes de la grada cruzan el terreno de juego mientras el partido se juega (`public/estadio.js`,
 `pushDanmaku()`; estilos en `public/estadio.css`).
 
-- Cada comentario es un elemento independiente con **su propio botón ✕**: se quita *ese* comentario,
-  no todos. No hay interruptor global.
+- Recorrido **de derecha a izquierda** (`@keyframes estDanmaku`: `left: 100%` → `left: -100%`), 11 s.
+  Solo cruzan la cancha los mensajes de la charla (`football:chat`); las reacciones rápidas se quedan
+  en el registro de la grada. El elemento se elimina al terminar la animación, con un temporizador de
+  seguridad de 16 s por si la pestaña queda en segundo plano.
 - Máximo 6 en pantalla; los más viejos salen solos.
-- El recorrido dura 11 s y el elemento se elimina al terminar la animación (con un temporizador de
-  seguridad por si la pestaña queda en segundo plano).
+- Cada comentario es un elemento independiente con **su propio botón ✕** (etiquetado con el nombre de
+  quien lo escribió): se quita *ese* comentario, no todos.
+
+### Silenciar la grada (interruptor global)
+
+Pedido: además del ✕ por comentario, un botón para que cualquier usuario **silencie** los comentarios
+bala de una vez. Está en la cabecera del panel *Reacciones y charla*, junto a las reacciones:
+**«Silenciar grada» / «Activar grada»** (`#est-danmaku-mute`, `aria-pressed`, `aria-controls="est-danmaku"`).
+
+- Al silenciar se **vacía la capa** y se oculta; los mensajes que sigan llegando **no** cruzan la
+  cancha, pero **sí** se apuntan en el registro accesible de la grada: no se pierde la conversación.
+- La preferencia se guarda en `localStorage` (`montecristo-danmaku-muted = 'off'`) y sobrevive a
+  recargar la página; al arrancar con la grada silenciada se avisa una vez por lector de pantalla.
+- Al reactivar **no se rellena** con lo que llegó durante el silencio: la cancha se repuebla con los
+  mensajes nuevos.
+- Un aviso `role="status"` oculto visualmente (`#est-danmaku-note`, `.est-sr-only`) anuncia el cambio.
 - `prefers-reduced-motion`: sin desplazamiento; los comentarios se apilan en una lista breve.
-- Accesibilidad: la capa es `aria-hidden` porque el mismo texto ya está en el registro accesible
-  (`role="log"`) del panel de la grada; el botón ✕ sí es alcanzable con teclado.
+
+**Accesibilidad**: la capa ya **no** es `aria-hidden` —antes lo era y eso dejaba el botón ✕ fuera del
+alcance de los lectores de pantalla—. Ahora la capa es un `role="group"` etiquetado
+(*«Comentarios de la grada sobre la cancha»*) y cada ✕ se anuncia con el nombre de quien escribió;
+el texto no se duplica como texto navegable de la capa, porque ya está en el `role="log"` de la grada.
+
+**Pruebas** (`tests/football-stadium-ui.test.js`): «la charla de la grada cruza la cancha como
+comentario bala, de derecha a izquierda», ««Silenciar grada» apaga los comentarios bala, los recuerda y
+se puede reactivar» y «el silencio de la grada sobrevive a recargar la página».
 
 ---
 
@@ -175,9 +198,10 @@ misma pasada».
 | `lib/football/stands.js` | Módulo de moderación opt-in (votación, censura dura, limpieza de texto) |
 | `lib/football/sockets.js` | `countdowns` en el lobby, `stands` en el estado del partido, eventos de votación, chat con `soft` |
 | `lib/football/ballon-dor-market.js` | Apertura tardía del ciclo en vez de cancelación |
-| `public/estadio.html` | Relojes DD:HH:MM:SS, capa de comentarios bala, franja de votación |
-| `public/estadio.js` | `tickSeasonCountdowns()`, `pushDanmaku()`, `renderStands()` y cableado de sockets |
-| `public/estadio.css` | Estilos de relojes, comentarios bala y votación |
+| `public/estadio.html` | Relojes DD:HH:MM:SS, capa de comentarios bala (ya accesible), botón «Silenciar grada», franja de votación |
+| `public/estadio.js` | `tickSeasonCountdowns()`, `pushDanmaku()`, `setDanmakuMuted()` / `renderDanmakuMute()`, `renderStands()` y cableado de sockets |
+| `public/estadio.css` | Estilos de relojes, comentarios bala, interruptor de silencio (`.est-crowd-mute`, `.est-sr-only`) y votación |
 | `tests/football-stands.test.js` | 9 pruebas del módulo de grada |
+| `tests/football-stadium-ui.test.js` | 3 pruebas de los comentarios bala y del botón de silencio |
 | `tests/football-fixtures.test.js` | Invariante del muro de las 22:00 + `matchRealMs` |
 | `tests/football-ballon-dor-market.test.js` | Apertura tardía y ceremonia con el servidor apagado |

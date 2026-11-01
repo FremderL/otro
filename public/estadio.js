@@ -57,6 +57,19 @@
 
   // ===== Utilidades =====
   function $(id) { return document.getElementById(id); }
+  // Los comentarios bala de la grada se pueden silenciar y la elección se
+  // recuerda entre visitas (misma convención que el resto de ajustes locales).
+  var DANMAKU_MUTED_KEY = 'montecristo-danmaku-muted';
+  function readDanmakuMuted() {
+    try { return localStorage.getItem(DANMAKU_MUTED_KEY) === 'off'; } catch (_) { return false; }
+  }
+  function writeDanmakuMuted(muted) {
+    try {
+      if (muted) localStorage.setItem(DANMAKU_MUTED_KEY, 'off');
+      else localStorage.removeItem(DANMAKU_MUTED_KEY);
+    } catch (_) { /* sin storage: el silencio dura la sesión */ }
+  }
+
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   function lerp(a, b, t) { return a + (b - a) * t; }
   function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
@@ -164,7 +177,11 @@
     goalFlashUntil: 0, goalAnimUntil: 0, goalCueAt: 0, homeKit: '#52e0ae', awayKit: '#ff667c', rafId: null, pitchCache: null, submitting: false,
     crowdLastSentAt: 0,
     // Grada: votación de moderación y autorización de insultos del partido.
-    stands: null
+    stands: null,
+    // Comentarios bala: interruptor global («Silenciar grada»), recordado entre
+    // visitas. El ✕ de cada comentario sigue funcionando aparte.
+    danmakuMuted: readDanmakuMuted(),
+    danmakuSeq: 0
   };
 
   var el = {};
@@ -184,7 +201,7 @@
       'est-commentary-voice-picker', 'est-commentary-voice-picker-wrap', 'est-text-state', 'est-market-phase',
       'est-crowd-feed', 'est-crowd-form', 'est-crowd-input', 'est-crowd-send', 'est-crowd-message', 'est-crowd-reactions',
       'est-countdown-season', 'est-countdown-season-note', 'est-countdown-bdo', 'est-countdown-bdo-note',
-      'est-danmaku', 'est-stands-vote', 'est-stands-status', 'est-stands-open', 'est-stands-yes',
+      'est-danmaku', 'est-danmaku-mute', 'est-danmaku-note', 'est-stands-vote', 'est-stands-status', 'est-stands-open', 'est-stands-yes',
       'est-stands-no', 'est-stands-tally',
       'est-markets', 'est-bet-slip', 'est-slip-pick', 'est-slip-clear', 'est-slip-odds', 'est-slip-implied',
       'est-stake', 'est-denoms', 'est-slip-range', 'est-place-bet', 'est-bet-msg', 'est-mybets',
@@ -4912,29 +4929,73 @@
   }
 
   // ===== Comentarios bala sobre la cancha =====
-  // Cada mensaje de la grada cruza el campo una vez y se va. Cada comentario
-  // trae SU propio botón ✕: se quita ese comentario, no todos (no hay
-  // interruptor global). El contenido se inserta con textContent.
+  // Cada mensaje de la grada cruza el campo una vez, de derecha a izquierda, y
+  // se va. Hay dos formas de quitarlos: el ✕ de CADA comentario (quita ese, no
+  // los demás) y el interruptor global «Silenciar grada» del panel de la grada
+  // (`setDanmakuMuted`), que vacía la capa, bloquea los nuevos y se recuerda
+  // entre visitas. El contenido se inserta con textContent.
   var DANMAKU_MAX = 6;
-  var danmakuSeq = 0;
   function removeDanmaku(node) {
     if (node && node.parentNode) node.parentNode.removeChild(node);
   }
+  function clearDanmaku() {
+    var layer = el['est-danmaku'];
+    if (!layer) return;
+    while (layer.firstElementChild) layer.removeChild(layer.firstElementChild);
+  }
+  // Anuncio para lectores de pantalla (la capa visual no avisa de nada).
+  function announceDanmaku(text) {
+    var note = el['est-danmaku-note'];
+    if (note) note.textContent = text || '';
+  }
+  function renderDanmakuMute() {
+    var button = el['est-danmaku-mute'];
+    var layer = el['est-danmaku'];
+    var muted = Boolean(S.danmakuMuted);
+    if (layer) layer.hidden = muted;
+    if (!button) return;
+    button.setAttribute('aria-pressed', String(muted));
+    var label = button.querySelector('.est-crowd-mute-label');
+    if (label) label.textContent = muted ? 'Activar grada' : 'Silenciar grada';
+    button.setAttribute('aria-label', muted
+      ? 'Activar los comentarios de la grada sobre la cancha'
+      : 'Silenciar los comentarios de la grada sobre la cancha');
+    button.title = muted
+      ? 'Vuelve a mostrar los comentarios que cruzan la cancha'
+      : 'Oculta los comentarios que cruzan la cancha';
+  }
+  function setDanmakuMuted(muted, opts) {
+    S.danmakuMuted = Boolean(muted);
+    writeDanmakuMuted(S.danmakuMuted);
+    if (S.danmakuMuted) clearDanmaku();
+    renderDanmakuMute();
+    var speak = !opts || opts.announce !== false;
+    if (speak) {
+      announceDanmaku(S.danmakuMuted
+        ? 'Comentarios de la grada silenciados: ya no cruzan la cancha.'
+        : 'Comentarios de la grada activados: vuelven a cruzar la cancha.');
+    }
+  }
+  function toggleDanmakuMuted() { setDanmakuMuted(!S.danmakuMuted); }
   function pushDanmaku(who, text, opts) {
     var layer = el['est-danmaku'];
     if (!layer) return;
+    // Silenciada: el mensaje sigue en el registro de la grada, pero no cruza la
+    // cancha. Al recuperar la grada no se rellena con lo que llegó en silencio.
+    if (S.danmakuMuted) return;
+    var writer = String(who || 'Aficionado').slice(0, 40);
     var item = document.createElement('div');
     item.className = 'est-danmaku-item' + (opts && opts.soft ? ' is-soft' : '');
-    item.style.top = (6 + ((danmakuSeq++ * 17) % 58)) + '%';
+    item.style.top = (6 + ((S.danmakuSeq++ * 17) % 58)) + '%';
     var body = document.createElement('span');
     body.className = 'est-danmaku-text';
-    body.textContent = String(who || 'Aficionado').slice(0, 40) + ': ' + String(text || '').slice(0, 120);
+    body.textContent = writer + ': ' + String(text || '').slice(0, 120);
     var close = document.createElement('button');
     close.type = 'button';
     close.className = 'est-danmaku-close';
     close.textContent = '×';
     close.title = 'Quitar este comentario del campo';
-    close.setAttribute('aria-label', 'Quitar este comentario del campo');
+    close.setAttribute('aria-label', 'Quitar del campo el comentario de ' + writer);
     close.addEventListener('click', function () { removeDanmaku(item); });
     item.appendChild(body);
     item.appendChild(close);
@@ -5029,6 +5090,8 @@
   function bindCrowdControls() {
     var form = el['est-crowd-form'];
     if (form) form.addEventListener('submit', sendCrowdChat);
+    var mute = el['est-danmaku-mute'];
+    if (mute) mute.addEventListener('click', toggleDanmakuMuted);
     var box = el['est-crowd-reactions'];
     if (box) {
       box.addEventListener('click', function (event) {
@@ -5050,6 +5113,10 @@
       });
     }
     renderStands(S.stands);
+    renderDanmakuMute();
+    // Si la visita arranca con la grada silenciada, se avisa una sola vez; si no,
+    // se deja el anuncio vacío (no hay nada que contar).
+    announceDanmaku(S.danmakuMuted ? 'Comentarios de la grada silenciados: ya no cruzan la cancha.' : '');
     resetCrowdFeed();
     updateCrowdAvailability();
   }

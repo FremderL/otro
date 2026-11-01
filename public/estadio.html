@@ -139,9 +139,16 @@
         <canvas id="est-pitch" width="1050" height="680" role="img"
                 aria-label="Cancha de fútbol en vista cenital. Marcador y minuto disponibles en el texto alternativo."></canvas>
         <div id="est-goal-banner" class="est-goal-banner" aria-hidden="true">¡GOOOL!</div>
-        <!-- Comentarios bala: los mensajes de la grada cruzan la cancha. Cada
-             comentario trae su propio botón ✕ para quitarlo del campo. -->
-        <div id="est-danmaku" class="est-danmaku" aria-hidden="true"></div>
+        <!-- Comentarios bala: los mensajes de la grada cruzan la cancha de
+             derecha a izquierda. Cada comentario trae su propio botón ✕ para
+             quitarlo del campo, y el panel de la grada tiene un interruptor
+             global («Silenciar grada»). La capa NO es aria-hidden: el ✕ de cada
+             comentario tiene que ser alcanzable por lector de pantalla. El texto
+             se repite en el registro accesible de la grada (`#est-crowd-feed`);
+             el ✕ lleva etiqueta propia y el anuncio de silencio/activación vive
+             en `#est-danmaku-note`. -->
+        <div id="est-danmaku" class="est-danmaku" role="group" aria-label="Comentarios de la grada sobre la cancha"></div>
+        <p class="est-sr-only" id="est-danmaku-note" role="status" aria-live="polite"></p>
       </div>
 
       <!-- Cabina de comentaristas: panel destacado y feed accesible del partido -->
@@ -188,12 +195,18 @@
             <p class="est-commentary-kicker">Grada del Estadio</p>
             <h2 class="est-crowd-title" id="est-crowd-title">Reacciones y charla</h2>
           </div>
-          <div class="est-crowd-reactions" id="est-crowd-reactions" role="group" aria-label="Reacciones rápidas">
-            <button class="est-crowd-react" type="button" data-crowd-reaction="⚽" aria-label="Reaccionar: ¡Gol!" title="¡Gol!">⚽</button>
-            <button class="est-crowd-react" type="button" data-crowd-reaction="🔥" aria-label="Reaccionar: ¡Qué jugada!" title="¡Qué jugada!">🔥</button>
-            <button class="est-crowd-react" type="button" data-crowd-reaction="👏" aria-label="Reaccionar: Aplausos" title="Aplausos">👏</button>
-            <button class="est-crowd-react" type="button" data-crowd-reaction="😱" aria-label="Reaccionar: ¡No puede ser!" title="¡No puede ser!">😱</button>
-            <button class="est-crowd-react" type="button" data-crowd-reaction="🟨" aria-label="Reaccionar: Pide tarjeta" title="Pide tarjeta">🟨</button>
+          <div class="est-crowd-actions">
+            <button class="est-crowd-mute" id="est-danmaku-mute" type="button" aria-pressed="false" aria-controls="est-danmaku" aria-label="Silenciar los comentarios de la grada sobre la cancha" title="Oculta los comentarios que cruzan la cancha">
+              <span class="est-crowd-mute-icon" aria-hidden="true">◖</span>
+              <span class="est-crowd-mute-label">Silenciar grada</span>
+            </button>
+            <div class="est-crowd-reactions" id="est-crowd-reactions" role="group" aria-label="Reacciones rápidas">
+              <button class="est-crowd-react" type="button" data-crowd-reaction="⚽" aria-label="Reaccionar: ¡Gol!" title="¡Gol!">⚽</button>
+              <button class="est-crowd-react" type="button" data-crowd-reaction="🔥" aria-label="Reaccionar: ¡Qué jugada!" title="¡Qué jugada!">🔥</button>
+              <button class="est-crowd-react" type="button" data-crowd-reaction="👏" aria-label="Reaccionar: Aplausos" title="Aplausos">👏</button>
+              <button class="est-crowd-react" type="button" data-crowd-reaction="😱" aria-label="Reaccionar: ¡No puede ser!" title="¡No puede ser!">😱</button>
+              <button class="est-crowd-react" type="button" data-crowd-reaction="🟨" aria-label="Reaccionar: Pide tarjeta" title="Pide tarjeta">🟨</button>
+            </div>
           </div>
         </div>
         <!-- Moderación opt-in: si la mayoría de la grada acepta, ese partido
