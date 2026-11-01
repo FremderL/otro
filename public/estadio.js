@@ -6208,7 +6208,10 @@
       else if (kind === 'goal') { crowdRoar(ctx, t0); whistle(ctx, t0, 0.35, 0.12); }
     } catch (e) { /* audio no disponible */ }
   }
-  var WHISTLE_EVENTS = { kickoff: 'whistle', goal_restart: 'whistle', halftime: 'whistle', second_half: 'whistle', full_time: 'final_whistle' };
+  var WHISTLE_EVENTS = {
+    kickoff: 'whistle', goal_restart: 'whistle', halftime: 'whistle', second_half: 'whistle',
+    full_time: 'final_whistle', foul: 'whistle', penalty_awarded: 'whistle'
+  };
 
   function bell(kind) {
     if (!S.soundOn) return;
