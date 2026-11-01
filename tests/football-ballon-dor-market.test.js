@@ -14,7 +14,7 @@ const { commitmentId } = require('../lib/football/v2/commitment');
 const { createBettingService } = require('../lib/football/betting');
 const {
   BALLON_DOR_MARKET, MAX_PAYOUT, OVERROUND, SIMULATIONS,
-  BallonDorMarketService, oddsFromProbability, projectBallonDorOdds,
+  BallonDorMarketService, isDegenerateOddsSnapshot, oddsFromProbability, projectBallonDorOdds,
   officialPositions, publicBallonDorMarket
 } = require('../lib/football/ballon-dor-market');
 const { hash32 } = require('../lib/football/prng');
@@ -126,6 +126,60 @@ test('proyección usa 2,000 simulaciones sembradas y publica 16 cuotas antiarbit
     assert.equal(first.overround, 1.1);
     assert.ok(first.selections.every(row => row.odds >= 1.01 && row.odds <= 51));
     assert.ok(first.selections.reduce((sum, row) => sum + 1 / row.odds, 0) >= 1.1);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('la proyección real no regala el premio: ningún candidato monopoliza las simulaciones', () => {
+  const h = tempHarness();
+  try {
+    const snap = projectBallonDorOdds({ league: h.league, afterJornada: 0, updatedAt: openAt + 1 });
+    const maxWins = Math.max(...snap.selections.map(row => row.wins));
+    const withWins = snap.selections.filter(row => row.wins > 0).length;
+    assert.ok(maxWins / SIMULATIONS < 0.99,
+      `un favorito con ${maxWins}/${SIMULATIONS} simulaciones indica el sort roto del mercado (cuota 1.01)`);
+    assert.ok(withWins >= 2, 'el campo debe tener más de un candidato competitivo');
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('una foto degenerada persistida se repara en el siguiente barrido y no se reproyecta otra vez', async () => {
+  const h = tempHarness();
+  try {
+    await h.store.transitionBallonDor(SEASON, 'active', { at: openAt });
+    // Foto rota tal como la dejaba el sort sin efecto: el primer candidato por
+    // clubId con el 100 % de las simulaciones y el resto en el tope de 51.
+    const brokenAt = openAt + 1000;
+    const broken = {
+      updatedAt: brokenAt,
+      afterJornada: 0,
+      simulations: SIMULATIONS,
+      seed: hash32(`balon_de_oro|${SEASON}|0`),
+      overround: OVERROUND,
+      selections: h.league.ballonDor.candidates.map((candidate, index) => {
+        const wins = index === 0 ? SIMULATIONS : 0;
+        const probability = wins / SIMULATIONS;
+        return { candidateId: candidate.id, wins, probability, odds: oddsFromProbability(probability) };
+      }).sort((a, b) => a.candidateId.localeCompare(b.candidateId))
+    };
+    const put = await h.store.updateBallonDorOdds(SEASON, broken, brokenAt);
+    assert.equal(put.ok, true, put.reason);
+    assert.equal(isDegenerateOddsSnapshot(h.store.getBallonDor(SEASON).oddsSnapshot), true);
+
+    const market = new BallonDorMarketService({ store: h.store, now: () => brokenAt + 60_000 });
+    const first = await market.sweep(brokenAt + 60_000);
+    assert.equal(first.errors, 0);
+    assert.equal(first.oddsUpdated, 1, 'el barrido reproyecta la foto rota en la misma jornada');
+    const healed = h.store.getBallonDor(SEASON).oddsSnapshot;
+    assert.equal(isDegenerateOddsSnapshot(healed), false, 'la foto reparada no es degenerada');
+    assert.equal(healed.afterJornada, 0);
+    assert.equal(healed.selections.reduce((sum, row) => sum + row.wins, 0), SIMULATIONS);
+
+    const second = await market.sweep(brokenAt + 120_000);
+    assert.equal(second.oddsUpdated, 0, 'una foto sana no se reproyecta en el siguiente barrido');
+    assert.deepEqual(h.store.getBallonDor(SEASON).oddsSnapshot, healed);
   } finally {
     h.cleanup();
   }
