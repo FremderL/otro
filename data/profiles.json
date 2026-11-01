@@ -68,6 +68,9 @@
         "counts": {}
       },
       "lobbyTournamentPayouts": [],
+      "appliedChipOperations": [],
+      "footballPendingPayments": [],
+      "footballPendingStakes": [],
       "gameStats": {
         "poker": {
           "rounds": 2,
@@ -132,6 +135,8 @@
         }
       ],
       "promotions": [],
+      "footballFantasy": null,
+      "footballFanClub": null,
       "flags": {
         "tosVersion": "2026-09-28",
         "tosAcceptedAt": 1791928704617

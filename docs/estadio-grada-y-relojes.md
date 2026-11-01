@@ -131,9 +131,32 @@ Los mensajes de la grada cruzan el terreno de juego mientras el partido se juega
   Solo cruzan la cancha los mensajes de la charla (`football:chat`); las reacciones rápidas se quedan
   en el registro de la grada. El elemento se elimina al terminar la animación, con un temporizador de
   seguridad de 16 s por si la pestaña queda en segundo plano.
-- Máximo 6 en pantalla; los más viejos salen solos.
 - Cada comentario es un elemento independiente con **su propio botón ✕** (etiquetado con el nombre de
   quien lo escribió): se quita *ese* comentario, no todos.
+
+### Control de cantidad: si la grada se acelera, se silencia sola la mayoría
+
+Pedido: los comentarios deben deslizarse por la cancha, pero **la cantidad no puede tapar el partido**.
+`pushDanmaku()` no pinta todo lo que llega: lo pasa por una cola corta y unos carriles.
+
+| Límite | Valor | Qué evita |
+| --- | --- | --- |
+| `DANMAKU_LANES` | 5 carriles (uno por altura) | Dos comentarios nunca comparten altura: la animación solo mueve `left`, así que el carril se conserva todo el trayecto |
+| `DANMAKU_MAX` | 5 en pantalla (uno por carril) | Una nube de comentarios sobre la jugada |
+| `DANMAKU_MIN_GAP` | 900 ms entre salidas | Ráfagas ilegibles |
+| `DANMAKU_QUEUE_MAX` | 3 en espera | Colas infinitas: lo que no cabe **se silencia al momento** |
+| `DANMAKU_QUEUE_TTL` | 6 s de espera máxima | Comentarios viejos que llegan cuando ya cambió la jugada |
+| `DANMAKU_LIFETIME` | 16 s | Que un comentario se quede pegado si la pestaña se va a segundo plano |
+
+Consecuencia práctica: si entran 15 mensajes de golpe, **cruzan 4** y los otros 11 se descartan de la
+cancha (siguen, todos, en el registro accesible de la grada). Un carril se libera cuando su comentario
+termina de cruzar (`getAnimations()`; si el navegador no lo soporta, 11 s por reloj). El contador de
+omitidos se anuncia por `role="status"` (*«11 comentarios omitidos: la grada iba demasiado rápido»*),
+de modo que el silencio no es silencioso: se explica. Al cambiar de partido la cola se vacía y la
+cancha no arrastra comentarios del partido anterior.
+
+Con `prefers-reduced-motion` no hay deslizamiento: los comentarios se apilan como lista breve y **solo
+se ven los tres más recientes** (el resto se oculta igual que en el modo animado).
 
 ### Silenciar la grada (interruptor global)
 
@@ -148,7 +171,6 @@ bala de una vez. Está en la cabecera del panel *Reacciones y charla*, junto a l
 - Al reactivar **no se rellena** con lo que llegó durante el silencio: la cancha se repuebla con los
   mensajes nuevos.
 - Un aviso `role="status"` oculto visualmente (`#est-danmaku-note`, `.est-sr-only`) anuncia el cambio.
-- `prefers-reduced-motion`: sin desplazamiento; los comentarios se apilan en una lista breve.
 
 **Accesibilidad**: la capa ya **no** es `aria-hidden` —antes lo era y eso dejaba el botón ✕ fuera del
 alcance de los lectores de pantalla—. Ahora la capa es un `role="group"` etiquetado
@@ -156,8 +178,10 @@ alcance de los lectores de pantalla—. Ahora la capa es un `role="group"` etiqu
 el texto no se duplica como texto navegable de la capa, porque ya está en el `role="log"` de la grada.
 
 **Pruebas** (`tests/football-stadium-ui.test.js`): «la charla de la grada cruza la cancha como
-comentario bala, de derecha a izquierda», ««Silenciar grada» apaga los comentarios bala, los recuerda y
-se puede reactivar» y «el silencio de la grada sobrevive a recargar la página».
+comentario bala, de derecha a izquierda», «si la grada se acelera, solo cruzan unos pocos comentarios y
+el resto se silencia», «un comentario que esperó demasiado ya no sale cuando la cancha se libera»,
+««Silenciar grada» apaga los comentarios bala, los recuerda y se puede reactivar» y «el silencio de la
+grada sobrevive a recargar la página».
 
 ---
 
@@ -199,9 +223,9 @@ misma pasada».
 | `lib/football/sockets.js` | `countdowns` en el lobby, `stands` en el estado del partido, eventos de votación, chat con `soft` |
 | `lib/football/ballon-dor-market.js` | Apertura tardía del ciclo en vez de cancelación |
 | `public/estadio.html` | Relojes DD:HH:MM:SS, capa de comentarios bala (ya accesible), botón «Silenciar grada», franja de votación |
-| `public/estadio.js` | `tickSeasonCountdowns()`, `pushDanmaku()`, `setDanmakuMuted()` / `renderDanmakuMute()`, `renderStands()` y cableado de sockets |
+| `public/estadio.js` | `tickSeasonCountdowns()`, `pushDanmaku()` con cola y carriles (`drainDanmaku()`), `setDanmakuMuted()` / `renderDanmakuMute()`, `renderStands()` y cableado de sockets |
 | `public/estadio.css` | Estilos de relojes, comentarios bala, interruptor de silencio (`.est-crowd-mute`, `.est-sr-only`) y votación |
 | `tests/football-stands.test.js` | 9 pruebas del módulo de grada |
-| `tests/football-stadium-ui.test.js` | 3 pruebas de los comentarios bala y del botón de silencio |
+| `tests/football-stadium-ui.test.js` | 5 pruebas de los comentarios bala, el control de cantidad y el botón de silencio |
 | `tests/football-fixtures.test.js` | Invariante del muro de las 22:00 + `matchRealMs` |
 | `tests/football-ballon-dor-market.test.js` | Apertura tardía y ceremonia con el servidor apagado |

@@ -179,9 +179,10 @@
     // Grada: votación de moderación y autorización de insultos del partido.
     stands: null,
     // Comentarios bala: interruptor global («Silenciar grada»), recordado entre
-    // visitas. El ✕ de cada comentario sigue funcionando aparte.
+    // visitas, y control de cantidad (cola corta + carriles). El ✕ de cada
+    // comentario sigue funcionando aparte.
     danmakuMuted: readDanmakuMuted(),
-    danmakuSeq: 0
+    danmaku: { queue: [], launched: 0, timer: null, dropped: 0, seq: 0 }
   };
 
   var el = {};
@@ -2668,6 +2669,9 @@
         if (S.slip) closeSlip();
         S.currentMatchId = matchId;
         resetCrowdFeed();
+        // La cancha no arrastra los comentarios del partido anterior.
+        S.danmaku.queue = [];
+        clearDanmaku();
         setCrowdMessage('', '');
       }
       S.teams = res.teams || S.teams;
@@ -4929,28 +4933,46 @@
   }
 
   // ===== Comentarios bala sobre la cancha =====
-  // Cada mensaje de la grada cruza el campo una vez, de derecha a izquierda, y
-  // se va. Hay dos formas de quitarlos: el ✕ de CADA comentario (quita ese, no
-  // los demás) y el interruptor global «Silenciar grada» del panel de la grada
-  // (`setDanmakuMuted`), que vacía la capa, bloquea los nuevos y se recuerda
-  // entre visitas. El contenido se inserta con textContent.
-  var DANMAKU_MAX = 6;
+  // Cada mensaje de la grada se DESLIZA por el campo una vez, de derecha a
+  // izquierda, y se va. Tres controles:
+  //   · ✕ por comentario: quita ese, no los demás.
+  //   · «Silenciar grada» (interruptor global, `setDanmakuMuted`): vacía la capa,
+  //     bloquea los nuevos y se recuerda entre visitas.
+  //   · Control de cantidad: si la grada se acelera, no se satura la cancha. Hay
+  //     `DANMAKU_LANES` carriles y un mínimo de `DANMAKU_MIN_GAP` entre salidas;
+  //     lo que no cabe espera en una cola corta y, si la espera se alarga o la
+  //     cola se llena, ese mensaje se SALTAN (se silencia sola la mayoría) para
+  //     no tapar el partido. El contador de omitidos se anuncia en la grada.
+  // Contenido siempre con textContent.
+  var DANMAKU_LANES = 5;              // carriles horizontales de la cancha
+  var DANMAKU_MAX = DANMAKU_LANES;    // como máximo, uno por carril
+  var DANMAKU_MIN_GAP = 900;          // ms mínimos entre dos salidas
+  var DANMAKU_QUEUE_MAX = 3;          // espera corta: más allá se descarta
+  var DANMAKU_QUEUE_TTL = 6000;       // un mensaje que esperó demasiado ya no sale
+  var DANMAKU_LIFETIME = 16000;       // red de seguridad si la animación no dispara
+  function danmakuLayer() { return el['est-danmaku']; }
+  function danmakuLive() { return Boolean(danmakuLayer() && !S.danmakuMuted); }
   function removeDanmaku(node) {
     if (node && node.parentNode) node.parentNode.removeChild(node);
   }
   function clearDanmaku() {
-    var layer = el['est-danmaku'];
+    var layer = danmakuLayer();
+    S.danmaku.dropped = 0;
     if (!layer) return;
     while (layer.firstElementChild) layer.removeChild(layer.firstElementChild);
   }
-  // Anuncio para lectores de pantalla (la capa visual no avisa de nada).
+  // Anuncio para lectores de pantalla (el contador de omitidos no se ve).
   function announceDanmaku(text) {
     var note = el['est-danmaku-note'];
     if (note) note.textContent = text || '';
   }
+  function danmakuSkippedNote() {
+    return S.danmaku.dropped + (S.danmaku.dropped === 1 ? ' comentario omitido' : ' comentarios omitidos')
+      + ': la grada iba demasiado rápido.';
+  }
   function renderDanmakuMute() {
     var button = el['est-danmaku-mute'];
-    var layer = el['est-danmaku'];
+    var layer = danmakuLayer();
     var muted = Boolean(S.danmakuMuted);
     if (layer) layer.hidden = muted;
     if (!button) return;
@@ -4967,7 +4989,10 @@
   function setDanmakuMuted(muted, opts) {
     S.danmakuMuted = Boolean(muted);
     writeDanmakuMuted(S.danmakuMuted);
-    if (S.danmakuMuted) clearDanmaku();
+    if (S.danmakuMuted) {
+      S.danmaku.queue = [];
+      clearDanmaku();
+    }
     renderDanmakuMute();
     var speak = !opts || opts.announce !== false;
     if (speak) {
@@ -4977,25 +5002,48 @@
     }
   }
   function toggleDanmakuMuted() { setDanmakuMuted(!S.danmakuMuted); }
-  function pushDanmaku(who, text, opts) {
-    var layer = el['est-danmaku'];
-    if (!layer) return;
-    // Silenciada: el mensaje sigue en el registro de la grada, pero no cruza la
-    // cancha. Al recuperar la grada no se rellena con lo que llegó en silencio.
-    if (S.danmakuMuted) return;
-    var writer = String(who || 'Aficionado').slice(0, 40);
+  // Un carril queda libre cuando su último comentario ya terminó de cruzar. Se
+  // pregunta al propio elemento (animaciones vivas) y, si el navegador no lo
+  // soporta, se usa el reloj: cada salida ocupa su carril 11 s.
+  function danmakuLaneBusy(lane, now) {
+    var layer = danmakuLayer();
+    if (!layer) return false;
+    var items = layer.querySelectorAll('.est-danmaku-item');
+    for (var i = 0; i < items.length; i++) {
+      if (Number(items[i].getAttribute('data-lane')) !== lane) continue;
+      if (typeof items[i].getAnimations === 'function') {
+        if (items[i].getAnimations().length) return true;
+      } else if (now - Number(items[i].getAttribute('data-launched') || 0) < 11000) {
+        return true;
+      }
+    }
+    return false;
+  }
+  function danmakuFreeLane(now) {
+    for (var lane = 0; lane < DANMAKU_LANES; lane++) {
+      if (!danmakuLaneBusy(lane, now)) return lane;
+    }
+    return -1;
+  }
+  function launchDanmaku(entry, lane, now) {
+    var layer = danmakuLayer();
+    if (!layer) return false;
     var item = document.createElement('div');
-    item.className = 'est-danmaku-item' + (opts && opts.soft ? ' is-soft' : '');
-    item.style.top = (6 + ((S.danmakuSeq++ * 17) % 58)) + '%';
+    item.className = 'est-danmaku-item' + (entry.soft ? ' is-soft' : '');
+    item.setAttribute('data-lane', String(lane));
+    item.setAttribute('data-launched', String(now));
+    // Carriles 1..N separados: cada comentario conserva su altura 10 s, así que
+    // dos que salen casi a la vez nunca se pisan.
+    item.style.top = (5 + lane * ((DANMAKU_LANES > 1 ? 56 / (DANMAKU_LANES - 1) : 0))) + '%';
     var body = document.createElement('span');
     body.className = 'est-danmaku-text';
-    body.textContent = writer + ': ' + String(text || '').slice(0, 120);
+    body.textContent = entry.who + ': ' + entry.text;
     var close = document.createElement('button');
     close.type = 'button';
     close.className = 'est-danmaku-close';
     close.textContent = '×';
     close.title = 'Quitar este comentario del campo';
-    close.setAttribute('aria-label', 'Quitar del campo el comentario de ' + writer);
+    close.setAttribute('aria-label', 'Quitar del campo el comentario de ' + entry.who);
     close.addEventListener('click', function () { removeDanmaku(item); });
     item.appendChild(body);
     item.appendChild(close);
@@ -5006,7 +5054,61 @@
     }
     // Red de seguridad: si la animación no dispara (pestaña en segundo plano),
     // el comentario no se queda pegado a la cancha para siempre.
-    setTimeout(function () { removeDanmaku(item); }, 16000);
+    setTimeout(function () { removeDanmaku(item); }, DANMAKU_LIFETIME);
+    S.danmaku.launched = now;
+    return true;
+  }
+  // Saca de la cola lo que ya puede salir; el resto espera al siguiente intento.
+  function drainDanmaku() {
+    if (!danmakuLive()) return;
+    var now = Date.now();
+    while (S.danmaku.queue.length) {
+      var next = S.danmaku.queue[0];
+      // Demasiado viejo: el partido ya cambió de jugada y el comentario sobra.
+      if (now - next.at > DANMAKU_QUEUE_TTL) {
+        S.danmaku.queue.shift();
+        S.danmaku.dropped++;
+        announceDanmaku(danmakuSkippedNote());
+        continue;
+      }
+      if (now - S.danmaku.launched < DANMAKU_MIN_GAP) return; // respira entre salidas
+      var lane = danmakuFreeLane(now);
+      if (lane < 0) return;                                   // cancha ocupada
+      S.danmaku.queue.shift();
+      if (!launchDanmaku(next, lane, now)) return;
+    }
+  }
+  // Arranca un temporizador solo si hay cola: sin mensajes no hay reloj corriendo.
+  function scheduleDanmaku() {
+    if (S.danmaku.timer || !S.danmaku.queue.length) return;
+    S.danmaku.timer = setTimeout(function () {
+      S.danmaku.timer = null;
+      drainDanmaku();
+      scheduleDanmaku();
+    }, DANMAKU_MIN_GAP);
+  }
+  function pushDanmaku(who, text, opts) {
+    var layer = danmakuLayer();
+    if (!layer) return;
+    // Silenciada: el mensaje sigue en el registro de la grada, pero no cruza la
+    // cancha. Al recuperar la grada no se rellena con lo que llegó en silencio.
+    if (S.danmakuMuted) return;
+    var entry = {
+      who: String(who || 'Aficionado').slice(0, 40),
+      text: String(text || '').slice(0, 120),
+      soft: Boolean(opts && opts.soft),
+      at: Date.now()
+    };
+    S.danmaku.seq++;
+    // Control de cantidad: la cola es corta y lo que sobra se silencia.
+    if (S.danmaku.queue.length >= DANMAKU_QUEUE_MAX) {
+      S.danmaku.dropped++;
+      announceDanmaku(danmakuSkippedNote());
+      return;
+    }
+    S.danmaku.queue.push(entry);
+    drainDanmaku();
+    scheduleDanmaku();
   }
 
   // ===== Votación de la grada (moderación opt-in) =====
