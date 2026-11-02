@@ -396,3 +396,52 @@ test('scheduler reintenta el kickoff tras recuperar la persistencia V2', async (
     assert.equal(match.simulationUnconfirmed, undefined);
   } finally { h.close(); }
 });
+
+test('reprogramación conserva V2 y boletos aceptados y suspende nuevas apuestas', async () => {
+  const h = setup();
+  try {
+    const match = h.league.calendar.matches[0], kickoff = match.scheduledKickoffAt;
+    const placed = await h.betting.placeBet({ profile: h.profile, matchId: match.id, market: '1x2',
+      selection: 'home', stake: 100, placedAt: h.now(), idempotencyKey: 'reschedule-original' });
+    assert.ok(placed.ok, placed.code);
+    const commitment = JSON.stringify(match.simulation), originalBet = h.store.getBet(placed.bet.id);
+    const scheduler = new FootballScheduler(h.engine, { officialV2: h.officialV2 });
+    const detected = kickoff + 22 * 60000;
+    await scheduler.runAutoRescheduleSweep(detected);
+    assert.equal(match.scheduledKickoffAt, detected + 30 * 60000);
+    assert.equal(JSON.stringify(match.simulation), commitment, 'no cambia semillas, entradas ni cuotas comprometidas');
+    assert.equal(originalBet.status, 'open');
+    assert.equal(h.profile.chips, 900);
+    assert.equal(h.betting.getMarket(match, '1x2'), null);
+    const noBet = await h.betting.placeBet({ profile: h.profile, matchId: match.id, market: '1x2',
+      selection: 'draw', stake: 100, placedAt: h.now(), idempotencyKey: 'reschedule-new' });
+    assert.equal(noBet.code, 'market_suspended');
+    const replay = await h.betting.placeBet({ profile: h.profile, matchId: match.id, market: '1x2',
+      selection: 'home', stake: 100, placedAt: h.now(), idempotencyKey: 'reschedule-original' });
+    assert.equal(replay.replayed, true, 'reintentar el boleto previo no vuelve a debitar');
+    const future = await h.betting.placeFuture({ profile: h.profile, seasonMonth: '2026-11', market: 'champion',
+      selection: match.homeId, stake: 100, idempotencyKey: 'reschedule-future' });
+    assert.equal(future.code, 'market_suspended');
+    const ballon = await h.betting.placeBallonDorBet({ profile: h.profile, selection: 'any', stake: 100,
+      idempotencyKey: 'reschedule-ballon', placedAt: h.now() });
+    assert.equal(ballon.code, 'market_suspended');
+    assert.equal(h.profile.chips, 900);
+    const restored = new FootballStore(h.file);
+    const saved = restored.getMatch(match.id, '2026-11');
+    assert.equal(saved.scheduledKickoffAt, match.scheduledKickoffAt);
+    assert.equal(JSON.stringify(saved.simulation), commitment);
+    assert.equal(saved.autoRescheduledAt, detected);
+    restored.close();
+    h.setNow(match.scheduledKickoffAt);
+    scheduler.runKickoffSweep(match.scheduledKickoffAt);
+    await scheduler.kickoffPending;
+    assert.equal(match.status, 'live');
+    assert.equal(h.betting.getMarket(match, '1x2', { minute: 1, score: { home: 0, away: 0 } }), null,
+      'tampoco ofrece apuestas en vivo porque pudo haberse visto el replay antes de reprogramar');
+    const end = match.scheduledKickoffAt + (h.engine._ensureTimeline(match).clock.matchEnd + 1) * 15000;
+    h.setNow(end);
+    h.engine.advance(match, end);
+    assert.equal(match.status, 'settled');
+    assert.ok(['won', 'lost'].includes(h.store.getBet(placed.bet.id).status), 'el boleto original se liquida con el resultado comprometido');
+  } finally { h.close(); }
+});

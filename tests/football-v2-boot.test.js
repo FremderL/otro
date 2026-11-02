@@ -82,3 +82,32 @@ test('servidor real pasa de octubre a V2 automático antes de publicar y conserv
   assert.deepEqual(again.simulationPolicy, league.simulationPolicy);
   assert.deepEqual(again.calendar.matches.find(item => item.id === match.id).simulation, match.simulation);
 });
+
+test('reinicio real reprograma el encuentro vencido sin iniciarlo ni cambiar su compromiso', { timeout: 60000 }, async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'v2-reschedule-boot-'));
+  let child;
+  t.after(async () => { if (child) await stopServer(child); fs.rmSync(dir, { recursive: true, force: true }); });
+  const file = path.join(dir, 'football.json'), store = new FootballStore(file);
+  const league = store.generateSeason('2026-11');
+  const match = league.calendar.matches.reduce((first, item) => item.scheduledKickoffAt < first.scheduledKickoffAt ? item : first);
+  const kickoff = match.scheduledKickoffAt, at = kickoff + 22 * 60000;
+  const { createOfficialV2 } = require('../lib/football/v2/official');
+  const official = createOfficialV2({ store, now: () => kickoff - 60000 });
+  assert.ok((await official.prepareMatch(match)).ok);
+  const commitment = JSON.stringify(match.simulation), matchId = match.id;
+  store.close();
+  const server = await startServer(dir, at); child = server.child;
+  await new Promise(resolve => setTimeout(resolve, 5500)); // el barrido de producción corre cada 5 s
+  const response = await fetch(`http://127.0.0.1:${server.port}/api/estadio/matches/${matchId}`);
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.matchState.match.status, 'scheduled');
+  assert.equal(data.matchState.match.scheduledKickoffAt, at + 30 * 60000);
+  assert.equal(data.matchState.match.autoRescheduled, true);
+  assert.deepEqual(data.matchState.markets, {});
+  const disk = JSON.parse(fs.readFileSync(file, 'utf8')).leagues.find(item => item.seasonMonth === '2026-11');
+  const saved = disk.calendar.matches.find(item => item.id === matchId);
+  assert.equal(saved.status, 'scheduled');
+  assert.equal(JSON.stringify(saved.simulation), commitment);
+  assert.equal(saved.autoRescheduledAt, at);
+});

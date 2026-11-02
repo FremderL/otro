@@ -26,3 +26,11 @@ test('espera el resultado de los ocho y no admite boletos corruptos',()=>{
  assert.equal(Q.evaluate(l,1,[{profileId:'a',picks:picks()},{profileId:'a',picks:picks()}],0).status,'invalid');
  assert.equal(Q.evaluate(l,1,[null],0).status,'invalid');
 });
+
+test('la quiniela no reabre una jornada que incluye un partido reprogramado automáticamente', () => {
+  const matches = Array.from({ length: 8 }, (_, i) => ({ id: `auto-${i}`, jornada: 1,
+    scheduledKickoffAt: 5000000 + i * 1000, status: 'scheduled', actualKickoffAt: null }));
+  matches[0].autoRescheduledAt = 1000000;
+  const picks = matches.map(match => ({ matchId: match.id, pick: 'home' }));
+  assert.equal(Q.validateEntry({ calendar: { matches } }, 1, picks, false, 2000000).code, 'closed');
+});

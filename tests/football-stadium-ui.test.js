@@ -3510,3 +3510,17 @@ test('un tick real recupera la vista si se perdió el aviso inicial de kickoff',
   assert.equal(h.window.document.getElementById('est-preshow').hidden, true);
   assert.equal(h.window.document.querySelectorAll('.est-market-group').length, 1, 'cierra los mercados prepartido');
 });
+
+test('una reprogramación automática informa la nueva hora y suspende nuevas apuestas', async t => {
+  const now = 1800000000000;
+  const h = createHarness({ now, kickoffOffsetMs: -1000 });
+  t.after(h.close);
+  await h.connectToMatch();
+  const newKickoff = now + 30 * 60000;
+  h.handlers['football:rescheduled']({ matchId: h.match.id, scheduledKickoffAt: newKickoff, automatic: true });
+  h.handlers['football:status']({ matchId: h.match.id, code: 'rescheduled', scheduledKickoffAt: newKickoff, automatic: true });
+  assert.match(h.window.document.getElementById('est-preshow-status').textContent, /reprogramado automáticamente/);
+  assert.equal(h.window.document.getElementById('est-preshow-timer').textContent, '30:00');
+  assert.match(h.window.document.getElementById('est-markets').textContent, /Nuevas apuestas suspendidas/);
+  assert.equal(h.window.document.querySelectorAll('.est-market-group').length, 0);
+});
