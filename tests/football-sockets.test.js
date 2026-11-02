@@ -155,6 +155,24 @@ test('subscribe es la ÚNICA puerta que crea identidad (getOrCreate una sola vez
   assert.equal(res.profile.name, 'Alice');
 });
 
+test('el lobby anuncia los cruces vencidos sin acta para explicar un PJ menor', (t) => {
+  const fixed = Date.UTC(2026, 10, 15, 20);
+  const ctx = setup({ now: () => fixed });
+  t.after(ctx.cleanup);
+  const all = ctx.store.getMatches(ctx.month).slice().sort((a, b) => a.scheduledKickoffAt - b.scheduledKickoffAt);
+  for (const match of all) match.scheduledKickoffAt = fixed + 3 * 3600000;
+  const overdue = all[0], pospuesto = all[1];
+  overdue.scheduledKickoffAt = fixed - 3600000;
+  pospuesto.scheduledKickoffAt = fixed - 7200000;
+  pospuesto.status = 'postponed';
+
+  const lobby = ctx.sockets.buildLobby();
+  assert.equal(lobby.standingsPending.count, 2, 'los dos cruces con hora pasada y sin acta se anuncian');
+  assert.equal(lobby.standingsPending.postponed, 1);
+  assert.deepEqual(lobby.standingsPending.matches.map(item => item.id), [pospuesto.id, overdue.id]);
+  assert.equal(lobby.standingsPending.matches[1].homeId, overdue.homeId);
+});
+
 test('T37 — bet sin suscribir NO crea perfil ni apuesta (identidad nunca del payload)', (t) => {
   const ctx = setup();
   t.after(ctx.cleanup);

@@ -79,6 +79,10 @@
 .est-standings tbody tr:hover { background: rgba(255,255,255,.03); }
 .est-standings .pts { color: var(--gold-2); font-weight: 800; }
 .est-standings .pos-1 { color: var(--mint); font-weight: 800; }
+/* Nota de la tabla: explica por qué dos clubes pueden tener menos partidos
+   jugados (un cruce vencido que se está liquidando o quedó pospuesto). */
+.est-standings-note { margin: 6px 2px 0; font-size: 10px; line-height: 1.35; color: var(--muted-2); }
+.est-standings-note strong { color: var(--gold-2); font-weight: 700; }
 .est-crest-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
 
 /* --- Marcador --- */

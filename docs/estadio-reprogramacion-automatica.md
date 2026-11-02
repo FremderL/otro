@@ -36,3 +36,13 @@ dentro de la ventana de 30 minutos y, si la supera, pasa a liquidación directa.
 En el límite entre temporadas, si +30 minutos cruzaría a otro mes, se mantiene
 pendiente dentro de los primeros 30 minutos (`football_auto_reschedule_season_boundary`)
 y, superado ese margen, se liquida dentro de su propia temporada.
+
+## Cierre garantizado (ver `docs/estadio-partidos-sin-resultado.md`)
+
+La liquidación directa no depende de que el mes siga siendo el mismo ni de que el
+servidor se haya reiniciado: `engine.operationalMatches()` ya incluye cualquier
+partido no terminal de cualquier temporada y `engine.repairOverdueMatches()`
+recorre todas las temporadas cada minuto (y al arrancar) asentando por jornada lo
+que siga vencido. Una temporada con un cruce sin acta **no se cierra**: la
+rotación se aplaza hasta que el acta entra (con tope de 6 h para no congelar la
+liga) y la tabla y el `carryover` se reconstruyen desde las actas asentadas.
