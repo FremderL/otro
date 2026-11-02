@@ -3791,6 +3791,7 @@ async function initFootball() {
   if (writerPending) {
     profiles.onFootballWriterAcquired = async () => {
       await footballStore._loadOnce();
+      await footballBetting.retireLegacySeason(footballStore.getCurrentSeasonMonth());
       await footballEngine.reconcileBoot(Date.now());
       await footballQuiniela?.sweep?.(Date.now());
       await footballBallonDorMarket?.sweep?.(Date.now());
@@ -3831,7 +3832,9 @@ async function initFootball() {
     }
   };
 
-  const officialV2 = createOfficialV2({ store: footballStore, log: footballLog, now: () => Date.now() });
+  footballStore.v2Only = true;
+  const officialV2 = createOfficialV2({ store: footballStore, log: footballLog, now: () => Date.now(), onlyV2: true,
+    retireLegacy: seasonMonth => footballBetting.retireLegacySeason(seasonMonth) });
 
   // 3. Flujo de apostadores simulados (invisible, §11.6) + servicio de apuestas.
   const simulatedFlow = new SimulatedFlow({ log: footballLog });
@@ -3879,6 +3882,10 @@ async function initFootball() {
   //    liquida por jornada los partidos vencidos más de 30 min (incluidas temporadas
   //    anteriores antes de rotar), conserva reprogramables (<= 30 min), prepara el
   //    horizonte próximo de V2 y cuadra el escrow ANTES de aceptar tráfico.
+  if (!writerPending) {
+    const retired = await footballBetting.retireLegacySeason(footballStore.getCurrentSeasonMonth());
+    if (!retired.ok) footballLog('football_v1_retirement_pending', { reason: retired.reason });
+  }
   await footballEngine.reconcileBoot(Date.now());
 
   // 5a. Recuperación de la quiniela al arrancar: aplica con operationId los

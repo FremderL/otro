@@ -359,3 +359,27 @@ test('pool compartido (A8): close() NO lo cierra; pool propio sí', async () => 
   await storeOwn.close();
   assert.equal(storeOwn.pool.ended, true, 'close() cierra el pool propio');
 });
+
+test('PG conserva el compromiso V2 inválido para diagnóstico sin validarlo al guardar', async t => {
+  const seed = makeSeedRows();
+  t.after(seed.cleanup);
+  seed.rows.bets = [];
+  const match = seed.rows.matches[0].data;
+  const corrupted = { version: 'v2-causal-4', privateSeed: 'ab'.repeat(32), inputsHash: 'cd'.repeat(32),
+    inputs: { damaged: true }, preparedAt: Date.now() };
+  match.simulation = JSON.stringify(corrupted);
+  const pool = makeMockPool(seed.rows);
+  const store = new PgFootballStore('postgres://mock-host/mockdb', { pool });
+  t.after(() => store.close());
+  await store.ready;
+  const loaded = store.getMatch(match.id, seed.month);
+  assert.equal(loaded.simulation.invalid, true);
+  assert.deepEqual(loaded.simulation.original, corrupted);
+  assert.equal(verifyCommitment(loaded.simulation, loaded), false);
+  await store.saveNow();
+  const insert = pool.insertsTo('football_matches').at(-1);
+  const index = insert.params[0].indexOf(match.id);
+  const saved = JSON.parse(JSON.parse(insert.params[13][index]).simulation);
+  assert.deepEqual(saved.original, corrupted);
+  assert.equal(saved.invalid, true);
+});

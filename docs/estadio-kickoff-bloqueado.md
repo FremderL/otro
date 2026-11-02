@@ -84,3 +84,65 @@ error de preparación. Estas pruebas se incorporan a `npm run test:unit`.
 Esto prueba y corrige el defecto localmente, no establece por sí solo la causa
 ni el estado del encuentro real: sigue siendo necesaria la verificación de
 producción descrita arriba.
+
+## Investigación adicional: errores aislados dentro de la preparación V2
+
+Se reprodujo otro fallo de código, sin acceso a datos ni logs de producción: el
+preparador del horizonte trataba todos los partidos como un solo lote. Si uno
+fallaba (por ejemplo, un compromiso inválido o una plantilla incompleta), el
+bucle se detenía antes de guardar los compromisos anteriores y no preparaba los
+posteriores. Además, ese error podía abortar la reconciliación de arranque. No
+hay evidencia suficiente para atribuirle los encuentros reportados.
+
+Ahora se procesan por separado, se registran temporada e ID del fallo, se
+confirman los snapshots sanos únicamente después de un guardado exitoso y se
+conserva el fallo de ese encuentro para diagnóstico. El arranque solo tolera
+este error localizado: un fallo de política o de persistencia sigue siendo
+crítico. Un V2 inválido nunca se sustituye por V1 ni se vuelve a sortear; se
+conservan sus datos originales en una envoltura inválida para investigación,
+sin exponerlos al cliente. Esto no restaura datos que se hubieran perdido antes
+del despliegue; en ese caso se necesita un respaldo verificable.
+
+El watchdog también aísla errores por partido, y una reparación en espera vuelve
+a verificar si el encuentro sigue vencido antes de asentarlo. Los compromisos
+V2 inválidos o sin confirmar no provocan reembolsos automáticos por tres errores.
+
+Verificar tras desplegar: `football_v2_prepare_error` con ID de partido,
+`football_v2_commitment_blocked`, `football_stuck_match_error`,
+`football_overdue_repair_pending`, errores de persistencia y concesión de
+escritor. Comparar el compromiso persistido y las obligaciones antes de cualquier
+intervención manual. El resultado y los PJ reales solo pueden confirmarse en la
+base del servicio; las pruebas locales no modifican producción.
+
+## Retiro operativo de V1
+
+El servidor del Estadio activa `onlyV2` y prohíbe generar o liquidar cronologías
+V1. Los compromisos V2 confirmados siguen usando su versión y semilla original;
+un V2 dañado permanece bloqueado, no se reemplaza. Los resultados históricos
+asentados y sus estadísticas se conservan y la interfaz muestra el marcador
+oficial, pero ya no regenera una retransmisión histórica V1. Se conservan los
+módulos V1 fuera del flujo oficial para pruebas y compatibilidad de datos; las
+funciones matemáticas compartidas no ejecutan el simulador V1.
+
+Antes de preparar V2 se retiran y reembolsan las apuestas V1 abiertas vinculadas
+a partidos sin acta, las combinadas completas con una pata V1 pendiente y los
+futuros V1 que cubren partidos sin acta (incluido Balón de Oro). Se persiste la
+anulación antes del crédito; las operaciones por boleto se reintentan con ID
+idempotente y no se habilita la conversión mientras el reembolso correspondiente
+no se confirme. No se modifican boletos ya liquidados ni apuestas V2 válidas.
+Un V1 en vivo sin acta vuelve a programado después de los reembolsos y la
+reparación lo prepara con V2. Si falta un perfil o persiste un fallo de escritura,
+la conversión queda pendiente: `football_v1_retirement_pending` indica el motivo.
+Un V2 ya confirmado que no tiene obligaciones incompatibles ni reembolsos
+pendientes propios puede arrancar sin esperar el reembolso de otro partido.
+
+Los partidos no asentados de temporadas anteriores a noviembre de 2026 no se
+convierten automáticamente: se conservan pendientes para revisión, sin ejecutar
+V1 ni inventar insumos históricos. Una deuda antigua o una obligación sin datos
+válidos puede necesitar intervención. Las fechas de inicio, la política de
+reprogramación y los compromisos V2 ya existentes no se modifican por el retiro.
+
+La regresión de arranque real recrea los cruces de West Hamón de las jornadas 1
+contra Arsénico y 2 contra Bayern, a las 15:01 del 2 de noviembre: reembolsa un
+boleto V1, genera ambos resultados con V2, incluye actas/estadísticas y suma los
+PJ una sola vez. Es una prueba local, no una lectura de los datos de producción.

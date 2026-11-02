@@ -4079,8 +4079,8 @@
     S.minute = Math.round(S.serverMinute);
     S.clockLabel = ms.state && ms.state.clockLabel != null ? String(ms.state.clockLabel) : null;
     S.stoppage = null;
-    S.phase = ms.state ? ms.state.phase : 'pre';
-    S.score = ms.state ? ms.state.score : { home: 0, away: 0 };
+    S.phase = ms.state ? ms.state.phase : (ms.match && ms.match.result ? 'ended' : 'pre');
+    S.score = ms.state ? ms.state.score : (ms.match && ms.match.result ? { home: Number(ms.match.result.home) || 0, away: Number(ms.match.result.away) || 0 } : { home: 0, away: 0 });
     S.cards = copyMatchCards(ms.state && ms.state.cards);
     S.shootout = ms.state && ms.state.shootout ? ms.state.shootout : null;
     S.possession = ms.state && ms.state.possession ? ms.state.possession : { home: .5, away: .5 };
