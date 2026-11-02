@@ -351,3 +351,48 @@ test('futuros V2 siguen abiertos en juego con marcador y goleadores revelados, s
     assert.equal(h.store.getFuture(accepted.future.id).odds, first.odds, 'una nueva proyección no altera el boleto');
   } finally { h.close(); }
 });
+
+test('scheduler prioriza partidos vencidos y aísla una falla del horizonte sin saltar persistencia', async () => {
+  const calls = [], logs = [];
+  const matches = [
+    { id: 'bloqueado', status: 'scheduled', scheduledKickoffAt: 10 },
+    { id: 'listo', status: 'scheduled', scheduledKickoffAt: 10 },
+    { id: 'futuro', status: 'scheduled', scheduledKickoffAt: 20 }
+  ];
+  const engine = {
+    opts: { pregenerateMs: 10 }, operationalMatches: () => matches,
+    startMatch(match) { calls.push('start:' + match.id); match.status = 'live'; },
+    pregenerateUpcoming() { calls.push('pregenerate'); }
+  };
+  const officialV2 = {
+    async prepareMatch(match) { calls.push('prepare:' + match.id); return match.id === 'bloqueado' ? { ok: false, reason: 'persistencia_pendiente' } : { ok: true }; },
+    async prepareUpcoming() { calls.push('upcoming'); throw new Error('horizonte indisponible'); }
+  };
+  const scheduler = new FootballScheduler(engine, { officialV2, logEvent: (event, data) => logs.push({ event, data }) });
+  scheduler.runKickoffSweep(10);
+  await scheduler.kickoffPending;
+  assert.deepEqual(calls, ['prepare:bloqueado', 'prepare:listo', 'start:listo', 'upcoming', 'pregenerate']);
+  assert.equal(matches[0].status, 'scheduled', 'sin persistencia confirmada no se arranca');
+  assert.equal(matches[1].status, 'live');
+  assert.ok(logs.some(log => log.event === 'football_v2_kickoff_not_ready' && log.data.reason === 'persistencia_pendiente'));
+  assert.ok(logs.some(log => log.event === 'football_v2_kickoff_error'));
+});
+
+test('scheduler reintenta el kickoff tras recuperar la persistencia V2', async () => {
+  const h = setup();
+  try {
+    const match = h.league.calendar.matches[0], kickoff = match.scheduledKickoffAt;
+    const save = h.store.saveStrict.bind(h.store);
+    const scheduler = new FootballScheduler(h.engine, { officialV2: h.officialV2 });
+    h.store.saveStrict = () => false;
+    scheduler.runKickoffSweep(kickoff);
+    await scheduler.kickoffPending;
+    assert.equal(match.status, 'scheduled', 'no arranca sin confirmación durable');
+    h.store.saveStrict = save;
+    scheduler.runKickoffSweep(kickoff + 5000);
+    await scheduler.kickoffPending;
+    assert.equal(match.status, 'live');
+    assert.ok(verifyCommitment(match.simulation, match));
+    assert.equal(match.simulationUnconfirmed, undefined);
+  } finally { h.close(); }
+});

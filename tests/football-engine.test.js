@@ -363,3 +363,21 @@ test('seasonGate no bloquea sin apuestas y pospone cuando el hook las reporta', 
   const gated = new FootballEngine(store, { hasOpenBets: () => true });
   assert.strictEqual(gated.seasonGate().type, 'deferred', 'con apuestas abiertas, se pospone');
 });
+
+
+test('un lote de jugadas recientes no se confunde con el catch-up histórico', () => {
+  const { store } = freshStore();
+  const match = isolate(store);
+  const engine = new FootballEngine(store, { secondsPerMinute: 10 });
+  engine.startMatch(match, T0);
+  const timeline = engine._ensureTimeline(match).timeline;
+  const pairIndex = timeline.findIndex((event, i) => i > 0 && event.t < 40 && event.t > 2 && event.t - timeline[i - 1].t < 0.4);
+  assert.ok(pairIndex > 0, 'hay dos acciones cercanas');
+  const recent = [];
+  engine.on('football:event', payload => recent.push(payload));
+  engine.advance(match, T0 + timeline[pairIndex].t * MS_MIN + 1);
+  const last = recent.filter(p => p.event.i === timeline[pairIndex].i || p.event.i === timeline[pairIndex - 1].i);
+  assert.equal(last.length, 2);
+  assert.ok(last.every(p => !p.catchUp), 'ambas acciones acaban de suceder');
+  assert.ok(recent.some(p => p.catchUp), 'los eventos antiguos sí son historia');
+});

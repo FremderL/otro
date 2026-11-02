@@ -42,3 +42,48 @@ test('si falta la temporada anterior inmediata no se fabrican traspasos',t=>{
  store.generateSeason('2026-10'); const january=store.generateSeason('2027-01');
  assert.equal(january.config.length,16); assert.equal(planTransfers(january).effectiveSeason,'2027-02');
 });
+
+test('las identidades y atributos de los 288 jugadores sobreviven traspasos y meses ausentes', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'identity-'));
+  const store = new FootballStore(path.join(dir, 'f.json'));
+  t.after(() => { store.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const first = store.generateSeason('2026-10');
+  const initial = new Map(first.config.flatMap(c => c.squad.map(p => [p.id, { name: p.name, attrs: p.attrs, pos: p.pos }])));
+  assert.equal(initial.size, 288);
+  assert.equal(new Set(first.config.flatMap(c => c.squad.map(p => p.name))).size, 288);
+  const moves = planTransfers(first).moves;
+  const second = store.generateSeason('2026-11');
+  for (const club of second.config) for (const p of club.squad) {
+    assert.deepEqual({ name: p.name, attrs: p.attrs, pos: p.pos }, initial.get(p.id));
+    const transfer = moves.find(m => m.playerId === p.id);
+    if (transfer) assert.equal(club.id, transfer.toId);
+  }
+  const january = store.generateSeason('2027-01');
+  assert.deepEqual(january.config.map(c => c.squad.map(p => ({ id: p.id, name: p.name, attrs: p.attrs, num: p.num }))),
+    second.config.map(c => c.squad.map(p => ({ id: p.id, name: p.name, attrs: p.attrs, num: p.num }))), 'un salto no inventa traspasos ni regenera personas');
+  for (const club of january.config) for (const p of club.squad) assert.deepEqual(p.season, { goals: 0, assists: 0, yellow: 0, red: 0, minutes: 0 });
+  const { createLineups } = require('../lib/football/match-state');
+  const moved = moves[0], destination = second.config.find(c => c.id === moved.toId);
+  const opponent = second.config.find(c => c.id !== moved.toId);
+  const lineups = createLineups(destination, opponent);
+  assert.equal(lineups.home.players.find(p => p.id === moved.playerId).name, moved.playerName);
+  assert.ok(!lineups.away.players.some(p => p.id === moved.playerId));
+  const { prepareMatchInputs } = require('../lib/football/v2/inputs');
+  const fixture = second.calendar.matches.find(m => m.homeId === destination.id || m.awayId === destination.id);
+  const input = prepareMatchInputs({ league: second, previousLeague: first, match: fixture, asOf: Date.UTC(2026, 10, 1), seed: 1 });
+  const side = fixture.homeId === destination.id ? 'home' : 'away';
+  const snap = input[side].lineup.players.find(p => p.id === moved.playerId);
+  assert.equal(snap.name, moved.playerName);
+  assert.deepEqual(snap.attrs, initial.get(moved.playerId).attrs);
+  assert.ok(!input[side === 'home' ? 'away' : 'home'].lineup.players.some(p => p.id === moved.playerId));
+});
+
+test('una plantilla anterior inválida no se sustituye silenciosamente con otras personas', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'identity-invalid-'));
+  const store = new FootballStore(path.join(dir, 'f.json'));
+  t.after(() => { store.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const previous = store.generateSeason('2026-10');
+  previous.config[0].squad.pop();
+  assert.throws(() => store.generateSeason('2026-11'), /conservar la identidad/);
+  assert.equal(store.getLeague('2026-11'), null);
+});

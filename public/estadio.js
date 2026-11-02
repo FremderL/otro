@@ -175,7 +175,8 @@
     showcaseItems: [], showcaseIndex: 0, showcaseRotationId: null, sponsoredPromotions: [],
     promotionsEnabled: false, promoSessionChecked: false, promoProfile: null, promoCsrfToken: null,
     promoWindowOpen: false, promoMatchId: null, promoPollId: null, promoRequestSeq: 0,
-    currentMatchId: null, match: null, markets: {}, movement: {}, myBets: [],
+    currentMatchId: null, requestedMatchId: null, matchSubscribeSeq: 0, lastMatchSyncAt: -Infinity,
+    match: null, markets: {}, movement: {}, myBets: [],
     ballonDorMarket: null, ballonDorLoading: true, ballonDorError: false, ballonDorRequestSeq: 0,
     ballonDorRequestedSeasonMonth: requestedBallonDorSeasonMonth(),
     ballonDorArchive: [], ballonDorArchiveLoading: true, ballonDorArchiveError: false, ballonDorArchiveRequestSeq: 0,
@@ -228,6 +229,7 @@
   var el = {};
   function cacheEls() {
     ['est-fantasy-summary', 'est-fantasy-form', 'est-fantasy-players', 'est-fantasy-save', 'est-fantasy-feedback', 'est-fantasy-opt', 'est-fantasy-challenges', 'est-fantasy-ranking',
+      'est-roster-panel', 'est-roster-club', 'est-roster-refresh', 'est-roster-status', 'est-roster-list',
       'est-connection', 'est-chips', 'est-sound', 'est-music', 'est-ads', 'est-ads-open', 'est-countdown', 'est-match-list', 'est-standings',
       'est-preshow', 'est-preshow-status', 'est-preshow-timer', 'est-showcase', 'est-showcase-track',
       'est-compare-home', 'est-compare-away', 'est-showcase-count', 'est-showcase-prev', 'est-showcase-next', 'est-showcase-dots', 'est-preshow-promo', 'est-promo-image', 'est-promo-label', 'est-promo-text', 'est-promo-link',
@@ -237,7 +239,7 @@
       'est-upload-dropzone', 'est-dropzone-file-name', 'est-dropzone-clear-btn', 'est-studio-text-fields', 'est-studio-presets-row',
       'est-promo-copy-input', 'est-promo-image-input', 'est-promo-target', 'est-promo-room-field', 'est-promo-room-code',
       'est-promo-submit', 'est-promo-message',
-      'est-scoreboard', 'crest-home', 'crest-away', 'name-home', 'name-away', 'score-home', 'score-away',
+      'est-scoreboard', 'crest-home', 'crest-away', 'name-home', 'name-away', 'score-home', 'score-away', 'cards-home', 'cards-away',
       'est-clock', 'est-pitch', 'est-goal-banner', 'est-commentary', 'est-commentary-voice',
       'est-commentary-voice-picker', 'est-commentary-voice-picker-wrap', 'est-text-state', 'est-market-phase',
       'est-crowd-feed', 'est-crowd-form', 'est-crowd-input', 'est-crowd-send', 'est-crowd-message', 'est-crowd-reactions',
@@ -524,7 +526,7 @@
       if (S.betRankingSubscribed && ledgerOpen() && S.ledgerView === 'ranking') S.socket.emit('bet_ranking_get');
       renderBetRanking();
     });
-    S.socket.on('disconnect', function () { S.fantasySeq++; S.fantasyBusy = false; S.fanSeq++; S.fanBusy = false; setConn('error'); startBallonDorPolling(); renderBetRanking(); updateCrowdAvailability(); });
+    S.socket.on('disconnect', function () { S.matchSubscribeSeq++; S.requestedMatchId = null; S.fantasySeq++; S.fantasyBusy = false; S.fanSeq++; S.fanBusy = false; setConn('error'); startBallonDorPolling(); renderBetRanking(); updateCrowdAvailability(); renderPreshow(currentServerTime()); });
     S.socket.on('connect_error', function () { setConn('error'); startBallonDorPolling(); });
     S.socket.on('football:lobby', function (lobby) { renderLobby(lobby); });
     S.socket.on('football:ballon_dor_market', function (payload) {
@@ -584,8 +586,12 @@
       refreshFan();
       renderBallonDorMarket();
       renderLobby(res.lobby);
+      // Socket.IO abandona las salas al desconectarse; recuperar la sala y la
+      // instantánea del partido que el espectador ya había elegido.
+      if (S.currentMatchId && !S.requestedMatchId) selectMatch(S.currentMatchId);
+      if (el['est-roster-panel'].open) refreshRoster();
       // Al entrar (también si el partido ya terminó) se trae el historial y pagos.
-      loadBetHistory();
+      loadBetHistory({ force: true });
     });
   }
   function onSubError(res) {
@@ -2701,26 +2707,53 @@
   }
 
   function selectMatch(matchId) {
-    if (!S.socket || !matchId) return;
+    if (!S.socket || !S.socket.connected || !matchId) return;
+    var previousRequest = S.requestedMatchId;
+    if (previousRequest && previousRequest !== matchId && previousRequest !== S.currentMatchId) {
+      S.socket.emit('football:unsubscribe', { scope: 'match', matchId: previousRequest });
+    }
     if (S.currentMatchId && S.currentMatchId !== matchId) S.socket.emit('football:unsubscribe', { scope: 'match', matchId: S.currentMatchId });
+    var seq = ++S.matchSubscribeSeq;
+    S.requestedMatchId = matchId;
+    S.lastMatchSyncAt = performance.now();
     S.socket.emit('football:subscribe', { scope: 'match', matchId: matchId, token: S.token, tos: S.tosVersion }, function (res) {
+      if (seq !== S.matchSubscribeSeq) {
+        if (res && res.ok && matchId !== S.currentMatchId && matchId !== S.requestedMatchId && S.socket.connected) {
+          S.socket.emit('football:unsubscribe', { scope: 'match', matchId: matchId });
+        }
+        return;
+      }
+      S.requestedMatchId = null;
       if (!res || !res.ok) return onSubError(res);
       if (S.currentMatchId !== matchId) {
         if (S.slip) closeSlip();
         S.currentMatchId = matchId;
         resetCrowdFeed();
-        // La cancha no arrastra los comentarios del partido anterior.
         S.danmaku.queue = [];
         clearDanmaku();
         setCrowdMessage('', '');
       }
       S.teams = res.teams || S.teams;
-      if (res.profile) { S.chips = res.profile.chips; updateChips(); }
+      if (res.profile) {
+        var profileChanged = S.profile && S.profile.id !== res.profile.id;
+        S.profile = res.profile; S.chips = res.profile.chips; updateChips();
+        if (profileChanged) { S.betHistory = null; S.betHistoryFetchedAt = 0; loadBetHistory({ force: true }); }
+      }
       applyMatchState(res.matchState);
       updateCrowdAvailability();
       if (ledgerOpen()) renderLedger();
       highlightActive();
     });
+  }
+
+  // Si no llegó el aviso de kickoff, pedir nuevamente el estado autoritativo.
+  // No se inicia el partido desde el navegador ni se rehacen apuestas.
+  function retryPendingMatch(nowMs) {
+    if (!S.match || S.match.status !== 'scheduled' || !S.currentMatchId || !S.socket || !S.socket.connected
+        || S.match.scheduledKickoffAt == null || (S.requestedMatchId && S.requestedMatchId !== S.currentMatchId)
+        || !Number.isFinite(Number(S.match.scheduledKickoffAt)) || nowMs < Number(S.match.scheduledKickoffAt)
+        || performance.now() - S.lastMatchSyncAt < 10000) return;
+    selectMatch(S.currentMatchId);
   }
 
   // ===== Lobby =====
@@ -3165,7 +3198,7 @@
       startPromotionRotation(match.id);
     }
     var statusText = delayed
-      ? 'Kickoff pendiente · esperando señal del partido'
+      ? (S.socket && S.socket.connected ? 'Kickoff pendiente · consultando el estado del partido' : 'Kickoff pendiente · sin conexión, esperando reconexión')
       : 'Kickoff programado · ' + kickoffTime(match.scheduledKickoffAt);
     if (el['est-preshow-status'].textContent !== statusText) el['est-preshow-status'].textContent = statusText;
     el['est-preshow-timer'].textContent = delayed ? '' : formatPreshowCountdown(remaining);
@@ -3194,18 +3227,23 @@
   }
 
   var STATUS_LABEL = { scheduled: 'Programado', live: 'EN VIVO', halftime: 'Descanso', extra_time: 'Prórroga', shootout: 'Penales', finished: 'Final', settled: 'Final', postponed: 'Pospuesto' };
-  function renderLobby(lobby) {
+  function renderLobby(lobby, localRedraw) {
     if (!lobby) return;
+    var seasonChanged = S.lobby && lobby.seasonMonth && S.lobby.seasonMonth !== lobby.seasonMonth;
     S.lobby = lobby; S.standings = lobby.standings || []; S.countdownTo = lobby.nextKickoffAt;
-    if (lobby.serverNow != null && Number.isFinite(Number(lobby.serverNow))) {
+    if (!localRedraw && lobby.serverNow != null && Number.isFinite(Number(lobby.serverNow))) {
       S.lobbyServerNow = Number(lobby.serverNow);
       S.lobbyReceivedAt = performance.now();
     }
     var list = el['est-match-list']; list.innerHTML = '';
     var matches = lobby.matches || [];
     var selectedMatch = S.currentMatchId && matches.find(function (match) { return match.id === S.currentMatchId; });
-    if (selectedMatch && S.match) {
-      S.match.status = selectedMatch.status;
+    if (!localRedraw && selectedMatch && S.match) {
+      if (S.match.status === 'scheduled' && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(selectedMatch.status) >= 0) {
+        onStatus({ matchId: S.currentMatchId, code: selectedMatch.status });
+      } else {
+        S.match.status = selectedMatch.status;
+      }
       S.match.scheduledKickoffAt = selectedMatch.scheduledKickoffAt;
       if (selectedMatch.day != null) S.match.day = selectedMatch.day;
       if (selectedMatch.block != null) S.match.block = selectedMatch.block;
@@ -3215,6 +3253,7 @@
       var li = document.createElement('li');
       var live = ['live', 'halftime', 'extra_time', 'shootout'].indexOf(m.status) >= 0;
       li.className = 'est-match-item' + (live ? ' live' : '') + (m.id === S.currentMatchId ? ' active' : '');
+      li.dataset.matchId = m.id;
       li.tabIndex = 0; li.setAttribute('role', 'button');
       li.setAttribute('aria-label', teamFull(m.homeId) + ' contra ' + teamFull(m.awayId) + ', ' + (STATUS_LABEL[m.status] || m.status));
       // El marcador final sale del resultado ASENTADO del partido (home/away), que
@@ -3236,7 +3275,43 @@
       list.appendChild(li);
     });
     renderStandings();
+    updateRosterClubs();
+    if (seasonChanged && el['est-roster-panel'].open) refreshRoster();
+    if (seasonChanged && $('est-fan-club').value) loadClubProfile($('est-fan-club').value, true);
     renderPreshow(currentServerTime());
+  }
+  var rosterRequest = 0;
+  function updateRosterClubs() {
+    var select = el['est-roster-club'];
+    var ids = Object.keys(S.teams).sort(function (a, b) { return teamFull(a).localeCompare(teamFull(b)); });
+    var selected = select.value;
+    if (ids.join('|') === select.dataset.ids) return;
+    select.dataset.ids = ids.join('|');
+    select.innerHTML = ids.map(function (id) { return '<option value="' + esc(id) + '">' + esc(teamFull(id)) + '</option>'; }).join('');
+    if (ids.indexOf(selected) >= 0) select.value = selected;
+  }
+  function refreshRoster() {
+    var select = el['est-roster-club'], id = select.value;
+    var request = ++rosterRequest;
+    el['est-roster-list'].innerHTML = '';
+    if (!id || !S.socket || !S.socket.connected) { el['est-roster-status'].textContent = 'Conéctate al Estadio para consultar las plantillas.'; return; }
+    el['est-roster-status'].textContent = 'Cargando plantilla…';
+    S.socket.emit('football:roster_get', { clubId: id }, function (res) {
+      if (request !== rosterRequest || select.value !== id) return;
+      if (!res || !res.ok || !res.roster || res.roster.clubId !== id) { el['est-roster-status'].textContent = 'No se pudo cargar la plantilla. Intenta actualizar.'; return; }
+      var roster = res.roster;
+      el['est-roster-status'].textContent = roster.clubName + ' · temporada ' + roster.seasonMonth
+        + (roster.missingMatches ? ' · Datos parciales: faltan ' + roster.missingMatches + ' partidos asentados.' : '')
+        + (roster.incompleteDetails ? ' · Minutos y amarillas incompletos en partidos anteriores.' : '');
+      el['est-roster-list'].innerHTML = roster.players.map(function (player) {
+        var a = player.attributes || {}, st = player.stats || {};
+        return '<li><strong>#' + esc(player.number) + ' · ' + esc(player.name) + ' · ' + esc(player.position) + '</strong>'
+          + '<small>ID: ' + esc(player.id) + '</small>'
+          + '<small>Ritmo ' + esc(a.pac) + ' · Tiro ' + esc(a.sho) + ' · Pase ' + esc(a.pas) + ' · Defensa ' + esc(a.def) + ' · Portería ' + esc(a.gk) + ' · Agresividad ' + esc(a.agr) + '</small>'
+          + '<small>Partidos ' + esc(st.appearances) + ' · Goles ' + esc(st.goals) + ' · Asistencias ' + esc(st.assists) + ' · Minutos ' + esc(st.minutes) + ' · Amarillas ' + esc(st.yellowCards) + ' · Rojas ' + esc(st.redCards) + '</small>'
+          + '<small>Valor orientativo: ' + esc(player.value) + ' M fichas</small></li>';
+      }).join('');
+    });
   }
   // La zona conserva el formulario montado: cambiar de vista o cerrar no borra el borrador.
   var hubTrigger = null;
@@ -3546,24 +3621,87 @@
       renderTransfersList(list, market);
     });
   }
+  var clubProfileRequest = 0, shownClubProfileId = null;
+  function loadClubProfile(clubId, force) {
+    var box = $('est-club-profile'), status = $('est-club-status');
+    if (!box || !status) return;
+    if (!clubId) {
+      clubProfileRequest++; shownClubProfileId = null; box.innerHTML = '';
+      status.textContent = 'Elige un club para conocer su historia y plantilla.'; return;
+    }
+    if (!force && shownClubProfileId === clubId) return;
+    var seq = ++clubProfileRequest;
+    shownClubProfileId = null; box.innerHTML = '';
+    if (!S.socket || !S.socket.connected) { status.textContent = 'Conéctate al Estadio para consultar la ficha.'; return; }
+    status.textContent = 'Cargando ficha del club…';
+    S.socket.emit('football:club_profile_get', { clubId: clubId }, function (res) {
+      if (seq !== clubProfileRequest || $('est-fan-club').value !== clubId) return;
+      if (!res || !res.ok || !res.club || res.club.clubId !== clubId) { status.textContent = 'No se pudo cargar la ficha. Pulsa Actualizar para reintentar.'; return; }
+      shownClubProfileId = clubId;
+      status.textContent = 'Datos de la temporada ' + res.club.seasonMonth + ' · Consulta informativa';
+      renderClubProfile(res.club, box);
+    });
+  }
+  function renderClubProfile(club, box) {
+    var roster = club.roster || {}, players = roster.players || [], record = club.record || {}, manager = club.manager || {};
+    var lineups = new Map((club.lineup || []).map(function (p) { return [p.id, p]; }));
+    var color = /^#[0-9a-f]{6}$/i.test(club.colors && club.colors.primary || '') ? club.colors.primary : '#76d7a2';
+    var styles = { possession:'Posesión', pressing:'Presión', direct:'Juego directo', balanced:'Equilibrado', counter:'Contraataque' };
+    var bench = players.filter(function (p) { var slot = lineups.get(p.id); return slot && slot.initialStatus === 'bench' && p.position !== 'GK'; });
+    function bestBench(attr) {
+      var ordered = bench.filter(function (p) { return p.attributes && Number.isFinite(Number(p.attributes[attr])); })
+        .slice().sort(function (a, b) { return Number(b.attributes[attr]) - Number(a.attributes[attr]) || a.number - b.number; });
+      return ordered[0] ? ordered[0].name + ' (' + ordered[0].position + ', ' + ordered[0].attributes[attr] + ')' : 'sin datos';
+    }
+    var played = Number(record.played) || 0, rate = played ? Math.round(100 * Number(record.wins || 0) / played) + '%' : '—';
+    var titles = Array.isArray(club.titles) ? club.titles : [];
+    var transfers = Array.isArray(club.transfers) ? club.transfers : [];
+    var partial = (roster.missingMatches ? ' Faltan ' + Number(roster.missingMatches) + ' partidos asentados.' : '')
+      + (roster.incompleteDetails ? ' Minutos y amarillas incompletos en registros antiguos.' : '');
+    box.innerHTML = '<header class="est-club-cover" style="--club-color:' + esc(color) + '">' + clubCrestMarkup(club.clubId, 'est-club-cover-crest')
+      + '<div><p>CLUB / ' + esc(club.city) + '</p><h4>' + esc(club.name) + '</h4><small>' + esc(club.stadium) + ' · ' + fmt(club.capacity) + ' lugares</small></div></header>'
+      + '<div class="est-club-metrics"><div><strong>' + titles.length + '</strong><span>Ligas verificadas*</span></div><div><strong>' + played + '</strong><span>Partidos esta temporada</span></div><div><strong>' + esc(rate) + '</strong><span>Victorias esta temporada</span></div></div>'
+      + '<section class="est-club-block"><p class="est-club-caption">Identidad / historia ficticia</p><h4>La historia de sus colores</h4><p>' + esc(club.story) + '</p><p>*Ligas confirmadas en las temporadas conservadas: ' + (titles.length ? titles.map(esc).join(', ') : 'ninguna registrada') + '. Las temporadas incompletas o sin desempate no cuentan.</p></section>'
+      + '<section class="est-club-block"><p class="est-club-caption">Pizarra técnica / temporada ' + esc(club.seasonMonth) + '</p><h4>DT ' + esc(manager.name) + '</h4>'
+      + '<p>Formación del club: <b>' + esc(manager.formation) + '</b> · Estilo: ' + esc(styles[manager.style] || manager.style) + '.</p>'
+      + '<p>Registro del equipo: ' + Number(record.wins || 0) + ' ganados · ' + Number(record.draws || 0) + ' empatados · ' + Number(record.losses || 0) + ' perdidos · ' + Number(record.goalsFor || 0) + ' goles a favor / ' + Number(record.goalsAgainst || 0) + ' en contra.</p>'
+      + '<p>Opciones del banquillo por atributo: tiro ' + esc(bestBench('sho')) + '; pase ' + esc(bestBench('pas')) + '; defensa ' + esc(bestBench('def')) + '.</p>'
+      + '<p>El DT es un personaje ficticio. La formación, el registro y las habilidades provienen del juego; estas sugerencias son orientativas y no cambian las alineaciones ni sustituciones.</p></section>'
+      + '<section class="est-club-block"><p class="est-club-caption">Plantilla / ' + players.length + ' futbolistas</p><h4>Un equipo, muchas historias</h4><p>Once inicial orientativo calculado con la formación actual. Los partidos comprometidos pueden tener otra alineación.' + esc(partial) + '</p>'
+      + '<details><summary>Ver plantilla y estadísticas</summary><div class="est-club-table-wrap"><table class="est-club-table"><thead><tr><th scope="col">Jugador</th><th scope="col">Puesto / rol</th><th scope="col">Estado</th><th scope="col">RIT</th><th scope="col">TIR</th><th scope="col">PAS</th><th scope="col">DEF</th><th scope="col">POR</th><th scope="col">AGR</th><th scope="col">PJ</th><th scope="col">G</th><th scope="col">A</th></tr></thead><tbody>'
+      + players.map(function (p) { var a = p.attributes || {}, st = p.stats || {}, slot = lineups.get(p.id) || {}; return '<tr><td>#' + esc(p.number) + ' ' + esc(p.name) + '</td><td>' + esc(p.position) + ' / ' + esc(slot.role || '—') + '</td><td>' + (slot.initialStatus === 'active' ? 'Inicial' : 'Banquillo') + '</td><td>' + esc(a.pac) + '</td><td>' + esc(a.sho) + '</td><td>' + esc(a.pas) + '</td><td>' + esc(a.def) + '</td><td>' + esc(a.gk) + '</td><td>' + esc(a.agr) + '</td><td>' + esc(st.appearances) + '</td><td>' + esc(st.goals) + '</td><td>' + esc(st.assists) + '</td></tr>'; }).join('')
+      + '</tbody></table></div><p>RIT ritmo · TIR tiro · PAS pase · DEF defensa · POR portería · AGR agresividad · PJ partidos · G goles · A asistencias. Estadísticas de partidos regulares asentados.</p></details></section>'
+      + '<section class="est-club-block"><p class="est-club-caption">Mercado / movimientos</p><h4>Entradas y salidas</h4><ul class="est-club-transfers">'
+      + (transfers.length ? transfers.map(function (move) { return '<li>' + esc(move.playerName) + ' · ' + esc(teamName(move.fromId)) + ' → ' + esc(teamName(move.toId)) + ' · ' + (move.status === 'announced' ? 'Anunciado para ' : 'En vigor desde ') + esc(move.effectiveSeason) + ' · Valor estimado ' + esc(transferValueLabel(move.playerValue)) + '</li>'; }).join('') : '<li>No hay movimientos anunciados o verificados en las temporadas conservadas.</li>')
+      + '</ul><p>Los acuerdos anunciados solo se aplican en la siguiente temporada; no son compras con tus fichas.</p></section>';
+  }
+  function populateFanClubs(selected) {
+    var select = $('est-fan-club');
+    select.innerHTML = '<option value="">Elige un club…</option>' + Object.keys(S.teams).sort(function (a,b) { return teamName(a).localeCompare(teamName(b), 'es-MX'); }).map(function (id) {
+      return '<option value="' + esc(id) + '">' + esc(teamName(id)) + '</option>';
+    }).join('');
+    select.value = selected || '';
+    select.disabled = S.fanBusy;
+  }
   function refreshFan() {
     if (!$('est-fan-club') || !S.socket || !S.socket.connected || S.fanBusy) return;
     var seq = ++S.fanSeq;
     S.socket.emit('football:fan_get', {}, function (res) {
       if (seq !== S.fanSeq) return;
-      if (!res || !res.ok || !res.fan) { $('est-fan-summary').textContent = res && res.error || 'Mi afición no está disponible.'; return; }
+      if (!res || !res.ok || !res.fan) {
+        S.fan = null; populateFanClubs($('est-fan-club').value);
+        $('est-fan-choose').disabled = true; $('est-fan-current').textContent = 'Inicia sesión para guardar tu club.';
+        $('est-fan-summary').textContent = 'Puedes explorar los clubes. Inicia sesión para guardar tu afición.'; return;
+      }
       S.fan = res.fan; renderFan();
     });
   }
   function renderFan() {
     var data = S.fan; if (!data) return;
     var select = $('est-fan-club'), previous = select.value;
-    select.innerHTML = '<option value="">Elige un club…</option>' + Object.keys(S.teams).sort(function (a,b) { return teamName(a).localeCompare(teamName(b), 'es-MX'); }).map(function (id) {
-      return '<option value="' + esc(id) + '">' + esc(teamName(id)) + '</option>';
-    }).join('');
-    select.value = previous || data.clubId || '';
-    select.disabled = S.fanBusy;
+    populateFanClubs(previous || data.clubId || '');
     $('est-fan-choose').disabled = S.fanBusy || !select.value;
+    loadClubProfile(select.value);
     if ($('est-fan-selected-club')) { if (select.value) setClubLabel($('est-fan-selected-club'), select.value, teamName(select.value)); else $('est-fan-selected-club').textContent = ''; }
     $('est-fan-choose').textContent = data.clubId ? 'Cambiar club →' : 'Elegir club →';
     $('est-fan-summary').textContent = data.clubId ? data.wins + ' victorias desde tu adhesión · Nivel ' + data.level + '.' : 'Elige un club para comenzar.';
@@ -3784,7 +3922,7 @@
       el['est-countdown'].textContent = 'Sin próximo kickoff programado.';
     } else {
       var ms = S.countdownTo - nowMs;
-      if (ms <= 0) el['est-countdown'].innerHTML = 'Próximo kickoff: <b>en juego</b>';
+      if (ms <= 0) el['est-countdown'].innerHTML = 'Próximo kickoff: <b>pendiente de confirmación</b>';
       else {
         var h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000), s = Math.floor(ms % 60000 / 1000);
         el['est-countdown'].innerHTML = 'Próximo kickoff en <b>' + (h > 0 ? h + 'h ' : '') + m + 'm ' + s + 's</b>';
@@ -3792,6 +3930,7 @@
     }
     tickSeasonCountdowns(nowMs);
     renderPreshow(nowMs);
+    retryPendingMatch(nowMs);
   }
 
   // ===== Estado del partido =====
@@ -3826,6 +3965,7 @@
     S.stoppage = null;
     S.phase = ms.state ? ms.state.phase : 'pre';
     S.score = ms.state ? ms.state.score : { home: 0, away: 0 };
+    S.cards = copyMatchCards(ms.state && ms.state.cards);
     S.shootout = ms.state && ms.state.shootout ? ms.state.shootout : null;
     S.possession = ms.state && ms.state.possession ? ms.state.possession : { home: .5, away: .5 };
     S.possessionTeam = ms.state && ms.state.possessionTeam ? ms.state.possessionTeam : 'home';
@@ -4257,12 +4397,30 @@
     }
     return S.minute + "'";
   }
+  // Ambas versiones del motor representan la segunda amarilla de forma distinta.
+  function copyMatchCards(cards) {
+    return { home: cards && Array.isArray(cards.home) ? cards.home.slice() : [],
+      away: cards && Array.isArray(cards.away) ? cards.away.slice() : [] };
+  }
+  function renderTeamCards(side) {
+    var container = el['cards-' + side];
+    var cards = S.cards && S.cards[side] || [];
+    var yellow = 0, red = 0;
+    cards.forEach(function (card) {
+      if (card.type === 'yellow' || card.type === 'yellow_card' || card.type === 'second_yellow') yellow++;
+      if (card.type === 'red' || card.type === 'red_card' || card.type === 'second_yellow') red++;
+    });
+    container.hidden = !yellow && !red;
+    container.innerHTML = (yellow ? '<span class="est-card-count yellow" aria-label="' + yellow + ' tarjetas amarillas">' + yellow + '</span>' : '')
+      + (red ? '<span class="est-card-count red" aria-label="' + red + ' tarjetas rojas">' + red + '</span>' : '');
+  }
   function renderScoreboard() {
     if (!S.match) return;
     setScoreboardCrest('crest-home', S.match.homeId, S.homeKit);
     setScoreboardCrest('crest-away', S.match.awayId, S.awayKit);
     el['name-home'].textContent = teamFull(S.match.homeId); el['name-away'].textContent = teamFull(S.match.awayId);
     el['score-home'].textContent = S.score.home; el['score-away'].textContent = S.score.away;
+    renderTeamCards('home'); renderTeamCards('away');
     var live = ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) >= 0;
     var isV2Clock = S.match.engine === 'v2' && S.clockLabel != null;
     var clockMinute = isV2Clock ? S.clockLabel + (S.clockLabel === 'PEN' ? '' : "'") : clockMinuteLabel();
@@ -4288,7 +4446,7 @@
   // respete lo que el oyente prefirió escuchar.
   var COMMENTARY_NARRATOR_VOICE_KEY = 'montecristo-estadio-narrator-voice';
   var commentarySpeech = {
-    queue: [], active: null, activeItem: null, startedAt: 0, activeCard: null, timer: null, token: 0, lastVoice: null,
+    queue: [], active: null, activeItem: null, startedAt: 0, activeCard: null, timer: null, watchdog: null, token: 0, lastVoice: null,
     voices: { narrador: null, analista: null }, narratorProfile: null, narratorChoice: null,
     options: [], listenersBound: false, buttonBound: false
   };
@@ -4527,6 +4685,8 @@
     commentarySpeech.queue.length = 0;
     if (commentarySpeech.timer) clearTimeout(commentarySpeech.timer);
     commentarySpeech.timer = null;
+    if (commentarySpeech.watchdog) clearTimeout(commentarySpeech.watchdog);
+    commentarySpeech.watchdog = null;
     commentarySpeech.lastVoice = null;
     if (commentarySpeech.activeCard) commentarySpeech.activeCard.classList.remove('is-speaking');
     commentarySpeech.active = null;
@@ -4560,7 +4720,7 @@
   }
   // --- Sincronía de la cabina con el reloj ---
   // Importancia normalizada: el servidor la manda con cada línea de relato
-  // (gol, penal y expulsión son 'high'; el resto cae a 'normal' si falta).
+  // (goles, penales, faltas, atajadas y tarjetas son 'high').
   function commentaryImportance(item) {
     var imp = item && item.importance;
     return imp === 'high' || imp === 'medium' ? imp : 'normal';
@@ -4568,7 +4728,9 @@
   // Prioridad de locución: primero la relevancia del hecho y, dentro de ella,
   // el narrador por delante del analista (que aporta contexto, no la jugada).
   function commentaryPriority(item) {
-    var base = commentaryImportance(item) === 'high' ? 4 : (commentaryImportance(item) === 'medium' ? 2 : 0);
+    var decisive = item && ['goal', 'penalty_scored', 'penalty_awarded', 'penalty_missed', 'red_card', 'second_yellow', 'shootout_kick'].indexOf(item.type) >= 0;
+    var goal = item && ['goal', 'penalty_scored'].indexOf(item.type) >= 0;
+    var base = goal ? 8 : (decisive ? 6 : (commentaryImportance(item) === 'high' ? 4 : (commentaryImportance(item) === 'medium' ? 2 : 0)));
     return base + (item && item.voice === 'analista' ? 0 : 1);
   }
   function commentaryStaleMs(item) {
@@ -4593,6 +4755,7 @@
   function interruptCommentaryTurn() {
     commentarySpeech.token++;
     if (commentarySpeech.timer) { clearTimeout(commentarySpeech.timer); commentarySpeech.timer = null; }
+    if (commentarySpeech.watchdog) { clearTimeout(commentarySpeech.watchdog); commentarySpeech.watchdog = null; }
     if (commentarySpeech.activeCard) commentarySpeech.activeCard.classList.remove('is-speaking');
     commentarySpeech.active = null;
     commentarySpeech.activeItem = null;
@@ -4620,12 +4783,16 @@
     if (message.catchUp) return;
     var priority = commentaryPriority(item);
     if (commentaryImportance(item) === 'high') {
-      // Un gol, un penal o una roja mandan: lo pendiente de menos categoría se
-      // descarta y, si lo que suena no es relevante, se interrumpe el turno.
+      // Las acciones importantes desplazan el relleno; goles y penales también
+      // pueden interrumpir una falta o atajada que aún se esté narrando.
       commentarySpeech.queue = commentarySpeech.queue.filter(function (queued) {
-        return commentaryImportance(queued) === 'high';
+        return commentaryImportance(queued) === 'high' && commentaryPriority(queued) >= priority - (item.voice === 'narrador' ? 1 : 0)
+          && !(item.voice === 'narrador' && queued.voice === 'analista' && queued.type !== item.type);
       });
-      if (commentarySpeech.activeItem && commentaryImportance(commentarySpeech.activeItem) !== 'high') interruptCommentaryTurn();
+      if (commentarySpeech.activeItem && (commentaryImportance(commentarySpeech.activeItem) !== 'high'
+          || (item.voice === 'narrador' && commentaryPriority(item) - commentaryPriority(commentarySpeech.activeItem) >= 2)
+          || (item.voice === 'narrador' && commentarySpeech.activeItem.voice === 'analista'
+            && item.type && item.type !== commentarySpeech.activeItem.type))) interruptCommentaryTurn();
     } else {
       // Si la línea no cabe antes de que su jugada quede atrás, se cede el
       // turno: mejor callar un comentario que narrar el minuto anterior.
@@ -4688,6 +4855,8 @@
       if (settled) return;
       settled = true;
       if (token !== commentarySpeech.token) return;
+      if (commentarySpeech.watchdog) clearTimeout(commentarySpeech.watchdog);
+      commentarySpeech.watchdog = null;
       if (commentarySpeech.activeCard) commentarySpeech.activeCard.classList.remove('is-speaking');
       commentarySpeech.active = null;
       commentarySpeech.activeItem = null;
@@ -4714,6 +4883,12 @@
       }
       finishTurn();
     };
+    // Algunos motores no disparan end/error: libera la cabina si se atascan.
+    commentarySpeech.watchdog = setTimeout(function () {
+      if (token !== commentarySpeech.token) return;
+      interruptCommentaryTurn();
+      runNextCommentaryTurn();
+    }, Math.max(15000, item.text.length * 180));
     try { api.speak(utterance); }
     catch (_) { finishTurn(); }
   }
@@ -4775,6 +4950,12 @@
   // ===== Eventos del motor =====
   function onTick(data) {
     if (!data || data.matchId !== S.currentMatchId) return;
+    // El motor emite ticks exclusivamente para partidos activos. Si se perdió
+    // el aviso inicial, el primer tick confirma el inicio sin inventar estado.
+    if (S.match && S.match.status === 'scheduled') {
+      var phase = (data.state || data).phase;
+      onStatus({ matchId: data.matchId, code: phase === 'halftime' ? 'halftime' : phase === 'extra_time' ? 'extra_time' : phase === 'shootout' ? 'shootout' : 'live' });
+    }
     var wasStopped = S.playStopped;
     var rawMin = data.minute != null ? data.minute : (data.displayMinute != null ? data.displayMinute : (data.state && data.state.minute));
     if (rawMin != null && Number.isFinite(Number(rawMin))) {
@@ -4786,6 +4967,7 @@
     if (st.clockLabel != null) S.clockLabel = String(st.clockLabel);
     if (st.phase) S.phase = st.phase;
     if (st.score) S.score = st.score;
+    if (st.cards) S.cards = copyMatchCards(st.cards);
     if (st.shootout) S.shootout = st.shootout;
     if (st.possession) S.possession = st.possession;
     if (Object.prototype.hasOwnProperty.call(st, 'possessionTeam')) S.possessionTeam = st.possessionTeam;
@@ -5044,6 +5226,12 @@
     // balón en la red; desde ese instante vuelve a mandar el estado del motor.
     if (ev.type === 'kickoff' || ev.type === 'goal_restart' || ev.type === 'restart' || ev.type === 'second_half') {
       S.ballHoldUntil = 0;
+    }
+    if (['yellow_card', 'red_card', 'second_yellow'].indexOf(ev.type) >= 0
+        && (ev.team === 'home' || ev.team === 'away')) {
+      if (!S.cards) S.cards = copyMatchCards(null);
+      S.cards[ev.team].push({ type: ev.type });
+      renderScoreboard();
     }
     applyRosterEvent(ev);
 
@@ -5639,7 +5827,7 @@
       if (data.day != null) S.match.day = data.day;
       if (data.block != null) S.match.block = data.block;
     }
-    if (S.lobby) renderLobby(S.lobby);
+    if (S.lobby) renderLobby(S.lobby, true);
     else renderPreshow(currentServerTime());
   }
 
@@ -5822,6 +6010,7 @@
         if (res && res.code && ['persistencia_pendiente', 'en_proceso', 'internal'].indexOf(res.code) < 0) {
           slip.idemKey = null; slip.requestStake = null;
         }
+        if (res && res.code === 'insufficient_chips') loadBetHistory({ force: true });
         betMsg(humanError(res && res.code), false); return;
       }
       S.chips = res.chips; updateChips();
@@ -6076,6 +6265,7 @@
     var url = '/api/estadio/my-bets?token=' + encodeURIComponent(S.token) + '&limit=100';
     if (seen > 0) url += '&since=' + Math.floor(seen);
     var seq = ++S.betsRequestSeq;
+    var balanceVersion = S.balanceVersion || 0;
     S.betsLoading = true;
     S.betsError = null;
     if (ledgerOpen()) renderLedger();
@@ -6090,11 +6280,17 @@
           renderBallonDorMarket();
           return null;
         }
+        // Nunca mezclar el historial del invitado con una sesión ya confirmada
+        // por el socket, ni sobrescribir un saldo actualizado mientras viajaba.
+        if (data.profile && data.profile.id && S.profile && S.profile.id && data.profile.id !== S.profile.id) {
+          S.betsError = 'load';
+          if (ledgerOpen()) renderLedger();
+          return null;
+        }
         S.betHistory = data.history;
         S.betHistoryFetchedAt = Date.now();
-        if (data.profile) {
-          if (data.profile.id) { S.profile = S.profile || {}; S.profile.id = data.profile.id; }
-          if (data.profile.chips != null) { S.chips = Number(data.profile.chips) || 0; updateChips(); }
+        if (data.profile && data.profile.chips != null && balanceVersion === (S.balanceVersion || 0)) {
+          S.chips = Number(data.profile.chips) || 0; updateChips();
         }
         if (data.history.unseen && data.history.unseen.count) {
           S.betsUnseen = data.history.unseen;
@@ -6481,20 +6677,20 @@
     }
     S.myBets = S.myBets.filter(function (b) { return b.id !== data.betId; });
     renderMyBets();
-    if (won) { S.chips += Number(data.payout || 0); toast('¡Apuesta ganada! +' + fmt(data.payout) + ' fichas.', 'win'); bell('win'); }
+    if (won) { toast('¡Apuesta ganada! +' + fmt(data.payout) + ' fichas.', 'win'); bell('win'); }
     else if (data.status === 'lost') { toast('Apuesta perdida' + (data.reason ? ': ' + data.reason : '') + '.', 'lose'); }
     else {
-      if (data.status === 'void' && Number(data.payout) > 0) S.chips += Number(data.payout);
       toast('Apuesta ' + (data.status === 'void' ? 'anulada (reembolso)' : data.status) + '.', '');
     }
-    updateChips();
     // El historial refresca el saldo autoritativo y muestra la liquidación BDO.
     loadBetHistory({ force: true });
+    // El pago de algunos boletos se confirma de forma asíncrona; volver a leer
+    // evita mostrar un crédito imaginario sin dejar el saldo anterior indefinidamente.
+    if (won || data.status === 'void') window.setTimeout(function () { loadBetHistory({ force: true }); }, 2000);
     loadBallonDorMarket();
     renderBallonDorMarket();
-    // Refresca saldo autoritario del servidor en la siguiente pintura de lobby.
   }
-  function updateChips() { el['est-chips'].textContent = fmt(S.chips) + ' fichas'; }
+  function updateChips() { S.balanceVersion = (S.balanceVersion || 0) + 1; el['est-chips'].textContent = fmt(S.chips) + ' fichas'; }
 
   // ===== Accesibilidad: texto alternativo =====
   function updateTextFallback() {
@@ -6859,6 +7055,9 @@
 
   // ===== UI: enlaces, atajos, TOS =====
   function bindUI() {
+    el['est-roster-panel'].addEventListener('toggle', function () { if (this.open) { updateRosterClubs(); refreshRoster(); } });
+    el['est-roster-club'].addEventListener('change', refreshRoster);
+    el['est-roster-refresh'].addEventListener('click', refreshRoster);
     if ($('est-highlights-audio')) $('est-highlights-audio').addEventListener('click', function () {
       if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) { toast('La narración no está disponible en este navegador.', 'info'); return; }
       var voices=window.speechSynthesis.getVoices(), voice=voices.find(function (v) { return /^es[-_]mx$/i.test(v.lang || ''); });
@@ -6876,7 +7075,8 @@
       });
     }
     if ($('est-fan-club')) {
-      $('est-fan-club').addEventListener('change', function () { $('est-fan-choose').disabled = S.fanBusy || !this.value; $('est-fan-confirm').hidden = true; if (this.value) setClubLabel($('est-fan-selected-club'), this.value, teamName(this.value)); else $('est-fan-selected-club').textContent = ''; });
+      $('est-fan-club').addEventListener('change', function () { $('est-fan-choose').disabled = S.fanBusy || !S.fan || !this.value; $('est-fan-confirm').hidden = true; if (this.value) setClubLabel($('est-fan-selected-club'), this.value, teamName(this.value)); else $('est-fan-selected-club').textContent = ''; loadClubProfile(this.value); });
+      $('est-club-refresh').addEventListener('click', function () { loadClubProfile($('est-fan-club').value, true); });
       $('est-fan-choose').addEventListener('click', function () {
         if (!S.fan || !this || !$('est-fan-club').value) return;
         var next = $('est-fan-club').value;
@@ -7120,8 +7320,11 @@
     toast(S.muted ? 'Relato silenciado.' : 'Relato activado.', '');
   }
   function highlightActive() {
-    // renderLobby marca el partido activo (m.id === S.currentMatchId) de forma fiable.
-    if (S.lobby) renderLobby(S.lobby);
+    // Solo cambiar la selección visual: una copia anterior del lobby no debe
+    // sobrescribir la instantánea recién confirmada ni reiniciar el reloj.
+    Array.prototype.forEach.call(el['est-match-list'].querySelectorAll('.est-match-item'), function (item) {
+      item.classList.toggle('active', item.dataset.matchId === S.currentMatchId);
+    });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once:true });

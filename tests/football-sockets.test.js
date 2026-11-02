@@ -315,7 +315,7 @@ test('T7 — tick lleva solo minute/score/phase/ball/possession (subconjunto rev
   assert.ok(tick, 'tick difundido');
   assert.equal(tick.minute, 12);
   assert.deepEqual(Object.keys(tick).sort(), [
-    'ball', 'ballCarrierId', 'displayMinute', 'half', 'matchId', 'minute', 'phase',
+    'ball', 'ballCarrierId', 'cards', 'displayMinute', 'half', 'matchId', 'minute', 'phase',
     'playStopped', 'players', 'possession', 'possessionTeam', 'score'
   ].sort());
   assert.ok(!JSON.stringify(tick).includes('timeline'));
@@ -432,6 +432,7 @@ test('cupo de sala: al llenarse rechaza con room_full', (t) => {
   const a = ctx.io.connect(); const b = ctx.io.connect(); const c = ctx.io.connect();
   assert.equal(subscribe(ctx, a, { scope: 'match', matchId: ctx.scheduled.id, name: 'A1' }).ok, true);
   assert.equal(subscribe(ctx, b, { scope: 'match', matchId: ctx.scheduled.id, name: 'B1' }).ok, true);
+  assert.equal(subscribe(ctx, a, { scope: 'match', matchId: ctx.scheduled.id, name: 'A1' }).ok, true, 'un miembro puede actualizar su estado aunque la sala esté llena');
   const res = subscribe(ctx, c, { scope: 'match', matchId: ctx.scheduled.id, name: 'C1' });
   assert.equal(res.ok, false);
   assert.equal(res.code, 'room_full');
@@ -998,4 +999,97 @@ test('relato: cada línea viaja con su minuto, su relevancia y la marca de histo
   assert.ok(kickoff.length > 0, 'el saque inicial también se relata');
   assert.ok(kickoff.every(line => line.catchUp === false), 'lo que ocurre en vivo no se marca como historia');
   assert.ok(kickoff.every(line => line.importance === 'normal'), 'y conserva su relevancia real');
+});
+
+
+test('relato de posesión llena pausas sin inventar jugadas y respeta hechos recientes', t => {
+  let time = 100000;
+  const ctx = setup({ now: () => time });
+  t.after(ctx.cleanup);
+  ctx.scheduled.status = 'live';
+  const id = ctx.scheduled.id, room = matchRoom(id);
+  const state = { phase: 'build_up', playStopped: false, possessionTeam: 'home',
+    ballCarrierId: 'p1', players: [{ id: 'p1', name: 'Jugador Real', active: true }],
+    score: { home: 0, away: 0 }, cards: { home: [{ type: 'yellow_card' }], away: [] } };
+  const tick = () => ctx.engine.emit('football:tick', { matchId: id, state, minute: 20 });
+  tick();
+  assert.match(ctx.io.lastTo(room, 'football:commentary').text, /Jugador Real/);
+  assert.deepEqual(ctx.io.lastTo(room, 'football:tick').cards, state.cards);
+  time += 11000; tick();
+  assert.equal(ctx.io.emittedTo(room, 'football:commentary').length, 1);
+  time += 1000; tick();
+  assert.equal(ctx.io.emittedTo(room, 'football:commentary').length, 2);
+  time += 12000;
+  ctx.engine.emit('football:event', { matchId: id, event: { type: 'save', t: 21, team: 'away', commentary: [{ voice: 'narrador', text: 'Atajada.' }] }, catchUp: false });
+  tick();
+  assert.equal(ctx.io.emittedTo(room, 'football:commentary').length, 3, 'no rellena encima de la atajada');
+  assert.equal(ctx.io.lastTo(room, 'football:commentary').importance, 'high');
+  time += 12000; state.playStopped = true; tick();
+  assert.equal(ctx.io.emittedTo(room, 'football:commentary').length, 3, 'sin posesión durante una detención');
+});
+
+test('goles, faltas, atajadas, penales y tarjetas viajan con prioridad alta', t => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  const id = ctx.scheduled.id, room = matchRoom(id);
+  for (const type of ['goal', 'foul', 'save', 'penalty_awarded', 'penalty_missed', 'yellow_card', 'red_card', 'second_yellow', 'shootout_kick']) {
+    ctx.engine.emit('football:event', { matchId: id, event: { type, t: 20, team: 'home', commentary: [{ voice: 'narrador', text: type }] }, catchUp: false });
+    assert.equal(ctx.io.lastTo(room, 'football:commentary').importance, 'high', type);
+    assert.equal(ctx.io.lastTo(room, 'football:event').importance, 'high', type);
+  }
+});
+
+test('plantillas oficiales muestran identidad, atributos y solo estadísticas asentadas', t => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  const socket = ctx.io.connect();
+  assert.equal(socket._fire('football:roster_get', { clubId: ctx.scheduled.homeId }).code, 'no_identity');
+  subscribe(ctx, socket, { name: 'Rosa' });
+  const league = ctx.store.getLeague(ctx.month);
+  const club = league.config.find(c => c.id === ctx.scheduled.homeId);
+  let response = socket._fire('football:roster_get', { clubId: club.id });
+  assert.equal(response.roster.players.length, 18);
+  assert.equal(response.roster.seasonMonth, league.seasonMonth);
+  assert.deepEqual(response.roster.players.map(p => p.id), club.squad.slice().sort((a,b) => a.num-b.num).map(p => p.id));
+  assert.deepEqual(response.roster.players[0].attributes, club.squad[0].attrs);
+  assert.equal(socket._fire('football:roster_get', { clubId: 'desconocido' }).ok, false);
+  const match = league.calendar.matches.find(m => m.homeId === club.id || m.awayId === club.id);
+  const opponent = league.config.find(c => c.id === (match.homeId === club.id ? match.awayId : match.homeId));
+  match.status = 'settled'; match.result = { home: 0, away: 0 };
+  match.fantasyStats = [club, opponent].flatMap(c => c.squad.map((p, i) => ({ id: p.id, teamId: c.id, played: i < 11, goals: 0, assists: 0, reds: 0, yellows: i === 0 ? 1 : 0, minutes: i < 11 ? 90 : 0 })));
+  response = socket._fire('football:roster_get', { clubId: club.id });
+  assert.equal(response.roster.players[0].stats.appearances, 1);
+  assert.equal(response.roster.players[0].stats.minutes, 90);
+  assert.equal(response.roster.players[0].stats.yellowCards, 1);
+  assert.equal(response.roster.missingMatches, 0);
+  match.fantasyStats[0].minutes = undefined;
+  response = socket._fire('football:roster_get', { clubId: club.id });
+  assert.equal(response.roster.incompleteDetails, true);
+  match.fantasyStats = null;
+  response = socket._fire('football:roster_get', { clubId: club.id });
+  assert.equal(response.roster.missingMatches, 1);
+  assert.equal(response.roster.players[0].stats.appearances, 0, 'no se inventan registros');
+});
+
+test('al cambiar del invitado a una cuenta, el socket abandona la sala privada anterior', t => {
+  const ctx = setup({ accountSessionsEnabled: true }); t.after(ctx.cleanup);
+  const socket = ctx.io.connect();
+  const guest = subscribe(ctx, socket, { name: 'Invitado' });
+  assert.ok(guest.ok && socket.rooms.has(profileRoom(guest.profile.id)));
+  const account = ctx.profiles.getOrCreate('cuenta-verificada', 'Cuenta'); account.username = 'cuenta'; account.chips = 700;
+  socket.data.accountProfileId = account.id;
+  const logged = subscribe(ctx, socket, { name: 'Invitado' });
+  assert.equal(logged.profile.id, account.id); assert.equal(logged.profile.chips, 700);
+  assert.ok(!socket.rooms.has(profileRoom(guest.profile.id)));
+  assert.ok(socket.rooms.has(profileRoom(account.id)));
+});
+
+test('la ficha de club usa la liga actual y permite consultar sin elegir afición', t => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  const s = ctx.io.connect(), id = ctx.scheduled.homeId;
+  assert.equal(s._fire('football:club_profile_get', { clubId: id }).code, 'no_identity');
+  subscribe(ctx, s, { name: 'Curiosa' });
+  const result = s._fire('football:club_profile_get', { clubId: id });
+  assert.equal(result.club.clubId, id);
+  assert.equal(result.club.roster.players.length, 18);
+  assert.equal(result.club.manager.formation, ctx.store.getLeague(ctx.month).config.find(c => c.id === id).tactics.formation);
+  assert.equal(s._fire('football:club_profile_get', { clubId: 'club_inventado' }).ok, false);
 });
