@@ -70,6 +70,18 @@ test('no cambia un partido anterior, iniciado, con apuestas, combinadas o futuro
   } finally { started.close(); }
 });
 
+test('no crea compromisos privados para onces que el simulador rechazaría', async () => {
+  const h = setup();
+  try {
+    const club = h.league.config.find(item => item.id === h.match.homeId);
+    for (const player of club.squad) player.attrs = { ...player.attrs, pac: 'dato-corrupto' };
+    const result = await prepareV2Match({ store: h.store, match: h.match, asOf: h.asOf,
+      keyFactory: () => { throw new Error('no se debe generar una clave'); } });
+    assert.equal(result.reason, 'entradas_invalidas');
+    assert.equal(h.match.simulation, undefined);
+  } finally { h.close(); }
+});
+
 test('un fallo de persistencia impide arrancar y reintenta la misma clave, sin cambiar de motor', async () => {
   const h = setup();
   try {

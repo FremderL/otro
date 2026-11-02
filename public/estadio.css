@@ -48,6 +48,14 @@
   gap: 14px;
   min-width: 0;
 }
+/* Los partidos recuperados por sorteo nuevo no conservan una retransmisión:
+   su ficha pública se reduce al marcador final, sin cancha, relato ni apuestas. */
+.estadio-shell.is-result-only { display: block; }
+.estadio-shell.is-result-only > .est-col-left,
+.estadio-shell.is-result-only > .est-col-right { display: none !important; }
+.estadio-shell.is-result-only > .est-col-center { max-width: 920px; margin: 8vh auto 0; }
+.estadio-shell.is-result-only > .est-col-center > :not(#est-scoreboard) { display: none !important; }
+.estadio-shell.is-result-only .est-scoreboard { min-height: 120px; }
 
 .est-panel { border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(160deg, rgba(16,28,31,.92), rgba(8,15,17,.92)); box-shadow: var(--shadow); padding: 14px; }
 .est-panel-title { margin: 0 0 10px; font-family: var(--display); font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: var(--text); display: flex; align-items: center; gap: 8px; }

@@ -20,6 +20,9 @@ const { FootballStore } = require('../lib/football-store');
 const { FootballEngine } = require('../lib/football/engine');
 const { FootballScheduler } = require('../lib/football/scheduler');
 const { createOfficialV2 } = require('../lib/football/v2/official');
+const { ProfileStore } = require('../lib/profile-store');
+const { createBettingService } = require('../lib/football/betting');
+const { makeCommitment, verifyCommitment, commitmentId } = require('../lib/football/v2/commitment');
 
 const NOV = '2026-11';
 const DEC = '2026-12';
@@ -156,6 +159,123 @@ test('una temporada que ya se cerró con un hueco se reconstruye cuando entra el
   assert.equal(restored.getMatch(last.id, NOV).status, 'settled');
   assert.equal(restored.getStandings(NOV).reduce((acc, row) => acc + row.played, 0), 480);
   restored.close();
+});
+
+test('audita los 240 cruces y reemplaza un compromiso V2 no ejecutable vencido si no tiene obligaciones', async t => {
+  const dir = tmpdir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const { store, league } = seededStore(dir);
+  const target = byKickoff(league)[0];
+  for (const match of league.calendar.matches) if (match.id !== target.id) match.scheduledKickoffAt = Date.UTC(2027, 5, 1);
+  const preparedAt = target.scheduledKickoffAt - 60000;
+  const logs = [];
+  const officialV2 = createOfficialV2({ store, now: () => preparedAt, log: (event, data) => logs.push({ event, data }) });
+  assert.equal((await officialV2.prepareMatch(target, preparedAt)).ok, true);
+  const invalidInputs = JSON.parse(JSON.stringify(target.simulation.inputs));
+  invalidInputs.home.lineup.players.find(player => player.initialStatus === 'active').initialStatus = 'bench';
+  target.simulation = makeCommitment(invalidInputs, target.simulation.privateSeed, target.simulation.preparedAt);
+  assert.ok(verifyCommitment(target.simulation, target), 'el registro está íntegro, pero el once ya no se puede ejecutar');
+  const previousCommitmentId = commitmentId(target.simulation);
+  const now = target.scheduledKickoffAt + 3 * 3600000;
+  const engine = new FootballEngine(store, { officialV2, logEvent: (event, data) => logs.push({ event, data }) });
+
+  const summary = await engine.repairOverdueMatches(now);
+  assert.equal(summary.reemplazados, 1);
+  assert.equal(summary.liquidados, 1);
+  assert.equal(target.status, 'settled');
+  assert.ok(verifyCommitment(target.simulation, target));
+  assert.notEqual(commitmentId(target.simulation), previousCommitmentId, 'usa una clave privada nueva para el sorteo de recuperación');
+  assert.ok(Number.isInteger(target.result.home) && Number.isInteger(target.result.away));
+  assert.equal(summary.auditorias.find(item => item.seasonMonth === NOV).scheduled, 240);
+  assert.equal(summary.auditorias.find(item => item.seasonMonth === NOV).registered, 1);
+  assert.equal(summary.auditorias.find(item => item.seasonMonth === NOV).overdueWithoutResult, 0);
+  assert.ok(logs.some(item => item.event === 'football_overdue_commitment_recovered'
+    && item.data.previousCommitmentId === previousCommitmentId));
+  assert.equal(store.getStandings(NOV).reduce((total, row) => total + row.played, 0), 2);
+  store.close();
+});
+
+test('reembolsa las obligaciones antes de reemplazar el sorteo y cerrar el partido', async t => {
+  const dir = tmpdir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const { store, league } = seededStore(dir);
+  const target = byKickoff(league)[0];
+  for (const match of league.calendar.matches) if (match.id !== target.id) match.scheduledKickoffAt = Date.UTC(2027, 5, 1);
+  const preparedAt = target.scheduledKickoffAt - 60000;
+  const officialV2 = createOfficialV2({ store, now: () => preparedAt, log: () => {} });
+  assert.equal((await officialV2.prepareMatch(target, preparedAt)).ok, true);
+  const inputs = JSON.parse(JSON.stringify(target.simulation.inputs));
+  inputs.home.lineup.players.find(player => player.initialStatus === 'active').initialStatus = 'bench';
+  target.simulation = makeCommitment(inputs, target.simulation.privateSeed, target.simulation.preparedAt);
+  const previousCommitmentId = commitmentId(target.simulation);
+  const profiles = new ProfileStore(path.join(dir, 'profiles.json'));
+  const profile = profiles.getOrCreate('offline-user', 'Jugador');
+  profile.chips = 650;
+  profiles.saveNow();
+  assert.ok(store.insertBet({ id: 'protected-open-bet', profileId: 'offline-user', matchId: target.id,
+    seasonMonth: NOV, market: '1x2', selection: 'home', stake: 100, oddsAtPlacement: 2,
+    status: 'open', debited: true, escrowProtocol: 'durable-1', simulationId: previousCommitmentId }).ok);
+  assert.ok(store.insertParlay({ id: 'protected-open-parlay', profileId: 'offline-user', seasonMonth: NOV,
+    legs: [{ matchId: target.id, market: '1x2', selection: 'home', oddsAtPlacement: 2 }],
+    stake: 200, potentialPayout: 400, status: 'open', debited: true, escrowProtocol: 'durable-1' }).ok);
+  assert.ok(store.insertFuture({ id: 'protected-open-future', profileId: 'offline-user', seasonMonth: NOV,
+    market: 'champion', selection: target.homeId, odds: 2, stake: 50, potentialPayout: 100,
+    status: 'open', debited: true, escrowProtocol: 'durable-1' }).ok);
+  const betting = createBettingService({ store, profiles, now: () => target.scheduledKickoffAt + 3 * 3600000, log: () => {} });
+  const engine = new FootballEngine(store, { officialV2,
+    refundMatchObligations: (match, reason) => betting.refundMatchObligations(match, reason) });
+
+  const recovery = await engine.repairOverdueMatches(target.scheduledKickoffAt + 3 * 3600000);
+  const refunded = store.getBet('protected-open-bet');
+  assert.equal(refunded.status, 'void');
+  assert.equal(refunded.payout, 100);
+  assert.equal(refunded.payoutApplied, true);
+  for (const id of ['protected-open-parlay', 'protected-open-future']) {
+    const ticket = id.endsWith('parlay') ? store.getParlay(id) : store.getFuture(id);
+    assert.equal(ticket.status, 'void', `${id} queda anulado`);
+    assert.equal(ticket.payoutApplied, true, `${id} confirma el reembolso`);
+  }
+  assert.equal(profile.chips, 1000);
+  assert.notEqual(commitmentId(target.simulation), previousCommitmentId);
+  assert.equal(target.status, 'settled');
+  assert.equal(target.resultOnly, true);
+  assert.equal(recovery.reemplazados, 1);
+  assert.equal(recovery.liquidados, 1);
+  assert.equal(recovery.pendientes, 0);
+  const retryRefund = await betting.refundMatchObligations(target, 'reintento seguro');
+  assert.equal(retryRefund.ok, true);
+  assert.equal(profile.chips, 1000, 'repetir el barrido no duplica ningún reembolso');
+  profiles.saveNow();
+  store.close();
+});
+
+test('un reembolso no confirmado bloquea el reemplazo y el asentado hasta el siguiente intento', async t => {
+  const dir = tmpdir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const { store, league } = seededStore(dir);
+  const target = byKickoff(league)[0];
+  for (const match of league.calendar.matches) if (match.id !== target.id) match.scheduledKickoffAt = Date.UTC(2027, 5, 1);
+  const preparedAt = target.scheduledKickoffAt - 60000;
+  const officialV2 = createOfficialV2({ store, now: () => preparedAt, log: () => {} });
+  assert.equal((await officialV2.prepareMatch(target, preparedAt)).ok, true);
+  const invalidInputs = JSON.parse(JSON.stringify(target.simulation.inputs));
+  invalidInputs.home.lineup.players.find(player => player.initialStatus === 'active').initialStatus = 'bench';
+  target.simulation = makeCommitment(invalidInputs, target.simulation.privateSeed, target.simulation.preparedAt);
+  const oldCommitmentId = commitmentId(target.simulation);
+  assert.ok(store.insertBet({ id: 'refund-not-confirmed', profileId: 'offline-user', matchId: target.id,
+    seasonMonth: NOV, market: '1x2', selection: 'home', stake: 100, oddsAtPlacement: 2,
+    status: 'open', debited: true, simulationId: oldCommitmentId }).ok);
+  const engine = new FootballEngine(store, { officialV2,
+    refundMatchObligations: async () => ({ ok: false, reason: 'persistencia_pendiente' }) });
+
+  const recovery = await engine.repairOverdueMatches(target.scheduledKickoffAt + 3 * 3600000);
+  assert.equal(recovery.pendientes, 1);
+  assert.equal(target.status, 'scheduled');
+  assert.equal(target.result, null);
+  assert.notEqual(target.resultOnly, true);
+  assert.equal(commitmentId(target.simulation), oldCommitmentId);
+  assert.equal(store.getBet('refund-not-confirmed').status, 'open');
+  store.close();
 });
 
 test('un V2 todavía sin compromiso no se pospone: se reintenta y se asienta al prepararse', async t => {
@@ -305,7 +425,7 @@ test('el barrido de cinco segundos también confirma y liquida un compromiso pen
   assert.equal(target.simulationUnconfirmed, undefined);
 });
 
-test('arranque aísla compromiso dañado y recupera West Hamón–Arsénico sin borrar evidencia', async t => {
+test('arranque reembolsa y recupera un compromiso dañado preservando evidencia resumida', async t => {
   const dir = tmpdir();
   const { store, league } = seededStore(dir);
   t.after(() => { store.close(); fs.rmSync(dir, { recursive: true, force: true }); });
@@ -319,19 +439,25 @@ test('arranque aísla compromiso dañado y recupera West Hamón–Arsénico sin 
   const broken = loaded.getMatch(bad.id, NOV);
   assert.equal(broken.simulation.invalid, true);
   assert.equal(broken.simulation.original.privateSeed, 'ab'.repeat(32));
+  const previousCommitmentId = commitmentId(broken.simulation.original);
   const logs = [];
   const officialV2 = createOfficialV2({ store: loaded, now: () => now, log: (event, data) => logs.push({ event, data }) });
   const engine = new FootballEngine(loaded, { officialV2 });
   await engine.reconcileBoot(now);
   assert.equal(loaded.getMatch(target.id, NOV).status, 'settled');
-  assert.equal(broken.status, 'scheduled');
+  assert.equal(broken.status, 'settled');
+  assert.equal(broken.resultOnly, true);
+  assert.equal(broken.simulationRecovery.previousCommitmentId, previousCommitmentId);
+  assert.equal(broken.simulationRecovery.reason, 'compromiso_invalido');
   assert.equal(broken.postponed, undefined);
-  assert.ok(logs.some(e => e.event === 'football_v2_prepare_error' && e.data.match === bad.id));
-  assert.deepEqual(loaded.getStandings(NOV).filter(row => [target.homeId, target.awayId].includes(row.teamId)).map(row => row.played), [1, 1]);
+  assert.ok(logs.some(e => e.event === 'football_overdue_commitment_recovered' && e.data.match === bad.id));
+  assert.deepEqual(loaded.getStandings(NOV).filter(row => [target.homeId, target.awayId, bad.homeId, bad.awayId].includes(row.teamId))
+    .map(row => row.played).sort((a, b) => a - b), [1, 1, 1, 1]);
   loaded.close();
   const reloaded = new FootballStore(path.join(dir, 'football.json'));
   try {
-    assert.equal(reloaded.getMatch(bad.id, NOV).simulation.original.privateSeed, 'ab'.repeat(32));
+    assert.equal(reloaded.getMatch(bad.id, NOV).simulationRecovery.previousCommitmentId, previousCommitmentId);
+    assert.equal(reloaded.getMatch(bad.id, NOV).resultOnly, true);
     assert.equal(reloaded.getMatch(target.id, NOV).status, 'settled');
   } finally { reloaded.close(); }
 });

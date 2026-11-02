@@ -78,6 +78,19 @@ test('noviembre selecciona automáticamente V2, usa octubre y congela solo el pa
   } finally { h.close(); }
 });
 
+test('rechaza al preparar un compromiso cuyo once no puede ejecutar el simulador', async () => {
+  const h = setup();
+  try {
+    const match = h.league.calendar.matches[0];
+    const club = h.league.config.find(item => item.id === match.homeId);
+    for (const player of club.squad) player.attrs = { ...player.attrs, pac: 'dato-corrupto' };
+    const result = await h.officialV2.prepareMatch(match);
+    assert.equal(result.reason, 'preparacion_invalida');
+    assert.equal(match.simulation, undefined, 'no se persiste un compromiso que luego no pueda liquidarse');
+    assert.equal(match.status, 'scheduled');
+  } finally { h.close(); }
+});
+
 test('migra política y futuros legados a v4 sin alterar cuotas ni compromisos por partido previos', async () => {
   const h = setup();
   try {

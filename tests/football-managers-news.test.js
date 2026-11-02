@@ -100,6 +100,18 @@ test('el DT elige al mejor jugador disponible del plantel (incluso dorsal > 11) 
   assert.equal(benchedNine.initialStatus, 'bench');
 });
 
+test('completa el once fuera de posición cuando una plantilla carece de jugadores de un rol', t => {
+  const store = withStore(t);
+  const league = store.generateSeason('2026-11');
+  const club = league.config[0];
+  // Simula un plantel histórico incompleto: quedan solo tres defensas para una
+  // formación que requiere cuatro. El jugador disponible debe cubrir el hueco.
+  club.squad.find(player => player.pos === 'DF' || ['CB', 'LB', 'RB'].includes(player.pos)).pos = 'CM';
+  const lineup = createTeamLineup(club);
+  assert.equal(lineup.players.filter(player => player.initialStatus === 'active').length, 11);
+  assert.equal(new Set(lineup.players.filter(player => player.initialStatus === 'active').map(player => player.slotIndex)).size, 11);
+});
+
 test('una mala racha provoca cambio táctico de formación del DT, alerta de banquillo y publicación en MonteCristo News', t => {
   const store = withStore(t);
   const league = store.generateSeason('2026-11');

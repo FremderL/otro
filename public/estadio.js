@@ -4072,6 +4072,8 @@
     if (ms.stands !== undefined) renderStands(ms.stands);
     if (S.match && ms.match && S.match.id !== ms.match.id) cancelCommentarySpeech();
     S.match = ms.match; S.markets = ms.markets || {}; S.movement = {};
+    var stadiumMain = document.getElementById('estadio-main');
+    if (stadiumMain) stadiumMain.classList.toggle('is-result-only', Boolean(ms.match.resultOnly));
     S.myBets = (ms.myBets || []).slice();
     var rawMin = ms.state ? (ms.state.displayMinute != null ? ms.state.displayMinute : ms.state.minute) : 0;
     S.serverMinute = Number(rawMin || 0);
