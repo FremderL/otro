@@ -3867,6 +3867,13 @@ async function initFootball() {
       footballQuiniela?.notifyMatch(match)?.catch?.(() => {});
       return result;
     },
+    refundMatchObligations: async (match, reason) => {
+      const bettingRefund = await footballBetting.refundMatchObligations(match, reason);
+      if (!bettingRefund.ok) return bettingRefund;
+      const quinielaRefund = await footballQuiniela?.refundMatchObligations(match, reason) || { ok: true };
+      if (!quinielaRefund.ok) return quinielaRefund;
+      return { ok: true, bettingRefunded: bettingRefund.refunded, quinielaRefunded: quinielaRefund.refunded };
+    },
     cancelPendingBets: () => footballBetting.cancelPendingBets(),
     reconcileEscrow: () => footballBetting.reconcileEscrow(),
     hasOpenBets: (month) => footballBetting.hasOpenBets(month),

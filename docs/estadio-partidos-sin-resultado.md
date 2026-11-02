@@ -8,10 +8,12 @@
 
 ## Regla
 
-**Todo partido cuya hora de inicio ya pasó termina asentado, con su resultado
-comprometido por el seed.** No importa si la retransmisión nunca arrancó, si el
-servidor estuvo apagado, si cambió el día o si el mes rotó. Y mientras un partido
-de una temporada anterior siga sin acta, esa temporada **no se cierra**.
+**Todo partido regular vencido y sin acta se detecta y se intenta asentar**,
+aunque la retransmisión nunca arrancara, el servidor estuviera apagado o haya
+cambiado el mes. Se conserva el compromiso V2 íntegro y ejecutable; si el compromiso no se puede
+verificar o ejecutar, se reembolsan primero las obligaciones aceptadas y se crea
+un compromiso nuevo. Una temporada anterior no se considera completa
+mientras falte una de sus 240 actas regulares.
 
 La ventana de 30 minutos (`docs/estadio-reprogramacion-automatica.md`) solo decide
 si el encuentro se reprograma una vez (dentro de la ventana) o se liquida directo
@@ -46,22 +48,41 @@ forma de perder el acta.
    barrido (que reintenta con la persistencia ya disponible). Solo se pospone lo
    que de verdad no se puede derivar.
 
-## Reparación periódica y de arranque
+## Reparación periódica, auditoría de actas y recuperación segura de V2
 
 `engine.repairOverdueMatches(now)` recorre **todas** las temporadas, de la más
-antigua a la más nueva, y asienta por jornada y en orden cronológico:
+antigua a la más nueva, y asienta por jornada y en orden cronológico. Además,
+`auditSeasonMatchCounts(now)` compara cada calendario con las **240 actas regulares
+esperadas**, cuenta las actas registradas y detecta partidos vencidos sin
+resultado. La reconciliación registra `football_season_match_count_gap` y vuelve a
+intentar liquidarlos en el siguiente barrido; los duplicados no suman porque el
+asentado es idempotente.
 
-1. prepara el compromiso V2 de la jornada si falta (sin persistencia no se
-   asienta nada: se reintenta en la siguiente vuelta);
-2. congela los insumos de generación de **todos** los partidos de la jornada antes
-   del primer asentado, para que el resultado de uno no mueva los ratings del
-   siguiente;
-3. liquida con `settleOverdueMatch` (mismo motor, mismos boletos y mismo
-   resultado que si se hubiera transmitido);
-4. si hubo algún asentado, reconstruye la tabla de la temporada y recalcula el
-   `carryover` cuando la temporada ya estaba cerrada;
-5. persiste por jornada y deja el resto pendiente para la próxima vuelta. Nunca
-   anula, nunca pospone y nunca sustituye un resultado ya asentado.
+Si el compromiso V2 no se puede verificar o el simulador demuestra que no puede
+crear el partido (por ejemplo, un once inválido), la reparación no reutiliza el
+sorteo defectuoso. Si existen obligaciones activas, primero las anula y confirma
+los reembolsos de simples, combinadas, futuros y quiniela; solo después genera y
+persiste un compromiso nuevo y asienta el partido. Las operaciones de pago usan
+claves idempotentes y cada paso pendiente se reintenta: si no se confirma un
+reembolso o su persistencia, el partido permanece abierto y no se asienta. El
+partido recuperado queda marcado `resultOnly`: en la vista pública solo entrega
+el marcador final, sin relato, cronología, highlights, estadísticas ni mercados.
+El historial interno conserva la razón y el identificador/hash del compromiso
+anterior, sin publicar su clave privada. Los partidos ya asentados y las
+posposiciones administrativas tampoco se modifican.
+
+
+En cada vuelta el proceso:
+1. prepara o confirma los compromisos V2 que faltan (sin persistencia confirmada
+   no asienta; se reintenta en la siguiente vuelta);
+2. ante compromiso no verificable o snapshot no ejecutable, anula las obligaciones
+   activas, confirma cada reembolso y solo entonces persiste un compromiso nuevo;
+3. congela los insumos de generación de **todos** los partidos de la jornada antes
+   del primer asentado, para que un resultado no mueva los ratings del siguiente;
+4. liquida con `settleOverdueMatch` y, si hubo asentados, reconstruye la tabla y
+   recalcula el `carryover` cuando la temporada ya estaba cerrada;
+5. persiste por jornada; si falla, deja el resto pendiente para la próxima vuelta.
+   Nunca duplica ni reescribe un resultado ya asentado.
 
 Corre en:
 - `reconcileBoot` (arranque o despertar tras inactividad), después de preparar V2
@@ -105,6 +126,11 @@ la tabla, y la nota desaparece sola cuando el acta entra.
 | `football_overdue_settled` | Se asentó un vencido (incluye `delayMs` desde el kickoff original). |
 | `football_overdue_repair` | Resumen por vuelta: temporadas, liquidados, pendientes, recuperados. |
 | `football_overdue_repair_pending` | Un partido sigue pendiente (se reintenta; nunca se anula). |
+| `football_overdue_commitment_recovered` | Snapshot V2 corrupto/no ejecutable reemplazado; incluye el identificador anterior y si hubo reembolsos confirmados. |
+| `football_overdue_recommit_blocked` | Reembolso pendiente o recuperación no elegible; el partido sigue sin asentarse. |
+| `football_match_obligations_refunded` | Reembolso idempotente de boletos simples, combinadas y futuros completado. |
+| `football_quiniela_refunded` | Entradas de la quiniela reembolsadas y jornada cancelada. |
+| `football_season_match_count_gap` | Auditoría: calendario/actas esperadas, registrados y vencidos sin resultado. |
 | `football_overdue_recovered` | Un pospuesto por el motor volvió al ciclo y se asentó. |
 | `football_season_rotation_deferred` | La rotación espera a que el mes que sale quede completo. |
 | `football_season_rotation_forced` | Se agotó el aplazamiento (6 h) y se rotó con deuda pendiente. |

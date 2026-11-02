@@ -63,6 +63,32 @@ test('snapshot: jornada abierta disponible con 8 partidos y entrada de 50', (t) 
   assert.equal(ctx.service.snapshot(ctx.league(), null, ctx.now()).available, false);
 });
 
+test('refundMatchObligations cancela jornada, reembolsa una vez y puede reintentarse', async (t) => {
+  const ctx = setup(); t.after(ctx.cleanup);
+  const profile = ctx.profiles.getOrCreate('p1', 'Ana');
+  const balance = profile.chips;
+  const jornada = ctx.service.snapshot(ctx.league(), null, ctx.now()).jornada;
+  const picks = picksFor(ctx.league(), jornada);
+  assert.equal((await ctx.service.enter({ league: ctx.league(), jornada, profile, picks })).ok, true);
+  assert.equal(profile.chips, balance - ENTRY_COST);
+  const match = ctx.store.getMatches(ctx.month).find(item => item.jornada === jornada);
+
+  const persistProfile = ctx.profiles.persistProfile.bind(ctx.profiles);
+  ctx.profiles.persistProfile = async () => false;
+  const pending = await ctx.service.refundMatchObligations(match, 'compromiso corrupto');
+  assert.equal(pending.ok, false, 'no confirma el reembolso si no confirmó la cartera');
+  assert.equal(profile.chips, balance);
+  assert.equal(ctx.league().quiniela.rounds[jornada].status, 'cancelled');
+  assert.equal(ctx.league().quiniela.rounds[jornada].tickets.p1.status, 'refunded');
+  assert.equal(ctx.league().quiniela.rounds[jornada].tickets.p1.payout, ENTRY_COST);
+
+  ctx.profiles.persistProfile = persistProfile;
+  const retry = await ctx.service.refundMatchObligations(match, 'reintento seguro');
+  assert.equal(retry.ok, true);
+  assert.equal(profile.chips, balance, 'el mismo operationId no duplica el reembolso');
+  ctx.store.close();
+});
+
 test('enter: descuenta 50 fichas, persiste el diario y reintenta idempotente', async (t) => {
   const ctx = setup(); t.after(ctx.cleanup);
   const profile = ctx.profiles.getOrCreate('p1', 'Ana');

@@ -89,6 +89,33 @@ test('HTTP/socket: la instantánea V2 solo contiene el prefijo revelado y nunca 
   } finally { sockets?.stop(); h.close(); }
 });
 
+test('un partido recuperado marcado resultOnly solo expone marcador final y oculta cronología', () => {
+  const h = setup();
+  let sockets;
+  try {
+    h.match.status = 'settled';
+    h.match.result = { home: 2, away: 1, halftime: { home: 1, away: 0 }, firstScorer: 'player-secret' };
+    h.match.resultOnly = true;
+    h.match.highlights = [{ minute: 12, text: 'evento privado' }];
+    const engine = new FootballEngine(h.store);
+    const betting = createBettingService({ store: h.store, profiles: {} });
+    const io = { on() {}, to() { return { emit() {} }; } };
+    sockets = registerFootballSockets(io, { betting, engine, store: h.store, profiles: {}, now: () => h.match.scheduledKickoffAt + 3600000 });
+    const payload = sockets.buildMatchState(h.match.id, null);
+    assert.deepEqual(payload.match.result, { home: 2, away: 1 });
+    assert.equal(payload.match.resultOnly, true);
+    assert.equal(payload.match.highlights, null);
+    assert.equal(payload.state.clockLabel, 'FT');
+    assert.deepEqual(payload.state.score, { home: 2, away: 1 });
+    assert.deepEqual(payload.commentary, []);
+    assert.deepEqual(payload.markets, {});
+    const serialized = JSON.stringify(payload);
+    assert.equal(serialized.includes('evento privado'), false);
+    assert.equal(serialized.includes('player-secret'), false);
+    assert.equal(serialized.includes('timeline'), false);
+  } finally { sockets?.stop(); h.close(); }
+});
+
 test('un compromiso roto no cae silenciosamente en V1 ni fabrica estadísticas V1', () => {
   const h = setup();
   try {
