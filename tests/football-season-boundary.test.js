@@ -127,3 +127,52 @@ test('un asentado sin línea de tiempo archiva lo mismo que premio y destacados'
   assert.equal(listedGoals, score.home + score.away, 'la lista de goles del resumen también');
   store.close();
 });
+
+test('reconcileBoot tras suspensión entre meses liquida V2 pendiente de noviembre antes de abrir diciembre', async t => {
+  const { createOfficialV2 } = require('../lib/football/v2/official');
+  const { generateCalendar } = require('../lib/football/fixtures');
+  const { buildSeasonClubs } = require('../lib/football/teams');
+  const { mulberry32 } = require('../lib/football/prng');
+
+  const dir = tmpdir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const store = new FootballStore(path.join(dir, 'football.json'));
+  const november = store.generateSeason('2026-11');
+
+  // Marca todas las jornadas excepto los dos últimos encuentros como ya asentadas
+  // antes de que el servicio quedara suspendido al final de noviembre.
+  const novMatches = november.calendar.matches.slice().sort((a, b) => a.scheduledKickoffAt - b.scheduledKickoffAt);
+  for (let i = 0; i < novMatches.length - 2; i++) {
+    assert.equal(store.settleMatch(novMatches[i].id, { home: 1, away: 0 }, {
+      seasonMonth: '2026-11', now: novMatches[i].scheduledKickoffAt + 1800000, deferSave: true
+    }).ok, true);
+  }
+  const novPendingA = novMatches[novMatches.length - 2];
+  const novPendingB = novMatches[novMatches.length - 1];
+  store.saveNow();
+
+  // Despierta en diciembre 45 minutos después del primer encuentro de diciembre (> 30 min).
+  const decPreview = generateCalendar('2026-12', buildSeasonClubs(mulberry32(1)));
+  const decKickoffs = decPreview.matches.map(m => m.scheduledKickoffAt).sort((a, b) => a - b);
+  const wakeAt = decKickoffs[0] + 45 * 60000;
+
+  const officialV2 = createOfficialV2({ store, now: () => wakeAt });
+  const engine = new FootballEngine(store, { officialV2, logEvent: () => {} });
+  await engine.reconcileBoot(wakeAt);
+
+  assert.equal(novPendingA.status, 'settled', 'cierra V2 pendiente de noviembre al despertar en diciembre');
+  assert.equal(novPendingB.status, 'settled');
+  assert.ok(novPendingA.simulation && novPendingB.simulation);
+  assert.ok(Array.isArray(novPendingA.fantasyStats) && novPendingA.highlights);
+  assert.equal(november.status, 'closed');
+  assert.equal(store.getCurrentSeasonMonth(), '2026-12');
+
+  const decLeague = store.getLeague('2026-12');
+  const decOverdue = decLeague.calendar.matches.filter(m => m.scheduledKickoffAt + 30 * 60000 < wakeAt);
+  assert.ok(decOverdue.length >= 1);
+  for (const m of decOverdue) {
+    assert.equal(m.status, 'settled', 'los de diciembre con > 30 min también quedan asentados');
+    assert.ok(m.result && Array.isArray(m.fantasyStats) && m.highlights);
+  }
+  store.close();
+});

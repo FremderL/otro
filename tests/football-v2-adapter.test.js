@@ -7,7 +7,10 @@ const os = require('node:os');
 const path = require('node:path');
 const { FootballStore } = require('../lib/football-store');
 const { prepareMatchInputs } = require('../lib/football/v2/inputs');
-const { generateReplay, deriveReplay } = require('../lib/football/v2/adapter');
+const { generateReplay, generateOutcome, deriveReplay } = require('../lib/football/v2/adapter');
+const { halfTimeScoreFromTimeline, firstScorerFromTimeline, cardsFromTimeline } = require('../lib/football/odds');
+const { matchStats: fantasyMatchStats } = require('../lib/football/fantasy');
+const { buildHighlights } = require('../lib/football/highlights');
 const { secureRandom, newKey, derivedKey } = require('../lib/football/v2/secure-random');
 const { createMatch, FIELD, STEP } = require('../lib/football/v2/simulator');
 const { extractBallonDorMatchStats } = require('../lib/football/ballon-dor-stats');
@@ -114,5 +117,39 @@ test('timeline y once real permiten agregar Balón de Oro, fantasy y resumen al 
     assert.ok(Array.isArray(h.match.fantasyStats));
     assert.ok(h.match.highlights);
     assert.equal(h.match.highlights.goals.length, replay.score.home + replay.score.away);
+  } finally { h.close(); }
+});
+
+test('generateOutcome obtiene marcador, eventos y estadísticas idénticos a generateReplay sin reservar frames', () => {
+  const h = setup();
+  try {
+    const key = '07'.repeat(32);
+    const replay = generateReplay(h.input, key);
+    const outcome = generateOutcome(h.input, key);
+    assert.equal(outcome.frames, undefined);
+    assert.equal(outcome.inputHash, replay.inputHash);
+    assert.deepEqual(outcome.score, replay.score);
+    assert.equal(outcome.result, replay.result);
+    assert.deepEqual(outcome.clock, replay.clock);
+    assert.deepEqual(outcome.lineups, replay.lineups);
+    assert.deepEqual(outcome.stats, replay.stats);
+    assert.equal(outcome.timeline.length, replay.timeline.length);
+    const stripCommentary = list => list.map(({ commentary: _commentary, ...rest }) => rest);
+    assert.deepEqual(stripCommentary(outcome.timeline), stripCommentary(replay.timeline));
+    assert.deepEqual(halfTimeScoreFromTimeline(outcome.timeline), halfTimeScoreFromTimeline(replay.timeline));
+    assert.deepEqual(firstScorerFromTimeline(outcome.timeline), firstScorerFromTimeline(replay.timeline));
+    assert.deepEqual(cardsFromTimeline(outcome.timeline), cardsFromTimeline(replay.timeline));
+    assert.deepEqual(
+      extractBallonDorMatchStats(h.match, outcome.timeline, outcome.lineups, { expectedScore: outcome.score }),
+      extractBallonDorMatchStats(h.match, replay.timeline, replay.lineups, { expectedScore: replay.score })
+    );
+    assert.deepEqual(
+      fantasyMatchStats(h.match, outcome.timeline, outcome.lineups),
+      fantasyMatchStats(h.match, replay.timeline, replay.lineups)
+    );
+    assert.deepEqual(
+      buildHighlights(h.match, outcome.timeline, outcome.lineups, { result: outcome.score }),
+      buildHighlights(h.match, replay.timeline, replay.lineups, { result: replay.score })
+    );
   } finally { h.close(); }
 });

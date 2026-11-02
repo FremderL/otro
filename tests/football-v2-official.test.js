@@ -445,3 +445,56 @@ test('reprogramación conserva V2 y boletos aceptados y suspende nuevas apuestas
     assert.ok(['won', 'lost'].includes(h.store.getBet(placed.bet.id).status), 'el boleto original se liquida con el resultado comprometido');
   } finally { h.close(); }
 });
+
+test('pasados 30 minutos liquida directo V2 (comprometido o fuera del horizonte previo) sin simular en vivo', async () => {
+  const { generateReplay } = require('../lib/football/v2/adapter');
+  const { auditSeason } = require('../lib/football/odds-audit');
+  const h = setup();
+  try {
+    const sorted = h.league.calendar.matches.slice().sort((a, b) => a.scheduledKickoffAt - b.scheduledKickoffAt);
+    const preparedMatch = sorted[0];
+    const unpreparedMatch = sorted.find(item => item.scheduledKickoffAt > preparedMatch.scheduledKickoffAt + HORIZON_MS);
+    assert.ok(unpreparedMatch, 'debe existir un partido fuera del horizonte inicial de 24 h');
+
+    // Acepta un boleto antes de que el servidor quede inactivo.
+    const placed = await h.betting.placeBet({
+      profile: h.profile, matchId: preparedMatch.id, market: '1x2',
+      selection: 'home', stake: 100, placedAt: h.now(), idempotencyKey: 'overdue-v2-bet'
+    });
+    assert.ok(placed.ok, placed.code);
+    const commitment = JSON.stringify(preparedMatch.simulation);
+    assert.equal(unpreparedMatch.simulation, undefined);
+
+    // El barrido se ejecuta 45 minutos después del partido no preparado (> 30 min para ambos).
+    const wakeAt = unpreparedMatch.scheduledKickoffAt + 45 * 60000;
+    h.setNow(wakeAt);
+    const scheduler = new FootballScheduler(h.engine, { officialV2: h.officialV2 });
+    await scheduler.runAutoRescheduleSweep(wakeAt);
+    await Promise.all([...h.betting.ticketPayouts.values()]);
+
+    for (const m of [preparedMatch, unpreparedMatch]) {
+      if (m.scheduledKickoffAt + 30 * 60000 >= wakeAt) continue;
+      assert.equal(m.status, 'settled');
+      assert.equal(m.actualKickoffAt, null);
+      assert.equal(m.autoRescheduledAt, undefined);
+      assert.ok(verifyCommitment(m.simulation, m));
+      const expected = generateReplay(m.simulation.inputs, m.simulation.privateSeed);
+      assert.deepEqual({ home: m.result.home, away: m.result.away }, expected.score);
+      assert.equal(m.highlights.goals.length, expected.score.home + expected.score.away);
+      assert.ok(Array.isArray(m.fantasyStats) && m.fantasyStats.length >= 22);
+      const derived = h.engine.deriveMatchState(m, m.scheduledKickoffAt + 5000);
+      assert.equal(derived.ended, true);
+      assert.deepEqual(derived.state.fouls, { home: expected.stats.home.fouls, away: expected.stats.away.fouls });
+      assert.deepEqual(derived.state.shots, { home: expected.stats.home.shots, away: expected.stats.away.shots });
+    }
+
+    assert.equal(JSON.stringify(preparedMatch.simulation), commitment, 'respeta el compromiso previo a la caída');
+    const settledBet = h.store.getBet(placed.bet.id);
+    assert.ok(['won', 'lost'].includes(settledBet.status));
+    const expectedChips = 900 + (settledBet.status === 'won' ? placed.bet.potentialPayout : 0);
+    assert.equal(h.profile.chips, expectedChips);
+
+    const audit = auditSeason(h.store, '2026-11');
+    assert.ok(audit.matches > 0, 'auditSeason procesa toda la temporada incluyendo los encuentros asentados sin fallo de pricing');
+  } finally { h.close(); }
+});

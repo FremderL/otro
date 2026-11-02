@@ -980,6 +980,16 @@
     return '/assets/ballon-dor-avatars/' + encodeURIComponent(playerId) + '.svg';
   }
 
+  function bindBallonDorAvatarFallback(img) {
+    if (!img || img.dataset.bdoFallbackBound === '1') return;
+    img.dataset.bdoFallbackBound = '1';
+    img.addEventListener('error', function () {
+      if (img.getAttribute('src') !== '/assets/ballon-dor-avatars/default.svg') {
+        img.src = '/assets/ballon-dor-avatars/default.svg';
+      }
+    });
+  }
+
   function ballonDorNameAudioUrl(candidate) {
     var playerId = String(candidate && candidate.playerId || '');
     if (!/^[a-zA-Z0-9_-]{1,40}$/.test(playerId)) return null;
@@ -1170,6 +1180,7 @@
         '<td>' + fmt(stats.yellowCards) + '</td><td>' + fmt(stats.redCards) + '</td>' +
         '<td class="est-bdo-odds">' + (odds ? odds.toFixed(2) : '—') + '</td><td>' + implied + '</td><td>' + action + '</td>';
       body.appendChild(row);
+      bindBallonDorAvatarFallback(row.querySelector('.est-bdo-candidate-avatar'));
       var button = row.querySelector('[data-bdo-select]');
       if (button) button.addEventListener('click', function () { chooseBallonDorCandidate(candidate.id); });
     });
@@ -1265,6 +1276,7 @@
       card.setAttribute('aria-label', (candidate.playerName || 'Delantero') + ', ' + (candidate.clubName || 'club por confirmar'));
       var avatar = document.createElement('img');
       avatar.src = ballonDorAvatarUrl(candidate);
+      bindBallonDorAvatarFallback(avatar);
       avatar.alt = '';
       avatar.setAttribute('aria-hidden', 'true');
       avatar.setAttribute('decoding', 'async');
@@ -1305,6 +1317,7 @@
       card.setAttribute('aria-label', ['Primer', 'Segundo', 'Tercer'][rank - 1] + ' lugar: '
         + row.candidate.playerName + ', ' + row.candidate.clubName + ', ' + fmt(row.score) + ' puntos');
       if (avatar) {
+        bindBallonDorAvatarFallback(avatar);
         avatar.src = ballonDorAvatarUrl(row.candidate);
         avatar.hidden = false;
       }
@@ -3452,7 +3465,12 @@
   }
   // Retratos del podio cuando existen; los demás son ilustraciones deterministas
   // (no fotografías) basadas en el id estable, incluso después de un fichaje.
-  var transferPodiumIds = ['alm_17', 'amb_17', 'crv_09', 'est_17', 'frr_09', 'hlc_09', 'irn_09', 'klv_17', 'nvl_09', 'prg_09', 'sol_17', 'tlb_17', 'vlm_17', 'vng_17', 'vrd_09', 'vtr_17'];
+  var transferPodiumIds = [
+    'alm_09', 'alm_17', 'amb_09', 'amb_17', 'crv_09', 'crv_17', 'est_09', 'est_17',
+    'frr_09', 'frr_17', 'hlc_09', 'hlc_17', 'irn_09', 'irn_17', 'klv_09', 'klv_17',
+    'nvl_09', 'nvl_17', 'prg_09', 'prg_17', 'sol_09', 'sol_17', 'tlb_09', 'tlb_17',
+    'vlm_09', 'vlm_17', 'vng_09', 'vng_17', 'vrd_09', 'vrd_17', 'vtr_09', 'vtr_17'
+  ];
   function transferAvatarUrl(move) {
     var id = String(move.playerId || '');
     if (transferPodiumIds.indexOf(id) >= 0) return ballonDorAvatarUrl(move);
@@ -3473,30 +3491,75 @@
     return '<div class="est-transfer-route"><span class="est-transfer-club">' + clubCrestMarkup(move.fromId, 'est-inline-crest') + '<span><small>SALE DE</small><b>' + esc(teamName(move.fromId)) + '</b></span></span>' +
       '<span class="est-transfer-arrow" aria-label="a">→</span><span class="est-transfer-club">' + clubCrestMarkup(move.toId, 'est-inline-crest') + '<span><small>LLEGA A</small><b>' + esc(teamName(move.toId)) + '</b></span></span></div>';
   }
+  function renderClubNewsBoard(clubNews, seasonMonth, withReplay) {
+    if (!Array.isArray(clubNews) || !clubNews.length) return '';
+    return '<section class="est-club-news-board" aria-label="Anuncios oficiales de clubes en MonteCristo News">' +
+      '<div class="est-market-heading est-club-news-heading"><div><p class="est-market-eyebrow">BOLETÍN DE CLUBES / ' + esc(seasonMonth || 'TEMPORADA') + '</p>' +
+      '<h3>MonteCristo News · Clubes <span>' + clubNews.length + '</span></h3>' +
+      '<p>Contrataciones y despidos de DT, pizarras tácticas y actualidad verificada de los clubes.</p></div>' +
+      (withReplay ? '<button type="button" class="est-market-replay">▶ Ver conferencia</button>' : '') +
+      '</div><div class="est-club-news-grid">' +
+      clubNews.map(function (item) {
+        return '<article class="est-club-news-card" data-news-type="' + esc(item.type || 'club') + '">' +
+          '<div class="est-club-news-top">' + clubCrestMarkup(item.clubId, 'est-club-news-crest') +
+          '<div class="est-club-news-meta"><span class="est-transfer-tag">' + esc(item.badge || 'MONTECRISTO NEWS') + '</span>' +
+          '<h4>' + esc(item.headline || teamName(item.clubId)) + '</h4>' +
+          (item.subtitle ? '<small>' + esc(item.subtitle) + '</small>' : '') +
+          '</div></div><p class="est-club-news-summary">' + esc(item.summary || '') + '</p></article>';
+      }).join('') + '</div></section>';
+  }
   function renderTransfersList(list, market) {
-    if (market.status === 'scheduled') { list.innerHTML = '<div class="est-market-empty"><span>◷</span><h3>La ventana aún no abre</h3><p>Los traspasos se anunciarán el día 15 de este mes.</p></div>'; return; }
-    if (!Array.isArray(market.moves) || !market.moves.length) { list.innerHTML = '<div class="est-market-empty"><span>⇄</span><h3>Sin movimientos por ahora</h3><p>No hay acuerdos disponibles para esta temporada.</p></div>'; return; }
+    var clubNews = Array.isArray(market.clubNews) ? market.clubNews : [];
+    if (market.status === 'scheduled') {
+      list.innerHTML = renderClubNewsBoard(clubNews, market.seasonMonth, clubNews.length > 0) +
+        '<div class="est-market-empty"><span>◷</span><h3>La ventana aún no abre</h3><p>Los traspasos se anunciarán el día 15 de este mes.</p></div>';
+      var schedReplay = list.querySelector('.est-market-replay');
+      if (schedReplay) schedReplay.addEventListener('click', function () { renderTransfersNews(list, market); });
+      return;
+    }
+    var hasMoves = Array.isArray(market.moves) && market.moves.length > 0;
+    if (!hasMoves && !clubNews.length) {
+      list.innerHTML = '<div class="est-market-empty"><span>⇄</span><h3>Sin movimientos por ahora</h3><p>No hay acuerdos disponibles para esta temporada.</p></div>';
+      return;
+    }
     var stage = market.status === 'effective'
       ? 'Acuerdos en vigor desde la temporada ' + (market.effectiveSeason || '—') + '.'
       : 'Acuerdos anunciados; se hacen efectivos en la temporada ' + (market.effectiveSeason || '—') + '.';
-    list.innerHTML = '<div class="est-market-heading"><div><p class="est-market-eyebrow">EL TABLERO / ' + esc(market.seasonMonth || 'TEMPORADA') + '</p><h3>Fichajes confirmados <span>' + market.moves.length + '</span></h3><p>' + esc(stage) + '</p></div>' +
-      '<button type="button" class="est-market-replay">▶ Ver conferencia</button></div>' +
-      '<ul class="est-transfer-list">' + market.moves.map(function (move, index) {
-        return '<li><div class="est-transfer-card-top"><div class="est-transfer-portrait-wrap">' + transferPortrait(move) + '<span class="est-transfer-number">' + String(index + 1).padStart(2, '0') + '</span></div>' +
-          '<div class="est-transfer-player"><span class="est-transfer-tag">TRASPASO CONFIRMADO</span><b>' + esc(move.playerName || 'Jugador') + '</b><small>' + esc(move.position || 'JUGADOR') + '</small></div></div>' +
-          transferRoute(move) + '<div class="est-transfer-card-footer"><span class="est-transfer-value">Valoración ' + esc(transferValueLabel(move.playerValue)) + '</span><span>FICHAS · ESTIMADA</span></div></li>';
-      }).join('') + '</ul><p class="est-market-footnote">✦ Retratos ilustrados · Valoraciones en millones de fichas virtuales</p>';
-    list.querySelector('.est-market-replay').addEventListener('click', function () { renderTransfersNews(list, market); });
+    var movesHtml = hasMoves
+      ? '<div class="est-market-heading"><div><p class="est-market-eyebrow">EL TABLERO / ' + esc(market.seasonMonth || 'TEMPORADA') + '</p><h3>Fichajes confirmados <span>' + market.moves.length + '</span></h3><p>' + esc(stage) + '</p></div>' +
+        '<button type="button" class="est-market-replay">▶ Ver conferencia</button></div>' +
+        '<ul class="est-transfer-list">' + market.moves.map(function (move, index) {
+          var coachNote = move.managerName ? ' · Pedido DT ' + move.managerName : '';
+          return '<li><div class="est-transfer-card-top"><div class="est-transfer-portrait-wrap">' + transferPortrait(move) + '<span class="est-transfer-number">' + String(index + 1).padStart(2, '0') + '</span></div>' +
+            '<div class="est-transfer-player"><span class="est-transfer-tag">TRASPASO CONFIRMADO</span><b>' + esc(move.playerName || 'Jugador') + '</b><small>' + esc((move.position || 'JUGADOR') + coachNote) + '</small></div></div>' +
+            transferRoute(move) + '<div class="est-transfer-card-footer"><span class="est-transfer-value">Valoración ' + esc(transferValueLabel(move.playerValue)) + '</span><span>' + esc(move.tacticalNeed ? String(move.tacticalNeed).toUpperCase() : 'FICHAS · ESTIMADA') + '</span></div></li>';
+        }).join('') + '</ul><p class="est-market-footnote">✦ Retratos ilustrados · Compras solicitadas por cada DT · Valoraciones en millones de fichas virtuales</p>'
+      : '';
+    list.innerHTML = movesHtml + renderClubNewsBoard(clubNews, market.seasonMonth, !hasMoves);
+    var replayBtn = list.querySelector('.est-market-replay');
+    if (replayBtn) replayBtn.addEventListener('click', function () { renderTransfersNews(list, market); });
   }
   function transfersNewsScript(market) {
-    var lines = [{ role: 'narrador', text: 'Bienvenidos a MonteCristo News. Estas son las noticias del mercado de traspasos de la temporada ' + (market.seasonMonth || '') + '.' }];
-    (market.moves || []).forEach(function (move, index) {
+    var moves = Array.isArray(market.moves) ? market.moves : [];
+    var clubNews = Array.isArray(market.clubNews) ? market.clubNews : [];
+    var intro = moves.length
+      ? 'Bienvenidos a MonteCristo News. Estas son las noticias de los clubes y del mercado de traspasos de la temporada ' + (market.seasonMonth || '') + '.'
+      : 'Bienvenidos a MonteCristo News. Estos son los anuncios oficiales de los clubes en la temporada ' + (market.seasonMonth || '') + '.';
+    var lines = [{ role: 'narrador', text: intro }];
+    moves.forEach(function (move, index) {
       var value = Number(move.playerValue);
       var spokenValue = Number.isFinite(value) && value > 0 ? value.toFixed(1).replace('.', ',') + ' millones de fichas' : 'no disponible';
+      var coachTail = move.managerName ? ' Fichaje solicitado por el director técnico ' + move.managerName + '.' : '';
       lines.push({ role: index % 2 ? 'analista' : 'narrador', move: move, text: String(move.playerName || 'Jugador') + (move.position ? ', ' + move.position : '') + ', deja ' + teamName(move.fromId) +
-        ' y firma por ' + teamName(move.toId) + '. Valoración de mercado: ' + spokenValue + '.' });
+        ' y firma por ' + teamName(move.toId) + '. Valoración de mercado: ' + spokenValue + '.' + coachTail });
     });
-    lines.push({ role: 'analista', text: market.status === 'effective' ? 'Los fichajes ya están en vigor desde la temporada ' + (market.effectiveSeason || '') + '.' : 'Los acuerdos se harán efectivos en la temporada ' + (market.effectiveSeason || '') + '.' });
+    clubNews.forEach(function (item, index) {
+      var role = (moves.length + index) % 2 ? 'analista' : 'narrador';
+      lines.push({ role: role, news: item, text: String(item.spoken || item.summary || item.headline || '') });
+    });
+    if (moves.length) {
+      lines.push({ role: 'analista', text: market.status === 'effective' ? 'Los fichajes ya están en vigor desde la temporada ' + (market.effectiveSeason || '') + '.' : 'Los acuerdos se harán efectivos en la temporada ' + (market.effectiveSeason || '') + '.' });
+    }
     lines.push({ role: 'narrador', text: 'La valoración es informativa: no altera partidos, cuotas, apuestas ni premios. Esto fue MonteCristo News.' });
     return lines;
   }
@@ -3540,6 +3603,7 @@
     var bumper = overlay.querySelector('.est-news-bumper'), studio = overlay.querySelector('.est-news-studio');
     var ticker = overlay.querySelector('.est-news-ticker'), linesBox = overlay.querySelector('.est-news-lines');
     var featureArt = overlay.querySelector('.est-news-feature-art'), headline = overlay.querySelector('.est-news-headline');
+    var kicker = overlay.querySelector('.est-news-kicker');
     var route = overlay.querySelector('.est-news-route'), speaker = overlay.querySelector('.est-news-narrador');
     var voiceButton = overlay.querySelector('.est-news-voice'), status = overlay.querySelector('.est-news-audio-status');
     var lines = transfersNewsScript(market), idx = 0;
@@ -3554,13 +3618,20 @@
       ticker.textContent = line.text;
       linesBox.textContent = line.text;
       if (line.move) {
+        if (kicker) kicker.textContent = 'MERCADO DE FICHAJES · ' + (market.seasonMonth || '');
         featureArt.innerHTML = transferPortrait(line.move, 'est-news-portrait');
         headline.textContent = line.move.playerName || 'Nuevo fichaje';
-        route.innerHTML = transferRoute(line.move) + '<span class="est-news-value">VALORACIÓN ' + esc(transferValueLabel(line.move.playerValue)) + '</span>';
+        route.innerHTML = transferRoute(line.move) + '<span class="est-news-value">VALORACIÓN ' + esc(transferValueLabel(line.move.playerValue)) + (line.move.managerName ? ' · PEDIDO DT ' + esc(line.move.managerName) : '') + '</span>';
+      } else if (line.news) {
+        if (kicker) kicker.textContent = line.news.badge || ('BOLETÍN DE CLUBES · ' + (market.seasonMonth || ''));
+        featureArt.innerHTML = clubCrestMarkup(line.news.clubId, 'est-news-club-crest');
+        headline.textContent = line.news.headline || teamName(line.news.clubId);
+        route.textContent = line.news.subtitle || line.news.summary || '';
       } else {
+        if (kicker) kicker.textContent = 'CONFERENCIA DE PRENSA · ' + (market.seasonMonth || '');
         featureArt.innerHTML = '<span>⇄</span>';
-        headline.textContent = idx === 1 ? 'El mercado está en marcha' : 'La próxima temporada';
-        route.textContent = 'La actualidad de los traspasos';
+        headline.textContent = idx === 1 ? 'MonteCristo News en directo' : 'La próxima temporada';
+        route.textContent = 'Actualidad oficial de clubes y traspasos';
       }
       if (!newsSpeech.enabled) { later(showNext, Math.max(3600, line.text.length * 65)); return; }
       var token = newsSpeech.token, utterance;
@@ -3621,7 +3692,10 @@
       if (!hubOpen() || list.closest('[data-hub-panel]').hidden) return;
       if (!res || !res.ok || !res.transfers) { list.textContent = res && res.error || 'No se pudo consultar el mercado.'; return; }
       var market = res.transfers;
-      if (res.firstView && market.status !== 'scheduled' && Array.isArray(market.moves) && market.moves.length) {
+      var hasMarketBroadcast = res.firstView && market.status !== 'scheduled'
+        && ((Array.isArray(market.moves) && market.moves.length) || (Array.isArray(market.clubNews) && market.clubNews.length));
+      var hasOpeningBroadcast = res.clubNewsFirstView && Array.isArray(market.clubNews) && market.clubNews.length;
+      if (hasMarketBroadcast || hasOpeningBroadcast) {
         renderTransfersNews(list, market);
         return;
       }
@@ -3670,10 +3744,21 @@
       + '<div class="est-club-metrics"><div><strong>' + titles.length + '</strong><span>Ligas verificadas*</span></div><div><strong>' + played + '</strong><span>Partidos esta temporada</span></div><div><strong>' + esc(rate) + '</strong><span>Victorias esta temporada</span></div></div>'
       + '<section class="est-club-block"><p class="est-club-caption">Identidad / historia ficticia</p><h4>La historia de sus colores</h4><p>' + esc(club.story) + '</p><p>*Ligas confirmadas en las temporadas conservadas: ' + (titles.length ? titles.map(esc).join(', ') : 'ninguna registrada') + '. Las temporadas incompletas o sin desempate no cuentan.</p></section>'
       + '<section class="est-club-block"><p class="est-club-caption">Pizarra técnica / temporada ' + esc(club.seasonMonth) + '</p><h4>DT ' + esc(manager.name) + '</h4>'
-      + '<p>Formación del club: <b>' + esc(manager.formation) + '</b> · Estilo: ' + esc(styles[manager.style] || manager.style) + '.</p>'
+      + '<p>Formación activa: <b>' + esc(manager.formation) + '</b>'
+      + (manager.secondaryFormation ? ' · Plan B: <b>' + esc(manager.secondaryFormation) + '</b>' : '')
+      + ' · Estilo: ' + esc(styles[manager.style] || manager.style)
+      + (manager.subProfile ? ' · Cambios: ' + esc(manager.subProfile) : '')
+      + (manager.marketFocus ? ' · Foco de mercado: ' + esc(manager.marketFocus) : '') + '.</p>'
+      + (manager.previousManager && manager.previousManager.name
+        ? '<p class="est-club-coach-note">Contratado para ' + esc(club.seasonMonth) + ' tras el despido de <b>' + esc(manager.previousManager.name) + '</b>'
+          + (manager.previousManager.reason ? ' (' + esc(manager.previousManager.reason) + ')' : '') + '.</p>' : '')
+      + (manager.tacticalChange
+        ? '<p class="est-club-coach-note">Ajuste táctico vigente: pasó del <b>' + esc(manager.tacticalChange.from) + '</b> al <b>' + esc(manager.tacticalChange.to) + '</b> porque ' + esc(manager.tacticalChange.reason) + '.</p>' : '')
+      + (manager.underPressure
+        ? '<p class="est-club-coach-alert">Banquillo bajo presión: el equipo ' + esc(manager.pressureReason || 'atraviesa una mala racha') + ' y su continuidad está en evaluación.</p>' : '')
       + '<p>Registro del equipo: ' + Number(record.wins || 0) + ' ganados · ' + Number(record.draws || 0) + ' empatados · ' + Number(record.losses || 0) + ' perdidos · ' + Number(record.goalsFor || 0) + ' goles a favor / ' + Number(record.goalsAgainst || 0) + ' en contra.</p>'
       + '<p>Opciones del banquillo por atributo: tiro ' + esc(bestBench('sho')) + '; pase ' + esc(bestBench('pas')) + '; defensa ' + esc(bestBench('def')) + '.</p>'
-      + '<p>El DT es un personaje ficticio. La formación, el registro y las habilidades provienen del juego; estas sugerencias son orientativas y no cambian las alineaciones ni sustituciones.</p></section>'
+      + '<p>El DT elige el once titular, cambia la formación según la racha o el partido, gestiona las sustituciones y solicita fichajes en el mercado. Esta vista es de consulta y no altera partidos ya comprometidos.</p></section>'
       + '<section class="est-club-block"><p class="est-club-caption">Plantilla / ' + players.length + ' futbolistas</p><h4>Un equipo, muchas historias</h4><p>Once inicial orientativo calculado con la formación actual. Los partidos comprometidos pueden tener otra alineación.' + esc(partial) + '</p>'
       + '<details><summary>Ver plantilla y estadísticas</summary><div class="est-club-table-wrap"><table class="est-club-table"><thead><tr><th scope="col">Jugador</th><th scope="col">Puesto / rol</th><th scope="col">Estado</th><th scope="col">RIT</th><th scope="col">TIR</th><th scope="col">PAS</th><th scope="col">DEF</th><th scope="col">POR</th><th scope="col">AGR</th><th scope="col">PJ</th><th scope="col">G</th><th scope="col">A</th></tr></thead><tbody>'
       + players.map(function (p) { var a = p.attributes || {}, st = p.stats || {}, slot = lineups.get(p.id) || {}; return '<tr><td>#' + esc(p.number) + ' ' + esc(p.name) + '</td><td>' + esc(p.position) + ' / ' + esc(slot.role || '—') + '</td><td>' + (slot.initialStatus === 'active' ? 'Inicial' : 'Banquillo') + '</td><td>' + esc(a.pac) + '</td><td>' + esc(a.sho) + '</td><td>' + esc(a.pas) + '</td><td>' + esc(a.def) + '</td><td>' + esc(a.gk) + '</td><td>' + esc(a.agr) + '</td><td>' + esc(st.appearances) + '</td><td>' + esc(st.goals) + '</td><td>' + esc(st.assists) + '</td></tr>'; }).join('')
