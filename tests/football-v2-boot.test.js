@@ -225,3 +225,39 @@ test('despertar tras suspensión prolongada liquida > 30 min con estadísticas c
   const expectedChips = 800 + (savedBet1.status === 'won' ? betPlaced.bet.potentialPayout : 0);
   assert.equal(reloadedUser.chips, expectedChips);
 });
+
+test('arranque oficial solo V2 reembolsa boleto V1 y asienta los dos partidos pendientes', { timeout: 60000 }, async t => {
+  const { ProfileStore } = require('../lib/profile-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'v2-retirement-boot-'));
+  let child;
+  t.after(async () => { if (child) await stopServer(child); fs.rmSync(dir, { recursive: true, force: true }); });
+  const file = path.join(dir, 'football.json'), profilesFile = path.join(dir, 'profiles.json');
+  const store = new FootballStore(file), profiles = new ProfileStore(profilesFile);
+  const league = store.generateSeason('2026-11');
+  const first = league.calendar.matches.find(match => match.id === 'm_2026-11_j1_b2_2');
+  const second = league.calendar.matches.find(match => match.id === 'm_2026-11_j2_b1_1');
+  const at = Date.UTC(2026, 10, 2, 21, 1);
+  for (const match of league.calendar.matches) if (match !== first && match !== second) match.scheduledKickoffAt = at + 10 * 86400000;
+  const profile = profiles.getOrCreate('boot-legacy', 'Usuario');
+  profile.chips = 900; profiles.saveNow();
+  assert.ok(store.insertBet({ id: 'boot-old-bet', profileId: profile.id, matchId: first.id, seasonMonth: '2026-11',
+    market: '1x2', selection: 'home', stake: 100, oddsAtPlacement: 2, status: 'open', debited: true }).ok);
+  store.close();
+  const server = await startServer(dir, at); child = server.child;
+  for (const match of [first, second]) {
+    const response = await fetch(`http://127.0.0.1:${server.port}/api/estadio/matches/${match.id}`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.matchState.match.status, 'settled');
+    assert.equal(body.matchState.match.engine, 'v2');
+    assert.equal(body.matchState.state.phase, 'ended');
+  }
+  await stopServer(child); child = null;
+  const saved = new FootballStore(file), savedProfiles = new ProfileStore(profilesFile);
+  try {
+    assert.equal(saved.getBet('boot-old-bet').status, 'void');
+    assert.equal(saved.getBet('boot-old-bet').payoutApplied, true);
+    assert.equal(savedProfiles.getProfile(profile.id).chips, 1000);
+    assert.equal(saved.getStandings('2026-11').find(row => row.teamId === 'norvela_sporting').played, 2);
+  } finally { saved.close(); savedProfiles.saveNow(); }
+});

@@ -582,3 +582,48 @@ test('un compromiso confirmado puede arrancar aunque la cola de temporada esté 
     await scheduler.kickoffPending;
   } finally { release(); await locked; h.close(); }
 });
+
+test('una simulación inválida no impide preparar ni arrancar otros partidos del horizonte', async () => {
+  const h = setup();
+  try {
+    const [bad, good] = h.league.calendar.matches;
+    bad.simulation = { version: 'invalid', invalid: true };
+    const events = [];
+    const official = createOfficialV2({ store: h.store, now: h.now, log: (event, data) => events.push({ event, data }) });
+    const ready = await official.prepareUpcoming();
+    assert.equal(ready.reason, 'preparacion_invalida');
+    assert.ok(ready.failed.includes(bad.id));
+    assert.ok(events.some(e => e.event === 'football_v2_prepare_error' && e.data.match === bad.id));
+    assert.ok(verifyCommitment(good.simulation, good));
+    assert.equal(good.simulationUnconfirmed, undefined);
+    const restored = new FootballStore(h.file);
+    try { assert.ok(verifyCommitment(restored.getMatch(good.id).simulation, good)); }
+    finally { restored.close(); }
+    const engine = new FootballEngine(h.store, { officialV2: official });
+    assert.equal(engine.startMatch(good, good.scheduledKickoffAt), true);
+    assert.throws(() => engine.startMatch(bad, bad.scheduledKickoffAt), /compromiso/);
+  } finally { h.close(); }
+});
+
+test('un error en medio del lote no confirma snapshots cuando falla su persistencia', async () => {
+  const h = setup();
+  try {
+    const [first, bad, last] = h.league.calendar.matches;
+    assert.equal((await h.officialV2.ensureSeason('2026-11')).ok, true);
+    bad.simulation = { version: 'invalid', invalid: true };
+    const save = h.store.saveStrict.bind(h.store);
+    h.store.saveStrict = () => false;
+    const failed = await h.officialV2.prepareMatches('2026-11', [first, bad, last], h.now());
+    assert.equal(failed.reason, 'persistencia_pendiente');
+    assert.equal(first.simulationUnconfirmed, true);
+    assert.equal(last.simulationUnconfirmed, true);
+    const keys = [first.simulation.privateSeed, last.simulation.privateSeed];
+    h.store.saveStrict = save;
+    const retry = await h.officialV2.prepareMatches('2026-11', [first, bad, last], h.now());
+    assert.equal(retry.reason, 'preparacion_invalida');
+    assert.deepEqual(retry.failed, [bad.id]);
+    assert.equal(first.simulationUnconfirmed, undefined);
+    assert.equal(last.simulationUnconfirmed, undefined);
+    assert.deepEqual([first.simulation.privateSeed, last.simulation.privateSeed], keys);
+  } finally { h.close(); }
+});

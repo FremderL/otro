@@ -304,3 +304,96 @@ test('el barrido de cinco segundos también confirma y liquida un compromiso pen
   assert.equal(target.status, 'settled');
   assert.equal(target.simulationUnconfirmed, undefined);
 });
+
+test('arranque aísla compromiso dañado y recupera West Hamón–Arsénico sin borrar evidencia', async t => {
+  const dir = tmpdir();
+  const { store, league } = seededStore(dir);
+  t.after(() => { store.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const target = league.calendar.matches.find(m => m.homeId === 'norvela_sporting' && m.awayId === 'dynamo_kelvar' && m.jornada === 1);
+  const bad = league.calendar.matches.find(m => m.jornada === 1 && m !== target);
+  const now = Math.max(target.scheduledKickoffAt, bad.scheduledKickoffAt) + 24 * 3600000;
+  for (const match of league.calendar.matches) if (match !== target && match !== bad) match.scheduledKickoffAt = now + 10 * 86400000;
+  bad.simulation = { version: 'v2-causal-4', privateSeed: 'ab'.repeat(32), inputsHash: 'cd'.repeat(32), inputs: { damaged: true }, preparedAt: now - 1 };
+  store.saveNow();
+  const loaded = new FootballStore(path.join(dir, 'football.json'));
+  const broken = loaded.getMatch(bad.id, NOV);
+  assert.equal(broken.simulation.invalid, true);
+  assert.equal(broken.simulation.original.privateSeed, 'ab'.repeat(32));
+  const logs = [];
+  const officialV2 = createOfficialV2({ store: loaded, now: () => now, log: (event, data) => logs.push({ event, data }) });
+  const engine = new FootballEngine(loaded, { officialV2 });
+  await engine.reconcileBoot(now);
+  assert.equal(loaded.getMatch(target.id, NOV).status, 'settled');
+  assert.equal(broken.status, 'scheduled');
+  assert.equal(broken.postponed, undefined);
+  assert.ok(logs.some(e => e.event === 'football_v2_prepare_error' && e.data.match === bad.id));
+  assert.deepEqual(loaded.getStandings(NOV).filter(row => [target.homeId, target.awayId].includes(row.teamId)).map(row => row.played), [1, 1]);
+  loaded.close();
+  const reloaded = new FootballStore(path.join(dir, 'football.json'));
+  try {
+    assert.equal(reloaded.getMatch(bad.id, NOV).simulation.original.privateSeed, 'ab'.repeat(32));
+    assert.equal(reloaded.getMatch(target.id, NOV).status, 'settled');
+  } finally { reloaded.close(); }
+});
+
+test('una reparación que espera preparación no asienta un partido reprogramado durante el await', async t => {
+  const dir = tmpdir();
+  const { store, league } = seededStore(dir);
+  t.after(() => { store.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const target = league.calendar.matches[0];
+  const now = target.scheduledKickoffAt + 24 * 3600000;
+  for (const match of league.calendar.matches) if (match !== target) match.scheduledKickoffAt = now + 10 * 86400000;
+  const officialV2 = createOfficialV2({ store, now: () => now });
+  const prepare = officialV2.prepareMatches;
+  let release, reached;
+  const entered = new Promise(resolve => { reached = resolve; });
+  officialV2.prepareMatches = async (...args) => {
+    reached();
+    await new Promise(resolve => { release = resolve; });
+    return prepare(...args);
+  };
+  const engine = new FootballEngine(store, { officialV2 });
+  const repairing = engine.repairOverdueMatches(now);
+  await entered;
+  target.scheduledKickoffAt = now + 3600000;
+  release();
+  const result = await repairing;
+  assert.equal(result.liquidados, 0);
+  assert.equal(target.status, 'scheduled');
+  assert.equal(target.result, null);
+});
+
+test('watchdog aísla un partido live inválido y sigue procesando los demás', t => {
+  const dir = tmpdir();
+  const { store, league } = seededStore(dir);
+  t.after(() => { store.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const [bad, good] = league.calendar.matches;
+  bad.status = 'live'; bad.simulation = { version: 'invalid', invalid: true };
+  good.status = 'live';
+  const now = Math.max(bad.scheduledKickoffAt, good.scheduledKickoffAt) + 3600000;
+  const events = [];
+  const engine = new FootballEngine(store);
+  const scheduler = new FootballScheduler(engine, { logEvent: (event, data) => events.push({ event, data }) });
+  const result = scheduler.runStuckSweep(now);
+  assert.equal(result.forcedFinish, 1);
+  assert.equal(good.status, 'settled');
+  assert.equal(bad.status, 'live');
+  assert.ok(events.some(e => e.event === 'football_stuck_match_error' && e.data.match === bad.id));
+});
+
+test('un V2 live con compromiso dañado no se pospone ni reembolsa por reintentos', t => {
+  const dir = tmpdir();
+  const { store, league } = seededStore(dir);
+  t.after(() => { store.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const match = league.calendar.matches[0];
+  match.status = 'live'; match.simulation = { version: 'invalid', invalid: true };
+  let refunds = 0;
+  const events = [];
+  const engine = new FootballEngine(store, { refundBets: () => refunds++ });
+  const scheduler = new FootballScheduler(engine, { logEvent: (event, data) => events.push({ event, data }) });
+  const now = match.scheduledKickoffAt + 1000;
+  for (let i = 0; i < 4; i++) scheduler.runSchedulerSweep(now + i * 500);
+  assert.equal(match.status, 'live');
+  assert.equal(refunds, 0);
+  assert.equal(events.filter(e => e.event === 'football_v2_commitment_blocked').length, 1);
+});

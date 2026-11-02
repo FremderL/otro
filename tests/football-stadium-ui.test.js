@@ -3668,3 +3668,16 @@ test('MonteCristo News transmite despidos y contrataciones de DT en apertura de 
   assert.match(panel.textContent, /DT Marina Salcedo cambia a 4-2-3-1/);
   assert.ok(panel.querySelector('.est-market-replay'), 'permite volver a ver la conferencia');
 });
+
+test('un resultado histórico sin replay conserva marcador y estado final', async t => {
+  const h = createHarness();
+  t.after(h.close);
+  h.match.status = 'settled';
+  h.match.result = { home: 3, away: 1, winner: 'home' };
+  h.matchState.state = null;
+  h.matchState.markets = {};
+  await h.connectToMatch();
+  assert.equal(h.window.document.getElementById('score-home').textContent, '3');
+  assert.equal(h.window.document.getElementById('score-away').textContent, '1');
+  assert.equal(h.window.document.getElementById('est-clock').textContent, 'Final');
+});
