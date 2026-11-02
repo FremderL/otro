@@ -155,6 +155,37 @@ test('subscribe es la ÚNICA puerta que crea identidad (getOrCreate una sola vez
   assert.equal(res.profile.name, 'Alice');
 });
 
+test('la previa de la cabina entra al relato por football:commentary (y al anillo)', (t) => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const target = ctx.store.getMatches(ctx.month)
+    .filter(m => m.status === 'scheduled')
+    .sort((a, b) => a.scheduledKickoffAt - b.scheduledKickoffAt)[0];
+  const soon = target.scheduledKickoffAt - 4 * 60 * 1000;
+
+  const result = ctx.sockets.tickPregame(soon);
+  assert.ok(result.matches >= 1, 'hay partidos en la ventana previa');
+
+  const lines = ctx.io.emittedTo(matchRoom(target.id), 'football:commentary')
+    .map(item => item.payload).filter(payload => payload.type === 'pregame');
+  assert.ok(lines.length >= 1, 'la cabina abre con la previa antes del saque inicial');
+  assert.equal(lines[0].matchId, target.id);
+  assert.equal(lines[0].minute, null, 'la previa no inventa un minuto de juego');
+  assert.ok(['narrador', 'analista'].includes(lines[0].voice));
+  assert.ok(lines[0].text.length > 0);
+
+  // El relato guarda la conversación: quien entra a mitad de la previa la lee.
+  const ring = ctx.sockets.commentaryRings.get(target.id) || [];
+  assert.ok(ring.some(message => message.type === 'pregame'), 'la previa queda en el anillo del partido');
+  const state = ctx.sockets.buildMatchState(target.id);
+  assert.ok(state.commentary.some(message => message.type === 'pregame'));
+
+  // El mismo instante no repite la intervención ya emitida.
+  const before = ctx.io.emittedTo(matchRoom(target.id), 'football:commentary').length;
+  ctx.sockets.tickPregame(soon);
+  assert.equal(ctx.io.emittedTo(matchRoom(target.id), 'football:commentary').length, before);
+});
+
 test('el lobby anuncia los cruces vencidos sin acta para explicar un PJ menor', (t) => {
   const fixed = Date.UTC(2026, 10, 15, 20);
   const ctx = setup({ now: () => fixed });

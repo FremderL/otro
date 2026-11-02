@@ -5012,7 +5012,7 @@
   // ===== Relato =====
   function renderCommentary(list) {
     var box = el['est-commentary']; box.innerHTML = '';
-    if (!list || !list.length) { box.innerHTML = '<p class="est-commentary-empty">El relato aparecerá aquí cuando comience el partido.</p>'; return; }
+    if (!list || !list.length) { box.innerHTML = '<p class="est-commentary-empty">La cabina abre unos minutos antes del partido con la previa; el relato sigue en vivo desde el saque inicial.</p>'; return; }
     list.forEach(function (m) { appendCommentary(m, true); });
     var latest = box.lastElementChild;
     if (latest && latest.classList.contains('est-cmt')) latest.classList.add('is-latest');
@@ -5028,11 +5028,16 @@
     var voice = m.voice === 'analista' ? 'analista' : 'narrador';
     var voiceLabel = voice === 'narrador' ? 'NARRADOR' : 'ANALISTA';
     var voiceMark = voice === 'narrador' ? 'N' : 'A';
-    var minuteChip = Number.isFinite(Number(m.minute))
-      ? '<span class="est-cmt-minute">' + Math.max(0, Math.round(Number(m.minute))) + "'</span>"
-      : '';
+    // La previa ocurre antes del reloj: se rotula PREVIA en vez de inventarle un
+    // minuto de juego (el servidor manda type 'pregame' y minute null).
+    var isPregame = m.type === 'pregame';
+    var minuteChip = isPregame
+      ? '<span class="est-cmt-minute is-previa">PREVIA</span>'
+      : Number.isFinite(Number(m.minute))
+        ? '<span class="est-cmt-minute">' + Math.max(0, Math.round(Number(m.minute))) + "'</span>"
+        : '';
     var div = document.createElement('div');
-    div.className = 'est-cmt ' + voice + (S.muted ? ' muted-all' : '') + (silentScroll ? '' : ' is-latest is-entering');
+    div.className = 'est-cmt ' + voice + (isPregame ? ' is-previa' : '') + (S.muted ? ' muted-all' : '') + (silentScroll ? '' : ' is-latest is-entering');
     div.innerHTML = '<span class="est-cmt-speaker"><span class="est-cmt-mark" aria-hidden="true">' + voiceMark + '</span><span class="est-cmt-voice">' + voiceLabel + '</span></span><span class="est-cmt-text">' + minuteChip + esc(m.text) + '</span>';
     box.appendChild(div);
     while (box.children.length > 40) box.removeChild(box.firstChild);

@@ -791,6 +791,11 @@
   vertical-align: 1px;
 }
 .est-cmt.analista .est-cmt-text { color: #d9f3e9; }
+/* Previa: la cabina conversa antes del saque inicial. Se distingue del relato
+   del partido por el rótulo PREVIA y un borde punteado, sin gritar más que un
+   gol: es contexto, no una jugada. */
+.est-cmt.is-previa { border-left-style: dashed; background: linear-gradient(100deg, rgba(194,223,216,.05), rgba(7,14,16,.78) 45%); }
+.est-cmt-minute.is-previa { border-color: rgba(194,223,216,.3); background: rgba(194,223,216,.12); color: #d7e6e1; font-size: 9px; letter-spacing: .08em; }
 .est-cmt.is-entering { animation: estCommentaryEnter .38s cubic-bezier(.2,.7,.2,1) both; }
 .est-cmt.muted-all { opacity: .4; }
 /* --- Grada: reacciones rápidas y charla del partido --- */

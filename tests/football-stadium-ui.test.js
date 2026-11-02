@@ -1390,6 +1390,34 @@ test('la cabina de comentarios destaca el feed y diferencia a sus dos voces', as
   assert.equal(feed.querySelectorAll('.est-cmt.is-latest').length, 1, 'solo el comentario más reciente conserva el foco visual');
 });
 
+test('la previa de la cabina se rotula PREVIA y no inventa un minuto de juego', async t => {
+  const h = createHarness();
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const feed = window.document.getElementById('est-commentary');
+  handlers['football:commentary']({
+    matchId: match.id, voice: 'narrador', type: 'pregame', minute: null, importance: 'previa',
+    text: 'Buenas tardes desde el estadio: ya están los dos equipos en el túnel.'
+  });
+  const opening = feed.querySelector('.est-cmt.is-latest');
+  assert.ok(opening.classList.contains('is-previa'), 'la previa se distingue del relato del partido');
+  assert.match(opening.querySelector('.est-cmt-minute').textContent, /PREVIA/);
+  assert.doesNotMatch(opening.querySelector('.est-cmt-minute').textContent, /\d/);
+
+  handlers['football:commentary']({
+    matchId: match.id, voice: 'analista', type: 'pregame', minute: null, importance: 'previa',
+    text: 'En la tabla, el local es tercero y la visita novena.'
+  });
+  assert.equal(feed.querySelectorAll('.est-cmt.is-previa').length, 2, 'la conversación previa se acumula en la cabina');
+
+  // El relato del partido conserva su minuto: la previa no contamina el reloj.
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', type: 'kickoff', minute: 0, text: '¡Rueda el balón!' });
+  const live = feed.querySelector('.est-cmt.is-latest');
+  assert.ok(!live.classList.contains('is-previa'));
+  assert.match(live.textContent, /0'/);
+});
+
 test('las voces del relato se alternan en cola, con dos locutores y sin superposición', async t => {
   const h = createHarness({ speechSynthesis: true });
   t.after(h.close);

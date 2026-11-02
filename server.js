@@ -10,7 +10,7 @@ const { AVATARS } = require('./lib/profile-store');
 const { createProfileStore } = require('./lib/profile-store-factory');
 const { ensureRuntimeDirs } = require('./lib/runtime-dirs');
 const {
-  HISTORY_LIMITS, INACTIVITY_LIMIT_MS, CASINO_TIME_ZONE, monthKey, normalizeDisplayName
+  HISTORY_LIMITS, INACTIVITY_LIMIT_MS, CASINO_TIME_ZONE, monthKey, normalizeDisplayName, preferenceEnabled
 } = require('./lib/profile-store-shared');
 const { credit, recordWager, recordOutcome, claimDailyBonus, openCardCapsule, publicProgress } = require('./lib/progression');
 const { buildBettingLeaderboard, createBettingLeaderboard } = require('./lib/betting-leaderboard');
@@ -25,6 +25,7 @@ const { rollSpecialEvent, bonusFor } = require('./lib/special-events');
 const { HAND_NAMES, compareScores, bestPokerScore } = require('./lib/poker-evaluator');
 const { DIFFICULTIES, STYLES, createBot, publicBot } = require('./lib/bots/catalog');
 const { BotController } = require('./lib/bots/bot-controller');
+const { autoBotsForProfile, roomAllowsAutoBots, hostPrefersBotsStay } = require('./lib/bots/room-policy');
 const {
   MONTE_ASSISTANT_NAME,
   MONTE_ASSISTANT_AVATAR,
@@ -710,6 +711,11 @@ function createRoom(game, host, socket, requestedName) {
     // Rueda: identificador de la ronda en el diario transaccional. Cada ronda
     // nueva recibe uno distinto (ver resetQuickRound).
     fortuneRoundId: game === 'fortune' ? randomUUID() : null,
+    // Preferencia del anfitrión: si apagó «Autocompletar con bots» en su perfil,
+    // esta mesa NUNCA rellena asientos con bots (autoFillBots la respeta). Se
+    // congela al crearla: cambiar la preferencia después no reescribe mesas que
+    // ya están jugando.
+    autoBots: autoBotsForProfile(host._profile),
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -770,6 +776,9 @@ function publicRoom(room, viewerId) {
     game: room.game,
     hostId: room.hostId,
     viewerId,
+    // La mesa sin bots se anuncia en la interfaz (chip «Sin bots»): es una
+    // decisión del anfitrión, no un fallo de la mesa.
+    autoBots: roomAllowsAutoBots(room),
     phase: room.phase,
     players: room.players.map((p, index) => ({
       id: p.id,
@@ -2311,8 +2320,11 @@ function scheduleRoomCleanup(room) {
 
 // ---------------- CICLO DE VIDA DE MESA (fase 2) ----------------
 // Completa los asientos libres con bots expertos mientras haya personas reales en la mesa.
+// `room.autoBots === false` es la preferencia del anfitrión (pestaña Preferencias
+// del perfil): la mesa se queda solo con personas, aunque el proceso tenga
+// AUTO_BOTS encendido. Es la única puerta de entrada de bots a una mesa.
 function autoFillBots(room) {
-  if (!AUTO_BOTS || !room || rosterLocked(room)) return false;
+  if (!AUTO_BOTS || !room || !roomAllowsAutoBots(room) || rosterLocked(room)) return false;
   if (room.tournament?.active || room.lobbyTournamentMatch) return false; // Los brackets del lobby no admiten bots ni asientos externos.
   if (!room.players.some(p => !p.isBot && p.connected)) return false;
   let added = false;
@@ -2325,8 +2337,10 @@ function autoFillBots(room) {
   return added;
 }
 // Al terminar la ronda, los bots desocupan sus asientos para que los tomen personas reales.
+// Con la preferencia `botsStay` del anfitrión, en cambio, conservan el asiento
+// entre rondas: la mesa sigue completa sin esperar a que llegue alguien.
 function releaseBotSeats(room) {
-  if (!AUTO_BOTS || !room) return false;
+  if (!AUTO_BOTS || !room || !roomAllowsAutoBots(room) || hostPrefersBotsStay(room)) return false;
   if (room.tournament?.active) return false; // Fase 8.1: los bots participantes se quedan hasta el final del torneo.
   const bots = room.players.filter(p => p.isBot);
   if (!bots.length) return false;
@@ -2732,6 +2746,11 @@ io.on('connection', socket => {
     if (askedCode && askedCode !== room.code) return ackResult(ack, actionError('Solo puedes invitar a la mesa en la que estás sentado.', 'room_mismatch'));
     const target = profiles.getProfile(String(profileId || '').slice(0, 80));
     if (!target?.username) return ackResult(ack, actionError('Esa cuenta ya no está disponible.', 'target_not_found'));
+    // Preferencia «Recibir invitaciones a mesas»: se respeta en el servidor, no
+    // solo ocultando el botón. Quien invita recibe un aviso claro.
+    if (!preferenceEnabled(target, 'tableInvites')) {
+      return ackResult(ack, actionError(`${target.name} no recibe invitaciones a mesas ahora mismo.`, 'invites_disabled'));
+    }
     const alreadyThere = room.players.some(player => player._profile?.id === target.id)
       || (room.spectators || []).some(spectator => spectator._profile?.id === target.id);
     if (alreadyThere) return ackResult(ack, actionError(`${target.name} ya está en esta mesa.`, 'already_in_room'));
@@ -2859,7 +2878,7 @@ io.on('connection', socket => {
     });
   });
 
-  socket.on('create_room', ({ name, roomName, game, token, avatar, tos } = {}, ack) => {
+  socket.on('create_room', ({ name, roomName, game, token, avatar, tos, preferences } = {}, ack) => {
     name = cleanName(name);
     game = ['poker', 'blackjack', ...Object.keys(QUICK_GAMES)].includes(game) ? game : 'poker';
     if (game === 'fortune' && !fortuneAvailable()) return ackError(ack, 'La Rueda no está disponible en este momento.');
@@ -2872,12 +2891,19 @@ io.on('connection', socket => {
     const player = newPlayer(seatId, socket, name, avatar);
     if (!verifyTosAcceptance(player._profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
     syncSocketLobbyIdentity(socket, player._profile);
+    // La casilla «Completar asientos con bots» del formulario de creación es la
+    // misma preferencia del perfil: se guarda para el futuro y decide esta mesa.
+    // Así una persona sin cuenta también puede dejar sus mesas sin bots.
+    if (preferences && typeof preferences === 'object' && !Array.isArray(preferences)) {
+      profiles.update(player._profile, { preferences });
+    }
     const room = createRoom(game, player, socket, roomName);
     socket.data.roomCode = room.code;
     socket.data.playerId = player.id;
+    if (room.autoBots === false) addSystem(room, '🚫 Mesa sin bots: los asientos libres son solo para personas.');
     autoFillBots(room);
-    ackOk(ack, { code: room.code });
-    logEvent('room_created', { room: room.code, game: room.game, host: player.name });
+    ackOk(ack, { code: room.code, autoBots: room.autoBots !== false });
+    logEvent('room_created', { room: room.code, game: room.game, host: player.name, autoBots: room.autoBots !== false });
     gameEvent(room, 'joined', `${player.name} creó ${room.name}.`);
     broadcast(room);
   });
@@ -3172,6 +3198,33 @@ io.on('connection', socket => {
     ackOk(ack, { profile: publicProgress(targetProfile, true) });
     if (room) broadcast(room);
     broadcastBetRanking();
+  });
+
+  // Preferencias del perfil (pestaña Preferencias): interruptores de los
+  // automatismos del casino. Misma resolución de identidad que profile_update —
+  // el perfil del asiento si se está jugando, o el de la cuenta autenticada —
+  // para que nadie pueda cambiar las preferencias de otra persona enviando un id.
+  socket.on('preferences_update', ({ preferences, accountId } = {}, ack) => {
+    if (!preferences || typeof preferences !== 'object' || Array.isArray(preferences)) {
+      return ackError(ack, 'Solicitud de preferencias no válida.');
+    }
+    const { player } = playerForSocket(socket);
+    let targetProfile = player ? player._profile : null;
+    if (!targetProfile) {
+      // Mismo criterio que profile_update: con sesiones seguras manda la cookie
+      // (un `accountId` del payload se ignora); sin ellas se conserva la
+      // compatibilidad temporal y solo se aceptan perfiles CON cuenta vinculada.
+      const id = adminConfig.accountSessionsEnabled
+        ? socket.data.accountProfileId
+        : String(accountId || '').slice(0, 80);
+      const candidate = id ? profiles.profiles.get(id) : null;
+      if (candidate?.username) targetProfile = candidate;
+    }
+    if (!targetProfile) return ackError(ack, 'Perfil no disponible.');
+    profiles.update(targetProfile, { preferences });
+    const saved = { ...targetProfile.preferences };
+    ackOk(ack, { preferences: saved, profile: publicProgress(targetProfile, true) });
+    logEvent('preferences_updated', { profile: targetProfile.id, ...saved });
   });
 
   // Refresca el perfil público de una cuenta ya vinculada (username presente).
@@ -3919,7 +3972,10 @@ async function initFootball() {
 
   // 7. Scheduler: sweeps de kickoff, avance, partidos atascados y temporada (§15).
   footballScheduler = new FootballScheduler(footballEngine, {
-    officialV2, ballonDorService: footballBallonDorMarket, quinielaService: footballQuiniela, logEvent: footballLog
+    officialV2, ballonDorService: footballBallonDorMarket, quinielaService: footballQuiniela, logEvent: footballLog,
+    // Previa de la cabina: la conversación de los comentaristas antes del saque
+    // inicial sale por el mismo canal del relato (football:commentary).
+    pregameService: footballSockets?.pregame || null
   });
   if (!writerPending) await footballScheduler.runAutoRescheduleSweep(Date.now());
   footballScheduler.start();
