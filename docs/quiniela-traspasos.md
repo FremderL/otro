@@ -1,16 +1,20 @@
 # Quiniela y traspasos: estado actual
 
-## Traspasos
+## Traspasos y MonteCristo News
 
-El mercado muestra cuatro cambios entre cuatro clubes ficticios, como dos
-intercambios de mediocampistas. Se anuncia desde el día 15 en horario de Ciudad
-de México. El plan se deriva de la temporada actual de forma determinista y no
-muta sus partidos, jugadores ni cuotas. Al generar la temporada inmediatamente
-siguiente, se conservan identidades y atributos de toda la plantilla, se ponen las
-estadísticas de temporada en cero y se intercambian los cuatro jugadores. Cada
-club conserva 18 jugadores, dorsales sin repetir y sus delanteros originales.
-Si falta una temporada previa consecutiva y válida, no se inventan traspasos.
-Las 16 identidades se sirven con sus escudos en la vista de mercado.
+El mercado ejecuta ocho operaciones en dos ciclos de cuatro clubes, donde el
+**Director Técnico (DT)** de cada club comprador solicita el fichaje según las
+carencias tácticas de su plantilla (`lib/football/managers.js`). Se anuncia desde
+el día 15 en horario de Ciudad de México y entra en vigor al generar la temporada
+inmediatamente siguiente. Además, **MonteCristo News** (`lib/football/club-news.js`)
+cubre durante toda la temporada los anuncios oficiales que afectan a clubes:
+despidos de DT por mal rendimiento y contrataciones para la nueva temporada,
+cambios tácticos de formación, banquillos bajo presión, campeón vigente, liderato,
+carrera al Balón de Oro y pulso público de *Mi afición*.
+
+> **Regla obligatoria**: Cualquier funcionalidad futura que afecte a clubes debe
+> registrarse y anunciarse en MonteCristo News (`AGENTS.md` y
+> `docs/montecristo-news-regla-clubes.md`).
 
 ### Conferencia de prensa del mercado
 

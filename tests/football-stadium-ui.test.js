@@ -562,17 +562,22 @@ test('avatares persistentes, cues y nombres grabados del Balón de Oro usan asse
   }
   const playerIds = ['frr_09', 'sol_17', 'vrd_09', 'klv_17', 'hlc_09', 'irn_09', 'nvl_09', 'est_17', 'prg_09', 'amb_17', 'crv_09', 'alm_17', 'tlb_17', 'vng_17', 'vtr_17', 'vlm_17'];
   assert.equal(playerIds.length, 16, 'se conserva el candidato ST existente de cada club');
-  const uniqueAvatarArt = new Set();
   for (const playerId of playerIds) {
     assert.ok(fs.existsSync(path.join(publicDir, 'assets', 'ballon-dor-ceremony', 'names', playerId + '.wav')),
       `${playerId} tiene clip de nombre`);
+  }
+  const { CLUBS } = require('../lib/football/teams');
+  const allStrikerIds = CLUBS.flatMap(club => ['09', '17'].map(num => `${club.short.toLowerCase()}_${num}`));
+  assert.equal(allStrikerIds.length, 32, 'cubre los dos delanteros ST elegibles de los 16 clubes');
+  const uniqueAvatarArt = new Set();
+  for (const playerId of allStrikerIds) {
     const avatarPath = path.join(publicDir, 'assets', 'ballon-dor-avatars', playerId + '.svg');
     assert.ok(fs.existsSync(avatarPath), `${playerId} tiene un avatar único reutilizable`);
     const avatarArt = fs.readFileSync(avatarPath, 'utf8');
     assert.match(avatarArt, /^<svg\b/);
     uniqueAvatarArt.add(avatarArt);
   }
-  assert.equal(uniqueAvatarArt.size, 16, 'cada playerId usa una ilustración distinta');
+  assert.equal(uniqueAvatarArt.size, 32, 'cada delantero ST elegible usa una ilustración distinta');
   assert.ok(fs.existsSync(path.join(publicDir, 'assets', 'ballon-dor-avatars', 'default.svg')));
   dom.window.close();
 });
@@ -2064,6 +2069,9 @@ test('Balón de Oro muestra los 16 candidatos y confirma un boleto con recibo vi
   assert.deepEqual(candidateAvatars.map(image => image.getAttribute('src')),
     ballonDorMarket().candidates.map(candidate => `/assets/ballon-dor-avatars/${candidate.playerId}.svg`),
     'cada candidato conserva su avatar por playerId estable');
+  candidateAvatars[0].dispatchEvent(new h.window.Event('error'));
+  assert.equal(candidateAvatars[0].getAttribute('src'), '/assets/ballon-dor-avatars/default.svg',
+    'si algún ID futuro no tuviera archivo propio, cae limpiamente al avatar por defecto');
   assert.match(document.getElementById('est-bdo-status').textContent, /Predicciones abiertas/);
   assert.match(document.getElementById('est-bdo-summary').textContent, /ocho partidos de J20/);
   assert.match(document.getElementById('est-bdo-feed').textContent, /Respaldo HTTP|Socket\.IO/);
@@ -3433,7 +3441,7 @@ test('una ficha de club se consulta antes de elegir afición y muestra director,
   const box = doc.getElementById('est-club-profile');
   assert.match(box.textContent, /away FC/); assert.doesNotMatch(box.textContent, /home FC.*Historia/);
   for (const text of ['Entrenadora Ejemplo', 'Historia ficticia', 'Jugador Uno', 'Anunciado para 2026-12', 'Ligas verificadas']) assert.ok(box.textContent.includes(text), text);
-  assert.match(box.textContent, /no cambian las alineaciones/);
+  assert.match(box.textContent, /El DT elige el once titular.*no altera partidos ya comprometidos/);
 });
 
 test('un invitado puede explorar fichas de clubes sin poder guardar afición', async t => {
@@ -3523,4 +3531,69 @@ test('una reprogramación automática informa la nueva hora y suspende nuevas ap
   assert.equal(h.window.document.getElementById('est-preshow-timer').textContent, '30:00');
   assert.match(h.window.document.getElementById('est-markets').textContent, /Nuevas apuestas suspendidas/);
   assert.equal(h.window.document.querySelectorAll('.est-market-group').length, 0);
+});
+
+test('MonteCristo News transmite despidos y contrataciones de DT en apertura de temporada y muestra el boletín de clubes', async t => {
+  const clubNews = [
+    {
+      id: 'coach-hired:2026-11:united_vanguard:mgr_mendoza',
+      type: 'coach_change',
+      seasonMonth: '2026-11',
+      clubId: 'united_vanguard',
+      clubName: 'Farselona FC',
+      badge: 'NUEVO DT · 2026-11',
+      headline: 'Farselona FC contrata al DT Gael Mendoza',
+      subtitle: 'Releva a Bruno Alcázar · Nueva pizarra 4-3-3',
+      summary: 'Tras despedir a Bruno Alcázar por mal rendimiento, Farselona FC contrata a Gael Mendoza con dibujo 4-3-3.',
+      spoken: 'Noticia de banquillos en Farselona FC: tras despedir a Bruno Alcázar por mal rendimiento, asume el director técnico Gael Mendoza para la temporada 2026-11.'
+    },
+    {
+      id: 'tactics:2026-11:sporting_almar:4-2-3-1',
+      type: 'tactical_shift',
+      seasonMonth: '2026-11',
+      clubId: 'sporting_almar',
+      clubName: 'Liverpulpo FC',
+      badge: 'CAMBIO DE FORMACIÓN · 4-2-3-1',
+      headline: 'DT Marina Salcedo cambia a 4-2-3-1 en Liverpulpo FC',
+      subtitle: 'Deja el 4-4-2 · Nuevo plan de contraataque',
+      summary: 'La DT Marina Salcedo movió la pizarra del 4-4-2 al 4-2-3-1.',
+      spoken: 'Movimiento de pizarra en Liverpulpo FC: la directora técnica Marina Salcedo cambia la formación al 4-2-3-1.'
+    }
+  ];
+  const h = createHarness({
+    speechSynthesis: true,
+    extraTeams: {
+      united_vanguard: team('united_vanguard', 'Farselona FC', 'FAR', '#d32f2f', '#111111'),
+      sporting_almar: team('sporting_almar', 'Liverpulpo FC', 'LVP', '#388e3c', '#ffffff')
+    },
+    onTransfersGet: () => ({
+      ok: true,
+      transfers: { status: 'scheduled', seasonMonth: '2026-11', effectiveSeason: '2026-12', moves: [], clubNews },
+      firstView: false,
+      clubNewsFirstView: true
+    })
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  const doc = h.window.document;
+  doc.getElementById('est-hub-open').click();
+  doc.querySelector('[data-hub-view="mercado"]').click();
+  const panel = doc.querySelector('[data-hub-panel="mercado"]');
+  const news = panel.querySelector('.est-news');
+  assert.ok(news, 'abre MonteCristo News automáticamente con anuncios de nuevos DT en apertura');
+  news.querySelector('.est-news-voice').click();
+  assert.equal(h.speech.utterances.length, 1);
+  assert.match(h.speech.utterances[0].text, /Bienvenidos a MonteCristo News/);
+  h.speech.finish(0);
+  h.advanceTime(250);
+  assert.equal(h.speech.utterances.length, 2);
+  assert.match(h.speech.utterances[1].text, /Bruno Alcázar/);
+  assert.match(h.speech.utterances[1].text, /Gael Mendoza/);
+  assert.ok(news.querySelector('img[src="/assets/escudos/FAR.svg"]'), 'muestra el escudo del club anunciado');
+  news.querySelector('.est-news-skip').click();
+  const cards = panel.querySelectorAll('.est-club-news-card');
+  assert.equal(cards.length, 2, 'muestra las tarjetas del boletín de clubes');
+  assert.match(panel.textContent, /Farselona FC contrata al DT Gael Mendoza/);
+  assert.match(panel.textContent, /DT Marina Salcedo cambia a 4-2-3-1/);
+  assert.ok(panel.querySelector('.est-market-replay'), 'permite volver a ver la conferencia');
 });

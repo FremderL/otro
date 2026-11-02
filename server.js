@@ -3735,14 +3735,13 @@ async function initFootball() {
   // Postgres (ver el gancho onFootballWriterAcquired más abajo) antes de que
   // ningún barrido vuelva a escribir.
   const writerPending = profiles.footballWriter && profiles.footballWriter.pending;
-  if (!writerPending) footballStore.ensureSeason(new Date());
-  // Simétrico al arranque: al adquirir la concesión en segundo plano, se relee
-  // el estado del Estadio (lo que alcanzó a escribir la instancia saliente)
-  // antes de que las escrituras queden habilitadas.
   if (writerPending) {
     profiles.onFootballWriterAcquired = async () => {
       await footballStore._loadOnce();
-      footballStore.ensureSeason(new Date());
+      await footballEngine.reconcileBoot(Date.now());
+      await footballQuiniela?.sweep?.(Date.now());
+      await footballBallonDorMarket?.sweep?.(Date.now());
+      await footballScheduler?.runAutoRescheduleSweep?.(Date.now());
       logEvent('football_writer_acquired_after_wait', { seasonMonth: footballStore.getCurrentSeasonMonth() });
     };
   }
@@ -3779,12 +3778,7 @@ async function initFootball() {
     }
   };
 
-  // La política y los partidos próximos deben estar persistidos ANTES de
-  // reconciliar encuentros o aceptar apuestas. Una obligación antigua real se
-  // conserva; no se usa para imponer V1 a partidos nuevos sin obligaciones.
   const officialV2 = createOfficialV2({ store: footballStore, log: footballLog, now: () => Date.now() });
-  const ready = await officialV2.prepareUpcoming(Date.now());
-  if (!ready.ok && !ready.legacy) throw new Error(`No se pudo preparar V2: ${ready.reason}`);
 
   // 3. Flujo de apostadores simulados (invisible, §11.6) + servicio de apuestas.
   const simulatedFlow = new SimulatedFlow({ log: footballLog });
@@ -3828,18 +3822,23 @@ async function initFootball() {
   // tarjetas y goleadores YA revelados, sin leer resultados futuros privados.
   footballBetting.futureMarket.getLiveState = (match, at) => publicProjectionState(footballEngine, match, at);
 
-  // 5. Reconciliación de arranque (§15.6): reconstruye el estado de los partidos no
-  //    terminales desde (seed, now) y cuadra el escrow. ANTES de aceptar tráfico.
-  footballEngine.reconcile(Date.now());
+  // 5. Reconciliación de arranque / despertar tras inactividad (§15.6):
+  //    liquida por jornada los partidos vencidos más de 30 min (incluidas temporadas
+  //    anteriores antes de rotar), conserva reprogramables (<= 30 min), prepara el
+  //    horizonte próximo de V2 y cuadra el escrow ANTES de aceptar tráfico.
+  await footballEngine.reconcileBoot(Date.now());
 
   // 5a. Recuperación de la quiniela al arrancar: aplica con operationId los
-  //     movimientos del diario que un crash dejó a medias (entrada/premio/
-  //     reembolso pendientes) sin pagar nada dos veces. ANTES de aceptar tráfico.
-  try {
-    const quinielaRecovery = await footballQuiniela.recover();
-    if (quinielaRecovery.recovered > 0) logEvent('football_quiniela_recovered', quinielaRecovery);
-  } catch (error) {
-    logEvent('football_quiniela_recover_error', { message: String(error?.message || error) });
+  //     movimientos del diario que un crash dejó a medias y liquida jornadas ya
+  //     cerradas durante la inactividad sin pagar nada dos veces.
+  if (!writerPending) {
+    try {
+      const quinielaRecovery = await footballQuiniela.recover();
+      if (quinielaRecovery.recovered > 0) logEvent('football_quiniela_recovered', quinielaRecovery);
+      await footballQuiniela.sweep(Date.now());
+    } catch (error) {
+      logEvent('football_quiniela_recover_error', { message: String(error?.message || error) });
+    }
   }
 
   // 5b. Auditoría del acumulado del Balón de Oro contra el archivo por partido.
@@ -3864,7 +3863,7 @@ async function initFootball() {
       logEvent('football_ballon_dor_stats_mismatch', {
         seasonMonth, status: audit.status, checked: audit.checked, mismatched: audit.mismatched, detail
       });
-      if (audit.repairable) {
+      if (audit.repairable && !writerPending) {
         const repair = await footballStore.repairBallonDor(seasonMonth, { apply: true });
         logEvent(repair.ok && !repair.already ? 'football_ballon_dor_stats_repaired'
           : 'football_ballon_dor_stats_repair_skipped', {
@@ -3888,13 +3887,15 @@ async function initFootball() {
 
   // Recupera/transiciona ciclos BDO antes de aceptar tráfico y antes del reset
   // mensual de perfiles. Un fallo del premio se registra, pero nunca impide casino.
-  try {
-    const bdoSummary = await footballBallonDorMarket.sweep(Date.now());
-    const operationalSummary = { ...bdoSummary };
-    delete operationalSummary.refunded;
-    logEvent('football_ballon_dor_boot_sweep', operationalSummary);
-  } catch (error) {
-    logEvent('football_ballon_dor_boot_sweep_error', { message: String(error?.message || error) });
+  if (!writerPending) {
+    try {
+      const bdoSummary = await footballBallonDorMarket.sweep(Date.now());
+      const operationalSummary = { ...bdoSummary };
+      delete operationalSummary.refunded;
+      logEvent('football_ballon_dor_boot_sweep', operationalSummary);
+    } catch (error) {
+      logEvent('football_ballon_dor_boot_sweep_error', { message: String(error?.message || error) });
+    }
   }
 
   // 6. Capa de protocolo Socket.IO (§14). Añade su propio io.on('connection'),
@@ -3920,6 +3921,7 @@ async function initFootball() {
   footballScheduler = new FootballScheduler(footballEngine, {
     officialV2, ballonDorService: footballBallonDorMarket, quinielaService: footballQuiniela, logEvent: footballLog
   });
+  if (!writerPending) await footballScheduler.runAutoRescheduleSweep(Date.now());
   footballScheduler.start();
 
   logEvent('football_initialized', {

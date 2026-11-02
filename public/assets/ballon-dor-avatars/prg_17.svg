@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="Avatar ilustrado de futbolista ficticio">
+ <defs>
+  <radialGradient id="bg" cx="35%" cy="20%" r="90%"><stop stop-color="#eceff1"/><stop offset="1" stop-color="#212121"/></radialGradient>
+  <linearGradient id="shirt" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eceff1"/><stop offset="1" stop-color="#212121"/></linearGradient>
+  <radialGradient id="face" cx="35%" cy="25%" r="80%"><stop stop-color="#ecc09b"/><stop offset="1" stop-color="#ecc09b"/></radialGradient>
+  <clipPath id="portrait"><circle cx="80" cy="80" r="74"/></clipPath>
+ </defs>
+ <circle cx="80" cy="80" r="77" fill="#081413" stroke="#e5bd72" stroke-width="2"/>
+ <g clip-path="url(#portrait)">
+  <rect width="160" height="160" fill="url(#bg)"/>
+  <circle cx="80" cy="66" r="57" fill="none" stroke="#fff4d8" stroke-opacity=".13" stroke-width="1"/>
+  <path d="M20 45 Q80 10 140 45" fill="none" stroke="#fff4d8" stroke-opacity=".12" stroke-width="2"/>
+  <path d="M26 160 Q29 128 49 118 L63 110 Q80 126 97 110 L111 118 Q132 128 134 160 Z" fill="url(#shirt)"/>
+  <path d="M34 145 Q80 133 126 145 L130 160 L30 160 Z" fill="#212121" opacity=".44"/><path d="M56 119 L67 112 L80 128 L93 112 L104 119 L99 135 L61 135 Z" fill="#212121" opacity=".86"/><text x="80" y="153" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="#fff8e9" opacity=".9">17</text>
+  <path d="M68 103 L92 103 L96 119 Q80 132 64 119 Z" fill="#ecc09b"/>
+  <ellipse cx="48" cy="75" rx="7" ry="12" fill="#ecc09b"/>
+  <ellipse cx="112" cy="75" rx="7" ry="12" fill="#ecc09b"/>
+  <ellipse cx="80" cy="70" rx="35" ry="43" fill="url(#face)"/>
+  <path d="M44 73 Q41 43 60 33 Q82 24 104 34 Q119 44 116 73 L108 60 Q100 49 88 52 L82 47 Q71 54 59 52 L52 62 Z" fill="#12161c"/>
+  <path d="M63 67 Q70 63 76 67" fill="none" stroke="#12161c" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M84 67 Q90 63 97 67" fill="none" stroke="#12161c" stroke-width="2.6" stroke-linecap="round"/>
+  <ellipse cx="70" cy="73" rx="2.6" ry="2.1" fill="#17201d"/>
+  <ellipse cx="90" cy="73" rx="2.6" ry="2.1" fill="#17201d"/>
+  <path d="M79.5 72 Q76.5 82 80.5 86 Q83.5 87 84.5 85" fill="none" stroke="#694d3d" stroke-opacity=".72" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M70 94 Q80 99 90 94" fill="none" stroke="#7f4640" stroke-width="2" stroke-linecap="round"/>
+
+  <path d="M54 116 Q80 124 106 116" fill="none" stroke="#fff6dc" stroke-opacity=".55" stroke-width="1.5"/>
+ </g>
+ <circle cx="80" cy="80" r="74" fill="none" stroke="#fff0cb" stroke-opacity=".6" stroke-width="1"/>
+</svg>

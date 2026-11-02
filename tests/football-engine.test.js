@@ -469,5 +469,114 @@ test('no reprograma silenciosamente fuera de la temporada ni arranca sin decisi�
   assert.equal(match.status, 'scheduled');
   assert.equal(match.scheduledKickoffAt, now - 120000);
   assert.ok(logs.some(item => item.event === 'football_auto_reschedule_season_boundary'));
+  // Superados los 30 minutos desde la hora prevista, no cruza de mes: liquida
+  // directamente dentro de su propia temporada.
+  const pastWindow = match.scheduledKickoffAt + 31 * 60000;
+  await scheduler.runAutoRescheduleSweep(pastWindow);
+  assert.equal(match.status, 'settled');
+  assert.equal(match.seasonMonth, '2026-10');
+  assert.ok(match.result && Number.isInteger(match.result.home));
+  store.close();
+});
+
+test('ventana de 30 minutos: hasta 30 min reprograma; pasado 30 min liquida directo con estadísticas completas', async () => {
+  const { store, filePath } = freshStore();
+  const matches = store.getMatches();
+  const withinWindow = matches[0];
+  const pastWindow = matches[1];
+  for (const other of matches) {
+    other.scheduledKickoffAt = T0 + 100 * 86400000;
+    other.day = 25;
+  }
+  // Exactamente a 30 min de su inicio original -> todavía se reprograma.
+  withinWindow.scheduledKickoffAt = T0;
+  withinWindow.day = 10;
+  // 30 min + 1 ms después de su inicio original -> ya NO se reprograma ni se juega en vivo.
+  pastWindow.scheduledKickoffAt = T0 - 1;
+  pastWindow.day = 10;
+
+  const logs = [], settledBets = [];
+  const engine = new FootballEngine(store, {
+    logEvent: (event, data) => logs.push({ event, data }),
+    settleBets: (m, score) => settledBets.push({ matchId: m.id, score })
+  });
+  const scheduler = new FootballScheduler(engine, { logEvent: (event, data) => logs.push({ event, data }) });
+
+  const sweepAt = T0 + 30 * 60000;
+  await scheduler.runAutoRescheduleSweep(sweepAt);
+
+  assert.equal(withinWindow.status, 'scheduled', 'en el límite exacto de 30 min aún reprograma');
+  assert.equal(withinWindow.scheduledKickoffAt, sweepAt + 30 * 60000);
+  assert.equal(withinWindow.autoReschedulePreviousKickoffAt, T0);
+
+  assert.equal(pastWindow.status, 'settled', 'pasados 30 min se liquida directamente');
+  assert.equal(pastWindow.actualKickoffAt, null, 'nunca se simula en tiempo real');
+  assert.equal(pastWindow.scheduledKickoffAt, T0 - 1, 'conserva su horario original sin reprogramar');
+  assert.ok(pastWindow.result && ['home', 'away', 'draw'].includes(pastWindow.result.winner));
+  assert.ok(pastWindow.result.halftime && Number.isInteger(pastWindow.result.halftime.home));
+  assert.ok('firstScorer' in pastWindow.result);
+  assert.ok(pastWindow.result.cards && Number.isInteger(pastWindow.result.cards.yellow) && Number.isInteger(pastWindow.result.cards.red));
+  assert.ok(Array.isArray(pastWindow.fantasyStats) && pastWindow.fantasyStats.length >= 22, 'archiva Mi Once');
+  assert.ok(pastWindow.highlights && Array.isArray(pastWindow.highlights.goals), 'archiva destacados');
+  assert.equal(pastWindow.highlights.goals.length, pastWindow.result.home + pastWindow.result.away);
+  assert.equal(settledBets.length, 1);
+  assert.equal(settledBets[0].matchId, pastWindow.id);
+  assert.ok(logs.some(item => item.event === 'football_overdue_settled' && item.data.match === pastWindow.id));
+
+  // El resumen consultado por el cliente expone faltas, tarjetas, tiros, goles y asistencias finales.
+  const derived = engine.deriveMatchState(pastWindow, pastWindow.scheduledKickoffAt + 60000);
+  assert.equal(derived.ended, true);
+  assert.equal(derived.phase, 'ended');
+  assert.deepEqual(derived.state.score, { home: pastWindow.result.home, away: pastWindow.result.away });
+  assert.ok(derived.state.fouls && Number.isInteger(derived.state.fouls.home) && Number.isInteger(derived.state.fouls.away));
+  assert.ok(Number.isInteger(derived.state.shots.home) && Number.isInteger(derived.state.corners.home));
+
+  const standings = store.getLeague().standings;
+  const homeRow = standings.find(row => row.teamId === pastWindow.homeId);
+  const awayRow = standings.find(row => row.teamId === pastWindow.awayId);
+  assert.equal(homeRow.played, 1);
+  assert.equal(awayRow.played, 1);
+
+  const restored = new FootballStore(filePath);
+  assert.equal(restored.getMatch(pastWindow.id).status, 'settled');
+  restored.close();
+  store.close();
+});
+
+test('un partido ya reprogramado o con persistencia caída > 30 min no vuelve a reprogramarse: se liquida', async () => {
+  const { store } = freshStore();
+  const matches = store.getMatches();
+  const rescheduledOnce = matches[0];
+  const unconfirmedExpired = matches[1];
+  for (const other of matches) {
+    other.scheduledKickoffAt = T0 + 100 * 86400000;
+    other.day = 25;
+  }
+  rescheduledOnce.scheduledKickoffAt = T0;
+  rescheduledOnce.day = 10;
+  unconfirmedExpired.scheduledKickoffAt = T0 + 12 * 60000;
+  unconfirmedExpired.day = 10;
+
+  const engine = new FootballEngine(store);
+  const scheduler = new FootballScheduler(engine);
+
+  // 1) Se reprograma a T0 + 10 min -> nuevo horario T0 + 40 min (unconfirmedExpired aún es futuro).
+  await scheduler.runAutoRescheduleSweep(T0 + 10 * 60000);
+  assert.equal(rescheduledOnce.status, 'scheduled');
+  assert.equal(rescheduledOnce.scheduledKickoffAt, T0 + 40 * 60000);
+  assert.equal(rescheduledOnce.autoReschedulePreviousKickoffAt, T0);
+
+  // 2) unconfirmedExpired falla al persistir en T0 + 15 min (3 min tarde <= 30 min).
+  const save = store.saveStrict.bind(store);
+  store.saveStrict = () => false;
+  await scheduler.runAutoRescheduleSweep(T0 + 15 * 60000);
+  assert.equal(unconfirmedExpired.autoReschedulePending, true);
+
+  // 3) La persistencia vuelve en T0 + 43 min: ambos superan 30 min desde su hora original -> liquidan directo.
+  store.saveStrict = save;
+  await scheduler.runAutoRescheduleSweep(T0 + 43 * 60000);
+  assert.equal(rescheduledOnce.status, 'settled', 'no encadena una segunda reprogramación');
+  assert.equal(unconfirmedExpired.status, 'settled', 'descarta la reprogramación sin confirmar y liquida');
+  assert.equal(unconfirmedExpired.autoReschedulePending, undefined);
   store.close();
 });

@@ -75,3 +75,44 @@ test('la Rueda conserva 54 sectores y su flecha en el cliente', () => {
   assert.equal((markup.match(/data-fortune-sector="/g) || []).length, 54);
   assert.match(markup, /fortune-pointer/);
 });
+
+test('regla obligatoria MonteCristo News: todo módulo que afecte a clubes está registrado y cubierto', () => {
+  const agentsDoc = read('AGENTS.md');
+  const ruleDoc = read('docs/montecristo-news-regla-clubes.md');
+  assert.match(agentsDoc, /MonteCristo News/i);
+  assert.match(agentsDoc, /afecte a (los )?clubes/i);
+  assert.match(ruleDoc, /REGLA OBLIGATORIA/i);
+
+  const {
+    CLUB_NEWS_TYPES,
+    CLUB_IMPACT_REGISTRY,
+    NON_CLUB_NEWS_MODULES
+  } = require('../lib/football/club-news');
+
+  const footballDir = path.join(ROOT, 'lib', 'football');
+  const jsFiles = fs.readdirSync(footballDir, { withFileTypes: true })
+    .filter(entry => entry.isFile() && entry.name.endsWith('.js'))
+    .map(entry => entry.name)
+    .sort();
+
+  const unclassified = jsFiles.filter(name => !CLUB_IMPACT_REGISTRY[name] && !NON_CLUB_NEWS_MODULES[name]);
+  assert.deepEqual(
+    unclassified,
+    [],
+    `Regla MonteCristo News: los siguientes módulos de lib/football/ no declaran su cobertura en CLUB_IMPACT_REGISTRY (o NON_CLUB_NEWS_MODULES si no afectan a clubes) de lib/football/club-news.js: ${unclassified.join(', ')}. Todo desarrollo que afecte a clubes debe incluirse en MonteCristo News.`
+  );
+
+  const overlap = jsFiles.filter(name => CLUB_IMPACT_REGISTRY[name] && NON_CLUB_NEWS_MODULES[name]);
+  assert.deepEqual(overlap, [], `Módulos clasificados simultáneamente como con y sin impacto de club: ${overlap.join(', ')}`);
+
+  for (const [moduleName, meta] of Object.entries(CLUB_IMPACT_REGISTRY)) {
+    assert.ok(jsFiles.includes(moduleName), `CLUB_IMPACT_REGISTRY referencia un módulo inexistente: ${moduleName}`);
+    assert.ok(meta && typeof meta.domain === 'string' && meta.domain.trim().length > 0, `${moduleName} requiere descripción de dominio`);
+    assert.ok(Array.isArray(meta.newsTypes) && meta.newsTypes.length > 0, `${moduleName} debe declarar al menos un tipo de anuncio en MonteCristo News`);
+  }
+
+  const coveredTypes = new Set(Object.values(CLUB_IMPACT_REGISTRY).flatMap(meta => meta.newsTypes));
+  for (const type of CLUB_NEWS_TYPES) {
+    assert.ok(coveredTypes.has(type), `El tipo de anuncio de club "${type}" no tiene módulo emisor registrado`);
+  }
+});

@@ -69,7 +69,7 @@ test('desempate V2 puede resolverse en tiempo normal, prórroga o tanda con fís
 });
 
 test('replay de tanda solo revela penales jugados, mantiene cuotas durante prórroga y recupera ganador', () => {
-  const { input, match } = fixture(), key = '05'.repeat(32), model = Q.createEstimatedModel(input);
+  const { input, match } = fixture(), key = '10'.repeat(32), model = Q.createEstimatedModel(input);
   const record = makeCommitment(input, key, input.asOf, model);
   assert.ok(verifyCommitment(record, match));
   assert.equal(verifyCommitment(record, { ...match, desempate: false }), false);
