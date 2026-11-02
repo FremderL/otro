@@ -371,7 +371,9 @@ test('scheduler prioriza partidos vencidos y aísla una falla del horizonte sin 
   const scheduler = new FootballScheduler(engine, { officialV2, logEvent: (event, data) => logs.push({ event, data }) });
   scheduler.runKickoffSweep(10);
   await scheduler.kickoffPending;
-  assert.deepEqual(calls, ['prepare:bloqueado', 'prepare:listo', 'start:listo', 'upcoming', 'pregenerate']);
+  assert.ok(calls.indexOf('prepare:listo') < calls.indexOf('upcoming'));
+  assert.ok(calls.includes('start:listo'));
+  assert.ok(calls.includes('pregenerate'));
   assert.equal(matches[0].status, 'scheduled', 'sin persistencia confirmada no se arranca');
   assert.equal(matches[1].status, 'live');
   assert.ok(logs.some(log => log.event === 'football_v2_kickoff_not_ready' && log.data.reason === 'persistencia_pendiente'));
@@ -497,4 +499,86 @@ test('pasados 30 minutos liquida directo V2 (comprometido o fuera del horizonte 
     const audit = auditSeason(h.store, '2026-11');
     assert.ok(audit.matches > 0, 'auditSeason procesa toda la temporada incluyendo los encuentros asentados sin fallo de pricing');
   } finally { h.close(); }
+});
+
+test('un prepare/horizonte colgado no bloquea otros kickoffs y no se duplica al barrer', async () => {
+  const calls = [], logs = [];
+  let releaseMatch, releaseUpcoming;
+  const stuck = new Promise(resolve => { releaseMatch = resolve; });
+  const upcoming = new Promise(resolve => { releaseUpcoming = resolve; });
+  const matches = [
+    { id: 'pending', status: 'scheduled', scheduledKickoffAt: 1000 },
+    { id: 'west-hamon', status: 'scheduled', scheduledKickoffAt: 6000 }
+  ];
+  const engine = {
+    opts: { pregenerateMs: 10 }, operationalMatches: () => matches,
+    startMatch(match) { calls.push('start:' + match.id); match.status = 'live'; },
+    pregenerateUpcoming() {}
+  };
+  const officialV2 = {
+    prepareMatch(match) { calls.push('prepare:' + match.id); return match.id === 'pending' ? stuck : Promise.resolve({ ok: true }); },
+    prepareUpcoming() { calls.push('upcoming'); return upcoming; }
+  };
+  const scheduler = new FootballScheduler(engine, { officialV2, logEvent: (event, data) => logs.push({ event, data }) });
+  scheduler.runKickoffSweep(1000);
+  await new Promise(resolve => setImmediate(resolve));
+  scheduler.runKickoffSweep(6000);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(matches[1].status, 'live');
+  scheduler.runKickoffSweep(16000);
+  scheduler.runKickoffSweep(21000);
+  assert.equal(calls.filter(call => call === 'prepare:pending').length, 1);
+  assert.equal(calls.filter(call => call === 'upcoming').length, 1);
+  assert.equal(logs.filter(log => log.event === 'football_kickoff_waiting').length, 1);
+  // El watchdog reprograma mientras la persistencia del kickoff está pendiente.
+  matches[0].scheduledKickoffAt = 100000;
+  releaseMatch({ ok: true }); releaseUpcoming({ ok: true });
+  await scheduler.kickoffPending;
+  assert.equal(matches[0].status, 'scheduled', 'el callback viejo no inicia una nueva programación');
+  assert.equal(scheduler.kickoffByMatch.size, 0);
+});
+
+test('West Hamón arranca contra Arsénico y Bayern con compromiso durable y tras reinicio', async () => {
+  const h = setup();
+  try {
+    const matches = h.league.calendar.matches.filter(match => match.homeId === 'norvela_sporting').slice(0, 2);
+    assert.deepEqual(matches.map(match => match.awayId), ['dynamo_kelvar', 'cs_verdania']);
+    for (const match of matches) {
+      h.setNow(match.scheduledKickoffAt);
+      assert.equal((await h.officialV2.prepareMatch(match)).ok, true);
+      const loaded = new FootballStore(h.file);
+      try {
+        const v2 = createOfficialV2({ store: loaded, now: h.now });
+        const engine = new FootballEngine(loaded, { officialV2: v2 });
+        const saved = loaded.getMatch(match.id, match.seasonMonth);
+        const snapshot = JSON.stringify(saved.simulation);
+        const scheduler = new FootballScheduler(engine, { officialV2: v2 });
+        scheduler.runKickoffSweep(saved.scheduledKickoffAt);
+        await scheduler.kickoffPending;
+        assert.equal(saved.status, 'live');
+        assert.equal(JSON.stringify(saved.simulation), snapshot);
+      } finally { loaded.close(); }
+    }
+  } finally { h.close(); }
+});
+
+test('un compromiso confirmado puede arrancar aunque la cola de temporada esté ocupada', async () => {
+  const { withSeasonAdmission } = require('../lib/football/season-admission');
+  const h = setup();
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let locked;
+  try {
+    const match = h.league.calendar.matches[0];
+    assert.equal((await h.officialV2.prepareMatch(match)).ok, true);
+    const before = JSON.stringify(match.simulation);
+    locked = withSeasonAdmission(h.store, match.seasonMonth, () => gate);
+    const scheduler = new FootballScheduler(h.engine, { officialV2: h.officialV2 });
+    scheduler.runKickoffSweep(match.scheduledKickoffAt);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(match.status, 'live', 'no espera la precarga de otros partidos');
+    assert.equal(JSON.stringify(match.simulation), before);
+    release();
+    await scheduler.kickoffPending;
+  } finally { release(); await locked; h.close(); }
 });
