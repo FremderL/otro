@@ -1093,3 +1093,22 @@ test('la ficha de club usa la liga actual y permite consultar sin elegir afició
   assert.equal(result.club.manager.formation, ctx.store.getLeague(ctx.month).config.find(c => c.id === id).tactics.formation);
   assert.equal(s._fire('football:club_profile_get', { clubId: 'club_inventado' }).ok, false);
 });
+
+test('reprogramación automática solo publica la nueva hora tras persistirla', t => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const m = ctx.scheduled, old = m.scheduledKickoffAt, next = old + 30 * 60000;
+  m.autoRescheduledAt = old + 120000;
+  m.autoReschedulePreviousKickoffAt = old;
+  m.autoReschedulePending = true;
+  m.autoReschedulePreviousDay = m.day;
+  m.scheduledKickoffAt = next;
+  assert.equal(ctx.sockets.buildMatchState(m.id, null).match.scheduledKickoffAt, old);
+  assert.equal(ctx.sockets.buildMatchState(m.id, null).match.autoRescheduled, false);
+  assert.deepEqual(ctx.sockets.buildMatchState(m.id, null).markets, {});
+  m.autoReschedulePending = false;
+  assert.equal(ctx.sockets.buildMatchState(m.id, null).match.scheduledKickoffAt, next);
+  assert.equal(ctx.sockets.buildMatchState(m.id, null).match.autoRescheduled, true);
+  ctx.engine.emit('football:status', { matchId: m.id, code: 'rescheduled', scheduledKickoffAt: next, automatic: true });
+  assert.equal(ctx.io.lastTo(matchRoom(m.id), 'football:status').automatic, true);
+});

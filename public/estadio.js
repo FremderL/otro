@@ -2555,6 +2555,7 @@
       temporada_no_actual: 'Tu perfil aún no está sincronizado con este mes. Espera un momento y reintenta.',
       evento_no_disponible: 'No hay un ciclo disponible para recibir esta predicción.',
       mercado_cerrado: 'Mercado cerrado: las predicciones terminan al asentarse los ocho partidos de J20.',
+      market_suspended: 'Predicciones suspendidas temporalmente por un partido reprogramado; los boletos existentes se conservan.',
       seleccion_invalida: 'Ese candidato no pertenece al ciclo actual.',
       cuota_no_disponible: 'La cuota de esa selección todavía no está disponible.',
       boleto_ya_colocado: 'Ya colocaste un boleto en este ciclo. No se puede cambiar ni retirar.',
@@ -3199,7 +3200,7 @@
     }
     var statusText = delayed
       ? (S.socket && S.socket.connected ? 'Kickoff pendiente · consultando el estado del partido' : 'Kickoff pendiente · sin conexión, esperando reconexión')
-      : 'Kickoff programado · ' + kickoffTime(match.scheduledKickoffAt);
+      : (match.autoRescheduled ? 'Kickoff reprogramado automáticamente · ' : 'Kickoff programado · ') + kickoffTime(match.scheduledKickoffAt);
     if (el['est-preshow-status'].textContent !== statusText) el['est-preshow-status'].textContent = statusText;
     el['est-preshow-timer'].textContent = delayed ? '' : formatPreshowCountdown(remaining);
     if (S.preshowDataMatchId !== match.id || S.preshowDataStandings !== S.standings) {
@@ -3239,6 +3240,12 @@
     var matches = lobby.matches || [];
     var selectedMatch = S.currentMatchId && matches.find(function (match) { return match.id === S.currentMatchId; });
     if (!localRedraw && selectedMatch && S.match) {
+      if (selectedMatch.autoRescheduled && !S.match.autoRescheduled) {
+        S.match.autoRescheduled = true;
+        S.markets = {};
+        if (S.slip && !S.slip.idemKey) closeSlip();
+        renderMarkets();
+      }
       if (S.match.status === 'scheduled' && ['live', 'halftime', 'extra_time', 'shootout'].indexOf(selectedMatch.status) >= 0) {
         onStatus({ matchId: S.currentMatchId, code: selectedMatch.status });
       } else {
@@ -5808,7 +5815,12 @@
       if (data.day != null) S.match.day = data.day;
       if (data.block != null) S.match.block = data.block;
       updateLobbyMatchKickoff(data.matchId, data.scheduledKickoffAt, data.day, data.block);
-      toast('Horario del partido reprogramado.', 'info');
+      if (data.automatic) {
+        S.match.autoRescheduled = true;
+        S.markets = {};
+        if (S.slip && !S.slip.idemKey) closeSlip();
+      }
+      toast(data.automatic ? 'El partido no empezó y fue reprogramado. Nuevas apuestas suspendidas.' : 'Horario del partido reprogramado.', 'info');
     }
     renderScoreboard();
     renderMarkets();
@@ -5891,7 +5903,7 @@
     var suspended = Boolean(live && S.playStopped);
     var canRetry = Boolean(S.slip && S.slip.idemKey && S.slip.requestStake === Math.floor(Number(el['est-stake'].value || 0)));
     if (el['est-place-bet']) el['est-place-bet'].disabled = Boolean(S.submitting || !S.slip || ((ended || suspended) && !canRetry));
-    if (!keys.length) { box.innerHTML = '<p class="est-muted">' + (ended ? 'Partido finalizado: mercados cerrados.' : 'Sin mercados disponibles todavía.') + '</p>'; return; }
+    if (!keys.length) { box.innerHTML = '<p class="est-muted">' + (ended ? 'Partido finalizado: mercados cerrados.' : S.match && S.match.autoRescheduled ? 'Nuevas apuestas suspendidas por reprogramación; tus boletos existentes se conservan.' : 'Sin mercados disponibles todavía.') + '</p>'; return; }
     box.innerHTML = '';
     if (suspended) {
       var notice = document.createElement('p'); notice.className = 'est-muted';

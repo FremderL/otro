@@ -283,8 +283,8 @@ test('reconcile liquida lo terminado durante la caída, reanuda lo vivo y deja l
   const ended = matches[0];   // terminó durante el apagón
   const live = matches[1];    // en juego al arrancar
   const future = matches[2];  // aún no jugado, es de hoy
-  ended.scheduledKickoffAt = T0 - 1100000; ended.day = 10;
-  live.scheduledKickoffAt = T0 - 300000; live.day = 10;
+  ended.scheduledKickoffAt = T0 - 1100000; ended.day = 10; ended.status = 'live'; ended.actualKickoffAt = ended.scheduledKickoffAt;
+  live.scheduledKickoffAt = T0 - 300000; live.day = 10; live.status = 'live'; live.actualKickoffAt = live.scheduledKickoffAt;
   future.scheduledKickoffAt = T0 + 200000; future.day = 10;
   for (const other of matches) {
     if ([ended, live, future].includes(other)) continue;
@@ -305,6 +305,7 @@ test('reconcile marca lo recuperado como replay (§15.9: sin avalancha en tiempo
   const { store } = freshStore();
   const m = isolate(store);
   m.scheduledKickoffAt = T0 - 300000; // en juego al arrancar
+  m.status = 'live'; m.actualKickoffAt = m.scheduledKickoffAt;
   const engine = new FootballEngine(store);
   engine.reconcile(T0);
   assert.strictEqual(engine.runtime.get(m.id).replay, true, 'lo reanudado al arrancar es replay');
@@ -380,4 +381,93 @@ test('un lote de jugadas recientes no se confunde con el catch-up histórico', (
   assert.equal(last.length, 2);
   assert.ok(last.every(p => !p.catchUp), 'ambas acciones acaban de suceder');
   assert.ok(recent.some(p => p.catchUp), 'los eventos antiguos sí son historia');
+});
+
+test('partido no iniciado se reprograma 30 minutos después de detectar dos minutos de retraso', async () => {
+  const { store, filePath } = freshStore();
+  const match = isolate(store), engine = new FootballEngine(store), scheduler = new FootballScheduler(engine);
+  const rescheduled = [], statuses = [];
+  engine.on('football:rescheduled', event => rescheduled.push(event));
+  engine.on('football:status', event => statuses.push(event));
+  await scheduler.runAutoRescheduleSweep(T0 + 119999);
+  assert.equal(match.scheduledKickoffAt, T0);
+  // Nunca mostrar jugadas futuras de un encuentro que continúa programado.
+  const projection = engine.deriveMatchState(match, T0 + 119999);
+  assert.equal(projection.phase, 'pre');
+  assert.equal(projection.revealedIndex, -1);
+  await scheduler.runAutoRescheduleSweep(T0 + 120000);
+  assert.equal(match.scheduledKickoffAt, T0 + 120000 + 30 * 60000);
+  assert.equal(match.status, 'scheduled');
+  assert.equal(match.actualKickoffAt, null);
+  assert.equal(rescheduled.length, 1);
+  assert.equal(rescheduled[0].automatic, true);
+  assert.equal(statuses[0].code, 'rescheduled');
+  const restored = new FootballStore(filePath);
+  assert.equal(restored.getMatch(match.id).scheduledKickoffAt, match.scheduledKickoffAt);
+  assert.equal(restored.getMatch(match.id).autoRescheduledAt, T0 + 120000);
+  await scheduler.runAutoRescheduleSweep(T0 + 120005);
+  assert.equal(rescheduled.length, 1, 'no reprograma repetidamente durante la espera');
+  scheduler.runKickoffSweep(match.scheduledKickoffAt);
+  assert.equal(match.status, 'live', 'comienza cuando llega la nueva hora');
+  restored.close(); store.close();
+});
+
+test('el reinicio conserva pendientes vencidos pero recupera partidos realmente iniciados', async () => {
+  const { store } = freshStore();
+  const delayed = isolate(store), engine = new FootballEngine(store), scheduler = new FootballScheduler(engine);
+  engine.reconcile(T0 + 22 * 60000);
+  assert.equal(delayed.status, 'scheduled', 'no inventa una liquidación por el tiempo transcurrido');
+  await scheduler.runAutoRescheduleSweep(T0 + 22 * 60000);
+  assert.equal(delayed.scheduledKickoffAt, T0 + 52 * 60000);
+  assert.equal(delayed.status, 'scheduled');
+  store.close();
+});
+
+test('reprogramación espera guardado durable y reintenta sin cambiar el compromiso', async () => {
+  const { store } = freshStore();
+  const match = isolate(store), engine = new FootballEngine(store), scheduler = new FootballScheduler(engine);
+  const save = store.saveStrict.bind(store), events = [];
+  engine.on('football:rescheduled', event => events.push(event));
+  store.saveStrict = () => false;
+  await scheduler.runAutoRescheduleSweep(T0 + 120000);
+  const scheduled = match.scheduledKickoffAt;
+  assert.equal(match.autoReschedulePending, true);
+  assert.equal(events.length, 0, 'no confirma el horario sin persistencia');
+  assert.equal(engine.startMatch(match, scheduled), false, 'no arranca mientras falta la confirmación');
+  store.saveStrict = save;
+  await scheduler.runAutoRescheduleSweep(T0 + 125000);
+  assert.equal(match.scheduledKickoffAt, scheduled);
+  assert.equal(match.autoReschedulePending, undefined);
+  assert.equal(events.length, 1);
+  store.close();
+});
+
+test('no reprograma partidos en juego ni un programado con evidencia de apuesta en vivo', async () => {
+  const { store } = freshStore();
+  const active = isolate(store), scheduled = store.getMatches()[1];
+  active.status = 'live'; active.actualKickoffAt = T0;
+  scheduled.scheduledKickoffAt = T0; scheduled.day = 10;
+  store.getBets = ({ matchId }) => matchId === scheduled.id ? [{ inPlay: true }] : [];
+  const engine = new FootballEngine(store), scheduler = new FootballScheduler(engine);
+  await scheduler.runAutoRescheduleSweep(T0 + 120000);
+  assert.equal(active.scheduledKickoffAt, T0);
+  assert.equal(scheduled.scheduledKickoffAt, T0);
+  assert.equal(active.status, 'live');
+  store.close();
+});
+
+test('no reprograma silenciosamente fuera de la temporada ni arranca sin decisión', async () => {
+  const { store } = freshStore();
+  const match = isolate(store), logs = [];
+  // 31 de octubre, 23:40 en México: una nueva hora a +30 cruza de mes.
+  const now = Date.UTC(2026, 10, 1, 5, 40);
+  match.scheduledKickoffAt = now - 120000;
+  const engine = new FootballEngine(store);
+  const scheduler = new FootballScheduler(engine, { logEvent: (event, data) => logs.push({ event, data }) });
+  await scheduler.runAutoRescheduleSweep(now);
+  scheduler.runKickoffSweep(now);
+  assert.equal(match.status, 'scheduled');
+  assert.equal(match.scheduledKickoffAt, now - 120000);
+  assert.ok(logs.some(item => item.event === 'football_auto_reschedule_season_boundary'));
+  store.close();
 });
