@@ -149,6 +149,7 @@
     lobbyChatProfileForm: $('#lobby-chat-profile-form'), lobbyChatName: $('#lobby-chat-name'), lobbyChatTos: $('#lobby-chat-tos'),
     lobbyChatContent: $('#lobby-chat-content'), lobbyChatMessages: $('#lobby-chat-messages'), lobbyChatJump: $('#lobby-chat-jump'), lobbyChatForm: $('#lobby-chat-form'), lobbyChatInput: $('#lobby-chat-input'),
     gameName: $('#game-name'), phaseLabel: $('#phase-label'), roomTitle: $('#room-title'), headerCode: $('#header-code'),
+    roomAutoBotsChip: $('#room-auto-bots-chip'),
     tournamentBanner: $('#tournament-banner'),
     profileCard: $('#profile-card'), playersList: $('#players-list'), playerCount: $('#player-count'),
     chatList: $('#chat-list'), chatJump: $('#chat-jump'), chatForm: $('#chat-form'), chatInput: $('#chat-input'),
@@ -158,6 +159,8 @@
     sidebar: $('.sidebar'), soundToggle: $('#sound-toggle'),
     specialEventBanner: $('#special-event-banner'), winnerTicker: $('#winner-ticker'), reactionStage: $('#reaction-stage'),
     profileModal: $('#profile-modal'), profileForm: $('#profile-form'), profileNameInput: $('#profile-name-input'),
+    profilePreferences: $('#profile-preferences'), preferencesStatus: $('#preferences-status'),
+    setupAutoBots: $('#setup-auto-bots'), setupAutoBotsField: $('#setup-auto-bots-field'),
     profileAccountStatus: $('#profile-account-status'), profileDisplayName: $('#profile-display-name'),
     profileAvatarChoice: $('#profile-avatar-choice'), profileBigAvatar: $('#profile-big-avatar'), profileBadges: $('#profile-badges'),
     profileStats: $('#profile-stats'), rotatingChallengeList: $('#rotating-challenge-list'), challengeList: $('#challenge-list'), achievementList: $('#achievement-list'),
@@ -230,6 +233,11 @@
   // Debe coincidir con TOS_VERSION en lib/terms.js; al cambiar, se pide aceptar de nuevo.
   const TOS_VERSION = '2026-09-28';
   const TOS_KEY = 'montecristo-tos';
+  // Preferencias del perfil (pestaña Preferencias). Los valores por defecto son
+  // los históricos del casino; el servidor es la autoridad y las aplica de
+  // verdad (bots de la mesa, invitaciones). Aquí solo se pintan y se envían.
+  const PREFERENCE_DEFAULTS = Object.freeze({ autoBots: true, botsStay: false, tableInvites: true });
+  const PREFERENCES_KEY = 'montecristo-preferences';
   const routeCode = getRouteCode();
   const savedSession = readSession();
 
@@ -289,6 +297,7 @@
     lobbyChat: { joined: false, joining: false, open: false, messages: [], unread: 0 },
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
     lastEventKey: '', clockTimer: null, dailyBonusTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null,
+    preferences: readLocalPreferences(),
     profileOpen: false, profileNameDirty: false, profileSection: 'overview', collectionFilter: 'all', albumFilter: 'all', albumLastPullId: null, profileStale: false,
     betRanking: null, betRankingSource: 'total', betRankingSubscribed: false,
     profileRevision: 0, // sube con cada snapshot de perfil aplicado (ver applyProfileSnapshot)
@@ -509,6 +518,13 @@
   function applyProfileSnapshot(profile, { ambient = false } = {}) {
     if (!profile || typeof profile !== 'object' || !profile.id) return false;
     ui.profileRevision += 1;
+    // Las preferencias del perfil son la autoridad: si el snapshot las trae, se
+    // adoptan y se repintan los interruptores (también la casilla de creación).
+    if (profile.preferences && typeof profile.preferences === 'object' && !Array.isArray(profile.preferences)) {
+      ui.preferences = { ...PREFERENCE_DEFAULTS, ...(ui.preferences || {}), ...profile.preferences };
+      persistLocalPreferences();
+      renderPreferences();
+    }
     const viewer = ui.room?.viewerProfile || null;
     if (viewer && viewer.id === profile.id) {
       ui.room.viewerProfile = profile;
@@ -517,6 +533,73 @@
     if (ui.accountSession && profile.id === ui.accountSession.accountId) saveAccountSession(profile);
     else if (!ambient && !inTable() && profile.username) saveAccountSession(profile);
     return true;
+  }
+  // ---------- Preferencias del perfil ----------
+  // Se cachean en localStorage para que quien juega sin cuenta conserve lo que
+  // eligió en el formulario de creación antes de tener perfil en el servidor;
+  // en cuanto el perfil existe, sus valores manda (applyProfileSnapshot).
+  function readLocalPreferences() {
+    const out = { ...PREFERENCE_DEFAULTS };
+    try {
+      const raw = JSON.parse(localStorage.getItem(PREFERENCES_KEY) || '{}');
+      for (const key of Object.keys(out)) if (typeof raw[key] === 'boolean') out[key] = raw[key];
+    } catch (_) { /* preferencias corruptas: se usan los valores por defecto */ }
+    return out;
+  }
+  function persistLocalPreferences() {
+    try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify(ui.preferences)); } catch (_) { /* modo privado */ }
+  }
+  function setPreferencesStatus(message, isError = false) {
+    if (!els.preferencesStatus) return;
+    els.preferencesStatus.textContent = message || '';
+    els.preferencesStatus.classList.toggle('hidden', !message);
+    els.preferencesStatus.classList.toggle('is-error', Boolean(isError));
+  }
+  // Pinta los interruptores con el estado vigente. La casilla del formulario de
+  // creación es la misma preferencia: una sola verdad en toda la interfaz.
+  function renderPreferences() {
+    const values = { ...PREFERENCE_DEFAULTS, ...(ui.preferences || {}) };
+    $$('[data-preference]').forEach(input => {
+      const key = input.dataset.preference;
+      if (!Object.prototype.hasOwnProperty.call(PREFERENCE_DEFAULTS, key)) return;
+      input.checked = Boolean(values[key]);
+      const row = input.closest('[data-preference-row]');
+      if (row) row.classList.toggle('is-on', input.checked);
+    });
+    if (els.setupAutoBots) els.setupAutoBots.checked = Boolean(values.autoBots);
+  }
+  // Guarda una preferencia: primero en la interfaz (respuesta inmediata) y luego
+  // en el perfil del servidor, que es quien la aplica. Si el guardado falla se
+  // revierte el interruptor para no mentir sobre el estado real.
+  async function savePreference(key, value) {
+    if (!Object.prototype.hasOwnProperty.call(PREFERENCE_DEFAULTS, key)) return;
+    const previous = ui.preferences || readLocalPreferences();
+    ui.preferences = { ...previous, [key]: Boolean(value) };
+    persistLocalPreferences();
+    renderPreferences();
+    const profile = currentViewerProfile();
+    if (!profile) {
+      setPreferencesStatus('Se aplicará en cuanto entres a una mesa con este dispositivo.');
+      return;
+    }
+    setPreferencesStatus('Guardando…');
+    const payload = { preferences: { [key]: Boolean(value) } };
+    // Fuera de una mesa el servidor necesita saber a qué cuenta pertenece el
+    // cambio (igual que al guardar el nombre y el avatar del perfil).
+    if (!inTable()) payload.accountId = ui.accountSession?.accountId;
+    const response = await emitAck('preferences_update', payload);
+    if (!response.ok) {
+      ui.preferences = previous;
+      persistLocalPreferences();
+      renderPreferences();
+      setPreferencesStatus(response.error || 'No se pudo guardar la preferencia.', true);
+      return;
+    }
+    if (response.preferences) ui.preferences = { ...ui.preferences, ...response.preferences };
+    persistLocalPreferences();
+    if (response.profile) applyProfileSnapshot(response.profile);
+    renderPreferences();
+    setPreferencesStatus('Preferencia guardada en tu perfil.');
   }
   // Saldo de la cuenta cambiado por una respuesta que solo trae `profileChips`
   // (p. ej. tesorería del club). Mismas fuentes que applyProfileSnapshot.
@@ -978,6 +1061,10 @@
         : 'Configura tu partida. Podrás invitar a tus amigos cuando entres.';
     if (els.modalSymbol) els.modalSymbol.textContent = spectating ? '👁' : joining ? '⌁' : (GAME_META[ui.selectedGame]?.icon || '♠');
     els.roomNameField.classList.toggle('hidden', joining);
+    // Sin bots solo tiene sentido al CREAR una mesa: unirse a una que ya existe
+    // no cambia su configuración (la fijó quien la abrió).
+    els.setupAutoBotsField?.classList.toggle('hidden', joining);
+    if (els.setupAutoBots) els.setupAutoBots.checked = (ui.preferences || readLocalPreferences()).autoBots !== false;
     els.gameChoice.classList.toggle('hidden', joining);
     els.codeField.classList.toggle('hidden', !joining);
     els.modalSubmit.querySelector('.btn-label').textContent = spectating ? 'Ver la mesa' : joining ? 'Entrar a la sala' : 'Crear sala';
@@ -1096,7 +1183,14 @@
     setOverlay(true, spectating ? 'ENTRANDO A LA TRIBUNA' : joining ? 'BUSCANDO TU ASIENTO' : 'ABRIENDO UNA NUEVA MESA');
     const response = joining
       ? await emitAck(spectating ? 'spectate_room' : 'join_room', { name, code, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) })
-      : await emitAck('create_room', { name, roomName: els.roomName.value.trim(), game: ui.selectedGame, token: deviceToken, avatar: ui.selectedAvatar, tos: localStorage.getItem(TOS_KEY) });
+      : await emitAck('create_room', {
+        name, roomName: els.roomName.value.trim(), game: ui.selectedGame, token: deviceToken, avatar: ui.selectedAvatar,
+        tos: localStorage.getItem(TOS_KEY),
+        // La casilla del formulario ES la preferencia del perfil: el servidor la
+        // guarda y la aplica a esta mesa (nunca rellena sus asientos con bots si
+        // está desmarcada), incluso cuando todavía no hay cuenta.
+        preferences: { autoBots: els.setupAutoBots ? els.setupAutoBots.checked : true }
+      });
     setButtonLoading(els.modalSubmit, false); ui.joining = false;
     if (!response.ok) {
       setOverlay(false);
@@ -1571,6 +1665,8 @@
     els.gameName.textContent = `${gameMeta.icon} ${gameMeta.name}`;
     els.phaseLabel.textContent = phaseText(room.phase).toUpperCase();
     els.roomTitle.textContent = room.name || `Sala ${room.code}`;
+    // Mesa sin bots: la fijó el anfitrión con su preferencia al crearla.
+    els.roomAutoBotsChip?.classList.toggle('hidden', room.autoBots !== false);
     els.headerCode.textContent = room.code;
     const connectedCount = room.players.filter(player => player.connected).length;
     els.playerCount.textContent = `${connectedCount} / ${room.lobbyTournamentMatch ? 2 : 6}`;
@@ -2971,6 +3067,7 @@
   function renderProfileModal() {
     const profile = currentViewerProfile();
     if (!profile) return;
+    renderPreferences();
     const stats = profile.stats || {};
     // Un refresco en segundo plano (refreshAccountProfile o un profile_event
     // de la mesa) puede llegar mientras la persona ya escribió un nombre
@@ -4764,6 +4861,15 @@
   els.profileNameInput.addEventListener('input', () => {
     ui.profileNameDirty = true;
     if (els.profileDisplayName) els.profileDisplayName.textContent = els.profileNameInput.value.trim() || 'Jugador';
+  });
+  // Interruptores de la pestaña Preferencias y casilla del formulario de
+  // creación: ambos escriben la MISMA preferencia, con el servidor como destino.
+  $$('[data-preference]').forEach(input => {
+    input.addEventListener('change', () => { savePreference(input.dataset.preference, input.checked); });
+  });
+  els.setupAutoBots?.addEventListener('change', () => {
+    ui.preferences = { ...(ui.preferences || readLocalPreferences()), autoBots: els.setupAutoBots.checked };
+    persistLocalPreferences();
   });
   els.profileForm.addEventListener('submit', async event => {
     event.preventDefault();

@@ -721,6 +721,11 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 .side-footer > span { font-size: 9.5px; }
 .game-header { min-height: 76px; padding: 0 28px; }
 .room-identity h2 { margin-top: 5px; font-size: 22px; }
+.room-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* La mesa sin bots es una decisión del anfitrión, no un error: se anuncia con
+   un chip neutro junto al nombre de la sala. */
+.room-bots-chip { margin-top: 5px; padding: 3px 8px; border: 1px solid rgba(194,223,216,.24); border-radius: 7px; background: rgba(194,223,216,.07); color: #b9cbc5; font-size: 8px; font-weight: 900; letter-spacing: .12em; }
+.room-bots-chip.hidden { display: none; }
 .game-breadcrumb { font-size: 10px; }
 .connection-mini { font-size: 10px; }
 .room-code-display small { font-size: 9.5px; }
@@ -1087,6 +1092,13 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 .game-segmented button small { overflow: hidden; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
 .game-segmented button.active { border-color: rgba(229,189,114,.52); background: linear-gradient(135deg,rgba(229,189,114,.11),rgba(82,224,174,.045)); box-shadow: inset 0 0 0 1px rgba(229,189,114,.06),0 0 20px rgba(229,189,114,.045); }
 .game-segmented button.active > span { color: var(--gold-2); background: rgba(229,189,114,.13); }
+.table-setup-main .setup-toggle { display: flex; align-items: flex-start; gap: 10px; margin-top: 2px; padding: 11px 12px; border: 1px solid rgba(194,223,216,.14); border-radius: 10px; background: rgba(255,255,255,.02); cursor: pointer; transition: border-color .2s ease, background .2s ease; }
+.table-setup-main .setup-toggle:hover { border-color: rgba(82,224,174,.34); }
+.table-setup-main .setup-toggle:has(input:checked) { border-color: rgba(229,189,114,.34); background: rgba(229,189,114,.05); }
+.table-setup-main .setup-toggle input { flex: none; width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--gold-2); }
+.setup-toggle-copy { display: flex; flex-direction: column; gap: 3px; }
+.setup-toggle-copy b { color: #e6efe9; font-size: 10.5px; letter-spacing: .01em; }
+.setup-toggle-copy small { color: var(--muted-2); font-size: 8.5px; line-height: 1.5; }
 .table-setup-main #modal-submit { min-height: 49px; margin-top: 2px; }
 .table-setup-main .modal-note { justify-content: flex-start; margin-top: 14px; padding-left: 2px; font-size: 9px; }
 .table-setup-preview { min-width: 0; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; position: relative; isolation: isolate; padding: 15px; border: 1px solid rgba(229,189,114,.22); border-radius: 17px; background: radial-gradient(circle at 50% 28%,rgba(229,189,114,.13),transparent 35%),linear-gradient(160deg,#10251f 0%,#0a1716 52%,#080f11 100%); }
@@ -1147,6 +1159,21 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 .profile-content-section h3:focus-visible, .profile-content-section h4:focus-visible { outline:2px solid var(--mint); outline-offset:4px; border-radius:3px; }
 .profile-content-section + .profile-content-section { margin-top: 27px; padding-top: 22px; border-top: 1px solid rgba(194,223,216,.1); }
 .profile-content-section.hidden { display: none !important; }
+/* Pestaña Preferencias: interruptores de automatismos. Se guardan en el perfil
+   (los aplica el servidor), por eso cada fila explica el efecto real. */
+.preferences-intro { margin: 0 0 12px; color: #9db0ab; font-size: 10px; line-height: 1.55; }
+.preferences-list { display: grid; gap: 9px; }
+.preference-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid rgba(194,223,216,.12); border-radius: 12px; background: linear-gradient(150deg,rgba(255,255,255,.032),rgba(255,255,255,.01)); cursor: pointer; transition: border-color .2s ease, background .2s ease; }
+.preference-row:hover { border-color: rgba(82,224,174,.32); }
+.preference-row.is-on { border-color: rgba(229,189,114,.34); background: linear-gradient(150deg,rgba(229,189,114,.09),rgba(255,255,255,.012)); }
+.preference-row input { flex: none; width: 17px; height: 17px; margin: 2px 0 0; accent-color: var(--gold-2); cursor: pointer; }
+.preference-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.preference-copy b { color: #e9f1ec; font-size: 12px; letter-spacing: .005em; }
+.preference-copy small { color: #93a6a1; font-size: 9.5px; line-height: 1.55; }
+.preference-row:focus-within { outline: 2px solid rgba(82,224,174,.5); outline-offset: 2px; }
+.preferences-status { margin: 10px 0 0; color: var(--mint); font-size: 9.5px; font-weight: 700; letter-spacing: .04em; }
+.preferences-status.is-error { color: #ff8b8b; }
+.preferences-status.hidden { display: none; }
 .profile-overview { grid-area: overview; min-width: 0; align-self: start; position: sticky; top: 12px; overflow: hidden; padding: 20px; border: 1px solid rgba(229,189,114,.2); border-radius: 17px; background: radial-gradient(circle at 50% 0%,rgba(229,189,114,.1),transparent 37%),linear-gradient(160deg,#12221f,#0a1214 75%); box-shadow: inset 0 1px rgba(255,255,255,.035),0 18px 45px rgba(0,0,0,.18); }
 .profile-overview::before { content: "♠"; position: absolute; top: 96px; right: -10px; color: rgba(255,255,255,.022); font: 150px var(--display); pointer-events: none; }
 .profile-account-status { font-size: 8px !important; }

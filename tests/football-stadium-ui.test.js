@@ -128,7 +128,8 @@ function createHarness(options = {}) {
     myBets: options.myBets || [], commentary: []
   };
   const lobby = {
-    matches: [match], standings: options.standings || [], nextKickoffAt: null, serverNow: nowMs
+    matches: [match], standings: options.standings || [], standingsPending: options.standingsPending || null,
+    nextKickoffAt: null, serverNow: nowMs
   };
   const handlers = {};
   const requests = [];
@@ -503,6 +504,48 @@ test('el lobby y la tabla muestran los nombres cómicos completos, no solo los c
   assert.doesNotMatch(fixture, /VTR|VNG/);
   assert.match(standings, /Real Mandril/);
   assert.match(standings, /Farselona FC/);
+});
+
+test('la tabla explica un cruce en liquidación y la nota desaparece cuando el acta entra', async t => {
+  const pending = {
+    count: 1, postponed: 0,
+    matches: [{ id: 'ui-late', homeId: 'lakers', awayId: 'tigres', status: 'scheduled', scheduledKickoffAt: 1 }]
+  };
+  const h = createHarness({
+    extraTeams: { lakers: team('lakers', 'Lakers del Valle', 'LAK', '#5522cc', '#111111'), tigres: team('tigres', 'Tigres del Norte', 'TIG', '#cc8800', '#222222') },
+    standings: [{ teamId: 'home', played: 1, goalDiff: 1, points: 3 }, { teamId: 'away', played: 0, goalDiff: 0, points: 0 }],
+    standingsPending: pending
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+  const note = h.window.document.getElementById('est-standings-note');
+  assert.equal(note.hidden, false, 'la nota se muestra con un cruce vencido sin acta');
+  assert.match(note.textContent, /1 partido en liquidación/);
+  assert.match(note.textContent, /Lakers del Valle vs Tigres del Norte/);
+  assert.match(note.textContent, /se asienta automáticamente/);
+
+  // Entra el acta: el lobby deja de anunciar pendientes y la nota se oculta sola.
+  h.handlers['football:lobby']({
+    matches: [], standings: [{ teamId: 'home', played: 2, goalDiff: 2, points: 6 }, { teamId: 'away', played: 1, goalDiff: -1, points: 0 }],
+    standingsPending: { count: 0, postponed: 0, matches: [] }, nextKickoffAt: null, serverNow: 2
+  });
+  assert.equal(note.hidden, true);
+  assert.equal(note.textContent, '');
+});
+
+test('la nota distingue un partido pospuesto sin resultado', async t => {
+  const h = createHarness({
+    standingsPending: { count: 1, postponed: 1, matches: [{ id: 'ui-late', homeId: 'home', awayId: 'away', status: 'postponed', scheduledKickoffAt: 1 }] }
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+  const note = h.window.document.getElementById('est-standings-note');
+  assert.equal(note.hidden, false);
+  assert.match(note.textContent, /1 partido sin acta/);
+  assert.match(note.textContent, /pospuesto sin resultado/);
+  assert.match(note.textContent, /La tabla cuenta solo lo jugado/);
 });
 
 test('las galerías de anuncios del Estadio y de administración solo apuntan a imágenes existentes', () => {
@@ -1345,6 +1388,34 @@ test('la cabina de comentarios destaca el feed y diferencia a sus dos voces', as
   assert.ok(analyst.classList.contains('analista'));
   assert.match(analyst.querySelector('.est-cmt-voice').textContent, /ANALISTA/);
   assert.equal(feed.querySelectorAll('.est-cmt.is-latest').length, 1, 'solo el comentario más reciente conserva el foco visual');
+});
+
+test('la previa de la cabina se rotula PREVIA y no inventa un minuto de juego', async t => {
+  const h = createHarness();
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const feed = window.document.getElementById('est-commentary');
+  handlers['football:commentary']({
+    matchId: match.id, voice: 'narrador', type: 'pregame', minute: null, importance: 'previa',
+    text: 'Buenas tardes desde el estadio: ya están los dos equipos en el túnel.'
+  });
+  const opening = feed.querySelector('.est-cmt.is-latest');
+  assert.ok(opening.classList.contains('is-previa'), 'la previa se distingue del relato del partido');
+  assert.match(opening.querySelector('.est-cmt-minute').textContent, /PREVIA/);
+  assert.doesNotMatch(opening.querySelector('.est-cmt-minute').textContent, /\d/);
+
+  handlers['football:commentary']({
+    matchId: match.id, voice: 'analista', type: 'pregame', minute: null, importance: 'previa',
+    text: 'En la tabla, el local es tercero y la visita novena.'
+  });
+  assert.equal(feed.querySelectorAll('.est-cmt.is-previa').length, 2, 'la conversación previa se acumula en la cabina');
+
+  // El relato del partido conserva su minuto: la previa no contamina el reloj.
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', type: 'kickoff', minute: 0, text: '¡Rueda el balón!' });
+  const live = feed.querySelector('.est-cmt.is-latest');
+  assert.ok(!live.classList.contains('is-previa'));
+  assert.match(live.textContent, /0'/);
 });
 
 test('las voces del relato se alternan en cola, con dos locutores y sin superposición', async t => {

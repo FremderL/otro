@@ -359,6 +359,10 @@
                 <button type="button" data-select-game="slots" aria-pressed="false"><span>🎰</span><b>Tragamonedas</b><small>Tres rodillos animados</small></button>
               </div>
             </div>
+            <label id="setup-auto-bots-field" class="setup-toggle">
+              <input id="setup-auto-bots" type="checkbox" checked />
+              <span class="setup-toggle-copy"><b>Completar asientos con bots</b><small>Si lo desactivas, la mesa queda solo para personas. Se guarda en tus preferencias.</small></span>
+            </label>
             <div id="code-field" class="field-group hidden">
               <label for="room-code">Código de sala</label>
               <div class="input-wrap code-input"><span>#</span><input id="room-code" maxlength="5" autocomplete="off" placeholder="ABCDE" /></div>
@@ -410,6 +414,7 @@
         <button id="profile-tab-activity" class="profile-tab" type="button" aria-controls="profile-section-activity" data-profile-jump="activity">Actividad</button>
         <button id="profile-tab-betting" class="profile-tab" type="button" aria-haspopup="dialog" aria-controls="betting-space-modal" data-open-betting-space>Mi espacio ↗</button>
         <button id="profile-tab-goals" class="profile-tab" type="button" aria-controls="profile-section-goals" data-profile-jump="goals">Retos y logros</button>
+        <button id="profile-tab-preferences" class="profile-tab" type="button" aria-controls="profile-section-preferences" data-profile-jump="preferences">Preferencias</button>
         <span class="profile-scroll-hint" aria-hidden="true">Desliza para ver más <b>↓</b></span>
       </nav>
       <div id="profile-content-scroll" class="profile-content-scroll">
@@ -441,6 +446,25 @@
             <div class="profile-main-heading"><div><span class="kicker">RESUMEN DEL PERFIL</span><h3 id="profile-section-overview-title" tabindex="-1">Tu progreso</h3></div><span>◆ Saldo solo virtual</span></div>
             <div id="profile-stats" class="profile-stats"></div>
             <section class="featured-achievements-box"><div class="progress-title"><span>VITRINA DE LOGROS</span><small>Elige hasta 3 para destacar</small></div><div id="featured-achievements" class="featured-achievements"></div></section>
+          </section>
+          <section id="profile-section-preferences" class="profile-content-section" data-profile-section="preferences" aria-labelledby="profile-section-preferences-title" tabindex="-1">
+            <div class="profile-main-heading"><div><span class="kicker">PREFERENCIAS</span><h3 id="profile-section-preferences-title" tabindex="-1">Automatismos del casino</h3></div><span>Se guardan en tu perfil</span></div>
+            <p class="preferences-intro">Estos interruptores los aplica el servidor, no solo esta pantalla: si apagas el autocompletado, tus mesas nuevas dejan de llenarse con bots.</p>
+            <div id="profile-preferences" class="preferences-list" role="group" aria-label="Preferencias del jugador">
+              <label class="preference-row" data-preference-row="autoBots">
+                <input type="checkbox" id="preference-auto-bots" data-preference="autoBots" />
+                <span class="preference-copy"><b>Completar mis mesas con bots</b><small>Al crear una mesa, los asientos libres se llenan con bots mientras haya personas sentadas. Desactívalo para jugar solo con personas.</small></span>
+              </label>
+              <label class="preference-row" data-preference-row="botsStay">
+                <input type="checkbox" id="preference-bots-stay" data-preference="botsStay" />
+                <span class="preference-copy"><b>Mantener a los bots en su asiento entre rondas</b><small>Si está desactivado, los bots dejan libre su asiento al terminar cada ronda para que entren personas reales.</small></span>
+              </label>
+              <label class="preference-row" data-preference-row="tableInvites">
+                <input type="checkbox" id="preference-table-invites" data-preference="tableInvites" />
+                <span class="preference-copy"><b>Recibir invitaciones a mesas</b><small>Tus amistades pueden invitarte a su mesa desde la comunidad del casino.</small></span>
+              </label>
+            </div>
+            <p id="preferences-status" class="preferences-status hidden" role="status"></p>
           </section>
           <section id="profile-section-passport" class="profile-content-section hidden" data-profile-section="passport" aria-labelledby="passport-heading" tabindex="-1">
             <section id="passport-panel" class="passport-panel hidden" aria-labelledby="passport-heading">
@@ -686,7 +710,10 @@
       <header class="game-header">
         <div class="room-identity">
           <div class="game-breadcrumb"><span id="game-name">TEXAS HOLD’EM</span><i></i><b id="phase-label">SALA DE ESPERA</b></div>
-          <h2 id="room-title">Mesa privada</h2>
+          <div class="room-title-row">
+            <h2 id="room-title">Mesa privada</h2>
+            <span id="room-auto-bots-chip" class="room-bots-chip hidden" title="El anfitrión desactivó el autocompletado con bots en sus preferencias">SIN BOTS</span>
+          </div>
         </div>
         <div class="room-share">
           <div class="connection-mini" id="header-connection"><i></i><span>En vivo</span></div>

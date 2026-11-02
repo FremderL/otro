@@ -170,7 +170,7 @@
     teams: {}, profile: null, chips: 0,
     fantasy: null, fantasyDraft: [], fantasyDirty: false, fantasySeq: 0, fantasyBusy: false,
     fan: null, fanBusy: false, fanSeq: 0,
-    lobby: null, standings: [], countdownTo: null, lobbyServerNow: null, lobbyReceivedAt: null,
+    lobby: null, standings: [], standingsPending: null, countdownTo: null, lobbyServerNow: null, lobbyReceivedAt: null,
     preshowDataMatchId: null, preshowDataStandings: null, teamIndicators: [],
     showcaseItems: [], showcaseIndex: 0, showcaseRotationId: null, sponsoredPromotions: [],
     promotionsEnabled: false, promoSessionChecked: false, promoProfile: null, promoCsrfToken: null,
@@ -230,7 +230,7 @@
   function cacheEls() {
     ['est-fantasy-summary', 'est-fantasy-form', 'est-fantasy-players', 'est-fantasy-save', 'est-fantasy-feedback', 'est-fantasy-opt', 'est-fantasy-challenges', 'est-fantasy-ranking',
       'est-roster-panel', 'est-roster-club', 'est-roster-refresh', 'est-roster-status', 'est-roster-list',
-      'est-connection', 'est-chips', 'est-sound', 'est-music', 'est-ads', 'est-ads-open', 'est-countdown', 'est-match-list', 'est-standings',
+      'est-connection', 'est-chips', 'est-sound', 'est-music', 'est-ads', 'est-ads-open', 'est-countdown', 'est-match-list', 'est-standings', 'est-standings-note',
       'est-preshow', 'est-preshow-status', 'est-preshow-timer', 'est-showcase', 'est-showcase-track',
       'est-compare-home', 'est-compare-away', 'est-showcase-count', 'est-showcase-prev', 'est-showcase-next', 'est-showcase-dots', 'est-preshow-promo', 'est-promo-image', 'est-promo-label', 'est-promo-text', 'est-promo-link',
       'est-promo-compose', 'est-promo-auth', 'est-promo-login', 'est-promo-refresh', 'est-promo-form',
@@ -3211,8 +3211,10 @@
     } else {
       startPromotionRotation(match.id);
     }
+    // «En liquidación» es literal: si el partido no arranca, su resultado se
+    // asienta solo y la tabla nunca se queda con un cruce de menos.
     var statusText = delayed
-      ? (S.socket && S.socket.connected ? 'Kickoff pendiente · consultando el estado del partido' : 'Kickoff pendiente · sin conexión, esperando reconexión')
+      ? (S.socket && S.socket.connected ? 'Kickoff pendiente · si no arranca, el resultado se asienta automáticamente' : 'Kickoff pendiente · sin conexión, esperando reconexión')
       : (match.autoRescheduled ? 'Kickoff reprogramado automáticamente · ' : 'Kickoff programado · ') + kickoffTime(match.scheduledKickoffAt);
     if (el['est-preshow-status'].textContent !== statusText) el['est-preshow-status'].textContent = statusText;
     el['est-preshow-timer'].textContent = delayed ? '' : formatPreshowCountdown(remaining);
@@ -3244,7 +3246,7 @@
   function renderLobby(lobby, localRedraw) {
     if (!lobby) return;
     var seasonChanged = S.lobby && lobby.seasonMonth && S.lobby.seasonMonth !== lobby.seasonMonth;
-    S.lobby = lobby; S.standings = lobby.standings || []; S.countdownTo = lobby.nextKickoffAt;
+    S.lobby = lobby; S.standings = lobby.standings || []; S.standingsPending = lobby.standingsPending || null; S.countdownTo = lobby.nextKickoffAt;
     if (!localRedraw && lobby.serverNow != null && Number.isFinite(Number(lobby.serverNow))) {
       S.lobbyServerNow = Number(lobby.serverNow);
       S.lobbyReceivedAt = performance.now();
@@ -3934,6 +3936,28 @@
         '<td class="pts">' + (row.points != null ? row.points : (row.pts != null ? row.pts : '')) + '</td>';
       tb.appendChild(tr);
     });
+    renderStandingsNote();
+  }
+  // Un club con menos partidos jugados no es un error de la tabla: su cruce
+  // venció sin acta y el servidor lo está liquidando (o quedó pospuesto). La nota
+  // lo dice con nombres y el marcador de la tabla se corrige solo en la siguiente
+  // actualización.
+  function renderStandingsNote() {
+    var note = el['est-standings-note']; if (!note) return;
+    var pending = S.standingsPending || (S.lobby && S.lobby.standingsPending) || null;
+    var count = pending ? Number(pending.count) || 0 : 0;
+    if (!count) { note.hidden = true; note.textContent = ''; return; }
+    var postponed = Number(pending.postponed) || 0;
+    var first = (pending.matches || [])[0] || null;
+    var fixture = first ? esc(teamName(first.homeId)) + ' vs ' + esc(teamName(first.awayId)) : '';
+    var plural = count === 1 ? '' : 's';
+    var text = postponed >= count
+      ? '<strong>' + count + ' partido' + plural + ' sin acta</strong>' + (fixture ? ': ' + fixture : '') +
+        ' · pospuesto' + (postponed === 1 ? '' : 's') + ' sin resultado. La tabla cuenta solo lo jugado.'
+      : '<strong>' + count + ' partido' + plural + ' en liquidación</strong>' + (fixture ? ': ' + fixture : '') +
+        ' · el resultado se asienta automáticamente y la tabla se actualiza.';
+    note.innerHTML = text;
+    note.hidden = false;
   }
   // ===== Cuentas regresivas largas (DD:HH:MM:SS) =====
   // Dos relojes independientes, alimentados por instantes absolutos del
@@ -4988,7 +5012,7 @@
   // ===== Relato =====
   function renderCommentary(list) {
     var box = el['est-commentary']; box.innerHTML = '';
-    if (!list || !list.length) { box.innerHTML = '<p class="est-commentary-empty">El relato aparecerá aquí cuando comience el partido.</p>'; return; }
+    if (!list || !list.length) { box.innerHTML = '<p class="est-commentary-empty">La cabina abre unos minutos antes del partido con la previa; el relato sigue en vivo desde el saque inicial.</p>'; return; }
     list.forEach(function (m) { appendCommentary(m, true); });
     var latest = box.lastElementChild;
     if (latest && latest.classList.contains('est-cmt')) latest.classList.add('is-latest');
@@ -5004,11 +5028,16 @@
     var voice = m.voice === 'analista' ? 'analista' : 'narrador';
     var voiceLabel = voice === 'narrador' ? 'NARRADOR' : 'ANALISTA';
     var voiceMark = voice === 'narrador' ? 'N' : 'A';
-    var minuteChip = Number.isFinite(Number(m.minute))
-      ? '<span class="est-cmt-minute">' + Math.max(0, Math.round(Number(m.minute))) + "'</span>"
-      : '';
+    // La previa ocurre antes del reloj: se rotula PREVIA en vez de inventarle un
+    // minuto de juego (el servidor manda type 'pregame' y minute null).
+    var isPregame = m.type === 'pregame';
+    var minuteChip = isPregame
+      ? '<span class="est-cmt-minute is-previa">PREVIA</span>'
+      : Number.isFinite(Number(m.minute))
+        ? '<span class="est-cmt-minute">' + Math.max(0, Math.round(Number(m.minute))) + "'</span>"
+        : '';
     var div = document.createElement('div');
-    div.className = 'est-cmt ' + voice + (S.muted ? ' muted-all' : '') + (silentScroll ? '' : ' is-latest is-entering');
+    div.className = 'est-cmt ' + voice + (isPregame ? ' is-previa' : '') + (S.muted ? ' muted-all' : '') + (silentScroll ? '' : ' is-latest is-entering');
     div.innerHTML = '<span class="est-cmt-speaker"><span class="est-cmt-mark" aria-hidden="true">' + voiceMark + '</span><span class="est-cmt-voice">' + voiceLabel + '</span></span><span class="est-cmt-text">' + minuteChip + esc(m.text) + '</span>';
     box.appendChild(div);
     while (box.children.length > 40) box.removeChild(box.firstChild);
