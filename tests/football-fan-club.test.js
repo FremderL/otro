@@ -64,3 +64,41 @@ test('victorias conservadas tras archivar partidos, sin duplicarlas, y pérdida 
   assert.equal(restored.footballFanClub.wins,0); assert.equal(restored.footballFanClub.equippedPin,null);
   assert.equal(require('../lib/football/fan-club-profile').publicFanPin(restored),null);
 });
+
+test('ficha de club separa historia ficticia, títulos verificados, plantilla y mercado publicado', t => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const { FootballStore } = require('../lib/football-store');
+  const { clubProfile } = require('../lib/football/club-profile');
+  const { planTransfers } = require('../lib/football/transfers');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'club-dossier-'));
+  const store = new FootballStore(path.join(dir, 'f.json'));
+  t.after(() => { store.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const previous = store.generateSeason('2026-09');
+  const move = planTransfers(previous).moves[0];
+  // Campeonato inequívoco: gana todos sus partidos, el resto empata.
+  for (const m of previous.calendar.matches) {
+    m.status = 'settled'; m.settledAt = Date.UTC(2026, 8, 29);
+    m.result = m.homeId === move.toId ? { home: 1, away: 0 } : m.awayId === move.toId ? { home: 0, away: 1 } : { home: 0, away: 0 };
+  }
+  const current = store.generateSeason('2026-10');
+  const match = current.calendar.matches.find(m => m.homeId === move.toId || m.awayId === move.toId);
+  match.status = 'settled'; match.settledAt = Date.UTC(2026, 9, 3);
+  match.result = match.homeId === move.toId ? { home: 2, away: 0 } : { home: 0, away: 2 };
+  const october10 = Date.UTC(2026, 9, 10, 12);
+  const view = clubProfile(store, move.toId, october10);
+  assert.ok(view.story && view.manager.name);
+  assert.deepEqual(view.titles, ['2026-09']);
+  assert.equal(view.record.wins, 1); assert.equal(view.record.goalsFor, 2);
+  assert.equal(view.roster.players.length, 18);
+  assert.ok(view.roster.players.some(p => p.id === move.playerId && p.name === move.playerName));
+  assert.equal(view.lineup.filter(p => p.initialStatus === 'active').length, 11);
+  assert.ok(view.transfers.some(m => m.playerId === move.playerId && m.status === 'effective'));
+  assert.ok(!view.transfers.some(m => m.seasonMonth === '2026-10'), 'acuerdos todavía no anunciados permanecen privados');
+  assert.equal(view.roster.missingMatches, 1, 'estadísticas no verificadas se marcan como parciales');
+  const plan = planTransfers(current);
+  const announced = clubProfile(store, plan.moves[0].fromId, Date.UTC(2026, 9, 16, 12));
+  assert.ok(announced.transfers.some(m => m.seasonMonth === '2026-10' && m.status === 'announced'));
+  previous.calendar.matches[0].settledAt = Date.UTC(2026, 10, 1);
+  assert.deepEqual(clubProfile(store, move.toId, october10).titles, [], 'no se filtran resultados posteriores');
+  assert.equal(clubProfile(store, '__proto__', october10), null);
+});

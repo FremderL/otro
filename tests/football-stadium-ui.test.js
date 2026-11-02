@@ -151,6 +151,8 @@ function createHarness(options = {}) {
       if (event === 'football:bet' && options.onBet) { options.onBet(payload, ack); return; }
       if (event === 'football:quiniela_get' && options.onQuinielaGet) { ack(options.onQuinielaGet(payload)); return; }
       if (event === 'football:quiniela_enter' && options.onQuinielaEnter) { ack(options.onQuinielaEnter(payload)); return; }
+      if (event === 'football:club_profile_get' && options.onClubProfileGet) { options.onClubProfileGet(payload, ack); return; }
+      if (event === 'football:roster_get' && options.onRosterGet) { options.onRosterGet(payload, ack); return; }
       if (event === 'football:transfers_get' && options.onTransfersGet) { ack(options.onTransfersGet(payload)); return; }
       if (event === 'football:fan_equip' && options.onFanEquip) { ack(options.onFanEquip(payload)); return; }
       if (event === 'football:fan_get' && options.onFanGet) { ack(options.onFanGet(payload)); return; }
@@ -185,6 +187,7 @@ function createHarness(options = {}) {
       if (payload.scope === 'lobby') {
         ack({ ok: true, teams, profile: { id: 'alice', chips: 1000 }, lobby });
       } else {
+        if (options.onMatchSubscribe) { options.onMatchSubscribe(payload, ack, { teams, matchState }); return; }
         ack({ ok: true, teams, profile: { id: 'alice', chips: 1000 }, matchState });
       }
     }
@@ -388,6 +391,7 @@ function createHarness(options = {}) {
     }
     if (target.startsWith('/api/estadio/my-bets')) {
       const history = typeof betHistory === 'function' ? betHistory() : betHistory;
+      if (options.onBetHistory) return { ok: true, json: async () => options.onBetHistory() };
       return { ok: true, json: async () => ({ ok: true, history: history || null, profile: { id: 'alice', chips: 1000 } }) };
     }
     if (target.endsWith('/mine')) {
@@ -3304,4 +3308,205 @@ test('la cabina no se atrasa: lo que ya no cabe se omite en voz alta pero queda 
   speech.finish(0);
   h.advanceTime(1000);
   assert.equal(speech.utterances.length, 1, 'una línea que ya describe el pasado se salta');
+});
+
+
+test('el marcador refleja tarjetas por equipo, segundas amarillas y reconexión', async t => {
+  const h = createHarness(); t.after(h.close);
+  h.matchState.state.cards = { home: [{ type: 'yellow_card' }, { type: 'second_yellow' }], away: [{ type: 'red' }] };
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const home = window.document.getElementById('cards-home'), away = window.document.getElementById('cards-away');
+  assert.equal(home.querySelector('.yellow').textContent, '2');
+  assert.equal(home.querySelector('.red').textContent, '1');
+  assert.equal(away.querySelector('.red').textContent, '1');
+  handlers['football:event']({ matchId: match.id, event: { type: 'yellow_card', team: 'away' } });
+  assert.equal(away.querySelector('.yellow').textContent, '1');
+  handlers['football:tick']({ matchId: match.id, cards: { home: [{ type: 'yellow' }, { type: 'yellow', second: true }, { type: 'red' }], away: [] } });
+  assert.equal(home.querySelector('.yellow').textContent, '2');
+  assert.equal(home.querySelector('.red').textContent, '1');
+  assert.equal(away.hidden, true, 'el estado autoritativo reemplaza el recuento local');
+});
+
+test('la falta interrumpe el relato de posesión y el gol tiene prioridad sobre la falta', async t => {
+  const h = createHarness({ speechSynthesis: true }); t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match, speech } = h;
+  window.document.getElementById('est-commentary-voice').click();
+  const speak = (type, importance, text) => handlers['football:commentary']({ matchId: match.id, voice: 'narrador', type, importance, text });
+  speak('possession', 'normal', 'La pelota es del local.');
+  speak('foul', 'high', 'Falta en el mediocampo.');
+  speak('goal', 'high', '¡Gol del visitante!');
+  assert.deepEqual(speech.utterances.map(u => u.text), ['La pelota es del local.', 'Falta en el mediocampo.', '¡Gol del visitante!']);
+  assert.equal(speech.overlapCount, 0);
+});
+
+test('la cabina se recupera si el sintetizador nunca termina una locución', async t => {
+  const h = createHarness({ speechSynthesis: true }); t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match, speech } = h;
+  window.document.getElementById('est-commentary-voice').click();
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: 'Jugada en curso.' });
+  h.advanceTime(16000);
+  assert.ok(speech.cancelCount > 0);
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text: 'El juego continúa.' });
+  assert.equal(speech.utterances.length, 2);
+});
+
+
+test('las plantillas muestran el club actual, habilidades y estadísticas verificadas sin mezclar respuestas tardías', async t => {
+  const pending = [];
+  const h = createHarness({ onRosterGet: (payload, ack) => pending.push({ payload, ack }) });
+  t.after(h.close); await h.connectToMatch();
+  const doc = h.window.document, panel = doc.getElementById('est-roster-panel'), select = doc.getElementById('est-roster-club');
+  panel.open = true;
+  panel.dispatchEvent(new h.window.Event('toggle'));
+  const first = pending.at(-1);
+  select.value = first.payload.clubId === 'home' ? 'away' : 'home';
+  select.dispatchEvent(new h.window.Event('change'));
+  const last = pending.at(-1);
+  const response = id => ({ ok: true, roster: { clubId: id, clubName: id, seasonMonth: '2026-11', missingMatches: 1, incompleteDetails: false,
+    players: [{ id: 'vtr_09', name: 'Jugador traspasado', number: 9, position: 'ST', attributes: { pac: 80, sho: 90, pas: 70, def: 30, gk: 10, agr: 55 },
+      stats: { appearances: 2, goals: 1, assists: 0, minutes: 150, yellowCards: 1, redCards: 0 }, value: 20 }] } });
+  last.ack(response(last.payload.clubId));
+  first.ack(response(first.payload.clubId));
+  assert.match(doc.getElementById('est-roster-status').textContent, /Datos parciales/);
+  assert.match(doc.getElementById('est-roster-list').textContent, /Jugador traspasado/);
+  assert.match(doc.getElementById('est-roster-list').textContent, /Tiro 90/);
+  assert.match(doc.getElementById('est-roster-list').textContent, /Goles 1/);
+  assert.match(doc.getElementById('est-roster-status').textContent, new RegExp('^' + last.payload.clubId));
+});
+
+test('un gol adelanta incluso a la narración de un penal recién señalado', async t => {
+  const h = createHarness({ speechSynthesis: true }); t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match, speech } = h;
+  window.document.getElementById('est-commentary-voice').click();
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', type: 'penalty_awarded', importance: 'high', text: 'Señala el penal.' });
+  handlers['football:commentary']({ matchId: match.id, voice: 'narrador', type: 'penalty_scored', importance: 'high', text: '¡Gol de penal!' });
+  assert.deepEqual(speech.utterances.map(u => u.text), ['Señala el penal.', '¡Gol de penal!']);
+  assert.equal(speech.overlapCount, 0);
+});
+
+
+test('el saldo de invitado o una respuesta de historial retrasada no pisa una apuesta de la cuenta', async t => {
+  const pending = [];
+  const h = createHarness({ onBetHistory: () => new Promise(resolve => pending.push(resolve)),
+    onBet: (payload, ack) => ack({ ok: true, chips: 800, bet: { id: 'account-bet', market: payload.market, selection: payload.selection, odds: 2, stake: 200, status: 'open' } }) });
+  t.after(h.close); await h.connectToMatch(); await h.flush();
+  const doc = h.window.document;
+  doc.querySelectorAll('.est-market-group')[1].querySelector('.est-sel').click();
+  doc.getElementById('est-stake').value = '200'; doc.getElementById('est-place-bet').click();
+  assert.equal(doc.getElementById('est-chips').textContent, '800 fichas');
+  const history = { entries: [], summary: { total: 0 }, totalEntries: 0 };
+  for (const resolve of pending.splice(0)) resolve({ ok: true, history, profile: { id: 'guest', chips: 4100 } });
+  await h.flush();
+  assert.equal(doc.getElementById('est-chips').textContent, '800 fichas', 'un historial ajeno no cambia el saldo');
+  h.handlers['football:settlement']({ betId: 'account-bet', status: 'won', payout: 500 });
+  await h.flush();
+  assert.equal(doc.getElementById('est-chips').textContent, '800 fichas', 'no se suma un pago sin confirmar');
+  for (const resolve of pending.splice(0)) resolve({ ok: true, history, profile: { id: 'alice', chips: 1300 } });
+  await h.flush();
+  assert.equal(doc.getElementById('est-chips').textContent, '1,300 fichas');
+});
+
+test('una ficha de club se consulta antes de elegir afición y muestra director, plantilla y traspasos', async t => {
+  const responses = [];
+  const fan = { clubId: null, wins: 0, level: 0, rewards: [], ranking: [] };
+  const h = createHarness({ onFanGet: () => ({ ok: true, fan }), onClubProfileGet: (payload, ack) => responses.push({ payload, ack }) });
+  t.after(h.close); await h.connectToMatch();
+  const doc = h.window.document;
+  doc.getElementById('est-hub-open').click();
+  doc.querySelector('[data-hub-view="aficion"]').click();
+  const select = doc.getElementById('est-fan-club');
+  select.value = 'home'; select.dispatchEvent(new h.window.Event('change'));
+  const previous = responses.at(-1);
+  select.value = 'away'; select.dispatchEvent(new h.window.Event('change'));
+  const current = responses.at(-1);
+  const club = id => ({ clubId: id, name: id + ' FC', city: 'Ciudad', stadium: 'Estadio', capacity: 30000, colors: { primary: '#00aa55' }, seasonMonth: '2026-11',
+    story: 'Historia ficticia.', titles: ['2026-10'], record: { played: 4, wins: 2, draws: 1, losses: 1, goalsFor: 5, goalsAgainst: 3 },
+    manager: { name: 'Entrenadora Ejemplo', formation: '4-3-3', style: 'balanced' },
+    lineup: [{ id: 'p1', role: 'FW', initialStatus: 'bench' }],
+    roster: { players: [{ id: 'p1', name: 'Jugador Uno', number: 9, position: 'ST', attributes: { pac: 80, sho: 85, pas: 70, def: 40, gk: 10, agr: 50 }, stats: { appearances: 2, goals: 1, assists: 0 } }] },
+    transfers: [{ playerName: 'Jugador Uno', fromId: 'home', toId: 'away', status: 'announced', effectiveSeason: '2026-12' }] });
+  current.ack({ ok: true, club: club('away') }); previous.ack({ ok: true, club: club('home') });
+  const box = doc.getElementById('est-club-profile');
+  assert.match(box.textContent, /away FC/); assert.doesNotMatch(box.textContent, /home FC.*Historia/);
+  for (const text of ['Entrenadora Ejemplo', 'Historia ficticia', 'Jugador Uno', 'Anunciado para 2026-12', 'Ligas verificadas']) assert.ok(box.textContent.includes(text), text);
+  assert.match(box.textContent, /no cambian las alineaciones/);
+});
+
+test('un invitado puede explorar fichas de clubes sin poder guardar afición', async t => {
+  let requested = '';
+  const h = createHarness({ onFanGet: () => ({ ok: false, code: 'no_identity' }),
+    onClubProfileGet: (payload, ack) => { requested = payload.clubId; ack({ ok: false }); } });
+  t.after(h.close); await h.connectToMatch();
+  const doc = h.window.document;
+  doc.getElementById('est-hub-open').click(); doc.querySelector('[data-hub-view="aficion"]').click();
+  const select = doc.getElementById('est-fan-club');
+  assert.equal(select.disabled, false);
+  select.value = 'home'; select.dispatchEvent(new h.window.Event('change'));
+  assert.equal(requested, 'home');
+  assert.equal(doc.getElementById('est-fan-choose').disabled, true);
+  assert.match(doc.getElementById('est-fan-summary').textContent, /Inicia sesión/);
+});
+
+test('reconectar recupera la sala y la instantánea del partido seleccionado', async t => {
+  let live = false;
+  const h = createHarness({ kickoffOffsetMs: 1000, onMatchSubscribe(_payload, ack, data) {
+    const matchState = structuredClone(data.matchState);
+    if (live) { matchState.match.status = 'live'; matchState.state.score = { home: 1, away: 0 }; matchState.state.minute = 8; }
+    ack({ ok: true, teams: data.teams, profile: { id: 'alice', chips: 1000 }, matchState });
+  } });
+  t.after(h.close);
+  await h.connectToMatch();
+  const matchRequests = () => h.socketEmitted.filter(x => x.event === 'football:subscribe' && x.payload.scope === 'match');
+  assert.equal(matchRequests().length, 1);
+  h.socket.connected = false;
+  h.handlers.disconnect();
+  h.advanceTime(2000);
+  assert.match(h.window.document.getElementById('est-preshow-status').textContent, /sin conexión/);
+  live = true;
+  h.socket.connected = true;
+  h.handlers.connect();
+  assert.equal(matchRequests().length, 2, 'recupera la sala después del lobby');
+  assert.equal(h.window.document.getElementById('est-preshow').hidden, true, 'solo se oculta al recibir estado real en vivo');
+  assert.equal(h.window.document.getElementById('score-home').textContent, '1');
+  assert.equal(h.window.document.getElementById('score-away').textContent, '0');
+});
+
+test('kickoff pendiente reconsulta de forma acotada sin fingir el inicio', async t => {
+  let live = false;
+  const h = createHarness({ kickoffOffsetMs: 1000, onMatchSubscribe(_payload, ack, data) {
+    const matchState = structuredClone(data.matchState);
+    if (live) matchState.match.status = 'live';
+    ack({ ok: true, teams: data.teams, profile: { id: 'alice', chips: 1000 }, matchState });
+  } });
+  t.after(h.close);
+  await h.connectToMatch();
+  const count = () => h.socketEmitted.filter(x => x.event === 'football:subscribe' && x.payload.scope === 'match').length;
+  h.advanceTime(2000);
+  assert.equal(count(), 1);
+  assert.match(h.window.document.getElementById('est-preshow-status').textContent, /Kickoff pendiente/);
+  h.advanceTime(8000);
+  assert.equal(count(), 2);
+  assert.equal(h.window.document.getElementById('est-preshow').hidden, false, 'si sigue programado no inventa un arranque');
+  live = true;
+  h.advanceTime(10000);
+  assert.equal(count(), 3);
+  assert.equal(h.window.document.getElementById('est-preshow').hidden, true, 'la nueva instantánea confirma el arranque');
+  h.advanceTime(10000);
+  assert.equal(count(), 3, 'ya no reconsulta después de la confirmación');
+});
+
+test('un tick real recupera la vista si se perdió el aviso inicial de kickoff', async t => {
+  const h = createHarness({ kickoffOffsetMs: -1000, onMatchSubscribe(_payload, ack, data) {
+    ack({ ok: true, teams: data.teams, profile: { id: 'alice', chips: 1000 }, matchState: structuredClone(data.matchState) });
+  } });
+  t.after(h.close);
+  await h.connectToMatch();
+  assert.equal(h.window.document.getElementById('est-preshow').hidden, false);
+  h.handlers['football:tick']({ matchId: h.match.id, minute: 1, phase: 'first_half', score: { home: 0, away: 0 }, players: [] });
+  assert.equal(h.window.document.getElementById('est-preshow').hidden, true);
+  assert.equal(h.window.document.querySelectorAll('.est-market-group').length, 1, 'cierra los mercados prepartido');
 });

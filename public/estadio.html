@@ -87,14 +87,23 @@
           </table>
         </div>
       </section>
+      <details class="est-panel est-roster-panel" id="est-roster-panel">
+        <summary class="est-panel-title">Plantillas y estadísticas</summary>
+        <p>Consulta los 18 jugadores de cada club. Las habilidades son atributos del jugador; los números de temporada proceden de partidos asentados.</p>
+        <label for="est-roster-club">Club</label>
+        <select id="est-roster-club" aria-label="Elegir club para ver su plantilla"></select>
+        <button id="est-roster-refresh" class="btn btn-ghost btn-small" type="button">Actualizar</button>
+        <p id="est-roster-status" role="status" aria-live="polite">Abre la plantilla para consultar los datos.</p>
+        <ul id="est-roster-list" class="est-roster-list" aria-label="Jugadores y estadísticas"></ul>
+      </details>
     </aside>
 
     <!-- Columna central: previa + cancha + marcador + relato -->
     <section class="est-col-center" aria-label="Partido y previa">
       <div class="est-scoreboard" id="est-scoreboard">
-        <div class="est-team est-team-home"><span class="est-crest" id="crest-home"></span><span id="name-home">Local</span></div>
+        <div class="est-team est-team-home"><span class="est-crest" id="crest-home"></span><span id="name-home">Local</span><span class="est-team-cards" id="cards-home" hidden></span></div>
         <div class="est-score"><b id="score-home">0</b><span class="est-clock" id="est-clock">—</span><b id="score-away">0</b></div>
-        <div class="est-team est-team-away"><span id="name-away">Visita</span><span class="est-crest" id="crest-away"></span></div>
+        <div class="est-team est-team-away"><span class="est-team-cards" id="cards-away" hidden></span><span id="name-away">Visita</span><span class="est-crest" id="crest-away"></span></div>
       </div>
 
       <section id="est-preshow" class="est-preshow" aria-labelledby="est-preshow-title" hidden>
@@ -780,6 +789,11 @@
               <button id="est-fan-choose" class="est-fan-primary" type="button" disabled>Elegir club →</button>
               <div id="est-fan-confirm" class="est-fan-confirm" hidden><h3>¿Cambiar de club?</h3><p id="est-fan-confirm-copy"></p><p>Perderás las victorias, el nivel y los pines de tu club anterior, incluso si regresas. El nuevo club empieza desde cero. Tu Mi Once y tus fichas no cambian.</p><button type="button" id="est-fan-confirm-yes">Confirmar cambio</button> <button type="button" id="est-fan-confirm-no">Cancelar</button></div>
               <p id="est-fan-feedback" role="status" aria-live="polite"></p>
+              <section class="est-club-dossier" aria-label="Ficha del club elegido">
+                <div class="est-club-dossier-head"><div><p class="est-hub-eyebrow">GUÍA DE CLUBES / MONTECRISTO</p><h3>Conoce al club</h3></div><button id="est-club-refresh" type="button">Actualizar ↻</button></div>
+                <p id="est-club-status" role="status" aria-live="polite">Elige un club para conocer su historia y plantilla.</p>
+                <div id="est-club-profile"></div>
+              </section>
               <div class="est-fantasy-scoring"><p class="est-hub-eyebrow">EL CAMINO DE TU AFICIÓN</p><div><span><b>0</b> Inicio</span><span><b>1</b> Primera victoria</span><span><b>3</b> Tribuna fiel</span><span><b>5</b> Leyenda</span></div><p>Sin fichas ni premios monetarios.</p></div>
             </div><aside class="est-fantasy-side" aria-label="Pines y clasificación de afición"><section class="est-fantasy-side-card"><p class="est-hub-eyebrow">TUS RECOMPENSAS</p><h3>Retos y pines de afición</h3><p>Gana con tu club para desbloquear pines. Equipa uno para mostrarlo en Casino y Estadio.</p><ul id="est-fan-rewards" class="est-fantasy-list"><li>Elige un club para comenzar.</li></ul></section><section class="est-fantasy-side-card"><p class="est-hub-eyebrow">LA TRIBUNA</p><h3>Ranking por clubes</h3><p>Opcional y revocable; se muestra el club, sus victorias y el total de participantes, sin nombres ni identificadores.</p><label class="est-fantasy-opt"><input id="est-fan-opt" type="checkbox" disabled> Participar en el ranking por clubes</label><ol id="est-fan-ranking" class="est-fantasy-list"><li>Aún no hay participantes.</li></ol></section></aside></div>
           </section>

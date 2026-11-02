@@ -35,7 +35,7 @@ test('solo acepta once futbolistas distintos en formación 1-4-4-2, sin mover fi
 test('puntúa solo hechos reales del motor, mantiene el candidato y persiste con JSON', async t=>{
   const h=setup(t), ids=selection(h.league), next=fantasy.nextJornada(h.league,1);
   fantasy.saveLineup(h.p,h.league,ids,next.closesAt-1); await h.profiles.persistProfile(h.p);
-  const match=settle(h,next.matches.find(m=>ids.some(id=>h.league.config.find(c=>c.id===m.homeId).squad.some(p=>p.id===id))));
+  const match=settle(h,next.matches.find(m=>ids.some(id=>h.league.config.filter(c=>c.id===m.homeId || c.id===m.awayId).some(c=>c.squad.some(p=>p.id===id)))));
   const expected=match.fantasyStats.filter(p=>ids.includes(p.id)).reduce((n,p)=>n+(p.played?2:0)+5*p.goals+3*p.assists-p.reds,0);
   assert.equal(fantasy.calculate(h.p,h.league).points,expected);
   assert.ok(match.fantasyStats.length>0); assert.ok(h.league.ballonDor.candidates.length===16);
@@ -48,7 +48,7 @@ test('puntúa solo hechos reales del motor, mantiene el candidato y persiste con
 test('no atribuye estadísticas a resultados viejos ni a liquidaciones manuales sin timeline',t=>{
   const h=setup(t), ids=selection(h.league), next=fantasy.nextJornada(h.league,1);
   fantasy.saveLineup(h.p,h.league,ids,next.closesAt-1);
-  const match=next.matches.find(m=>ids.some(id=>h.league.config.find(c=>c.id===m.homeId).squad.some(p=>p.id===id)));
+  const match=next.matches.find(m=>ids.some(id=>h.league.config.filter(c=>c.id===m.homeId || c.id===m.awayId).some(c=>c.squad.some(p=>p.id===id))));
   assert.equal(h.store.settleMatch(match.id,{home:0,away:0},{seasonMonth:h.season}).ok,true);
   assert.equal(match.fantasyStats,null); assert.equal(fantasy.calculate(h.p,h.league).points,0); assert.equal(fantasy.calculate(h.p,h.league).missing,1);
 });
@@ -64,7 +64,7 @@ test('un cambio después del primer inicio afecta solo la siguiente jornada',t=>
 test('clasificación voluntaria sin nombres ni IDs, con retos cosméticos y revocación',t=>{
   const h=setup(t), ids=selection(h.league), next=fantasy.nextJornada(h.league,1);
   fantasy.saveLineup(h.p,h.league,ids,next.closesAt-1); h.p.footballFantasy.rankingOptIn=true;
-  settle(h,next.matches.find(m=>ids.some(id=>h.league.config.find(c=>c.id===m.homeId).squad.some(p=>p.id===id))));
+  settle(h,next.matches.find(m=>ids.some(id=>h.league.config.filter(c=>c.id===m.homeId || c.id===m.awayId).some(c=>c.squad.some(p=>p.id===id)))));
   const snap=fantasy.snapshot(h.p,h.league,h.profiles.profiles,next.closesAt+1);
   assert.equal(snap.rank,1); assert.doesNotMatch(JSON.stringify(snap.ranking),/private-token|Alma/);
   assert.equal(snap.challenges.length,3); assert.equal(h.p.chips,1000);
@@ -99,7 +99,7 @@ test('la columna JSONB de PG conserva y rehidrata los puntos de partidos', async
   const { PgFootballStore } = require('../lib/football-store-pg');
   const h=setup(t), next=fantasy.nextJornada(h.league,1), ids=selection(h.league);
   fantasy.saveLineup(h.p,h.league,ids,next.closesAt-1);
-  const match=settle(h,next.matches.find(m=>ids.some(id=>h.league.config.find(c=>c.id===m.homeId).squad.some(p=>p.id===id))));
+  const match=settle(h,next.matches.find(m=>ids.some(id=>h.league.config.filter(c=>c.id===m.homeId || c.id===m.awayId).some(c=>c.squad.some(p=>p.id===id)))));
   const data=h.store._serializeLeague(h.league); data.calendar.matches=[];
   const rows={league:[{season_month:h.season,data}],matches:h.league.calendar.matches.map(m=>({season_month:h.season,data:m}))};
   const queries=[];

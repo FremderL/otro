@@ -89,7 +89,7 @@ function setup(opts = {}) {
   installFootballRoutes(app, {
     store, profiles, betting, buildLobby, buildMatchState,
     getBallonDorMarket: () => opts.ballonDorMarket || null,
-    accountConfig: opts.accountConfig || null,
+    accountConfig: opts.accountConfig || null, accountAuth: opts.accountAuth || null,
     audioTelemetry: opts.audioTelemetry,
     verifyTosAcceptance: opts.verifyTosAcceptance || ((_profile, tos) => String(tos || '') === 'v1'),
     onBetPlaced: opts.onBetPlaced,
@@ -542,4 +542,32 @@ test('POST Balón de Oro fallback admite el mismo host cuando no hay origen conf
   });
   assert.equal(res.statusCode, 200);
   assert.equal(calls, 1);
+});
+
+
+test('sesión verificada prevalece sobre el token invitado en saldos, historial y partido', async t => {
+  let account = null, failure = false;
+  const h = setup({ accountConfig: { accountSessionsEnabled: true, appOrigin: 'https://example.test' },
+    accountAuth: { resolveSession: async req => { if (failure) throw new Error('session store'); return req.get('cookie') === 'session=valid' ? { profile: account } : null; } },
+    betting: { getBetHistory: id => ({ owner: id }), placeBallonDorBet: async ({ profile }) => ({ ok: true, future: { id: 'f1' }, owner: profile.id }) } });
+  t.after(h.cleanup);
+  const guest = h.profiles.getOrCreate('device-token', 'Guest'), user = h.profiles.getOrCreate('account-id', 'Cuenta');
+  guest.chips = 4100; user.chips = 850; user.username = 'cuenta'; account = user;
+  async function request(method, path, { token = 'device-token', cookie = '', body = {} } = {}) {
+    const req = { query: { token }, params: { id: h.scheduled.id }, body: { token, tos: 'v1', ...body },
+      get: name => ({ cookie, origin: 'https://example.test', host: 'example.test' })[name.toLowerCase()] };
+    const res = makeRes();
+    await h.app.routes[method + ' ' + path][0](req, res, error => { if (error) throw error; });
+    return res;
+  }
+  const history = await request('GET', '/api/estadio/my-bets', { cookie: 'session=valid' });
+  assert.equal(history.body.profile.id, user.id); assert.equal(history.body.profile.chips, 850);
+  assert.equal(history.body.history.owner, user.id);
+  assert.equal((await request('GET', '/api/estadio/state', { cookie: 'session=valid' })).body.profile.id, user.id);
+  assert.equal((await request('GET', '/api/estadio/matches/:id', { cookie: 'session=valid' })).body.matchState.profileId, user.id);
+  assert.equal((await request('GET', '/api/estadio/my-bets')).body.profile.id, guest.id);
+  assert.equal((await request('GET', '/api/estadio/my-bets', { token: user.id })).statusCode, 401, 'un ID de cuenta no autentica');
+  assert.equal((await request('POST', '/api/estadio/ballon-dor/bet', { cookie: 'session=valid' })).body.chips, 850);
+  failure = true;
+  assert.equal((await request('GET', '/api/estadio/my-bets', { cookie: 'session=valid' })).statusCode, 503, 'fallo de sesión no cae al invitado');
 });

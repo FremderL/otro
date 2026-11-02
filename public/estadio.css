@@ -105,6 +105,12 @@
 }
 .est-team-home { justify-content: flex-start; }
 .est-team-away { justify-content: flex-end; text-align: right; }
+.est-team .est-team-cards { display: inline-flex; flex: none; gap: 4px; align-items: center; }
+.est-team .est-team-cards[hidden] { display: none; }
+.est-card-count { display: inline-flex; align-items: center; gap: 3px; font: 700 11px/1 system-ui, sans-serif; color: #fff; }
+.est-card-count::before { content: ''; width: 9px; height: 13px; border-radius: 2px; background: #f5ce38; box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+.est-card-count.red::before { background: #f0444d; }
+
 .est-team > span:not(.est-crest) { min-width: 0; overflow-wrap: anywhere; }
 .est-crest {
   display: inline-block;
@@ -2551,3 +2557,41 @@ body.est-hub-open { overflow:hidden; }
   .est-commentary-voice-picker { width: 100%; justify-content: space-between; }
   .est-commentary-voice-picker select { max-width: none; flex: 1; }
 }
+
+/* Plantilla oficial: compacta en escritorio y legible en la columna móvil. */
+.est-roster-panel summary { cursor: pointer; }
+.est-roster-panel p, .est-roster-panel label { font-size: .78rem; color: var(--muted, #b4c5c2); }
+.est-roster-panel select { max-width: 100%; margin: 6px 0; }
+.est-roster-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.est-roster-list li { padding: 8px; border: 1px solid var(--line); border-radius: 8px; font-size: .78rem; }
+.est-roster-list strong, .est-roster-list small { display: block; }
+.est-roster-list small { margin-top: 4px; line-height: 1.45; overflow-wrap: anywhere; }
+
+/* Dossier editorial de afición: identidad del club + datos del campeonato. */
+.est-club-dossier { margin-top:26px; padding:20px; border:1px solid rgba(206,190,137,.25); border-radius:16px; background:#0c1e18; }
+.est-club-dossier-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+.est-club-dossier-head h3 { margin:4px 0 0; font:800 22px var(--display); color:#f6f2e3; }
+.est-club-dossier-head button { flex:none; padding:8px 10px; border:1px solid #6b846d; border-radius:7px; color:#dcebdc; background:#203d30; cursor:pointer; }
+#est-club-status { color:#b5cbbd; font-size:12px; }
+.est-club-cover { position:relative; overflow:hidden; display:flex; align-items:center; gap:18px; padding:22px; border:1px solid rgba(255,255,255,.16); border-left:5px solid var(--club-color,#76d7a2); border-radius:12px; background:radial-gradient(circle at 90% 0,rgba(214,192,123,.16),transparent 52%),linear-gradient(125deg,#264638,#11291f); }
+.est-club-cover:after { content:'⚽'; position:absolute; right:10px; bottom:-35px; font-size:110px; opacity:.07; pointer-events:none; }
+.est-club-cover .est-club-crest { width:60px; height:70px; margin:0; }
+.est-club-cover h4 { position:relative; z-index:1; margin:4px 0; font:800 clamp(21px,3vw,31px)/1.05 var(--display); color:#fff9e8; }
+.est-club-cover p,.est-club-cover small { position:relative; z-index:1; margin:0; color:#c4d9c8; }
+.est-club-cover p { font-size:10px; font-weight:800; letter-spacing:.15em; }
+.est-club-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:10px 0 16px; }
+.est-club-metrics div { padding:11px 9px; border:1px solid #385545; border-radius:9px; background:#142c21; }
+.est-club-metrics strong { display:block; color:#dfca90; font:800 20px var(--display); }
+.est-club-metrics span { color:#b5cab9; font-size:10px; }
+.est-club-block { margin-top:12px; padding:16px; border:1px solid #335044; border-radius:11px; background:#10261d; }
+.est-club-block h4 { margin:0 0 7px; font:800 17px var(--display); color:#f2f4e8; }
+.est-club-block p { margin:7px 0; color:#c0d2c3; font-size:12px; line-height:1.55; }
+.est-club-block .est-club-caption { color:#d8c48f; font-size:10px; text-transform:uppercase; letter-spacing:.1em; }
+.est-club-block details { margin-top:12px; }
+.est-club-block summary { cursor:pointer; color:#9ce9be; font-weight:800; font-size:12px; }
+.est-club-table-wrap { max-width:100%; overflow-x:auto; margin-top:10px; }
+.est-club-table { width:100%; border-collapse:collapse; min-width:550px; font-size:11px; text-align:left; }
+.est-club-table th,.est-club-table td { padding:8px 6px; border-bottom:1px solid #2c4939; white-space:nowrap; }
+.est-club-table th { color:#d5c28e; }
+.est-club-transfers { margin:0; padding-left:18px; color:#c4d6c8; font-size:12px; line-height:1.7; }
+@media (max-width:680px) { .est-club-dossier { padding:14px; } .est-club-cover { padding:16px; } .est-club-cover .est-club-crest { width:46px; height:56px; } .est-club-metrics strong { font-size:17px; } }
