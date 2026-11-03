@@ -15,7 +15,7 @@
 ## 2. Ensayo determinista local
 
 - Edición sintética: **2099-11**, reloj `America/Mexico_City`; no corresponde a una edición jugada por personas.
-- **240/240** partidos regulares en 30 jornadas; el mercado queda bloqueado después de completar J20.
+- **240/240** partidos regulares en 30 jornadas en el escenario de control; el mercado queda bloqueado después de completar J20. Desde el parche de elegibilidad, el ciclo también puede cerrar con **más del 90 %** asentado (mínimo 217/240) y archivo estadístico suficiente; el ensayo completo sigue cubriendo la vía 240/240.
 - **16** boletos sintéticos, uno por candidato; resultados determinados por el orden de clubes para asegurar un campeón único y un ganador.
 - **33 sweeps**, sin errores; en la validación completa final el p95 fue **192,356 ms** y el máximo **280,037 ms**. Son mediciones puntuales de este runner local, no un SLO garantizado de producción.
 - Anuncio exactamente a las **22:00 de `America/Mexico_City`**, posterior al último partido en el escenario. Se acreditó un pago una vez; un sweep repetido no generó otro crédito.

@@ -3681,3 +3681,21 @@ test('un resultado histórico sin replay conserva marcador y estado final', asyn
   assert.equal(h.window.document.getElementById('score-away').textContent, '1');
   assert.equal(h.window.document.getElementById('est-clock').textContent, 'Final');
 });
+
+test('el Balón de Oro explica la muestra parcial verificada y el umbral mayor que 90 %', async t => {
+  const settled = settledBallonDorMarket({ resultAnnouncementAt: 100 });
+  settled.result.coverage = { played: 217, total: 240, minimum: 217 };
+  const h = await createBallonDorHarness({
+    path: '/balon-de-oro', now: Date.UTC(2026, 10, 2, 12),
+    ballonDorMarket: settled, openingCompleted: true, reducedMotion: true
+  });
+  t.after(h.close);
+  const { document } = h.window;
+  assert.match(document.getElementById('est-bdo-finalization-message').textContent,
+    /Muestra verificada: 217 de 240 partidos \(90\.4 %\)\./);
+
+  const locked = ballonDorMarket({ status: 'locked', updatedAt: 300 });
+  h.handlers['football:ballon_dor_market']({ market: locked });
+  assert.match(document.getElementById('est-bdo-summary').textContent,
+    /más del 90 % de partidos asentados y estadísticas verificadas/);
+});

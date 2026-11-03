@@ -1004,6 +1004,15 @@
     } catch (_) { return ''; }
   }
 
+  function ballonDorCoverageLabel(market) {
+    var coverage = market && market.result && market.result.coverage;
+    var played = coverage && Number(coverage.played);
+    var total = coverage && Number(coverage.total);
+    if (!Number.isFinite(played) || !Number.isFinite(total) || total <= 0 || played >= total) return '';
+    var percent = Math.round(played * 1000 / total) / 10;
+    return 'Muestra verificada: ' + played + ' de ' + total + ' partidos (' + percent + ' %).';
+  }
+
   function renderBallonDorFinalization(market) {
     var message = el['est-bdo-finalization-message'];
     var date = el['est-bdo-finalization-date'];
@@ -1039,8 +1048,10 @@
         date.textContent = (actual ? 'Cierre oficial completado: ' + actual + '. ' : '')
           + (announcedDate ? 'Anuncio previsto: ' + announcedDate + '.' : '');
       } else {
+        var coverageLabel = ballonDorCoverageLabel(market);
         message.innerHTML = market.result
           ? 'Resultado oficial publicado y ceremonia disponible. Horario de anuncio: <strong>10:00 p. m.</strong>, ' + afterText + ' (hora de Ciudad de México).'
+            + (coverageLabel ? ' ' + coverageLabel : '')
           : 'Cierre oficial completado; el resultado no está disponible para publicación. La ceremonia queda bloqueada.';
         date.textContent = announcedDate ? 'Anuncio oficial: ' + announcedDate + '.' : '';
       }
@@ -1058,7 +1069,7 @@
     var quoteDate = after > 0 ? 'Cuotas actualizadas tras J' + after + '.' : 'Cuotas iniciales del ciclo.';
     if (market.status === 'scheduled') return 'Ciclo de ' + month + ' programado. El mercado abre el día 1 de ' + month + ' (hora de Ciudad de México).';
     if (market.status === 'active') return 'Predicciones abiertas para ' + month + '. El mercado cierra automáticamente cuando se asienten los ocho partidos de J20. ' + quoteDate;
-    if (market.status === 'locked') return 'Mercado cerrado tras asentarse los ocho partidos de J20. No se aceptan nuevas predicciones; la liga continúa hasta J30.';
+    if (market.status === 'locked') return 'Mercado cerrado tras asentarse los ocho partidos de J20. No se aceptan nuevas predicciones; la liga continúa. El premio puede cerrarse con más del 90 % de partidos asentados y estadísticas verificadas.';
     if (market.status === 'settled') {
       if (!market.result && Number(market.resultAnnouncementAt) > Date.now()) {
         return 'La liquidación oficial está cerrada y persistida. El podio se anunciará en la ceremonia de las 10:00 p. m., después del último partido.';
