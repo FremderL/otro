@@ -3699,3 +3699,80 @@ test('el Balón de Oro explica la muestra parcial verificada y el umbral mayor q
   assert.match(document.getElementById('est-bdo-summary').textContent,
     /más del 90 % de partidos asentados y estadísticas verificadas/);
 });
+
+test('varios cambios V2 se animan completos a pesar de los fotogramas del servidor', async t => {
+  const h = createHarness({ reducedMotion: false });
+  t.after(h.close);
+  h.match.engine = 'v2';
+  h.players.push(player('h13', 'home', 13, false));
+  await h.connectToMatch();
+  const id = h.match.id;
+  h.handlers['football:status']({ matchId: id, code: 'live', minute: 70 });
+  h.draw(0);
+  function change(out, incoming) {
+    h.handlers['football:event']({ matchId: id, event: { type: 'substitution', team: 'home',
+      playerId: incoming, playerInId: incoming, playerOutId: out, minute: 70, phase: 'set_piece' } });
+  }
+  change('h9', 'h12');
+  change('h10', 'h13');
+  h.draw(0);
+  assert.equal(h.drawnText.filter(v => v === '▲' || v === '▼').length, 2);
+  const initial12 = h.playerTextTrace.filter(p => p.value === '12').at(-1);
+  const initial13 = h.playerTextTrace.filter(p => p.value === '13').at(-1);
+  assert.ok(initial12.y < 60 || initial12.y > 620);
+  assert.ok(initial13.y < 60 || initial13.y > 620);
+  const frame = h.players.map(p => ({ ...p, active: p.id === 'h9' || p.id === 'h10' ? false
+    : p.id === 'h12' || p.id === 'h13' ? true : p.active }));
+  h.advanceTime(500);
+  h.handlers['football:tick']({ matchId: id, minute: 70, playStopped: true, players: frame });
+  h.draw(0);
+  const midway12 = h.playerTextTrace.filter(p => p.value === '12').at(-1);
+  const midway13 = h.playerTextTrace.filter(p => p.value === '13').at(-1);
+  assert.ok(Math.abs(midway12.y - initial12.y) > 5, 'el primer relevo sigue caminando');
+  assert.ok(Math.abs(midway13.y - initial13.y) > 5, 'el segundo relevo sigue caminando');
+  assert.ok(midway12.y < 200 || midway12.y > 480, 'el fotograma no teletransporta al jugador');
+  h.advanceTime(2200);
+  h.handlers['football:tick']({ matchId: id, minute: 70, playStopped: true, players: frame });
+  h.draw(0);
+  assert.ok(!h.drawnText.some(v => v === '▲' || v === '▼'));
+  assert.ok(!h.drawnText.includes('9') && !h.drawnText.includes('10'));
+});
+
+test('la cabina anuncia cambios consecutivos aunque haya otros comentarios pendientes', async t => {
+  const h = createHarness({ speechSynthesis: true });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { handlers, match, speech, window } = h;
+  window.document.getElementById('est-commentary-voice').click();
+  function say(text, type, importance = 'medium') {
+    handlers['football:commentary']({ matchId: match.id, voice: 'narrador', text, type, importance, minute: 70 });
+  }
+  say('El equipo mantiene el balón durante una posesión larga.', 'possession', 'normal');
+  say('Entra el doce por el nueve.', 'substitution');
+  say('Entra el trece por el diez.', 'substitution');
+  assert.equal(speech.utterances.at(-1).text, 'Entra el doce por el nueve.');
+  speech.finish(speech.utterances.length - 1);
+  h.advanceTime(1000);
+  assert.equal(speech.utterances.at(-1).text, 'Entra el trece por el diez.');
+  assert.match(window.document.getElementById('est-commentary').textContent, /doce por el nueve/);
+  assert.match(window.document.getElementById('est-commentary').textContent, /trece por el diez/);
+});
+
+test('un gol puede interrumpir un cambio sin borrar su anuncio ni los siguientes', async t => {
+  const h = createHarness({ speechSynthesis: true });
+  t.after(h.close);
+  await h.connectToMatch();
+  h.window.document.getElementById('est-commentary-voice').click();
+  const send = (text, type, importance) => h.handlers['football:commentary']({ matchId: h.match.id,
+    voice: 'narrador', text, type, importance, minute: 75 });
+  send('Cambio uno.', 'substitution', 'medium');
+  send('Cambio dos.', 'substitution', 'medium');
+  send('Gol del local.', 'goal', 'high');
+  assert.equal(h.speech.utterances.at(-1).text, 'Gol del local.');
+  h.speech.finish(h.speech.utterances.length - 1);
+  h.advanceTime(1000);
+  assert.equal(h.speech.utterances.at(-1).text, 'Cambio uno.');
+  h.speech.finish(h.speech.utterances.length - 1);
+  h.advanceTime(1000);
+  assert.equal(h.speech.utterances.at(-1).text, 'Cambio dos.');
+});

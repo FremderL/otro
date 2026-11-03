@@ -103,14 +103,16 @@ test('apuestas simultáneas en la misma categoría: solo una entra', async () =>
   } finally { h.cleanup(); }
 });
 
-test('una apuesta cobrada en cash-out también bloquea la categoría (no se puede cubrir)', async () => {
+test('una apuesta cobrada en cash-out permite volver a apostar en la categoría', async () => {
   const h = setup();
   try {
     const r1 = await bet(h, { placedAt: 1000 });
     assert.strictEqual(r1.ok, true);
-    h.store.settleBet(r1.bet.id, { status: 'cashed', payout: 40 });
+    const cashout = await h.betting.cashout(h.profile, r1.bet.id);
+    assert.strictEqual(cashout.ok, true, cashout.code);
     const again = await bet(h, { selection: 'away', placedAt: 90000 });
-    assert.strictEqual(again.code, 'mercado_ya_apostado');
+    assert.strictEqual(again.ok, true, again.code);
+    assert.strictEqual((await bet(h, { placedAt: 1000 })).bet.id, r1.bet.id);
   } finally { h.cleanup(); }
 });
 
