@@ -139,3 +139,43 @@ test('seedRatings devuelve valores en rango y reproducibles', () => {
   assert.deepStrictEqual(a, b);
   assert.ok(a.elo >= 1380 && a.elo <= 1620);
 });
+
+test('la alineación se completa con la plantilla disponible y nunca pierde el partido por un dato suelto', () => {
+  const { createLineups, createTeamLineup } = require('../lib/football/match-state');
+  const clubs = buildSeasonClubs(mulberry32(77));
+  const home = clubs[0], away = clubs[1];
+  const starters = lineup => lineup.players.filter(player => player.initialStatus === 'active');
+  const sano = createTeamLineup(home);
+  assert.strictEqual(starters(sano).length, 11);
+  assert.strictEqual(sano.players.length, home.squad.length, 'no se descarta a ningún futbolista de la plantilla');
+
+  // Dato heredado: un atributo ausente en un suplente y un dorsal fuera de rango.
+  delete home.squad[7].attrs.def;
+  home.squad[6].num = 120;
+  const saneado = createTeamLineup(home);
+  const repaired = saneado.players.find(player => player.id === home.squad[7].id);
+  assert.ok(Number.isFinite(repaired.attrs.def), 'el atributo ausente se rellena con el perfil de su posición');
+  assert.ok(saneado.players.find(player => player.id === home.squad[6].id).number <= 99, 'el dorsal se acota al rango visible');
+  assert.strictEqual(starters(saneado).length, 11);
+
+  // Sin DT la rotación prefiere dorsales 1-11, pero un plantel corto igual alinea once.
+  const corto = buildSeasonClubs(mulberry32(78))[2];
+  delete corto.manager;
+  corto.squad.slice(10).forEach(player => { player.num = 90 + player.num; });
+  assert.strictEqual(starters(createTeamLineup(corto)).length, 11, 'un dorsal alto no deja el once incompleto');
+  const renumerado = buildSeasonClubs(mulberry32(79))[3];
+  delete renumerado.manager;
+  renumerado.squad.forEach(player => { player.num += 20; });
+  assert.strictEqual(starters(createTeamLineup(renumerado)).length, 11, 'sin dorsales 1-11 el once se completa igual');
+
+  // El simulador V2 acepta el once saneado y no se inventan jugadores.
+  const { prepareMatchInputs } = require('../lib/football/v2/inputs');
+  const { createMatch } = require('../lib/football/v2/simulator');
+  const match = { id: 'saneado', seasonMonth: '2026-11', homeId: home.id, awayId: away.id, status: 'scheduled' };
+  const league = { seasonMonth: '2026-11', config: clubs, calendar: { matches: [match] } };
+  const input = prepareMatchInputs({ league, match, asOf: Date.UTC(2026, 10, 1), seed: 0 });
+  const squadIds = new Set(clubs.flatMap(club => club.squad.map(player => player.id)));
+  assert.ok(input.home.lineup.players.every(player => squadIds.has(player.id)), 'solo juegan futbolistas de la plantilla');
+  assert.strictEqual(createMatch({ ...input, random: () => 0.5 }).snapshot().players.length, 22);
+  assert.deepStrictEqual(createLineups(home, away), createLineups(home, away), 'la alineación sigue siendo determinista');
+});

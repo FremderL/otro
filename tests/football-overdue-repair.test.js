@@ -561,3 +561,53 @@ test('un V2 live con compromiso dañado no se pospone ni reembolsa por reintento
   assert.equal(refunds, 0);
   assert.equal(events.filter(e => e.event === 'football_v2_commitment_blocked').length, 1);
 });
+
+// Incidente: una alineación rechazada por el simulador dejaba el cruce sin acta
+// para siempre. Con el once ya saneado en origen, el barrido debe poder
+// asentarlo aunque la plantilla persistida siguiera incompleta.
+test('un vencido con la plantilla incompleta se asienta igual y suma su PJ', async t => {
+  const dir = tmpdir();
+  const { store, league } = seededStore(dir);
+  t.after(() => { store.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const target = league.calendar.matches.find(m => m.jornada === 4);
+  for (const match of league.calendar.matches) if (match !== target) match.scheduledKickoffAt = Date.UTC(2027, 5, 1);
+  const club = league.config.find(item => item.id === target.homeId);
+  // Dato heredado de una versión anterior: un suplente sin el atributo de defensa.
+  delete club.squad[7].attrs.def;
+  const now = target.scheduledKickoffAt + 3 * 24 * 3600000;
+  const events = [];
+  const logEvent = (event, data) => events.push({ event, data });
+  const engine = new FootballEngine(store, { logEvent });
+  const officialV2 = createOfficialV2({ store, log: logEvent, onlyV2: true });
+  engine.officialV2 = officialV2;
+  await engine.repairOverdueMatches(now);
+  assert.equal(target.status, 'settled', 'el atributo ausente no puede costar la jornada');
+  assert.ok(Number.isInteger(target.result.home) && Number.isInteger(target.result.away));
+  const rows = store.getStandings(NOV).filter(row => [target.homeId, target.awayId].includes(row.teamId));
+  assert.deepEqual(rows.map(row => row.played), [1, 1]);
+  assert.equal(events.some(e => e.event === 'football_overdue_repair_pending'), false,
+    'no queda reintentando para siempre');
+});
+
+test('un partido en juego que quedó en cuarentena se asienta al vencer y no se pierde', async t => {
+  const dir = tmpdir();
+  const { store, league } = seededStore(dir);
+  t.after(() => { store.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const target = league.calendar.matches.find(m => m.jornada === 2);
+  const events = [];
+  const logEvent = (event, data) => events.push({ event, data });
+  const engine = new FootballEngine(store, { logEvent });
+  const officialV2 = createOfficialV2({ store, log: logEvent, onlyV2: true });
+  engine.officialV2 = officialV2;
+  assert.equal((await officialV2.prepareMatch(target, target.scheduledKickoffAt - 1000)).ok, true);
+  assert.equal(engine.startMatch(target, target.scheduledKickoffAt + 1000), true);
+  // Tres vueltas con error dejan el runtime en cuarentena (posposición técnica).
+  engine.quarantine(target, 'repeated_errors');
+  assert.equal(target.status, 'postponed');
+  const now = target.scheduledKickoffAt + 40 * 60000;
+  const summary = await engine.repairOverdueMatches(now);
+  assert.equal(summary.recuperados, 1);
+  assert.equal(target.status, 'settled');
+  assert.ok(Number.isInteger(target.result.home));
+  assert.ok(events.some(e => e.event === 'football_overdue_recovered' && e.data.match === target.id));
+});
