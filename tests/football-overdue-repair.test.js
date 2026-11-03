@@ -195,6 +195,39 @@ test('audita los 240 cruces y reemplaza un compromiso V2 no ejecutable vencido s
   store.close();
 });
 
+test('audita los PJ esperados por club y detecta a West Hamón y Arcenico con el cruce de ayer pendiente', async t => {
+  const dir = tmpdir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const { store, league } = seededStore(dir);
+  const target = league.calendar.matches.find(match => match.homeId === 'norvela_sporting'
+    && match.awayId === 'dynamo_kelvar' && match.jornada === 1);
+  const todayMatches = ['norvela_sporting', 'dynamo_kelvar'].map(teamId => league.calendar.matches.find(match =>
+    match.jornada === 2 && (match.homeId === teamId || match.awayId === teamId)));
+  assert.ok(target && todayMatches.every(Boolean));
+  for (const match of league.calendar.matches) {
+    if (match === target || todayMatches.includes(match)) continue;
+    match.scheduledKickoffAt = Date.UTC(2026, 10, 10);
+  }
+  const now = target.scheduledKickoffAt + 24 * 3600000;
+  for (const match of todayMatches) {
+    assert.ok(store.settleMatch(match.id, { home: 1, away: 0 }, {
+      seasonMonth: NOV, now: match.scheduledKickoffAt + 90 * 60000, deferSave: true
+    }).ok);
+  }
+  const logs = [];
+  const engine = new FootballEngine(store, { logEvent: (event, data) => logs.push({ event, data }) });
+  const audit = engine.auditSeasonMatchCounts(now).find(item => item.seasonMonth === NOV);
+  const clubGaps = audit.clubGaps.filter(item => ['norvela_sporting', 'dynamo_kelvar'].includes(item.teamId));
+
+  assert.deepEqual(clubGaps.map(item => [item.teamId, item.played, item.expectedPlayed, item.overdueWithoutResult])
+    .sort((a, b) => a[0].localeCompare(b[0])), [
+    ['dynamo_kelvar', 1, 2, 1], ['norvela_sporting', 1, 2, 1]
+  ]);
+  assert.equal(logs.filter(item => item.event === 'football_club_match_count_gap'
+    && ['norvela_sporting', 'dynamo_kelvar'].includes(item.data.teamId)).length, 2);
+  store.close();
+});
+
 test('reembolsa las obligaciones antes de reemplazar el sorteo y cerrar el partido', async t => {
   const dir = tmpdir();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
