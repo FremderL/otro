@@ -208,7 +208,7 @@
     ballT0: 0, ballDur: 800, ballHoldUntil: 0, playerT0: 0, playerDur: 1900,
     // Cambios: el círculo que sale se retira por la banda y el relevo entra por
     // el mismo punto antes de ocupar su puesto (nada de aparecer de la nada).
-    subExits: [], pendingSubEntry: null, subEnter: null,
+    subExits: [], pendingSubEntry: null, subEntries: {},
     // Marcas de jugada: todo evento que el relato menciona deja un aviso en la
     // cancha para que lo que se oye y lo que se ve sucedan a la vez.
     eventMarkers: [],
@@ -946,11 +946,14 @@
     var entries = S.betHistory && Array.isArray(S.betHistory.entries) ? S.betHistory.entries : [];
     var entry = entries.find(function (item) {
       return item.kind === 'future' && item.market === BALLON_DOR_MARKET
-        && (!month || item.seasonMonth === month);
+        && (!month || item.seasonMonth === month)
+        && !(market && market.status === 'active' && item.status === 'void');
     });
     if (entry) return entry;
     if (S.ballonDorReceipt && S.ballonDorReceipt.market === BALLON_DOR_MARKET
-        && (!month || S.ballonDorReceipt.seasonMonth === month)) return S.ballonDorReceipt;
+        && (!month || S.ballonDorReceipt.seasonMonth === month)
+        && !(market && market.status === 'active' && (S.ballonDorReceipt.status === 'void'
+          || entries.some(function (item) { return item.id === S.ballonDorReceipt.id && item.status === 'void'; })))) return S.ballonDorReceipt;
     return null;
   }
 
@@ -4111,7 +4114,7 @@
     S.subExits = [];
     S.eventMarkers = [];
     S.pendingSubEntry = null;
-    S.subEnter = null;
+    S.subEntries = {};
     resolveKits();
     initPlayers();
     S.playerT0 = performance.now();
@@ -4170,7 +4173,9 @@
       var kitPattern = team === 'home' ? S.homePattern : S.awayPattern;
       var fromX = animate && old ? old.renderX : x;
       var fromY = animate && old ? old.renderY : y;
-      return {
+      var entry = S.subEntries && S.subEntries[p.id];
+      if (entry && performance.now() >= entry.until) { delete S.subEntries[p.id]; entry = null; }
+      var result = {
         id: p.id, name: p.name, pos: p.pos, role: p.role, team: team, active: true,
         number: p.number, speed: p.speed, stamina: p.stamina, status: p.status,
         seed: index * 7.3 + (team === 'home' ? 100 : 200),
@@ -4178,6 +4183,13 @@
         startX: fromX, startY: fromY, baseX: fromX, baseY: fromY,
         destX: x, destY: y, renderX: fromX, renderY: fromY
       };
+      // Los fotogramas del servidor llegan cada 500 ms: no deben cortar
+      // el recorrido de entrada, pero sí actualizan su destino autoritativo.
+      if (entry) {
+        result.startX = entry.spot.x; result.startY = entry.spot.y;
+        result.t0 = entry.t0; result.dur = SUB_WALK_MS;
+      }
+      return result;
     });
   }
   function buildTeam(team, formation, mirror, base, sec, pattern) {
@@ -4439,7 +4451,7 @@
 
     // Recién ingresado: aro discontinuo mientras camina desde la banda, para
     // que el cambio se identifique en la cancha igual que en el relato.
-    if (S.subEnter && S.subEnter.id === pl.id && performance.now() < S.subEnter.until) {
+    if (S.subEntries && S.subEntries[pl.id] && performance.now() < S.subEntries[pl.id].until) {
       ctx.beginPath(); ctx.arc(cx, cy, r + 4.5, 0, TAU);
       ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.strokeStyle = '#ffe3a5'; ctx.stroke();
       ctx.setLineDash([]);
@@ -4862,8 +4874,11 @@
     var base = goal ? 8 : (decisive ? 6 : (commentaryImportance(item) === 'high' ? 4 : (commentaryImportance(item) === 'medium' ? 2 : 0)));
     return base + (item && item.voice === 'analista' ? 0 : 1);
   }
+  function isSubstitutionAnnouncement(item) {
+    return item && item.type === 'substitution' && item.voice === 'narrador';
+  }
   function commentaryStaleMs(item) {
-    return COMMENTARY_SPEECH_STALE_MS[commentaryImportance(item)];
+    return isSubstitutionAnnouncement(item) ? 60000 : COMMENTARY_SPEECH_STALE_MS[commentaryImportance(item)];
   }
   // Estimación prudente de la locución (~55 ms por carácter más el arranque).
   function speechDurationMs(text) { return Math.max(1500, 900 + String(text || '').length * 55); }
@@ -4911,17 +4926,27 @@
     // no se lee: narrarla dejaría a la cabina minutos por detrás del partido.
     if (message.catchUp) return;
     var priority = commentaryPriority(item);
-    if (commentaryImportance(item) === 'high') {
+    if (isSubstitutionAnnouncement(item)) {
+      // No perder cambios consecutivos cuando la cabina todavía está hablando.
+      if (commentarySpeech.activeItem && commentaryPriority(commentarySpeech.activeItem) < priority
+          && !isSubstitutionAnnouncement(commentarySpeech.activeItem)) interruptCommentaryTurn();
+      commentarySpeech.queue = commentarySpeech.queue.filter(function (queued) {
+        return isSubstitutionAnnouncement(queued) || commentaryPriority(queued) >= priority;
+      });
+    } else if (commentaryImportance(item) === 'high') {
       // Las acciones importantes desplazan el relleno; goles y penales también
       // pueden interrumpir una falta o atajada que aún se esté narrando.
       commentarySpeech.queue = commentarySpeech.queue.filter(function (queued) {
-        return commentaryImportance(queued) === 'high' && commentaryPriority(queued) >= priority - (item.voice === 'narrador' ? 1 : 0)
-          && !(item.voice === 'narrador' && queued.voice === 'analista' && queued.type !== item.type);
+        return isSubstitutionAnnouncement(queued) || (commentaryImportance(queued) === 'high' && commentaryPriority(queued) >= priority - (item.voice === 'narrador' ? 1 : 0)
+          && !(item.voice === 'narrador' && queued.voice === 'analista' && queued.type !== item.type));
       });
       if (commentarySpeech.activeItem && (commentaryImportance(commentarySpeech.activeItem) !== 'high'
           || (item.voice === 'narrador' && commentaryPriority(item) - commentaryPriority(commentarySpeech.activeItem) >= 2)
           || (item.voice === 'narrador' && commentarySpeech.activeItem.voice === 'analista'
-            && item.type && item.type !== commentarySpeech.activeItem.type))) interruptCommentaryTurn();
+            && item.type && item.type !== commentarySpeech.activeItem.type))) {
+        if (isSubstitutionAnnouncement(commentarySpeech.activeItem)) commentarySpeech.queue.unshift(commentarySpeech.activeItem);
+        interruptCommentaryTurn();
+      }
     } else {
       // Si la línea no cabe antes de que su jugada quede atrás, se cede el
       // turno: mejor callar un comentario que narrar el minuto anterior.
@@ -4929,22 +4954,24 @@
         && commentaryWaitMs(now) + speechDurationMs(text) > COMMENTARY_SPEECH_MAX_WAIT_MS) {
         var drop = -1;
         for (var i = 0; i < commentarySpeech.queue.length; i++) {
-          if (commentaryPriority(commentarySpeech.queue[i]) <= priority) { drop = i; break; }
+          if (!isSubstitutionAnnouncement(commentarySpeech.queue[i]) && commentaryPriority(commentarySpeech.queue[i]) <= priority) { drop = i; break; }
         }
         if (drop < 0) break;
         commentarySpeech.queue.splice(drop, 1);
       }
       if (commentaryWaitMs(now) > COMMENTARY_SPEECH_MAX_WAIT_MS) return;
     }
-    if (commentarySpeech.queue.length >= COMMENTARY_SPEECH_QUEUE_LIMIT) {
-      var lowest = 0;
-      for (var k = 1; k < commentarySpeech.queue.length; k++) {
-        if (commentaryPriority(commentarySpeech.queue[k]) < commentaryPriority(commentarySpeech.queue[lowest])) lowest = k;
+    if (commentarySpeech.queue.length >= COMMENTARY_SPEECH_QUEUE_LIMIT && !isSubstitutionAnnouncement(item)) {
+      var lowest = -1;
+      for (var k = 0; k < commentarySpeech.queue.length; k++) {
+        if (!isSubstitutionAnnouncement(commentarySpeech.queue[k])
+            && (lowest < 0 || commentaryPriority(commentarySpeech.queue[k]) < commentaryPriority(commentarySpeech.queue[lowest]))) lowest = k;
       }
-      if (commentaryPriority(commentarySpeech.queue[lowest]) >= priority) return;
+      if (lowest < 0 || commentaryPriority(commentarySpeech.queue[lowest]) >= priority) return;
       commentarySpeech.queue.splice(lowest, 1);
     }
-    commentarySpeech.queue.push(item);
+    if (commentaryImportance(item) === 'high') commentarySpeech.queue.unshift(item);
+    else commentarySpeech.queue.push(item);
     runNextCommentaryTurn();
   }
   function runNextCommentaryTurn() {
@@ -5186,7 +5213,7 @@
     pl.dur = SUB_WALK_MS;
     // El aro del recién ingresado se guarda aparte de la ficha del jugador:
     // cada tick reconstruye el once y perdería la marca.
-    S.subEnter = { id: pl.id, until: performance.now() + SUB_ENTRY_DELAY_MS + SUB_WALK_MS };
+    S.subEntries[pl.id] = { spot: pending.spot, t0: pl.t0, until: pl.t0 + SUB_WALK_MS };
   }
   function drawSubExits(now) {
     if (!S.subExits || !S.subExits.length) return;
@@ -5386,12 +5413,14 @@
       S.playerT0 = performance.now();
       S.playerDur = 800;
       S.players.forEach(function (player) {
+        if (S.subEntries[player.id] && performance.now() < S.subEntries[player.id].until) return;
         player.startX = player.renderX;
         player.startY = player.renderY;
         player.dur = null;
       });
 
-      if (ev.playerId != null && ev.actorPosition) movePlayerTo(ev.playerId, ev.actorPosition, 500);
+      if (ev.type !== 'substitution' && ev.playerId != null && ev.actorPosition
+          && !(S.subEntries[ev.playerId] && performance.now() < S.subEntries[ev.playerId].until)) movePlayerTo(ev.playerId, ev.actorPosition, 500);
       if (ev.receiverId != null) movePlayerTo(ev.receiverId, ev.ball || S.ballDest, 700);
       if (ev.keeperId != null && ev.keeperPosition) movePlayerTo(ev.keeperId, ev.keeperPosition, 400);
 
@@ -6792,6 +6821,7 @@
       S.chips = res.chips; updateChips();
       S.myBets = S.myBets.filter(function (b) { return b.id !== betId; });
       renderMyBets();
+      renderMarkets();
       loadBetHistory();
       toast('Cash-out: +' + fmt(res.cashout) + ' fichas.', 'win'); bell('win');
     });

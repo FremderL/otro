@@ -929,3 +929,30 @@ test('el contrato público incluye probabilidades y cuotas, nunca boletos person
     h.cleanup();
   }
 });
+
+test('un reembolso completado permite elegir otro candidato sin reutilizar la clave anterior', async () => {
+  const h = tempHarness({ chips: 1000, createProfiles: true });
+  try {
+    await activateWithSnapshot(h, openAt);
+    const now = openAt + 2000;
+    const betting = createBettingService({ store: h.store, profiles: h.profiles, now: () => now, log: () => {} });
+    neutralizeProgression(h.profile);
+    const args = { profile: h.profile, selection: h.league.ballonDor.candidates[0].id,
+      stake: 100, idempotencyKey: 'bdo-refund-original', placedAt: now };
+    const first = await betting.placeBallonDorBet(args);
+    assert.equal(first.ok, true, first.code);
+    h.store.voidFuture(first.future.id, { settledAt: now + 1, payout: 100 });
+    const replacement = { ...args, selection: h.league.ballonDor.candidates[1].id, idempotencyKey: 'bdo-refund-new-key' };
+    assert.equal((await betting.placeBallonDorBet(replacement)).code, 'boleto_ya_colocado');
+    await betting.refundBallonDorBets(SEASON, 'prueba', now + 2);
+    assert.equal(h.profile.chips, 1000);
+    assert.equal((await betting.placeBallonDorBet(args)).code, 'boleto_anulado');
+    const second = await betting.placeBallonDorBet(replacement);
+    assert.equal(second.ok, true, second.code);
+    assert.equal(second.future.selection, replacement.selection);
+    assert.notEqual(second.future.id, first.future.id);
+    assert.equal(h.profile.chips, 900);
+    assert.equal((await betting.placeBallonDorBet(replacement)).replayed, true);
+    assert.equal(h.store.getFutures({ profileId: h.profile.id, seasonMonth: SEASON }).length, 2);
+  } finally { h.cleanup(); }
+});
