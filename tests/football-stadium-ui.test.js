@@ -3590,7 +3590,7 @@ test('un tick real recupera la vista si se perdió el aviso inicial de kickoff',
   assert.equal(h.window.document.querySelectorAll('.est-market-group').length, 1, 'cierra los mercados prepartido');
 });
 
-test('una reprogramación automática informa la nueva hora y suspende nuevas apuestas', async t => {
+test('una reprogramación automática informa la nueva hora y mantiene abiertas las apuestas', async t => {
   const now = 1800000000000;
   const h = createHarness({ now, kickoffOffsetMs: -1000 });
   t.after(h.close);
@@ -3600,8 +3600,9 @@ test('una reprogramación automática informa la nueva hora y suspende nuevas ap
   h.handlers['football:status']({ matchId: h.match.id, code: 'rescheduled', scheduledKickoffAt: newKickoff, automatic: true });
   assert.match(h.window.document.getElementById('est-preshow-status').textContent, /reprogramado automáticamente/);
   assert.equal(h.window.document.getElementById('est-preshow-timer').textContent, '30:00');
-  assert.match(h.window.document.getElementById('est-markets').textContent, /Nuevas apuestas suspendidas/);
-  assert.equal(h.window.document.querySelectorAll('.est-market-group').length, 0);
+  assert.match(h.window.document.getElementById('est-markets').textContent, /Local|Visita|Empate/);
+  assert.ok(h.window.document.querySelectorAll('.est-market-group').length > 0, 'se conservan los mercados prepartido para apostar');
+  assert.equal(h.window.document.querySelector('.est-sel').disabled, false);
 });
 
 test('MonteCristo News transmite despidos y contrataciones de DT en apertura de temporada y muestra el boletín de clubes', async t => {

@@ -77,9 +77,15 @@ prepararlas. Las posposiciones administrativas se siguen respetando.
 
 La regresión usa West Hamón–Arcenico de J1, al día siguiente: falla el guardado,
 se restaura, se liquida, ambos clubes suman un PJ, y marcador/PJ sobreviven al
-reinicio sin duplicarse en barridos posteriores. También se comprueban el fallo
-persistente (no publicar un resultado sin confirmar) y el aislamiento de un
-error de preparación. Estas pruebas se incorporan a `npm run test:unit`.
+reinicio sin duplicarse en barridos posteriores. También valida que el snapshot
+recuperado incluye el once titular de West Hamón con exactamente 11 jugadores
+únicos. En la reproducción local el once no está roto; el bloqueo era que el
+snapshot V2 quedaba marcado como no confirmado y el reparador no lo reintentaba.
+Esto identifica y corrige el fallo de código reproducible, pero no permite
+confirmar el contenido de la plantilla ni los logs del encuentro en producción.
+También se comprueban el fallo persistente (no publicar un resultado sin
+confirmar) y el aislamiento de un error de preparación. Estas pruebas se
+incorporan a `npm run test:unit`.
 
 Esto prueba y corrige el defecto localmente, no establece por sí solo la causa
 ni el estado del encuentro real: sigue siendo necesaria la verificación de

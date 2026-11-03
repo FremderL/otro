@@ -2582,7 +2582,7 @@
       temporada_no_actual: 'Tu perfil aún no está sincronizado con este mes. Espera un momento y reintenta.',
       evento_no_disponible: 'No hay un ciclo disponible para recibir esta predicción.',
       mercado_cerrado: 'Mercado cerrado: las predicciones terminan al asentarse los ocho partidos de J20.',
-      market_suspended: 'Predicciones suspendidas temporalmente por un partido reprogramado; los boletos existentes se conservan.',
+      market_suspended: 'El mercado está actualizándose temporalmente. Tus boletos existentes se conservan; inténtalo de nuevo en unos segundos.',
       seleccion_invalida: 'Ese candidato no pertenece al ciclo actual.',
       cuota_no_disponible: 'La cuota de esa selección todavía no está disponible.',
       boleto_ya_colocado: 'Ya colocaste un boleto en este ciclo. No se puede cambiar ni retirar.',
@@ -5973,10 +5973,11 @@
       updateLobbyMatchKickoff(data.matchId, data.scheduledKickoffAt, data.day, data.block);
       if (data.automatic) {
         S.match.autoRescheduled = true;
-        S.markets = {};
+        // El compromiso y sus cuotas siguen vigentes: conservar los mercados
+        // prepartido para apostar al nuevo horario.
         if (S.slip && !S.slip.idemKey) closeSlip();
       }
-      toast(data.automatic ? 'El partido no empezó y fue reprogramado. Nuevas apuestas suspendidas.' : 'Horario del partido reprogramado.', 'info');
+      toast(data.automatic ? 'El partido no empezó y fue reprogramado. Las apuestas siguen abiertas para el nuevo horario.' : 'Horario del partido reprogramado.', 'info');
     }
     renderScoreboard();
     renderMarkets();
@@ -6059,7 +6060,7 @@
     var suspended = Boolean(live && S.playStopped);
     var canRetry = Boolean(S.slip && S.slip.idemKey && S.slip.requestStake === Math.floor(Number(el['est-stake'].value || 0)));
     if (el['est-place-bet']) el['est-place-bet'].disabled = Boolean(S.submitting || !S.slip || ((ended || suspended) && !canRetry));
-    if (!keys.length) { box.innerHTML = '<p class="est-muted">' + (ended ? 'Partido finalizado: mercados cerrados.' : S.match && S.match.autoRescheduled ? 'Nuevas apuestas suspendidas por reprogramación; tus boletos existentes se conservan.' : 'Sin mercados disponibles todavía.') + '</p>'; return; }
+    if (!keys.length) { box.innerHTML = '<p class="est-muted">' + (ended ? 'Partido finalizado: mercados cerrados.' : 'Sin mercados disponibles todavía.') + '</p>'; return; }
     box.innerHTML = '';
     if (suspended) {
       var notice = document.createElement('p'); notice.className = 'est-muted';

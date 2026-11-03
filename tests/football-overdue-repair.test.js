@@ -399,6 +399,11 @@ test('West Hamón–Arcenico del día anterior confirma un guardado fallido y su
   await scheduler.runSeasonSweep(now);
   assert.equal(target.status, 'settled');
   assert.equal(target.simulationUnconfirmed, undefined);
+  assert.equal(target.simulation.inputs.home.id, 'norvela_sporting');
+  const westHamonXI = target.simulation.inputs.home.lineup.players
+    .filter(player => player.initialStatus === 'active');
+  assert.equal(westHamonXI.length, 11, 'el compromiso recuperado contiene el once titular completo de West Hamón');
+  assert.equal(new Set(westHamonXI.map(player => player.id)).size, 11, 'no repite jugadores en el once');
   assert.equal(JSON.stringify(target.simulation), commitment, 'no vuelve a sortear el resultado');
   const score = { ...target.result };
   const rows = () => store.getStandings(NOV).filter(row => [target.homeId, target.awayId].includes(row.teamId));
