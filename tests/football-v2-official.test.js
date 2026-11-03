@@ -78,12 +78,34 @@ test('noviembre selecciona automáticamente V2, usa octubre y congela solo el pa
   } finally { h.close(); }
 });
 
-test('rechaza al preparar un compromiso cuyo once no puede ejecutar el simulador', async () => {
+test('un atributo corrupto en la plantilla no impide preparar ni jugar el partido', async () => {
   const h = setup();
   try {
     const match = h.league.calendar.matches[0];
     const club = h.league.config.find(item => item.id === match.homeId);
+    // Antes esto abortaba la preparación y el cruce se quedaba sin acta para
+    // siempre. El once se completa con el perfil de cada posición y el partido
+    // se juega igual: un dato defectuoso no puede costar una jornada.
     for (const player of club.squad) player.attrs = { ...player.attrs, pac: 'dato-corrupto' };
+    const result = await h.officialV2.prepareMatch(match);
+    assert.equal(result.ok, true, `la preparación debe resolverse: ${result.reason}`);
+    assert.ok(match.simulation, 'el compromiso quedó persistido');
+    const starters = club.squad.map(player => player.id);
+    const sim = require('../lib/football/v2/simulator').createMatch({ ...match.simulation.inputs, random: () => 0.5 });
+    assert.equal(sim.snapshot().players.length, 22, 'se juega con once completo en ambos equipos');
+    assert.ok(match.simulation.inputs.home.lineup.players
+      .filter(player => player.initialStatus === 'active')
+      .every(player => starters.includes(player.id)), 'no se inventan futbolistas fuera de la plantilla');
+  } finally { h.close(); }
+});
+
+test('un once imposible de completar sigue sin persistirse (falla cerrado)', async () => {
+  const h = setup();
+  try {
+    const match = h.league.calendar.matches[0];
+    const club = h.league.config.find(item => item.id === match.homeId);
+    // No hay 11 futbolistas que alinear: eso no se rellena inventando jugadores.
+    club.squad = club.squad.slice(0, 6);
     const result = await h.officialV2.prepareMatch(match);
     assert.equal(result.reason, 'preparacion_invalida');
     assert.equal(match.simulation, undefined, 'no se persiste un compromiso que luego no pueda liquidarse');
