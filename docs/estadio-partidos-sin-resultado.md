@@ -53,10 +53,12 @@ forma de perder el acta.
 `engine.repairOverdueMatches(now)` recorre **todas** las temporadas, de la más
 antigua a la más nueva, y asienta por jornada y en orden cronológico. Además,
 `auditSeasonMatchCounts(now)` compara cada calendario con las **240 actas regulares
-esperadas**, cuenta las actas registradas y detecta partidos vencidos sin
-resultado. La reconciliación registra `football_season_match_count_gap` y vuelve a
-intentar liquidarlos en el siguiente barrido; los duplicados no suman porque el
-asentado es idempotente.
+esperadas** y, además, audita por club los PJ asentados frente a los partidos
+vencidos que deberían estar asentados, las 30 fixtures esperadas y el valor de PJ
+que muestra la tabla. `football_club_match_count_gap` identifica al club y los
+IDs pendientes; `football_season_match_count_gap` conserva el resumen de la
+temporada. La reparación intenta liquidar los vencidos en el siguiente barrido;
+los duplicados no suman porque el asentado es idempotente.
 
 Si el compromiso V2 no se puede verificar o el simulador demuestra que no puede
 crear el partido (por ejemplo, un once inválido), la reparación no reutiliza el
@@ -130,7 +132,8 @@ la tabla, y la nota desaparece sola cuando el acta entra.
 | `football_overdue_recommit_blocked` | Reembolso pendiente o recuperación no elegible; el partido sigue sin asentarse. |
 | `football_match_obligations_refunded` | Reembolso idempotente de boletos simples, combinadas y futuros completado. |
 | `football_quiniela_refunded` | Entradas de la quiniela reembolsadas y jornada cancelada. |
-| `football_season_match_count_gap` | Auditoría: calendario/actas esperadas, registrados y vencidos sin resultado. |
+| `football_season_match_count_gap` | Auditoría total de calendario/actas: 240 fixtures, asentados y vencidos sin resultado. |
+| `football_club_match_count_gap` | Auditoría por equipo: fixtures esperadas, PJ asentados, PJ esperados, PJ de tabla e IDs pendientes. |
 | `football_overdue_recovered` | Un pospuesto por el motor volvió al ciclo y se asentó. |
 | `football_season_rotation_deferred` | La rotación espera a que el mes que sale quede completo. |
 | `football_season_rotation_forced` | Se agotó el aplazamiento (6 h) y se rotó con deuda pendiente. |
