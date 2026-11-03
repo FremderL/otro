@@ -113,7 +113,7 @@ J20 cae el **18 de febrero** (cierre de mercado) y la ceremonia es el **27 de fe
 | **Apuestas** | J1 → final de J20 | Se puede predecir al ganador del premio. Las cuotas se **refrescan al completar cada jornada** |
 | **Cierre de mercado** | al asentarse el último partido de la **J20** (≈21:00–21:30) | El evento pasa a `locked`: ya no se aceptan predicciones |
 | **Acumulación** | J21 → J30 | El premio sigue sumando goles, asistencias, apariciones y tarjetas, pero sin mercado |
-| **Resultado** | al asentarse el último partido de la **J30** (y el desempate si hizo falta) | Se calcula el ranking con el bonus por posición final (campeón +5, subcampeón +3, top-4 +1) |
+| **Resultado** | en la ventana de cierre de la **J30** (y el desempate si hizo falta) | Se calcula el ranking con el bonus por posición final (campeón +5, subcampeón +3, top-4 +1). Ya no se exige 240/240: basta **más del 90 %** de los 240 partidos regulares asentados (**mínimo 217**) y archivo estadístico completo de los 16 candidatos en la muestra contada |
 | **Ceremonia y pagos** | **22:00** del día del último partido | Se anuncia el ganador y se liquidan las predicciones. Si el resultado se cierra después de las 22:00, la ceremonia pasa al día siguiente a las 22:00 |
 | **Cierre de temporada** | último día del mes, **23:59** | Tabla final, carryover a la temporada siguiente y reset mensual del casino (que se **aplaza** mientras haya apuestas de fútbol abiertas) |
 
@@ -128,7 +128,8 @@ Si no se resuelve a tiempo, el ciclo se cancela y las predicciones se reembolsan
 
 - ~~`apertura_no_realizada_dia_1`~~ — **retirado** (octubre 2026): un servidor apagado el día 1 ya no
   cancela el ciclo; se abre tarde y la ceremonia se celebra igual. Solo aparece en eventos históricos.
-- `temporada_no_cerrada_antes_reset` — la J30 (o su desempate) no quedó asentada antes del cierre.
+- `temporada_no_cerrada_antes_reset` — antes del cierre no quedó una muestra válida: o faltó cobertura
+  (más del 90 %, mínimo 217/240) o el archivo estadístico de los 16 candidatos no fue suficiente.
 - `temporada_truncada` — la temporada se marcó truncada.
 - `desempate_no_resuelto_antes_reset` / `desempate_no_cabe_en_ventana_de_cierre`.
 - `calendario_invalido` — la J1 no tiene sus 8 partidos.
