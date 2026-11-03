@@ -627,6 +627,8 @@ test('reprogramación del motor: difunde football:rescheduled y status con nuevo
   const reschedEv = ctx.io.lastTo(matchRoom(ctx.scheduled.id), 'football:rescheduled');
   assert.ok(reschedEv, 'evento football:rescheduled recibido');
   assert.equal(reschedEv.scheduledKickoffAt, newKickoff);
+  assert.ok(ctx.io.emittedTo(matchRoom(ctx.scheduled.id), 'football:odds').length > 0,
+    'la sala recibe de nuevo las cuotas prepartido para apostar al nuevo horario');
   assert.ok(ctx.io.lastTo(LOBBY_ROOM, 'football:lobby'), 'lobby refrescado al reprogramar');
 });
 

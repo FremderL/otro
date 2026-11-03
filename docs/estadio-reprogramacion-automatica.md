@@ -24,11 +24,14 @@ asientan por orden cronológico de jornada antes de rotar temporada o preparar e
 horizonte próximo. Un partido con estado en juego, `actualKickoffAt` o una
 apuesta en vivo registrada sigue la recuperación normal.
 
-Mientras un encuentro reprogramado sigue pendiente, no se exponen jugadas ni
-marcador y se suspenden nuevas apuestas del partido (incluido en vivo) y las
-nuevas predicciones de temporada hasta que termine o se posponga. La quiniela
-no reabre una jornada que incluya un encuentro reprogramado. Las apuestas y
-predicciones anteriores siguen su flujo normal de liquidación.
+Mientras la escritura de una reprogramación automática sigue pendiente de
+confirmación, el mercado se bloquea brevemente para evitar aceptar apuestas con
+un horario no persistido. Una vez confirmada, el partido conserva su compromiso
+y sus cuotas: se reabren las apuestas prepartido para el nuevo kickoff, así como
+las predicciones de temporada y del Balón de Oro. Al empezar el encuentro se
+aplican las ventanas normales y los mercados en vivo. Los boletos existentes
+conservan su flujo normal de liquidación. La quiniela no reabre una jornada que
+incluya un encuentro reprogramado.
 
 Si la persistencia no confirma una reprogramación, no se anuncia el nuevo
 horario ni se permite arrancar el partido: se reintenta mientras permanezca

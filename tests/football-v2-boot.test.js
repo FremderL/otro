@@ -104,7 +104,7 @@ test('reinicio real reprograma el encuentro vencido sin iniciarlo ni cambiar su 
   assert.equal(data.matchState.match.status, 'scheduled');
   assert.equal(data.matchState.match.scheduledKickoffAt, at + 30 * 60000);
   assert.equal(data.matchState.match.autoRescheduled, true);
-  assert.deepEqual(data.matchState.markets, {});
+  assert.ok(data.matchState.markets['1x2'], 'las cuotas prepartido se recuperan al reconectar tras la reprogramación');
   const disk = JSON.parse(fs.readFileSync(file, 'utf8')).leagues.find(item => item.seasonMonth === '2026-11');
   const saved = disk.calendar.matches.find(item => item.id === matchId);
   assert.equal(saved.status, 'scheduled');

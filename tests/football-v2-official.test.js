@@ -412,7 +412,7 @@ test('scheduler reintenta el kickoff tras recuperar la persistencia V2', async (
   } finally { h.close(); }
 });
 
-test('reprogramación conserva V2 y boletos aceptados y suspende nuevas apuestas', async () => {
+test('reprogramación conserva V2 y boletos anteriores y permite nuevas apuestas al nuevo horario', async () => {
   const h = setup();
   try {
     const match = h.league.calendar.matches[0], kickoff = match.scheduledKickoffAt;
@@ -427,20 +427,33 @@ test('reprogramación conserva V2 y boletos aceptados y suspende nuevas apuestas
     assert.equal(JSON.stringify(match.simulation), commitment, 'no cambia semillas, entradas ni cuotas comprometidas');
     assert.equal(originalBet.status, 'open');
     assert.equal(h.profile.chips, 900);
-    assert.equal(h.betting.getMarket(match, '1x2'), null);
-    const noBet = await h.betting.placeBet({ profile: h.profile, matchId: match.id, market: '1x2',
-      selection: 'draw', stake: 100, placedAt: h.now(), idempotencyKey: 'reschedule-new' });
-    assert.equal(noBet.code, 'market_suspended');
+    assert.ok(h.betting.getMarket(match, '1x2'), 'el mercado prepartido continúa disponible');
     const replay = await h.betting.placeBet({ profile: h.profile, matchId: match.id, market: '1x2',
       selection: 'home', stake: 100, placedAt: h.now(), idempotencyKey: 'reschedule-original' });
     assert.equal(replay.replayed, true, 'reintentar el boleto previo no vuelve a debitar');
-    const future = await h.betting.placeFuture({ profile: h.profile, seasonMonth: '2026-11', market: 'champion',
-      selection: match.homeId, stake: 100, idempotencyKey: 'reschedule-future' });
-    assert.equal(future.code, 'market_suspended');
-    const ballon = await h.betting.placeBallonDorBet({ profile: h.profile, selection: 'any', stake: 100,
-      idempotencyKey: 'reschedule-ballon', placedAt: h.now() });
-    assert.equal(ballon.code, 'market_suspended');
-    assert.equal(h.profile.chips, 900);
+    const newProfile = h.profiles.getOrCreate('reschedule-user', 'Reprogramado');
+    newProfile.chips = 1000;
+    const newBet = await h.betting.placeBet({ profile: newProfile, matchId: match.id, market: '1x2',
+      selection: 'draw', stake: 100, placedAt: h.now(), idempotencyKey: 'reschedule-new' });
+    assert.ok(newBet.ok, newBet.code);
+    let event = h.store.getBallonDor('2026-11');
+    assert.ok(event?.candidates?.length, 'el ciclo del Balón de Oro existe');
+    const openAt = Math.max(Date.now(), h.now(), event.updatedAt + 1);
+    h.setNow(openAt);
+    assert.equal((await h.store.transitionBallonDor('2026-11', 'active', { at: openAt })).ok, true);
+    event = h.store.getBallonDor('2026-11');
+    const oddsUpdatedAt = openAt + 1;
+    assert.equal((await h.store.updateBallonDorOdds('2026-11', {
+      updatedAt: oddsUpdatedAt, afterJornada: 0, simulations: 2000, seed: 1,
+      overround: 1.1, selections: event.candidates.map(candidate => ({
+        candidateId: candidate.id, wins: 125, probability: 125 / 2000, odds: 14.54
+      }))
+    }, oddsUpdatedAt)).ok, true);
+    const candidate = event.candidates[0].id;
+    const ballon = await h.betting.placeBallonDorBet({ profile: newProfile, selection: candidate, stake: 100,
+      idempotencyKey: 'reschedule-ballon', placedAt: openAt });
+    assert.ok(ballon.ok, ballon.code);
+    assert.equal(newProfile.chips, 800, 'se aceptan ambos boletos con débito normal');
     const restored = new FootballStore(h.file);
     const saved = restored.getMatch(match.id, '2026-11');
     assert.equal(saved.scheduledKickoffAt, match.scheduledKickoffAt);
@@ -451,8 +464,9 @@ test('reprogramación conserva V2 y boletos aceptados y suspende nuevas apuestas
     scheduler.runKickoffSweep(match.scheduledKickoffAt);
     await scheduler.kickoffPending;
     assert.equal(match.status, 'live');
-    assert.equal(h.betting.getMarket(match, '1x2', { minute: 1, score: { home: 0, away: 0 } }), null,
-      'tampoco ofrece apuestas en vivo porque pudo haberse visto el replay antes de reprogramar');
+    assert.ok(h.betting.getMarket(match, '1x2', {
+      minute: 1, half: 1, score: { home: 0, away: 0 }, redCards: { home: 0, away: 0 }
+    }), 'el mercado en vivo también sigue las reglas normales tras una reprogramación');
     const end = match.scheduledKickoffAt + (h.engine._ensureTimeline(match).clock.matchEnd + 1) * 15000;
     h.setNow(end);
     h.engine.advance(match, end);
