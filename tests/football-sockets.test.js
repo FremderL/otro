@@ -120,6 +120,7 @@ function setup(opts = {}) {
     : null;
   const sockets = registerFootballSockets(io.io, {
     betting, engine, store, profiles,
+    dailyNews: opts.dailyNews || null,
     quiniela: quiniela || quinielaService, ballonDorMarket: opts.ballonDorMarket || null, accountSessionsEnabled: opts.accountSessionsEnabled || false,
     onBetPlaced: details => { betPlacements.push(details); opts.onBetPlaced?.(details); },
     config: opts.config || { matchCapacity: opts.matchCap || 40, lobbyCapacity: 200 },
@@ -1162,4 +1163,30 @@ test('reprogramación automática solo publica la nueva hora tras persistirla', 
   assert.equal(ctx.sockets.buildMatchState(m.id, null).match.autoRescheduled, true);
   ctx.engine.emit('football:status', { matchId: m.id, code: 'rescheduled', scheduledKickoffAt: next, automatic: true });
   assert.equal(ctx.io.lastTo(matchRoom(m.id), 'football:status').automatic, true);
+});
+
+test('noticiero diario: identidad del socket, reserva entre pestañas y confirmación durable; mercado no duplica apertura', async t => {
+  const { createDailyNewsService } = require('../lib/football/daily-news-service');
+  let service;
+  const ctx = setup({ dailyNews: {
+    prepare: at => service.prepare(at), snapshot: (p, at) => service.snapshot(p, at),
+    reserve: (...args) => service.reserve(...args), acknowledge: (...args) => service.acknowledge(...args),
+    healthSnapshot: () => service.healthSnapshot()
+  } });
+  t.after(ctx.cleanup);
+  service = createDailyNewsService({ store: ctx.store, profiles: ctx.profiles, readiness: () => ({ ready: true }) });
+  const a = ctx.io.connect(), b = ctx.io.connect();
+  assert.equal((await fireAsync(a, 'football:daily_news_get')).code, 'no_identity');
+  subscribe(ctx, a, { name: 'Alice' }); subscribe(ctx, b, { name: 'Alice', token: 'tok_' + a.id });
+  const first = await fireAsync(a, 'football:daily_news_get');
+  assert.equal(first.status, 'ready'); assert.equal(first.shouldOpen, true);
+  const grantA = await fireAsync(a, 'football:daily_news_reserve', { editionId: first.edition.id, profileId: 'attacker' });
+  const grantB = await fireAsync(b, 'football:daily_news_reserve', { editionId: first.edition.id });
+  assert.equal(grantA.granted, true); assert.equal(grantB.granted, false);
+  assert.equal((await fireAsync(b, 'football:daily_news_ack', { editionId: first.edition.id })).ok, false);
+  assert.equal((await fireAsync(a, 'football:daily_news_ack', { editionId: first.edition.id })).ok, true);
+  assert.equal((await fireAsync(b, 'football:daily_news_get')).shouldOpen, false);
+  const market = await fireAsync(a, 'football:transfers_get');
+  assert.equal(market.firstView, false); assert.equal(market.clubNewsFirstView, false);
+  assert.doesNotMatch(JSON.stringify(first), /deviceToken|privateSeed|rootSeed|profileId/);
 });

@@ -84,6 +84,7 @@ const { loadFootballConfig } = require('./lib/football-config');
 const { createFootballStore } = require('./lib/football-store-factory');
 const { FootballEngine } = require('./lib/football/engine');
 const { FootballScheduler } = require('./lib/football/scheduler');
+const { createDailyNewsService } = require('./lib/football/daily-news-service');
 const { createOfficialV2 } = require('./lib/football/v2/official');
 const { publicProjectionState } = require('./lib/football/v2/projection');
 const { createBettingService } = require('./lib/football/betting');
@@ -269,6 +270,7 @@ app.get('/healthz', (_req, res) => {
         engine: footballEngine,
         enabled: footballConfig.enabled,
         ballonDorMarket: footballBallonDorMarket,
+        getDailyNews: () => footballDailyNews,
         audioTelemetry: footballAudioTelemetry
       })
       : { enabled: false }
@@ -317,6 +319,7 @@ installFootballRoutes(app, {
   get profiles() { return profiles; },
   get betting() { return footballBetting; },
   getBallonDorMarket: () => footballBallonDorMarket,
+  getDailyNews: () => footballDailyNews,
   audioTelemetry: footballAudioTelemetry,
   get buildLobby() { return footballSockets ? footballSockets.buildLobby : null; },
   get buildMatchState() { return footballSockets ? footballSockets.buildMatchState : null; },
@@ -418,6 +421,7 @@ let footballEngine = null;
 let footballBetting = null;
 let footballBallonDorMarket = null;
 let footballQuiniela = null;
+let footballDailyNews = null;
 let footballScheduler = null;
 let footballSockets = null;
 let accountSessionStore = null;
@@ -3796,6 +3800,7 @@ async function initFootball() {
       await footballQuiniela?.sweep?.(Date.now());
       await footballBallonDorMarket?.sweep?.(Date.now());
       await footballScheduler?.runAutoRescheduleSweep?.(Date.now());
+      await footballDailyNews?.prepare(Date.now());
       logEvent('football_writer_acquired_after_wait', { seasonMonth: footballStore.getCurrentSeasonMonth() });
     };
   }
@@ -3965,13 +3970,20 @@ async function initFootball() {
     }
   }
 
+  // 5c. Noticiero: el boot deportivo ya terminó. Si queda deuda o falta el
+  // escritor, prepare devuelve preparing y el scheduler reintenta sin bloquear.
+  footballDailyNews = createDailyNewsService({ store: footballStore, profiles,
+    enabled: process.env.FOOTBALL_DAILY_NEWS_ENABLED !== 'off',
+    readiness: at => footballEngine.editorialReadiness(at), log: footballLog });
+  if (!writerPending) await footballDailyNews.prepare(Date.now());
+
   // 6. Capa de protocolo Socket.IO (§14). Añade su propio io.on('connection'),
   //    independiente del handler de mesas del casino. Helpers del casino inyectados:
   //    ackOk/ackError (con code), cleanMessage, nameIssue (unicidad global de
   //    nombres) y verifyTosAcceptance. La identidad se resuelve SOLO en subscribe.
   footballSockets = registerFootballSockets(io, {
     betting: footballBetting, engine: footballEngine, store: footballStore, profiles,
-    quiniela: footballQuiniela,
+    quiniela: footballQuiniela, dailyNews: footballDailyNews,
     onFanChanged: profile => {
       for (const room of rooms.values()) if (room.players.some(player => player._profile === profile)) broadcast(room);
       io.to(`account:${profile.id}`).emit('profile_event', { events:[], profile:publicProgress(profile, true) });
@@ -3986,7 +3998,7 @@ async function initFootball() {
 
   // 7. Scheduler: sweeps de kickoff, avance, partidos atascados y temporada (§15).
   footballScheduler = new FootballScheduler(footballEngine, {
-    officialV2, ballonDorService: footballBallonDorMarket, quinielaService: footballQuiniela, logEvent: footballLog,
+    officialV2, ballonDorService: footballBallonDorMarket, quinielaService: footballQuiniela, dailyNewsService: footballDailyNews, logEvent: footballLog,
     // Previa de la cabina: la conversación de los comentaristas antes del saque
     // inicial sale por el mismo canal del relato (football:commentary).
     pregameService: footballSockets?.pregame || null

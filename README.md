@@ -169,6 +169,8 @@ Se sortean al abrir rondas. Solo entregan fichas cuando existe una ganancia posi
 
 ## Mercado de traspasos
 
+MonteCristo News aparece automáticamente en la primera apertura segura del Estadio cada día: edición compartida, subtítulos por defecto, voces opcionales y repetición manual. Tras varios días de servidor apagado muestra una sola edición de regreso después de recuperar resultados. Contrato y operación en `docs/montecristo-news-noticiero-diario.md`.
+
 En Estadio → Mercado se consultan los acuerdos anunciados y sus valoraciones informativas. **Ver conferencia** permite repetir MonteCristo News. La transmisión empieza con subtítulos; pulsa **Escuchar conferencia** para iniciar las voces desde el principio. Usa la síntesis de voz del navegador (las voces disponibles pueden variar) y no requiere activar la narración del partido. Si el navegador bloquea o no admite voz, se mantienen los subtítulos. Los retratos reutilizan los avatares del Balón de Oro cuando existen; los demás son ilustraciones generadas de forma estable para cada jugador.
 
 ## Comunidad y ambientación estacional

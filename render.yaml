@@ -37,6 +37,9 @@ services:
       # preparan automáticamente con V2 y cuotas estimadas persistidas.
       - key: FOOTBALL_ENABLED
         value: "on"
+      # Noticiero diario con recuperación idempotente; off conserva la conferencia mensual.
+      - key: FOOTBALL_DAILY_NEWS_ENABLED
+        value: "on"
       # Deploys rolling: Render inicia la instancia nueva antes de detener la
       # vieja, así que durante unos segundos dos procesos comparten la base. Con
       # la concesión de escritor único en espera, la nueva espera hasta 180 s a

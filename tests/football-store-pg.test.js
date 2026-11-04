@@ -29,6 +29,7 @@ function makeMockPool(seed = {}) {
   function resultFor(sql) {
     const s = String(sql).replace(/\s+/g, ' ').trim();
     if (!/^SELECT/i.test(s)) return { rows: [] };
+    if (/football_daily_news/i.test(s)) return { rows: seed.dailyNews ? [{ data: seed.dailyNews }] : [] };
     if (/football_leagues/i.test(s)) return { rows: seed.leagues || [] };
     if (/football_matches/i.test(s)) return { rows: seed.matches || [] };
     if (/football_bets/i.test(s)) return { rows: seed.bets || [] };
@@ -382,4 +383,28 @@ test('PG conserva el compromiso V2 inválido para diagnóstico sin validarlo al 
   const saved = JSON.parse(JSON.parse(insert.params[13][index]).simulation);
   assert.deepEqual(saved.original, corrupted);
   assert.equal(saved.invalid, true);
+});
+
+test('noticiero diario: roundtrip JSONB en transacción con fence y rehidratación acotada', async t => {
+  const { buildDailyEdition } = require('../lib/football/daily-news');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'daily-pg-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const source = new FootballStore(path.join(dir, 'football.json'));
+  const league = source.generateSeason(monthKey());
+  const edition = buildDailyEdition({ league, leagues: [league], at: league.createdAt });
+  const state = { version: 1, editions: { [edition.day]: edition }, operational: { lastReadyDay: edition.day, lastReadyAt: edition.generatedAt } };
+  const pool = makeMockPool({ dailyNews: state });
+  const store = new PgFootballStore('postgres://mock-host/mockdb', { pool });
+  t.after(() => store.close()); await store.ready;
+  assert.deepEqual(store.dailyNews, state);
+  assert.equal(await store.saveStrict(), true);
+  const insert = pool.queries.filter(q => q.txn && /INSERT INTO football_daily_news/.test(q.sql)).at(-1);
+  assert.deepEqual(JSON.parse(insert.params[0]), state);
+  const commitIndex = pool.queries.map(q => q.txn && /^COMMIT/.test(q.sql.trim())).lastIndexOf(true);
+  assert.ok(pool.queries.indexOf(insert) < commitIndex);
+  // El writer fence real se prueba en football-pg-single-writer; aquí se
+  // comprueba que la edición viaja dentro del BEGIN/COMMIT de la foto.
+  const reloaded = new PgFootballStore('postgres://mock-host/mockdb', { pool: makeMockPool({ dailyNews: JSON.parse(insert.params[0]) }) });
+  t.after(() => reloaded.close()); await reloaded.ready;
+  assert.deepEqual(reloaded.dailyNews.editions[edition.day], edition);
 });

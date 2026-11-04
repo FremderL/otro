@@ -170,6 +170,7 @@
     teams: {}, profile: null, chips: 0,
     fantasy: null, fantasyDraft: [], fantasyDirty: false, fantasySeq: 0, fantasyBusy: false,
     fan: null, fanBusy: false, fanSeq: 0,
+    dailyNewsEdition: null, dailyNewsDay: null, dailyNewsBusy: false, dailyNewsPending: true, dailyNewsSeq: 0, dailyNewsShown: {},
     lobby: null, standings: [], standingsPending: null, countdownTo: null, lobbyServerNow: null, lobbyReceivedAt: null,
     preshowDataMatchId: null, preshowDataStandings: null, teamIndicators: [],
     showcaseItems: [], showcaseIndex: 0, showcaseRotationId: null, sponsoredPromotions: [],
@@ -272,7 +273,8 @@
       'est-ledger-history-view', 'est-ledger-ranking-view', 'est-ledger-tab-history', 'est-ledger-tab-ranking', 'est-ledger-ranking-back',
       'est-bet-ranking-live', 'est-bet-ranking-personal', 'est-bet-ranking-updated', 'est-bet-ranking-list',
       'est-ledger-list', 'est-ledger-only-match', 'est-ledger-refresh', 'est-ledger-close', 'est-ledger-back',
-      'est-help',
+      'est-daily-news', 'est-daily-news-content', 'est-daily-news-close', 'est-daily-news-open', 'est-daily-news-status', 'est-market-daily-replay',
+    'est-help',
       'est-help-close', 'est-tos', 'est-tos-accept', 'est-toast', 'est-canvas-wrap'].forEach(function (id) { el[id] = $(id); });
   }
 
@@ -526,7 +528,7 @@
       if (S.betRankingSubscribed && ledgerOpen() && S.ledgerView === 'ranking') S.socket.emit('bet_ranking_get');
       renderBetRanking();
     });
-    S.socket.on('disconnect', function () { S.matchSubscribeSeq++; S.requestedMatchId = null; S.fantasySeq++; S.fantasyBusy = false; S.fanSeq++; S.fanBusy = false; setConn('error'); startBallonDorPolling(); renderBetRanking(); updateCrowdAvailability(); renderPreshow(currentServerTime()); });
+    S.socket.on('disconnect', function () { if (activeNews) leaveTransfersNews(); S.dailyNewsSeq++; S.dailyNewsBusy = false; S.matchSubscribeSeq++; S.requestedMatchId = null; S.fantasySeq++; S.fantasyBusy = false; S.fanSeq++; S.fanBusy = false; setConn('error'); startBallonDorPolling(); renderBetRanking(); updateCrowdAvailability(); renderPreshow(currentServerTime()); });
     S.socket.on('connect_error', function () { setConn('error'); startBallonDorPolling(); });
     S.socket.on('football:lobby', function (lobby) { renderLobby(lobby); });
     S.socket.on('football:ballon_dor_market', function (payload) {
@@ -592,6 +594,7 @@
       if (el['est-roster-panel'].open) refreshRoster();
       // Al entrar (también si el partido ya terminó) se trae el historial y pagos.
       loadBetHistory({ force: true });
+      checkDailyNews(true);
     });
   }
   function onSubError(res) {
@@ -3355,7 +3358,7 @@
   function setHubView(view) {
     var hub = $('est-hub');
     if (!hub) return;
-    if (view !== 'mercado') leaveTransfersNews();
+    if (view !== 'mercado' && !(activeNews && activeNews.daily)) leaveTransfersNews();
     Array.prototype.forEach.call(hub.querySelectorAll('[data-hub-view]'), function (button) {
       button.setAttribute('aria-pressed', String(button.getAttribute('data-hub-view') === view));
     });
@@ -3365,7 +3368,7 @@
   }
   function openHub(trigger) {
     var hub = $('est-hub');
-    if (!hub || hubOpen()) return;
+    if (!hub || hubOpen() || dailyNewsOpen()) return;
     hubTrigger = trigger || document.activeElement;
     setHubView('once');
     hub.hidden = false;
@@ -3376,7 +3379,7 @@
   function closeHub() {
     var hub = $('est-hub');
     if (!hubOpen()) return;
-    leaveTransfersNews();
+    if (!(activeNews && activeNews.daily)) leaveTransfersNews();
     hub.hidden = true;
     document.body.classList.remove('est-hub-open');
     if (hubTrigger && hubTrigger.isConnected) hubTrigger.focus();
@@ -3582,81 +3585,121 @@
   var newsSpeech = { enabled: false, active: false, token: 0 };
   var newsTimers = [];
   var activeNews = null;
-  function clearNewsTimers() {
+  function stopNewsPlayback() {
     newsTimers.forEach(clearTimeout); newsTimers = [];
     newsSpeech.token++;
-    var wasEnabled = newsSpeech.enabled;
     var wasActive = newsSpeech.active;
-    newsSpeech.enabled = false; newsSpeech.active = false;
-    if (wasActive && window.speechSynthesis && typeof window.speechSynthesis.cancel === 'function') { try { window.speechSynthesis.cancel(); } catch (_) {} }
+    newsSpeech.active = false;
+    if (wasActive && window.speechSynthesis && typeof window.speechSynthesis.cancel === 'function') {
+      try { window.speechSynthesis.cancel(); } catch (_) {}
+    }
+  }
+  function clearNewsTimers() {
+    stopNewsPlayback();
+    var wasEnabled = newsSpeech.enabled;
+    newsSpeech.enabled = false;
+    setCommentaryMusicDuck(false);
     if (wasEnabled) runNextCommentaryTurn();
   }
+  function dailyNewsOpen() { return Boolean(el['est-daily-news'] && !el['est-daily-news'].hidden); }
   function leaveTransfersNews() {
     if (!activeNews) return;
     var current = activeNews;
     activeNews = null;
     clearNewsTimers();
-    if (current.list.isConnected) renderTransfersList(current.list, current.market);
+    if (current.daily) {
+      el['est-daily-news'].hidden = true;
+      el['est-daily-news-content'].innerHTML = '';
+      document.body.classList.remove('est-daily-news-open');
+      var focus = current.focus;
+      if (focus && focus.isConnected) focus.focus();
+      else if (el['est-daily-news-open']) el['est-daily-news-open'].focus();
+    } else if (current.list.isConnected) renderTransfersList(current.list, current.market);
   }
-  // El navegador exige una interacción para hablar: la conferencia empieza en
-  // subtítulos y el botón inicia o reinicia la locución desde la primera línea.
-  function renderTransfersNews(list, market) {
+  function pauseNews() {
+    if (!activeNews || activeNews.paused) return;
+    activeNews.paused = true;
+    activeNews.index = Math.max(0, activeNews.index - 1);
+    stopNewsPlayback();
+    activeNews.pauseButton.textContent = '▶ Reanudar';
+    activeNews.status.textContent = 'Transmisión en pausa. Puedes reanudar o leer el boletín completo.';
+  }
+  // Una sola escena para la conferencia mensual y el noticiero diario. La voz
+  // empieza únicamente por gesto; los subtítulos funcionan sin Web Speech.
+  function renderNewsBroadcast(container, options) {
     clearNewsTimers();
-    activeNews = { list: list, market: market };
-    list.innerHTML = '';
+    var edition = options.edition || null, market = options.market || null;
+    var lines = edition ? edition.script : transfersNewsScript(market);
+    var state = { list: container, market: market, edition: edition, daily: Boolean(options.daily),
+      focus: document.activeElement, index: 0, paused: false };
+    activeNews = state;
+    container.innerHTML = '';
     var overlay = document.createElement('div');
     overlay.className = 'est-news';
+    var editionLabel = edition ? 'EDICIÓN · ' + esc(edition.day) : 'CONFERENCIA DE PRENSA';
     overlay.innerHTML =
-      '<div class="est-news-bumper"><span class="est-news-bumper-label">UNA PRODUCCIÓN DEL ESTADIO</span><div class="est-news-logo">MONTECRISTO <em>NEWS</em></div>' +
-      '<div class="est-news-tuning">SINTONIZANDO CANAL…</div></div>' +
-      '<div class="est-news-studio" hidden><div class="est-news-header"><span class="est-news-live">● EN DIRECTO</span><span class="est-news-channel">MONTECRISTO <b>NEWS</b></span></div>' +
-      '<div class="est-news-screen"><div class="est-news-feature"><div class="est-news-feature-art"><span>⇄</span></div><div><p class="est-news-kicker">CONFERENCIA DE PRENSA · ' + esc(market.seasonMonth || '') + '</p><h3 class="est-news-headline">El mercado está en marcha</h3><div class="est-news-route">La actualidad de los traspasos</div></div></div>' +
-      '<div class="est-news-lines" aria-live="polite"></div></div>' +
+      '<div class="est-news-bumper"><span class="est-news-bumper-label">UNA PRODUCCIÓN DEL ESTADIO</span><div class="est-news-logo">MONTECRISTO <em>NEWS</em></div><div class="est-news-tuning">SINTONIZANDO CANAL…</div></div>' +
+      '<div class="est-news-studio" hidden><div class="est-news-header"><span class="est-news-live">' + (edition && edition.mode === 'return' ? '● EDICIÓN DE REGRESO' : '● ' + editionLabel) + '</span><span class="est-news-channel">MONTECRISTO <b>NEWS</b></span></div>' +
+      '<div class="est-news-screen"><div class="est-news-feature"><div class="est-news-feature-art"><span>⇄</span></div><div><p class="est-news-kicker">' + editionLabel + '</p><h3 class="est-news-headline">' + esc(edition ? edition.headline : 'El mercado está en marcha') + '</h3><div class="est-news-route">' + esc(edition ? edition.summary : 'La actualidad de los traspasos') + '</div></div></div>' +
+      '<div class="est-news-lines" aria-live="polite" aria-atomic="true"></div></div>' +
       '<div class="est-news-lower"><span class="est-news-narrador">NARRADOR</span><span class="est-news-ticker">Bienvenidos a MonteCristo News</span></div></div>' +
-      '<div class="est-news-controls"><button type="button" class="est-news-voice">▶ Escuchar conferencia</button><button type="button" class="est-news-skip">Ver fichajes →</button></div>' +
-      '<p class="est-news-audio-status" role="status">Subtítulos activos. Pulsa escuchar para activar las voces.</p>';
-    list.appendChild(overlay);
+      '<div class="est-news-progress" role="progressbar" aria-label="Progreso del noticiero" aria-valuemin="0" aria-valuemax="' + lines.length + '" aria-valuenow="0"><span></span></div>' +
+      '<div class="est-news-controls"><button type="button" class="est-news-voice" aria-pressed="false">▶ Escuchar ' + (edition ? 'noticiero' : 'conferencia') + '</button><button type="button" class="est-news-pause">Ⅱ Pausar</button><button type="button" class="est-news-replay">↻ Reiniciar</button><button type="button" class="est-news-skip">' + (edition ? 'Entrar al Estadio →' : 'Ver fichajes →') + '</button></div>' +
+      '<p class="est-news-audio-status" role="status">Subtítulos activos. Pulsa escuchar para activar las voces.</p>' +
+      '<details class="est-news-transcript"><summary>Leer el boletín completo</summary><ol>' + lines.map(function (line) { return '<li><b>' + (line.role === 'analista' ? 'Analista' : 'Narrador') + ':</b> ' + esc(line.text) + '</li>'; }).join('') + '</ol>' +
+      (edition ? '<p>Edición guardada el ' + esc(newsDate(edition.generatedAt)) + ' · horario del Estadio (' + esc(edition.timeZone) + '). Es un corte informativo, no una retransmisión en directo. Los datos posteriores están en el Estadio.</p>' : '') + '</details>';
+    container.appendChild(overlay);
     var bumper = overlay.querySelector('.est-news-bumper'), studio = overlay.querySelector('.est-news-studio');
     var ticker = overlay.querySelector('.est-news-ticker'), linesBox = overlay.querySelector('.est-news-lines');
     var featureArt = overlay.querySelector('.est-news-feature-art'), headline = overlay.querySelector('.est-news-headline');
-    var kicker = overlay.querySelector('.est-news-kicker');
-    var route = overlay.querySelector('.est-news-route'), speaker = overlay.querySelector('.est-news-narrador');
-    var voiceButton = overlay.querySelector('.est-news-voice'), status = overlay.querySelector('.est-news-audio-status');
-    var lines = transfersNewsScript(market), idx = 0;
-    function alive() { return overlay.isConnected && hubOpen() && !overlay.closest('[data-hub-panel]').hidden; }
+    var kicker = overlay.querySelector('.est-news-kicker'), route = overlay.querySelector('.est-news-route');
+    var speaker = overlay.querySelector('.est-news-narrador'), voiceButton = overlay.querySelector('.est-news-voice');
+    var status = overlay.querySelector('.est-news-audio-status'), pauseButton = overlay.querySelector('.est-news-pause');
+    var progress = overlay.querySelector('.est-news-progress');
+    state.pauseButton = pauseButton; state.status = status;
+    function alive() {
+      if (!overlay.isConnected || activeNews !== state) return false;
+      return state.daily ? dailyNewsOpen() : hubOpen() && !overlay.closest('[data-hub-panel]').hidden;
+    }
     function later(fn, ms) { newsTimers.push(setTimeout(fn, ms)); }
-    function finish() { if (!alive()) return; leaveTransfersNews(); }
+    function finish() { if (alive()) leaveTransfersNews(); }
     function showNext() {
       if (!alive()) { leaveTransfersNews(); return; }
-      if (idx >= lines.length) { later(finish, 2800); return; }
-      var line = lines[idx++];
+      if (state.paused) return;
+      if (state.index >= lines.length) { later(finish, 2800); return; }
+      var line = lines[state.index++];
+      var item = edition && edition.items.find(function (candidate) { return candidate.id === line.itemId; });
       speaker.textContent = line.role === 'analista' ? 'ANALISTA' : 'NARRADOR';
-      ticker.textContent = line.text;
-      linesBox.textContent = line.text;
+      ticker.textContent = line.text; linesBox.textContent = line.text;
+      progress.setAttribute('aria-valuenow', String(state.index));
+      progress.firstElementChild.style.width = (state.index / lines.length * 100) + '%';
       if (line.move) {
-        if (kicker) kicker.textContent = 'MERCADO DE FICHAJES · ' + (market.seasonMonth || '');
+        kicker.textContent = 'MERCADO DE FICHAJES · ' + (market.seasonMonth || '');
         featureArt.innerHTML = transferPortrait(line.move, 'est-news-portrait');
         headline.textContent = line.move.playerName || 'Nuevo fichaje';
         route.innerHTML = transferRoute(line.move) + '<span class="est-news-value">VALORACIÓN ' + esc(transferValueLabel(line.move.playerValue)) + (line.move.managerName ? ' · PEDIDO DT ' + esc(line.move.managerName) : '') + '</span>';
+      } else if (item) {
+        kicker.textContent = item.badge || 'BOLETÍN DEL DÍA';
+        featureArt.innerHTML = item.clubId ? clubCrestMarkup(item.clubId, 'est-news-club-crest') : '<span>' + (item.type === 'match_result' ? '⚽' : '▤') + '</span>';
+        headline.textContent = item.headline;
+        route.textContent = item.subtitle || item.summary;
       } else if (line.news) {
-        if (kicker) kicker.textContent = line.news.badge || ('BOLETÍN DE CLUBES · ' + (market.seasonMonth || ''));
+        kicker.textContent = line.news.badge || 'BOLETÍN DE CLUBES';
         featureArt.innerHTML = clubCrestMarkup(line.news.clubId, 'est-news-club-crest');
         headline.textContent = line.news.headline || teamName(line.news.clubId);
         route.textContent = line.news.subtitle || line.news.summary || '';
       } else {
-        if (kicker) kicker.textContent = 'CONFERENCIA DE PRENSA · ' + (market.seasonMonth || '');
-        featureArt.innerHTML = '<span>⇄</span>';
-        headline.textContent = idx === 1 ? 'MonteCristo News en directo' : 'La próxima temporada';
-        route.textContent = 'Actualidad oficial de clubes y traspasos';
+        kicker.textContent = editionLabel;
+        featureArt.innerHTML = '<span>▤</span>';
+        headline.textContent = state.index === 1 ? 'MonteCristo News' : 'Hasta la próxima edición';
+        route.textContent = edition ? edition.summary : 'Actualidad oficial de clubes y traspasos';
       }
       if (!newsSpeech.enabled) { later(showNext, Math.max(3600, line.text.length * 65)); return; }
       var token = newsSpeech.token, utterance;
-      try { utterance = new window.SpeechSynthesisUtterance(line.text); }
-      catch (_) { voiceFailed(); return; }
+      try { utterance = new window.SpeechSynthesisUtterance(line.text); } catch (_) { voiceFailed(); return; }
       var voice = commentarySpeech.voices[line.role];
       utterance.lang = voice && voice.lang || 'es-MX';
-      utterance.rate = commentaryVoiceRate(line.role, voice);
-      utterance.pitch = commentaryVoicePitch(line.role, voice);
+      utterance.rate = commentaryVoiceRate(line.role, voice); utterance.pitch = commentaryVoicePitch(line.role, voice);
       if (voice) utterance.voice = voice;
       newsSpeech.active = true;
       var settled = false;
@@ -3664,39 +3707,121 @@
       newsTimers.push(watchdog);
       utterance.onend = function () {
         if (settled || token !== newsSpeech.token) return;
-        settled = true; clearTimeout(watchdog); newsSpeech.active = false;
-        later(showNext, 250);
+        settled = true; clearTimeout(watchdog); newsSpeech.active = false; later(showNext, 250);
       };
       utterance.onerror = function () { if (!settled && token === newsSpeech.token) { settled = true; clearTimeout(watchdog); voiceFailed(); } };
       try { window.speechSynthesis.speak(utterance); } catch (_) { clearTimeout(watchdog); voiceFailed(); }
     }
     function voiceFailed() {
-      clearNewsTimers();
-      voiceButton.textContent = '▶ Reintentar voz';
-      voiceButton.setAttribute('aria-pressed', 'false');
-      status.textContent = 'No se pudo reproducir la voz. Puedes reintentar o seguir con subtítulos.';
-      later(showNext, Math.max(3600, (lines[idx - 1] || { text: '' }).text.length * 65));
+      stopNewsPlayback(); newsSpeech.enabled = false;
+      voiceButton.textContent = '▶ Reintentar voces'; voiceButton.setAttribute('aria-pressed', 'false');
+      status.textContent = 'No se pudo reproducir la voz. Puedes continuar con subtítulos o reintentar.';
+      later(showNext, 1500);
     }
     voiceButton.disabled = !commentarySpeechSupported();
-    voiceButton.setAttribute('aria-pressed', 'false');
-    if (voiceButton.disabled) status.textContent = 'La voz no está disponible en este navegador. Puedes seguir la conferencia con subtítulos.';
+    if (voiceButton.disabled) status.textContent = 'Este navegador no ofrece voces. El noticiero completo está disponible con subtítulos.';
     voiceButton.addEventListener('click', function () {
       if (newsSpeech.enabled) {
-        clearNewsTimers(); voiceButton.textContent = '▶ Escuchar conferencia'; voiceButton.setAttribute('aria-pressed', 'false');
-        status.textContent = 'Voces desactivadas. Continúa con subtítulos.'; later(showNext, 1500); return;
+        stopNewsPlayback(); newsSpeech.enabled = false;
+        voiceButton.textContent = '▶ Escuchar desde el inicio'; voiceButton.setAttribute('aria-pressed', 'false');
+        status.textContent = 'Voces desactivadas. Continúa con subtítulos.';
+        if (!state.paused) later(showNext, 1500);
+        return;
       }
-      clearNewsTimers();
-      cancelCommentarySpeech(); // Web Speech es global: evita mezclar partido y conferencia.
-      refreshCommentaryVoices();
-      newsSpeech.enabled = true;
-      voiceButton.textContent = '◼ Silenciar conferencia'; voiceButton.setAttribute('aria-pressed', 'true');
+      stopNewsPlayback(); cancelCommentarySpeech(); refreshCommentaryVoices();
+      newsSpeech.enabled = true; state.paused = false; pauseButton.textContent = 'Ⅱ Pausar';
+      voiceButton.textContent = '◼ Silenciar voces'; voiceButton.setAttribute('aria-pressed', 'true');
       status.textContent = 'Voces activas · narrador y analista por turnos.';
-      bumper.hidden = true; studio.hidden = false; idx = 0;
+      bumper.hidden = true; studio.hidden = false; state.index = 0;
+      setCommentaryMusicDuck(true);
       try { window.speechSynthesis.resume(); } catch (_) {}
-      showNext(); // speak dentro del gesto del usuario, sin depender del sonido del partido.
+      showNext();
+    });
+    pauseButton.addEventListener('click', function () {
+      if (!state.paused) { pauseNews(); return; }
+      state.paused = false; pauseButton.textContent = 'Ⅱ Pausar';
+      status.textContent = newsSpeech.enabled ? 'Voces activas · se repite la pieza en curso.' : 'Subtítulos activos.';
+      showNext();
+    });
+    overlay.querySelector('.est-news-replay').addEventListener('click', function () {
+      stopNewsPlayback(); state.index = 0; state.paused = false; pauseButton.textContent = 'Ⅱ Pausar';
+      bumper.hidden = true; studio.hidden = false; showNext();
     });
     overlay.querySelector('.est-news-skip').addEventListener('click', finish);
-    later(function () { if (!alive()) { leaveTransfersNews(); return; } bumper.hidden = true; studio.hidden = false; showNext(); }, 1900);
+    setCommentaryMusicDuck(true);
+    later(function () { if (!alive()) { leaveTransfersNews(); return; } bumper.hidden = true; studio.hidden = false; showNext(); }, reduced.matches ? 0 : 1900);
+  }
+  function renderTransfersNews(list, market) { renderNewsBroadcast(list, { market: market }); }
+  function newsDate(at) {
+    try { return new Date(at).toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short', timeZone: CASINO_TIME_ZONE }); }
+    catch (_) { return 'fecha registrada por el servidor'; }
+  }
+  function updateDailyNewsLabels() {
+    var edition = S.dailyNewsEdition;
+    var label = edition ? '▶ ' + (edition.mode === 'return' ? 'Ver edición de regreso' : 'Ver noticiero de hoy') : '▶ Consultar noticiero';
+    [el['est-daily-news-open'], el['est-market-daily-replay']].forEach(function (button) { if (button) button.textContent = label; });
+    if (edition) el['est-daily-news-status'].textContent = 'Edición del ' + edition.day + ' · ' + (edition.mode === 'return' ? 'Resumen verificado tras la recuperación.' : 'Disponible para repetición durante todo el día.');
+  }
+  function dailyNewsSafe() {
+    return !IS_BDO_DEDICATED_PAGE && !document.hidden && tosAccepted() && !dailyNewsOpen()
+      && !hubOpen() && !ledgerOpen() && !S.slip && !S.submitting
+      && (!S.match || ['live', 'halftime', 'extra_time', 'shootout'].indexOf(S.match.status) < 0)
+      && (!$('est-enter') || $('est-enter').hidden)
+      && el['est-tos'].hidden && el['est-bdo-opening'].hidden && el['est-bdo-ceremony'].hidden;
+  }
+  function dailyNewsLocalKey(edition) { return 'montecristo-news-daily:' + S.profile.id + ':' + edition.day; }
+  function dailyNewsLocalSeen(edition) {
+    try { return localStorage.getItem(dailyNewsLocalKey(edition)) === 'presented'; } catch (_) { return false; }
+  }
+  function showDailyNews(edition, reserved) {
+    if (!edition || dailyNewsOpen()) return;
+    if (hubOpen()) closeHub();
+    if (ledgerOpen()) closeLedger();
+    cancelCommentarySpeech();
+    el['est-daily-news'].hidden = false;
+    document.body.classList.add('est-daily-news-open');
+    S.dailyNewsShown[S.profile.id + ':' + edition.day] = true;
+    try { localStorage.setItem(dailyNewsLocalKey(edition), 'presented'); } catch (_) {}
+    renderNewsBroadcast(el['est-daily-news-content'], { edition: edition, daily: true });
+    el['est-daily-news-close'].focus();
+    if (reserved && S.socket) {
+      S.socket.emit('football:daily_news_ack', { editionId: edition.id }, function (res) {
+        if (!res || !res.ok) el['est-daily-news-status'].textContent = 'Edición presentada. Si se interrumpe la conexión, puedes repetirla aquí.';
+      });
+    }
+  }
+  function checkDailyNews(automatic) {
+    if (!S.socket || !S.socket.connected || !S.profile || S.dailyNewsBusy || !tosAccepted() || IS_BDO_DEDICATED_PAGE) return;
+    if (automatic && !dailyNewsSafe()) return;
+    var seq = ++S.dailyNewsSeq, profileId = S.profile.id;
+    S.dailyNewsBusy = true;
+    S.socket.emit('football:daily_news_get', {}, function (res) {
+      S.dailyNewsBusy = false;
+      if (seq !== S.dailyNewsSeq || !S.profile || S.profile.id !== profileId) return;
+      if (!res || !res.ok || res.status === 'disabled') {
+        S.dailyNewsPending = false;
+        el['est-daily-news-status'].textContent = res && res.status === 'disabled' ? 'El noticiero diario está desactivado.' : 'No se pudo consultar la edición. Puedes reintentar.';
+        return;
+      }
+      S.dailyNewsDay = res.day;
+      if (res.status !== 'ready' || !res.edition) {
+        S.dailyNewsPending = true;
+        el['est-daily-news-status'].textContent = 'Preparando la edición con resultados confirmados. No necesitas recargar.';
+        return;
+      }
+      S.dailyNewsPending = false; S.dailyNewsEdition = res.edition; updateDailyNewsLabels();
+      var key = profileId + ':' + res.edition.day;
+      if (!res.shouldOpen && !res.reserved) S.dailyNewsShown[key] = true;
+      if (automatic && (!res.shouldOpen || S.dailyNewsShown[key] || dailyNewsLocalSeen(res.edition))) return;
+      if (automatic && !dailyNewsSafe()) return;
+      S.dailyNewsBusy = true;
+      S.socket.emit('football:daily_news_reserve', { editionId: res.edition.id }, function (grant) {
+        S.dailyNewsBusy = false;
+        if (seq !== S.dailyNewsSeq || !S.profile || S.profile.id !== profileId) return;
+        if (!grant || !grant.ok) { el['est-daily-news-status'].textContent = 'La edición sigue disponible. Pulsa Ver noticiero para reintentar.'; return; }
+        if (grant.granted || !automatic) showDailyNews(grant.edition || res.edition, Boolean(grant.granted));
+      });
+    });
   }
   function refreshTransfers() {
     var list = $('est-transfers-list');
@@ -7236,6 +7361,19 @@
       var text=$('est-highlights-score').textContent + '. Goles y asistencias. ' + $('est-highlights-goals').textContent + '. Momentos destacados. ' + $('est-highlights-moments').textContent + '. ' + $('est-highlights-star').textContent;
       var utterance=new window.SpeechSynthesisUtterance(text); utterance.lang='es-MX'; utterance.voice=voice; window.speechSynthesis.speak(utterance);
     });
+    el['est-daily-news-open'].addEventListener('click', function () { checkDailyNews(false); });
+    el['est-market-daily-replay'].addEventListener('click', function () { checkDailyNews(false); });
+    el['est-daily-news-close'].addEventListener('click', leaveTransfersNews);
+    el['est-daily-news'].addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); leaveTransfersNews(); return; }
+      if (event.key !== 'Tab') return;
+      var nodes = Array.prototype.filter.call(el['est-daily-news'].querySelectorAll('button:not([disabled]), summary'), function (node) { return !node.closest('[hidden]'); });
+      if (!nodes.length) return;
+      var first = nodes[0], last = nodes[nodes.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    });
+    document.addEventListener('visibilitychange', function () { if (document.hidden && activeNews) pauseNews(); });
     if ($('est-hub')) {
       $('est-hub-open').addEventListener('click', function (event) { openHub(event.currentTarget); });
       $('est-hub-close').addEventListener('click', closeHub);
@@ -7440,6 +7578,10 @@
     document.addEventListener('keydown', onKey);
     setInterval(tickCountdown, 1000); tickCountdown();
     setInterval(refreshFantasy, 30000);
+    setInterval(function () {
+      var serverDay = dayStamp(currentServerTime());
+      if (S.dailyNewsPending || serverDay !== S.dailyNewsDay || (S.profile && !S.dailyNewsShown[S.profile.id + ':' + serverDay])) checkDailyNews(true);
+    }, 15000);
   }
   // Música de ambiente de estadio: un solo bucle, solo con el sonido activado por el usuario.
   var music = null;
@@ -7463,6 +7605,7 @@
     }
   }
   function onKey(e) {
+    if (dailyNewsOpen()) return; // el diálogo gestiona su propio teclado
     if (hubOpen()) {
       if (e.key.toLowerCase() === 'escape') { e.preventDefault(); closeHub(); }
       return;

@@ -261,3 +261,38 @@ test('arranque oficial solo V2 reembolsa boleto V1 y asienta los dos partidos pe
     assert.equal(saved.getStandings('2026-11').find(row => row.teamId === 'norvela_sporting').played, 2);
   } finally { saved.close(); savedProfiles.saveNow(); }
 });
+
+test('noticiero tras diez días apagado: el servidor real recupera resultados antes de publicar una sola edición de regreso', { timeout: 60000 }, async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'daily-outage-boot-'));
+  let child;
+  t.after(async () => { if (child) await stopServer(child); fs.rmSync(dir, { recursive: true, force: true }); });
+  const file = path.join(dir, 'football.json'), store = new FootballStore(file);
+  const league = store.generateSeason('2026-11');
+  const wake = Date.UTC(2026, 10, 25, 12); // 06:00 local, antes de la cartelera del día
+  const overdue = league.calendar.matches.find(match => match.scheduledKickoffAt < Date.UTC(2026, 10, 20));
+  for (const match of league.calendar.matches) {
+    if (match.id === overdue.id || match.scheduledKickoffAt >= wake) continue;
+    assert.ok(store.settleMatch(match.id, { home: 1, away: 0 }, {
+      now: match.scheduledKickoffAt + 20 * 60000, deferSave: true
+    }).ok);
+  }
+  store.dailyNews.operational = { lastReadyDay: '2026-11-15', lastReadyAt: Date.UTC(2026, 10, 15, 12) };
+  store.saveNow(); store.close();
+  const server = await startServer(dir, wake); child = server.child;
+  const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const editions = Object.values(saved.dailyNews.editions);
+  assert.equal(editions.length, 1, 'no se encolan diez noticieros');
+  assert.equal(editions[0].day, '2026-11-25');
+  assert.equal(editions[0].mode, 'return');
+  assert.equal(editions[0].coverage.gapDays, 10);
+  assert.ok(editions[0].coverage.recoveredMatches >= 1);
+  const recovered = saved.leagues[0].calendar.matches.find(match => match.id === overdue.id);
+  assert.equal(recovered.status, 'settled');
+  assert.ok(recovered.settledAt <= editions[0].generatedAt, 'el resultado se asentó antes del corte editorial');
+  assert.deepEqual(saved.seasons.history, [], 'no se inventan temporadas intermedias');
+  const health = await (await fetch(`http://127.0.0.1:${server.port}/healthz`)).json();
+  assert.equal(health.football.dailyNews.editionCount, 1);
+  await stopServer(child); child = null;
+  const again = await startServer(dir, wake + 60000); child = again.child;
+  assert.equal(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).dailyNews.editions).length, 1);
+});

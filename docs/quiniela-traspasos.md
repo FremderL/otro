@@ -16,6 +16,10 @@ carrera al Balón de Oro y pulso público de *Mi afición*.
 > registrarse y anunciarse en MonteCristo News (`AGENTS.md` y
 > `docs/montecristo-news-regla-clubes.md`).
 
+### Noticiero diario y conferencia de prensa
+
+El noticiero diario automático incluye el mercado desde el día 15 y sustituye las aperturas mensuales automáticas duplicadas. La conferencia bajo demanda permanece en Mercado. Detalles en `docs/montecristo-news-noticiero-diario.md`.
+
 ### Conferencia de prensa del mercado
 
 La vista de mercado del Estadio es una conferencia de prensa: cada acuerdo se
