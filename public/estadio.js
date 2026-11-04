@@ -6342,12 +6342,21 @@
 
   // ===== Mis apuestas + liquidación =====
   function renderMyBets() {
-    var box = el['est-mybets']; box.innerHTML = '';
+    var box = el['est-mybets'];
+    // En vivo la lista se vuelve a pintar (pausas, cash-out, liquidaciones).
+    // Conservamos el desplazamiento dentro del mismo partido para no devolver
+    // a la persona a la primera apuesta mientras revisaba las últimas.
+    var matchId = S.currentMatchId || '';
+    var keepScroll = box.dataset.matchId === matchId;
+    var scrollTop = keepScroll ? box.scrollTop : 0;
+    box.innerHTML = '';
     var open = (S.myBets || []).filter(function (b) { return b.status === 'open'; });
     if (!open.length) {
       var ended = S.match && ['settled', 'finished', 'postponed'].indexOf(S.match.status) >= 0;
       box.innerHTML = '<li class="est-muted">Sin apuestas abiertas.' +
         (ended ? ' Este partido ya terminó: revisa «Historial y pagos» para ver el resultado y lo acreditado.' : '') + '</li>';
+      box.dataset.matchId = matchId;
+      box.scrollTop = 0;
       renderLedgerBadges();
       return;
     }
@@ -6371,6 +6380,8 @@
       }
       box.appendChild(li);
     });
+    box.dataset.matchId = matchId;
+    box.scrollTop = scrollTop;
     renderLedgerBadges();
   }
 

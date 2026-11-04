@@ -1145,9 +1145,28 @@
   border-bottom: 1px solid rgba(82,224,174,.15);
   color: var(--gold-2);
 }
-.est-mybets { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 24vh; overflow-y: auto; }
+/* La lista es la única que se desplaza: las tarjetas conservan su altura de
+   contenido. Sin `flex: 0 0 auto`, el contenedor con max-height encogía cada
+   tarjeta y `overflow: hidden` recortaba selección, monto y cash-out. */
+.est-mybets {
+  list-style: none;
+  margin: 0;
+  padding: 2px 8px 2px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: clamp(240px, 40vh, 480px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(82,224,174,.45) transparent;
+}
+.est-mybets:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; border-radius: 10px; }
 .est-mybet {
   position: relative;
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: minmax(0,1fr) auto;
   gap: 5px 10px;
@@ -1166,7 +1185,7 @@
 .est-mybet .est-cashout { grid-column: 1 / -1; width: 100%; min-height: 34px; margin-top: 4px; padding: 6px 10px; border: 1px solid rgba(229,189,114,.32); border-radius: 7px; background: rgba(229,189,114,.08); color: var(--gold-2); font: inherit; font-size: 10px; font-weight: 750; cursor: pointer; }
 .est-mybet .est-cashout:hover:not(:disabled) { border-color: var(--gold-2); background: rgba(229,189,114,.16); }
 .est-mybet .est-cashout:disabled { opacity: .5; cursor: not-allowed; }
-#est-mybets > .est-muted { padding: 12px; border: 1px dashed rgba(194,223,216,.17); border-radius: 9px; background: rgba(255,255,255,.015); line-height: 1.45; }
+#est-mybets > .est-muted { flex: 0 0 auto; padding: 12px; border: 1px dashed rgba(194,223,216,.17); border-radius: 9px; background: rgba(255,255,255,.015); line-height: 1.45; }
 
 /* --- Mis apuestas: panel compacto + acceso a la vista propia (§34) --- */
 .est-bets-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid rgba(82,224,174,.15); }

@@ -977,6 +977,49 @@ test('Mis apuestas mantiene tarjetas y jerarquía visual propias', async t => {
   assert.notEqual(window.getComputedStyle(panel).borderTopColor, '');
 });
 
+test('Mis apuestas no encoge las tarjetas cuando hay muchas: la lista se desplaza y conserva la posición', async t => {
+  const myBets = Array.from({ length: 12 }, (_, index) => ({
+    id: 'bet-many-' + index, market: '1x2', selection: index % 2 ? 'away' : 'home',
+    odds: 2.1 + index / 100, stake: 100 + index, potentialPayout: 210 + index * 2,
+    status: 'open', inPlay: false
+  }));
+  const h = createHarness({ myBets });
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+
+  const { window, handlers, match } = h;
+  const list = window.document.getElementById('est-mybets');
+  const cards = list.querySelectorAll('.est-mybet');
+  assert.equal(cards.length, 12, 'todas las apuestas abiertas siguen en el DOM');
+  assert.equal(list.getAttribute('tabindex'), '0', 'la lista se puede recorrer con teclado');
+  const listStyle = window.getComputedStyle(list);
+  assert.equal(listStyle.overflowY, 'auto', 'solo la lista tiene desplazamiento vertical');
+  assert.notEqual(listStyle.maxHeight, 'none', 'el panel sigue siendo compacto');
+  for (const card of cards) {
+    const style = window.getComputedStyle(card);
+    assert.equal(style.flexShrink, '0', 'la tarjeta no se encoge para caber en la lista');
+    assert.equal(style.flexGrow, '0');
+    assert.equal(style.flexBasis, 'auto', 'la tarjeta conserva su altura de contenido');
+    assert.ok(card.querySelector('.est-mybet-pick').textContent.length > 0);
+    assert.equal(card.querySelectorAll('.est-mybet-meta').length, 2, 'monto y pago siguen visibles');
+  }
+
+  // En vivo aparece cash-out; al repintar por el cambio de estado no se pierde
+  // ni la tarjeta ni el punto de la lista que la persona estaba revisando.
+  handlers['football:status']({ matchId: match.id, code: 'live', minute: 1 });
+  assert.equal(list.querySelectorAll('.est-cashout').length, 12);
+  list.scrollTop = 180;
+  handlers['football:status']({ matchId: match.id, code: 'halftime', minute: 45 });
+  assert.equal(list.querySelectorAll('.est-mybet').length, 12);
+  assert.equal(list.scrollTop, 180, 'el repintado en vivo conserva el desplazamiento');
+  assert.ok(list.querySelector('.est-cashout').disabled, 'la pausa se refleja sin recortar el botón');
+
+  const panel = window.document.getElementById('est-mybets-panel');
+  assert.ok(panel.querySelector('#est-ledger-open'), 'Historial y pagos queda fuera de la zona desplazable');
+  assert.equal(list.contains(panel.querySelector('#est-ledger-open')), false);
+});
+
 test('el historial y los pagos viven en una vista propia, no en las columnas del Estadio', async t => {
   const settledEntry = {
     kind: 'bet', id: 'bet-old', matchId: 'ui-match', market: '1x2', selection: 'home',
