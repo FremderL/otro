@@ -37,6 +37,10 @@ const { loadAdminConfig } = require('./lib/admin-config');
 const { loadPassportConfig } = require('./lib/passport-config');
 const { createAccountSessionStore } = require('./lib/account-session-factory');
 const { installAccountAuthRoutes, COOKIE_NAME, parseCookies } = require('./lib/account-auth-http');
+const { createDeviceLinkStore } = require('./lib/device-links');
+const { createSocketIdentityGuard } = require('./lib/socket-identity-guard');
+const { GuestImportService } = require('./lib/guest-import');
+const { installGuestImportRoutes } = require('./lib/guest-import-http');
 const { sessionState } = require('./lib/account-sessions');
 const { installAdminRoutes, makeAdminGuard } = require('./lib/admin-auth-http');
 const { PERMISSIONS, normalizeRole } = require('./lib/permissions');
@@ -84,6 +88,7 @@ const { loadFootballConfig } = require('./lib/football-config');
 const { createFootballStore } = require('./lib/football-store-factory');
 const { FootballEngine } = require('./lib/football/engine');
 const { FootballScheduler } = require('./lib/football/scheduler');
+const { createDailyNewsService } = require('./lib/football/daily-news-service');
 const { createOfficialV2 } = require('./lib/football/v2/official');
 const { publicProjectionState } = require('./lib/football/v2/projection');
 const { createBettingService } = require('./lib/football/betting');
@@ -148,6 +153,15 @@ accountAuth = installAccountAuthRoutes(app, {
   getProfiles: () => profiles,
   getSessionStore: () => accountSessionStore,
   getAuditStore: () => auditStore,
+  getDeviceLinks: () => deviceLinks,
+  logEvent
+});
+app.use('/api/account', express.json({ limit: '16kb', strict: true }));
+installGuestImportRoutes(app, {
+  config: adminConfig,
+  resolveSession: req => accountAuth.resolveSession(req),
+  getDeviceLinks: () => deviceLinks,
+  getImportService: () => guestImportService,
   logEvent
 });
 installAdminRoutes(app, {
@@ -269,6 +283,7 @@ app.get('/healthz', (_req, res) => {
         engine: footballEngine,
         enabled: footballConfig.enabled,
         ballonDorMarket: footballBallonDorMarket,
+        getDailyNews: () => footballDailyNews,
         audioTelemetry: footballAudioTelemetry
       })
       : { enabled: false }
@@ -317,12 +332,14 @@ installFootballRoutes(app, {
   get profiles() { return profiles; },
   get betting() { return footballBetting; },
   getBallonDorMarket: () => footballBallonDorMarket,
+  getDailyNews: () => footballDailyNews,
   audioTelemetry: footballAudioTelemetry,
   get buildLobby() { return footballSockets ? footballSockets.buildLobby : null; },
   get buildMatchState() { return footballSockets ? footballSockets.buildMatchState : null; },
   get config() { return { tosVersion: TOS_VERSION }; },
   get accountConfig() { return adminConfig; },
   getAccountAuth: () => accountAuth,
+  getDeviceLinks: () => deviceLinks,
   verifyTosAcceptance,
   promotionsEnabled: () => footballConfig.enabled && adminConfig.enabled && adminConfig.accountSessionsEnabled,
   now: () => Date.now(),
@@ -418,9 +435,13 @@ let footballEngine = null;
 let footballBetting = null;
 let footballBallonDorMarket = null;
 let footballQuiniela = null;
+let footballDailyNews = null;
 let footballScheduler = null;
 let footballSockets = null;
 let accountSessionStore = null;
+let deviceLinks = null;
+let guestImportService = null;
+let socketIdentityGuard = null;
 let auditStore = null;
 let moderationStore = null;
 let reportStore = null;
@@ -758,7 +779,8 @@ function seatIdFor(socket, token) {
   return seatIdentity({
     accountSessionsEnabled: adminConfig.accountSessionsEnabled,
     accountProfileId: socket.data.accountProfileId,
-    token
+    token,
+    deviceLink: socket.data.deviceLink
   });
 }
 function syncSocketLobbyIdentity(socket, profile) {
@@ -2520,28 +2542,36 @@ function loteriaSocketsFor(profileId) {
   return total;
 }
 
-// Fase 1: una cookie válida vincula la conexión con una cuenta autenticada.
-// Una cookie ausente o vencida no bloquea el modo invitado; simplemente no
-// concede identidad de cuenta. Ningún id enviado en payload sustituye esto.
+// Identidad económica fail-closed: cookie válida → cuenta; dispositivo vinculado
+// sin cookie → solo lectura; invitado únicamente en dispositivo no vinculado o
+// tras elegir explícitamente el modo invitado desde la cuenta.
 io.use(async (socket, next) => {
   try {
     socket.data.accountProfileId = null;
-    if (!adminConfig.accountSessionsEnabled || !accountSessionStore) return next();
+    if (!adminConfig.accountSessionsEnabled || !accountSessionStore || !deviceLinks) return next();
     const token = parseCookies(socket.handshake.headers.cookie)[COOKIE_NAME];
-    if (!token) return next();
-    const session = await accountSessionStore.findByToken(token);
-    const profile = session && profiles.profiles.get(session.profileId);
-    const state = profile && sessionState(session, { sessionVersion: profile.security?.sessionVersion || 1 });
-    if (!profile?.username || !state?.valid) return next();
-    socket.data.accountProfileId = profile.id;
-    socket.data.accountSessionId = session.id;
-    socket.data.accountRole = profile.role || 'user';
-    socket.join(`account:${profile.id}`);
-    await accountSessionStore.touch(session.id, { role: profile.role || 'user' });
+    if (token) {
+      const session = await accountSessionStore.findByToken(token);
+      const profile = session && profiles.profiles.get(session.profileId);
+      const state = profile && sessionState(session, { sessionVersion: profile.security?.sessionVersion || 1 });
+      if (profile?.username && state?.valid) {
+        socket.data.accountProfileId = profile.id;
+        socket.data.accountSessionId = session.id;
+        socket.data.accountSessionToken = token;
+        socket.data.accountRole = profile.role || 'user';
+        socket.data.sessionExpiresAt = Math.min(session.idleExpiresAt, session.absoluteExpiresAt);
+        socket.join(`account:${profile.id}`);
+      }
+    }
+    const identity = await socketIdentityGuard.resolve(socket, { force: true });
+    socket.data.identityMode = identity.mode;
     return next();
   } catch (error) {
     console.warn('No se pudo resolver la sesión del socket:', error.message);
-    return next(); // fail-closed para cuenta; el juego invitado sigue disponible
+    // Sin verificación no hay cartera de invitado en un dispositivo conocido.
+    const err = new Error('No se pudo verificar la identidad.');
+    err.data = { code: 'session_unavailable' };
+    return next(err);
   }
 });
 
@@ -2558,9 +2588,10 @@ io.on('connection', socket => {
     console.warn(`[HANDLER_ERROR] evento=${event}:`, error);
     if (typeof ack === 'function') ackError(ack, 'Ocurrió un error inesperado. Intenta de nuevo.');
   };
-  socket.on = (event, handler) => onRaw(event, function (...args) {
+  socket.on = (event, handler) => onRaw(event, async function (...args) {
     const ack = typeof args[args.length - 1] === 'function' ? args[args.length - 1] : null;
     try {
+      if (event !== 'disconnect' && socketIdentityGuard && !await socketIdentityGuard.guard(socket, event, args)) return undefined;
       const result = handler.apply(this, args);
       if (result && typeof result.catch === 'function') result.catch(error => reportHandlerError(event, error, ack));
       return result;
@@ -2568,6 +2599,10 @@ io.on('connection', socket => {
       reportHandlerError(event, error, ack);
       return undefined;
     }
+  });
+
+  socket.on('account_session_status', (_payload = {}, ack) => {
+    ackOk(ack, { mode: socket.data.identityMode || 'guest', expiresAt: socket.data.sessionExpiresAt || null });
   });
 
   socket.on('bet_ranking_get', (_payload = {}, ack) => {
@@ -3361,7 +3396,7 @@ io.on('connection', socket => {
     });
   });
 
-  socket.on('account_signup', ({ token, name, avatar, username, password, tos } = {}, ack) => {
+  socket.on('account_signup', async ({ token, name, avatar, username, password, tos } = {}, ack) => {
     if (!token) return ackError(ack, 'No se pudo identificar este dispositivo.');
     const id = String(token).slice(0, 80);
     // El nombre con el que se crea la cuenta también se revisa (es el que se
@@ -3380,6 +3415,7 @@ io.on('connection', socket => {
     if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
     const result = profiles.registerAccount(profile, username, password);
     if (!result.ok) return ackError(ack, result.error);
+    if (adminConfig.accountSessionsEnabled && deviceLinks) await deviceLinks.set(id, profile.id, 'account');
     if (!adminConfig.accountSessionsEnabled) socket.data.legacyChatProfileId = profile.id;
     logEvent('account_created', { profileId: profile.id, username: profile.username });
     ackOk(ack, { profile: publicProgress(profile, true) });
@@ -3726,6 +3762,7 @@ async function gracefulShutdown(signal) {
   const forceExit = setTimeout(() => { logEvent('shutdown_forced', { graceMs }); process.exit(0); }, graceMs);
   forceExit.unref?.();
   try { await profiles.saveNow(); } catch (_) { /* saveNow ya reporta sus propios errores */ }
+  try { await deviceLinks?.close?.(); } catch (_) { /* cierre best-effort */ }
   try { await accountSessionStore?.close?.(); } catch (error) {
     console.warn('No se pudo cerrar el store de sesiones:', error.message);
   }
@@ -3796,6 +3833,7 @@ async function initFootball() {
       await footballQuiniela?.sweep?.(Date.now());
       await footballBallonDorMarket?.sweep?.(Date.now());
       await footballScheduler?.runAutoRescheduleSweep?.(Date.now());
+      await footballDailyNews?.prepare(Date.now());
       logEvent('football_writer_acquired_after_wait', { seasonMonth: footballStore.getCurrentSeasonMonth() });
     };
   }
@@ -3965,13 +4003,20 @@ async function initFootball() {
     }
   }
 
+  // 5c. Noticiero: el boot deportivo ya terminó. Si queda deuda o falta el
+  // escritor, prepare devuelve preparing y el scheduler reintenta sin bloquear.
+  footballDailyNews = createDailyNewsService({ store: footballStore, profiles,
+    enabled: process.env.FOOTBALL_DAILY_NEWS_ENABLED !== 'off',
+    readiness: at => footballEngine.editorialReadiness(at), log: footballLog });
+  if (!writerPending) await footballDailyNews.prepare(Date.now());
+
   // 6. Capa de protocolo Socket.IO (§14). Añade su propio io.on('connection'),
   //    independiente del handler de mesas del casino. Helpers del casino inyectados:
   //    ackOk/ackError (con code), cleanMessage, nameIssue (unicidad global de
   //    nombres) y verifyTosAcceptance. La identidad se resuelve SOLO en subscribe.
   footballSockets = registerFootballSockets(io, {
     betting: footballBetting, engine: footballEngine, store: footballStore, profiles,
-    quiniela: footballQuiniela,
+    quiniela: footballQuiniela, dailyNews: footballDailyNews,
     onFanChanged: profile => {
       for (const room of rooms.values()) if (room.players.some(player => player._profile === profile)) broadcast(room);
       io.to(`account:${profile.id}`).emit('profile_event', { events:[], profile:publicProgress(profile, true) });
@@ -3986,7 +4031,7 @@ async function initFootball() {
 
   // 7. Scheduler: sweeps de kickoff, avance, partidos atascados y temporada (§15).
   footballScheduler = new FootballScheduler(footballEngine, {
-    officialV2, ballonDorService: footballBallonDorMarket, quinielaService: footballQuiniela, logEvent: footballLog,
+    officialV2, ballonDorService: footballBallonDorMarket, quinielaService: footballQuiniela, dailyNewsService: footballDailyNews, logEvent: footballLog,
     // Previa de la cabina: la conversación de los comentaristas antes del saque
     // inicial sale por el mismo canal del relato (football:commentary).
     pregameService: footballSockets?.pregame || null
@@ -4037,7 +4082,28 @@ async function bootstrap() {
       process.exit(1);
     }
   });
+  deviceLinks = createDeviceLinkStore({
+    filePath: process.env.DEVICE_LINK_STORE_PATH || path.join(path.dirname(process.env.PROFILE_STORE_PATH || path.join(__dirname, 'data', 'profiles.json')), 'device-links.json'),
+    databaseUrl: process.env.DATABASE_URL
+  });
+  if (deviceLinks.ready) await deviceLinks.ready;
   accountSessionStore = createAccountSessionStore(adminConfig);
+  socketIdentityGuard = createSocketIdentityGuard({
+    enabled: () => adminConfig.accountSessionsEnabled && Boolean(accountSessionStore && deviceLinks),
+    profiles, sessions: accountSessionStore, deviceLinks
+  });
+  guestImportService = new GuestImportService({ profiles, deviceLinks, log: logEvent,
+    blockers: (sourceId, targetId) => {
+      const out = [];
+      for (const id of [sourceId, targetId]) {
+        if (roomOfProfile(profiles.getProfile(id))) out.push('active_table');
+        if (loteria?.state?.pending?.some(item => item.profileId === id) || (['registration','calling'].includes(loteria?.state?.game?.status) && loteria?.state?.game?.players?.some(item => item.profileId === id))) out.push('active_loteria');
+        if (Object.values(fortuneLedger?.state?.rounds || {}).some(round => ['open','resolved'].includes(round.status) && round.bets.some(bet => bet.profileId === id && !bet.refundedAt))) out.push('active_fortune');
+        if ([...(lobbyTournaments?.events?.values?.() || [])].some(event => event.status !== 'completed' && event.registered.some(item => item.profileId === id))) out.push('active_tournament');
+      }
+      return out;
+    }
+  });
   auditStore = createAuditStore(adminConfig);
   moderationStore = createModerationStore(adminConfig);
   reportStore = createReportStore(adminConfig);
@@ -4192,6 +4258,10 @@ async function bootstrap() {
       console.warn('No se pudo iniciar la Lotería:', error.message);
       logEvent('loteria_init_failed', { message: String(error?.message || error) });
     }
+  }
+  if (guestImportService) {
+    guestImportService.footballStore = footballStore;
+    await guestImportService.recover();
   }
   logEvent('lobby_tournaments_initialized', {
     timeZone: CASINO_TIME_ZONE, events: lobbyTournaments.events.size,

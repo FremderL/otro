@@ -154,6 +154,10 @@ function createHarness(options = {}) {
       if (event === 'football:quiniela_enter' && options.onQuinielaEnter) { ack(options.onQuinielaEnter(payload)); return; }
       if (event === 'football:club_profile_get' && options.onClubProfileGet) { options.onClubProfileGet(payload, ack); return; }
       if (event === 'football:roster_get' && options.onRosterGet) { options.onRosterGet(payload, ack); return; }
+      if (event === 'football:daily_news_get' && options.onDailyNewsGet) { ack(options.onDailyNewsGet(payload)); return; }
+      if (event === 'football:daily_news_reserve' && options.onDailyNewsReserve) { ack(options.onDailyNewsReserve(payload)); return; }
+      if (event === 'football:daily_news_ack' && options.onDailyNewsAck) { ack(options.onDailyNewsAck(payload)); return; }
+      if (event === 'football:daily_news_get') { ack({ ok: true, status: 'disabled' }); return; }
       if (event === 'football:transfers_get' && options.onTransfersGet) { ack(options.onTransfersGet(payload)); return; }
       if (event === 'football:fan_equip' && options.onFanEquip) { ack(options.onFanEquip(payload)); return; }
       if (event === 'football:fan_get' && options.onFanGet) { ack(options.onFanGet(payload)); return; }
@@ -971,6 +975,49 @@ test('Mis apuestas mantiene tarjetas y jerarquía visual propias', async t => {
   assert.equal(window.getComputedStyle(card).borderRadius, '10px');
   assert.equal(window.getComputedStyle(card.querySelector('.est-mybet-pick')).fontWeight, '800');
   assert.notEqual(window.getComputedStyle(panel).borderTopColor, '');
+});
+
+test('Mis apuestas no encoge las tarjetas cuando hay muchas: la lista se desplaza y conserva la posición', async t => {
+  const myBets = Array.from({ length: 12 }, (_, index) => ({
+    id: 'bet-many-' + index, market: '1x2', selection: index % 2 ? 'away' : 'home',
+    odds: 2.1 + index / 100, stake: 100 + index, potentialPayout: 210 + index * 2,
+    status: 'open', inPlay: false
+  }));
+  const h = createHarness({ myBets });
+  t.after(h.close);
+  await h.connectToMatch();
+  await h.flush();
+
+  const { window, handlers, match } = h;
+  const list = window.document.getElementById('est-mybets');
+  const cards = list.querySelectorAll('.est-mybet');
+  assert.equal(cards.length, 12, 'todas las apuestas abiertas siguen en el DOM');
+  assert.equal(list.getAttribute('tabindex'), '0', 'la lista se puede recorrer con teclado');
+  const listStyle = window.getComputedStyle(list);
+  assert.equal(listStyle.overflowY, 'auto', 'solo la lista tiene desplazamiento vertical');
+  assert.notEqual(listStyle.maxHeight, 'none', 'el panel sigue siendo compacto');
+  for (const card of cards) {
+    const style = window.getComputedStyle(card);
+    assert.equal(style.flexShrink, '0', 'la tarjeta no se encoge para caber en la lista');
+    assert.equal(style.flexGrow, '0');
+    assert.equal(style.flexBasis, 'auto', 'la tarjeta conserva su altura de contenido');
+    assert.ok(card.querySelector('.est-mybet-pick').textContent.length > 0);
+    assert.equal(card.querySelectorAll('.est-mybet-meta').length, 2, 'monto y pago siguen visibles');
+  }
+
+  // En vivo aparece cash-out; al repintar por el cambio de estado no se pierde
+  // ni la tarjeta ni el punto de la lista que la persona estaba revisando.
+  handlers['football:status']({ matchId: match.id, code: 'live', minute: 1 });
+  assert.equal(list.querySelectorAll('.est-cashout').length, 12);
+  list.scrollTop = 180;
+  handlers['football:status']({ matchId: match.id, code: 'halftime', minute: 45 });
+  assert.equal(list.querySelectorAll('.est-mybet').length, 12);
+  assert.equal(list.scrollTop, 180, 'el repintado en vivo conserva el desplazamiento');
+  assert.ok(list.querySelector('.est-cashout').disabled, 'la pausa se refleja sin recortar el botón');
+
+  const panel = window.document.getElementById('est-mybets-panel');
+  assert.ok(panel.querySelector('#est-ledger-open'), 'Historial y pagos queda fuera de la zona desplazable');
+  assert.equal(list.contains(panel.querySelector('#est-ledger-open')), false);
 });
 
 test('el historial y los pagos viven en una vista propia, no en las columnas del Estadio', async t => {
@@ -3776,4 +3823,75 @@ test('un gol puede interrumpir un cambio sin borrar su anuncio ni los siguientes
   h.speech.finish(h.speech.utterances.length - 1);
   h.advanceTime(1000);
   assert.equal(h.speech.utterances.at(-1).text, 'Cambio dos.');
+});
+
+function dailyEditionForUi() {
+  const { buildDailyEdition } = require('../lib/football/daily-news');
+  const { FootballStore } = require('../lib/football-store');
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'daily-ui-'));
+  try {
+    const store = new FootballStore(path.join(dir, 'football.json'));
+    const league = store.generateSeason('2026-10');
+    return buildDailyEdition({ league, leagues: [league], at: Date.UTC(2026, 9, 15, 18) });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+test('noticiero diario automático: una apertura, subtítulos por defecto, pausa, voz, repetición y ack al montar', async t => {
+  const edition = dailyEditionForUi(), acknowledgements = [];
+  let reservations = 0, presented = false;
+  const h = createHarness({ speechSynthesis: true,
+    onDailyNewsGet: () => ({ ok: true, status: 'ready', edition, day: edition.day, shouldOpen: !presented }),
+    onDailyNewsReserve: () => ({ ok: true, granted: !presented, edition }),
+    onDailyNewsAck: payload => { acknowledgements.push(payload); presented = true; return { ok: true }; }
+  });
+  t.after(h.close);
+  await h.flush(); h.handlers.connect(); h.advanceTime(3400); await h.flush();
+  const doc = h.window.document;
+  assert.equal(doc.getElementById('est-daily-news').hidden, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(acknowledgements)), [{ editionId: edition.id }], 'se confirma al abrir, no al terminar');
+  assert.equal(h.speech.utterances.length, 0, 'no hay voz automática sin gesto');
+  h.advanceTime(1900);
+  assert.match(doc.querySelector('.est-news-lines').textContent, /Bienvenidos/);
+  doc.querySelector('.est-news-pause').click();
+  const pausedText = doc.querySelector('.est-news-lines').textContent;
+  h.advanceTime(10000);
+  assert.equal(doc.querySelector('.est-news-lines').textContent, pausedText);
+  doc.querySelector('.est-news-pause').click();
+  assert.equal(doc.querySelector('.est-news-lines').textContent, pausedText, 'reanudar repite la pieza actual');
+  doc.querySelector('.est-news-voice').click();
+  assert.equal(h.speech.utterances.length, 1);
+  assert.equal(doc.querySelector('.est-news-voice').getAttribute('aria-pressed'), 'true');
+  doc.querySelector('.est-news-replay').click();
+  assert.equal(h.speech.overlapCount, 0, 'reiniciar cancela la locución anterior');
+  assert.match(doc.querySelector('.est-news-transcript').textContent, /no una retransmisión en directo/);
+  doc.getElementById('est-daily-news-close').click();
+  assert.equal(doc.getElementById('est-daily-news').hidden, true);
+  reservations = h.socketEmitted.filter(item => item.event === 'football:daily_news_reserve').length;
+  doc.getElementById('est-daily-news-open').click(); await h.flush();
+  assert.equal(doc.getElementById('est-daily-news').hidden, false, 'repetición manual aunque ya se presentó');
+  assert.equal(acknowledgements.length, 1, 'la repetición no vuelve a marcar presentación');
+  assert.ok(reservations >= 1);
+});
+
+test('noticiero diario no bloquea el Estadio si falla y no interrumpe un partido en vivo', async t => {
+  const edition = dailyEditionForUi();
+  let unavailable = true;
+  const h = createHarness({
+    onDailyNewsGet: () => unavailable ? { ok: false, code: 'unavailable' } : { ok: true, status: 'ready', edition, day: edition.day, shouldOpen: true },
+    onDailyNewsReserve: () => ({ ok: true, granted: true, edition })
+  });
+  t.after(h.close); await h.flush(); h.handlers.connect(); h.advanceTime(3400); await h.flush();
+  assert.equal(h.window.document.getElementById('est-daily-news').hidden, true);
+  assert.match(h.window.document.getElementById('est-daily-news-status').textContent, /reintentar/);
+  assert.equal(h.window.document.getElementById('est-hub-open').disabled, false);
+  unavailable = false;
+  await h.connectToMatch();
+  h.match.status = 'live'; h.handlers['football:lobby']({ ...h.matchState, matches: [h.match], standings: [], serverNow: Date.now() });
+  h.handlers['football:status']({ matchId: h.match.id, code: 'live' });
+  h.window.document.getElementById('est-daily-news-open').click(); await h.flush();
+  // La apertura manual sigue disponible; la automática comprueba el estado vivo.
+  h.window.document.getElementById('est-daily-news-close').click();
+  h.advanceTime(15000); await h.flush();
+  assert.equal(h.window.document.getElementById('est-daily-news').hidden, true);
 });

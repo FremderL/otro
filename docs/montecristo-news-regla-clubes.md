@@ -33,7 +33,13 @@ Además de los 8 fichajes del mercado de traspasos (con mención al DT que solic
 
 ---
 
-## 3. Regla explícita para futuros desarrollos
+## 3. Noticiero diario automático
+
+Desde la edición diaria, MonteCristo News también se presenta en la primera apertura segura del Estadio de cada día (`America/Mexico_City`). El constructor `lib/football/daily-news.js` añade resultados asentados, resumen de jornada, tabla y cartelera; el servicio `daily-news-service.js` guarda una edición inmutable por fecha y coordina la presentación por perfil. Los anuncios de clubes conservan su fuente causal y se distinguen como novedad, confirmación, actualización o seguimiento.
+
+El día 15 el mercado forma parte de esta misma emisión. Tras una interrupción larga se recuperan primero los resultados y se publica una sola edición de regreso, nunca una cola de días inventados. Contrato completo, recuperación, accesibilidad y pruebas en `docs/montecristo-news-noticiero-diario.md`.
+
+## 4. Regla explícita para futuros desarrollos
 
 > **REGLA OBLIGATORIA**: Cualquier cosa que se desarrolle en el futuro y que afecte a clubes DEBE incluirse en **MonteCristo News** (`lib/football/club-news.js` + `public/estadio.js`).
 

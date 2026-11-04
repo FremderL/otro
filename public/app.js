@@ -289,6 +289,7 @@
   const ui = {
     accountMode: 'login',
     accountSession: readAccountSession(),
+    identityMode: 'guest', sessionExpiresAt: null, guestImportPreview: null,
     csrfToken: null, // solo memoria; nunca localStorage
     modalMode: 'create', selectedGame: 'poker', roomFilter: 'all', lobby: [], playersOnline: 0,
     room: null, me: null, activeCode: null, playerName: localStorage.getItem('montecristo-name') || '',
@@ -329,6 +330,8 @@
   updateSoundButton();
   updateNotificationButtons();
   renderAccountButton();
+  serverFlagsReady.then(checkIdentityState);
+  setInterval(() => { if (!document.hidden) { checkIdentityState(); renderSessionWarning(); } }, 60000);
   renderAvatarChoices();
   initScrollReveal();
   loadSeasonalTheme();
@@ -482,6 +485,61 @@
     ui.csrfToken = null;
     renderAccountButton();
   }
+  function renderIdentityBanner() {
+    const banner = document.getElementById('identity-banner');
+    if (!banner) return;
+    const expired = ui.identityMode === 'login_required';
+    const left = Number(ui.sessionExpiresAt || 0) - Date.now();
+    const expiring = ui.identityMode === 'account' && left > 0 && left < 5 * 60 * 1000;
+    banner.classList.toggle('hidden', !expired && !expiring);
+    if (expired) banner.innerHTML = '🔒 <b>Sesión caducada.</b> Tus fichas siguen en tu cuenta. <button type="button" class="identity-banner-action" id="identity-relogin">Iniciar sesión</button>';
+    else if (expiring) banner.innerHTML = `⏳ Tu sesión caduca en ${Math.max(1, Math.ceil(left / 60000))} min. <button type="button" class="identity-banner-action" id="identity-renew">Continuar sesión</button>`;
+    document.getElementById('identity-relogin')?.addEventListener('click', openAccountModal);
+    document.getElementById('identity-renew')?.addEventListener('click', checkIdentityState);
+  }
+  async function checkIdentityState() {
+    if (!accountSessionsAvailable()) return;
+    const response = await secureAuthRequest('/api/auth/session');
+    if (response.ok && response.profile) {
+      ui.identityMode = 'account';
+      ui.sessionExpiresAt = Math.min(response.session?.idleExpiresAt || Infinity, response.session?.absoluteExpiresAt || Infinity);
+      saveAccountSession(response.profile);
+      ui.csrfToken = response.csrfToken || ui.csrfToken;
+    } else if (response.status === 401) {
+      clearAccountSession();
+      ui.identityMode = response.device?.mode === 'login_required' ? 'login_required' : 'guest';
+      ui.sessionExpiresAt = null;
+    }
+    renderIdentityBanner();
+  }
+  function renderSessionWarning() {
+    const note = document.getElementById('session-expiry-note');
+    if (!note) return;
+    const left = Number(ui.sessionExpiresAt || 0) - Date.now();
+    const show = ui.identityMode === 'account' && left > 0 && left < 5 * 60 * 1000;
+    note.classList.toggle('hidden', !show);
+    if (show) note.textContent = `Tu sesión caduca en ${Math.max(1, Math.ceil(left / 60000))} min. Guarda tu progreso o vuelve a iniciar sesión.`;
+  }
+  async function openGuestImportModal() {
+    const modal = document.getElementById('guest-import-modal');
+    const body = document.getElementById('guest-import-preview');
+    const confirm = document.getElementById('guest-import-confirm');
+    if (!modal || !body) return;
+    modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); document.body.classList.add('modal-open');
+    body.textContent = 'Revisando progreso de invitado…'; confirm.disabled = true;
+    const preview = await secureAuthRequest('/api/account/guest-import');
+    ui.guestImportPreview = preview;
+    if (!preview.ok || !preview.available) {
+      body.textContent = preview.reason === 'already_imported' ? 'Este progreso ya fue importado.' : (preview.blockers?.length ? 'Hay operaciones pendientes o conflictos. Liquidaciónalas antes de importar: ' + preview.blockers.join(', ') : 'No hay progreso de invitado pendiente en este dispositivo.');
+      return;
+    }
+    body.innerHTML = `<p>Invitado: <b>${escapeHtml(preview.guest.name)}</b> · ${Number(preview.guest.chips).toLocaleString('es-MX')} fichas</p><p>Cuenta: <b>${escapeHtml(preview.account.name)}</b> · ${Number(preview.account.chips).toLocaleString('es-MX')} fichas</p><p>Saldo resultante: <b>${Number(preview.resultingChips).toLocaleString('es-MX')} fichas</b>.</p><p>Boletos: ${preview.guest.bets} apuestas, ${preview.guest.parlays} combinadas, ${preview.guest.futures} futuros, ${preview.guest.quiniela} quinielas. Logros: ${preview.guest.achievements}.</p><p>La importación es única y no vuelve a pagar recompensas ya cobradas.</p>`;
+    confirm.disabled = false;
+  }
+  function closeGuestImportModal() {
+    const modal = document.getElementById('guest-import-modal');
+    modal?.classList.remove('open'); modal?.setAttribute('aria-hidden', 'true'); document.body.classList.remove('modal-open');
+  }
   // ¿La persona está sentada en una mesa (o en la tribuna) ahora mismo? Si es
   // así, el modal de perfil muestra/edita el perfil de ESA mesa; si no, muestra
   // la cuenta (si hay sesión iniciada).
@@ -616,7 +674,7 @@
       const response = await fetch(path, {
         credentials: 'same-origin',
         ...options,
-        headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) }
+        headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), 'X-Device-Token': deviceToken, ...(options.headers || {}) }
       });
       const body = await response.json().catch(() => ({}));
       return { status: response.status, ok: response.ok, ...body };
@@ -1625,9 +1683,10 @@
       ? 'El acceso a tu cuenta quedó bloqueado de forma permanente.'
       : fecha ? `Tu cuenta está suspendida hasta el ${fecha}.` : 'Tu cuenta está suspendida temporalmente.';
     clearAccountSession();
+    ui.identityMode = 'login_required'; renderIdentityBanner();
     if (ui.room) leaveToLobby(false);
     showToast(permanente ? 'Cuenta bloqueada' : 'Cuenta suspendida',
-      `${detalle} Puedes seguir jugando como invitado con este dispositivo.`,
+      `${detalle} Este dispositivo no puede usar una cartera invitada mientras esté vinculado.`,
       'error', 9000);
   });
 
@@ -2660,6 +2719,9 @@
     // descubrimiento (fin natural de la animación o «Saltar animación»).
     if (['win', 'loss', 'push', 'quick_result', 'special_reward'].includes(event.type)) announceGameResult(present);
     else present();
+  });
+  socket.on('account_session_state', payload => {
+    if (payload?.mode === 'login_required') { ui.identityMode = 'login_required'; clearAccountSession(); renderIdentityBanner(); }
   });
   socket.on('profile_event', payload => {
     // Fuera de una mesa también llega (p. ej. premio de un torneo del lobby):
@@ -4644,6 +4706,27 @@
     showToast('Reporte recibido', `Folio ${response.reportId}`, 'notice', 5000, '🛡️');
   });
   els.accountOpenBtn?.addEventListener('click', openAccountModal);
+  document.getElementById('guest-import-open')?.addEventListener('click', openGuestImportModal);
+  document.getElementById('guest-import-close')?.addEventListener('click', closeGuestImportModal);
+  document.getElementById('guest-import-cancel')?.addEventListener('click', closeGuestImportModal);
+  document.getElementById('guest-import-confirm')?.addEventListener('click', async () => {
+    const preview = ui.guestImportPreview;
+    if (!preview?.ok || !preview.available) return;
+    const button = document.getElementById('guest-import-confirm'); button.disabled = true;
+    const response = await secureAuthRequest('/api/account/guest-import', { method: 'POST', headers: { 'X-CSRF-Token': ui.csrfToken || '' }, body: JSON.stringify({ confirmed: true, version: preview.version, operationId: crypto.randomUUID() }) });
+    button.disabled = false;
+    if (!response.ok) { document.getElementById('guest-import-preview').textContent = response.error || 'No se pudo importar.'; if (response.preview) ui.guestImportPreview = response.preview; return; }
+    if (response.profile) applyProfileSnapshot(response.profile);
+    closeGuestImportModal(); showToast('Progreso importado', 'Tus fichas y boletos de invitado ya están en tu cuenta.', 'notice');
+    if (socket.connected) socket.disconnect().connect();
+  });
+  document.getElementById('device-guest-mode')?.addEventListener('click', async () => {
+    if (!confirm('Este dispositivo usará un perfil invitado separado. Tu cuenta seguirá intacta. ¿Continuar?')) return;
+    const response = await secureAuthRequest('/api/auth/device-mode', { method: 'POST', headers: { 'X-CSRF-Token': ui.csrfToken || '' }, body: JSON.stringify({ mode: 'guest' }) });
+    if (!response.ok) return showToast('No se pudo cambiar el modo', response.error, 'error');
+    await secureAuthRequest('/api/auth/logout', { method: 'POST', headers: { 'X-CSRF-Token': ui.csrfToken || '' } });
+    clearAccountSession(); ui.identityMode = 'guest'; renderIdentityBanner(); if (socket.connected) socket.disconnect().connect();
+  });
   $$('[data-close-account]').forEach(element => element.addEventListener('click', closeAccountModal));
   els.accountPasswordToggle?.addEventListener('click', () => {
     els.passwordChangeForm?.classList.toggle('hidden');
@@ -4712,9 +4795,10 @@
       });
     }
     clearAccountSession();
+    ui.identityMode = accountSessionsAvailable() ? 'login_required' : 'guest'; renderIdentityBanner();
     if (socket.connected) socket.disconnect().connect();
     closeProfileModal();
-    showToast('Sesión cerrada', 'Tu perfil y fichas de este dispositivo siguen intactos. Puedes seguir jugando sin cuenta.', 'notice', 3600, '🔑');
+    showToast('Sesión cerrada', accountSessionsAvailable() ? 'Este dispositivo sigue vinculado a tu cuenta. Inicia sesión para volver a jugar con tus fichas.' : 'Tu perfil y fichas de este dispositivo siguen intactos.', 'notice', 4600, '🔑');
   });
   els.accountSwitch?.addEventListener('click', () => {
     ui.accountMode = ui.accountMode === 'login' ? 'signup' : 'login';
@@ -4760,11 +4844,13 @@
       // Socket.IO leyó cookies durante su handshake anterior; reconectar hace
       // que adopte la nueva sesión sin enviar token alguno desde JavaScript.
       if (secureLogin) ui.csrfToken = response.csrfToken || null;
+      ui.identityMode = 'account'; ui.sessionExpiresAt = Math.min(response.session?.idleExpiresAt || Infinity, response.session?.absoluteExpiresAt || Infinity); renderIdentityBanner();
       if (secureLogin && socket.connected) socket.disconnect().connect();
       else if (!secureLogin && socket.connected) tryAutoJoinLobbyChat();
       showToast('Sesión iniciada', `Bienvenido de nuevo, ${response.profile.name || username}. Tus datos públicos están disponibles en Perfil.`, 'notice', 3800, '👤');
       closeAccountModal();
       els.accountPassword.value = '';
+      if (secureLogin) { const preview = await secureAuthRequest('/api/account/guest-import'); if (preview.ok && preview.available) openGuestImportModal(); }
     } else {
       const response = await emitAck('account_signup', {
         token: deviceToken, name: ui.playerName, avatar: ui.selectedAvatar, username, password, tos: TOS_VERSION

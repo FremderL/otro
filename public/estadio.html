@@ -29,6 +29,7 @@
 
   <a class="skip-link" href="#estadio-main">Ir al contenido del Estadio</a>
 
+  <div id="est-identity-banner" class="identity-banner hidden" role="status">🔒 Sesión caducada. Tus fichas siguen en tu cuenta. <a href="/">Iniciar sesión en el Casino</a></div>
   <header class="estadio-nav">
     <a class="brand" href="/">MonteCristo</a>
     <span class="estadio-tag">🏟 Estadio</span>
@@ -71,6 +72,12 @@
           </div>
         </div>
         <ul id="est-match-list" class="est-match-list" aria-label="Partidos de hoy"></ul>
+      </section>
+      <section class="est-daily-news-launch" aria-labelledby="est-daily-news-launch-title">
+        <p>MONTECRISTO NEWS · EDICIÓN DIARIA</p>
+        <h2 id="est-daily-news-launch-title">Primero, la actualidad.</h2>
+        <button id="est-daily-news-open" type="button" aria-haspopup="dialog" aria-controls="est-daily-news">▶ Ver noticiero de hoy</button>
+        <small id="est-daily-news-status" role="status">Conecta al Estadio para consultar la edición.</small>
       </section>
       <button class="est-hub-launch" id="est-hub-open" type="button" aria-haspopup="dialog" aria-controls="est-hub">
         <span class="est-hub-launch-kicker">TU ESPACIO EN EL ESTADIO</span>
@@ -285,7 +292,7 @@
           <h2 class="est-panel-title">Mis apuestas</h2>
           <span id="est-mybets-count" class="est-badge" hidden>0 abiertas</span>
         </div>
-        <ul id="est-mybets" class="est-mybets" aria-label="Tus apuestas abiertas">
+        <ul id="est-mybets" class="est-mybets" tabindex="0" aria-label="Tus apuestas abiertas. Desplázate para ver todas.">
           <li class="est-muted">Sin apuestas abiertas.</li>
         </ul>
         <button id="est-ledger-open" class="est-bets-link" type="button" aria-haspopup="dialog" aria-controls="est-ledger">
@@ -732,6 +739,13 @@
     </div>
   </div>
 
+  <div id="est-daily-news" class="est-daily-news-modal" role="dialog" aria-modal="true" aria-labelledby="est-daily-news-title" tabindex="-1" hidden>
+    <div class="est-daily-news-shell">
+      <header class="est-daily-news-heading"><div><p>ESTADIO MONTECRISTO · TU CITA INFORMATIVA</p><h2 id="est-daily-news-title">MonteCristo News</h2></div><button id="est-daily-news-close" type="button">Entrar al Estadio <span aria-hidden="true">→</span></button></header>
+      <div id="est-daily-news-content"></div>
+    </div>
+  </div>
+
   <!-- Vista independiente para las experiencias del aficionado. -->
   <div id="est-hub" class="est-hub" role="dialog" aria-modal="true" aria-labelledby="est-hub-title" tabindex="-1" hidden>
     <div class="est-hub-shell">
@@ -775,6 +789,7 @@
               <div><p class="est-market-eyebrow"><span></span> MONTECRISTO NEWS / ESTADIO</p><h2 id="est-hub-mercado-title">Clubes y mercado <em>en movimiento.</em></h2><p>Contrataciones y despidos de DT, pizarras tácticas, comunicados oficiales de clubes y fichajes de temporada.</p></div>
               <div class="est-market-hero-mark" aria-hidden="true"><span>EDICIÓN</span><strong>⇄</strong><small>DE TRASPASOS</small></div>
             </header>
+            <div class="est-market-daily"><button id="est-market-daily-replay" type="button">▶ Ver noticiero de hoy</button><span>La edición diaria reúne resultados, clubes y cartelera. La conferencia de fichajes sigue disponible debajo.</span></div>
             <div class="est-market-notice"><span aria-hidden="true">✦</span><p>Los acuerdos se anuncian a mitad de mes y entran en vigor la siguiente temporada. Las valoraciones son informativas; no alteran partidos, cuotas, apuestas ni premios.</p></div>
             <div id="est-transfers-list" aria-live="polite">Consulta el mercado al entrar.</div>
           </section>

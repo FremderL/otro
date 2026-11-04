@@ -169,6 +169,8 @@ Se sortean al abrir rondas. Solo entregan fichas cuando existe una ganancia posi
 
 ## Mercado de traspasos
 
+MonteCristo News aparece automáticamente en la primera apertura segura del Estadio cada día: edición compartida, subtítulos por defecto, voces opcionales y repetición manual. Tras varios días de servidor apagado muestra una sola edición de regreso después de recuperar resultados. Contrato y operación en `docs/montecristo-news-noticiero-diario.md`.
+
 En Estadio → Mercado se consultan los acuerdos anunciados y sus valoraciones informativas. **Ver conferencia** permite repetir MonteCristo News. La transmisión empieza con subtítulos; pulsa **Escuchar conferencia** para iniciar las voces desde el principio. Usa la síntesis de voz del navegador (las voces disponibles pueden variar) y no requiere activar la narración del partido. Si el navegador bloquea o no admite voz, se mantienen los subtítulos. Los retratos reutilizan los avatares del Balón de Oro cuando existen; los demás son ilustraciones generadas de forma estable para cada jugador.
 
 ## Comunidad y ambientación estacional
@@ -297,3 +299,7 @@ Los perfiles sobreviven reinicios en un archivo JSON, pero las salas, bots y est
 ## Uso responsable
 
 MonteCristo está diseñado exclusivamente para entretenimiento social con fichas sin valor monetario. No incorpora apuestas con dinero real ni mecanismos de pago.
+
+
+## Identidad cuenta ↔ invitado
+Consulta `docs/identidad-cuenta-invitado.md`: un dispositivo vinculado no vuelve a apostar como invitado al caducar la sesión; la importación de progreso es explícita, idempotente y recuperable.
