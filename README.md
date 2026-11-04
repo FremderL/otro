@@ -299,3 +299,7 @@ Los perfiles sobreviven reinicios en un archivo JSON, pero las salas, bots y est
 ## Uso responsable
 
 MonteCristo está diseñado exclusivamente para entretenimiento social con fichas sin valor monetario. No incorpora apuestas con dinero real ni mecanismos de pago.
+
+
+## Identidad cuenta ↔ invitado
+Consulta `docs/identidad-cuenta-invitado.md`: un dispositivo vinculado no vuelve a apostar como invitado al caducar la sesión; la importación de progreso es explícita, idempotente y recuperable.

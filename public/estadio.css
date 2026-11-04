@@ -2656,3 +2656,7 @@ body.est-daily-news-open { overflow:hidden; }
 .est-news-transcript p { color:#aebfb2; font-size:11px; }
 @media (max-width:700px) { .est-daily-news-modal { padding:12px; }.est-daily-news-heading { align-items:start; flex-direction:column; gap:12px; }.est-daily-news-heading button { width:100%; }.est-market-daily { align-items:start; flex-direction:column; }.est-news-controls { gap:8px; }.est-news-controls button { flex:1 1 42%; padding:10px 8px; }.est-news-live { max-width:55%; line-height:1.5; } }
 @media (prefers-reduced-motion:reduce) { .est-news-progress span { transition:none; } }
+
+.identity-banner { margin: 10px auto; max-width: 1200px; padding: 12px 16px; border: 1px solid #b8860b; border-radius: 10px; background: #fff8e1; color: #5d4300; }
+.identity-banner.hidden { display: none; }
+.identity-banner a { color: inherit; font-weight: 700; }

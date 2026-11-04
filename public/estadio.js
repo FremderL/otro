@@ -396,9 +396,10 @@
         updatePromotionComposer();
         if (S.promotionsEnabled) refreshPromotionSession();
         if (health && health.football && health.football.enabled === false) return gateTosThenConnect();
-        return fetch('/api/estadio/state?token=' + encodeURIComponent(S.token), { cache: 'no-store' })
+        return fetch('/api/estadio/state?token=' + encodeURIComponent(S.token), { cache: 'no-store', credentials: 'same-origin' })
           .then(function (r) { return r.json(); })
           .then(function (data) {
+            if (data && data.code === 'account_session_required') { S.profile = null; S.chips = 0; updateChips(); var ib = document.getElementById('est-identity-banner'); if (ib) ib.classList.remove('hidden'); return; }
             if (!data || !data.ok) return;
             S.teams = data.teams || {};
             S.tosVersion = data.tosVersion || TOS_FALLBACK;
@@ -583,6 +584,7 @@
     S.socket.emit('football:subscribe', { scope: 'lobby', token: S.token, name: S.name, avatar: S.avatar, tos: S.tosVersion }, function (res) {
       if (!res || !res.ok) return onSubError(res);
       S.teams = res.teams || S.teams;
+      if (res.code === 'account_session_required') { S.profile = null; S.chips = 0; updateChips(); var ib = document.getElementById('est-identity-banner'); if (ib) ib.classList.remove('hidden'); return; }
       if (res.profile) { S.profile = res.profile; S.chips = res.profile.chips; updateChips(); }
       refreshFantasy();
       refreshFan();
