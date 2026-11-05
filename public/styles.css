@@ -2282,3 +2282,30 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 .identity-banner.hidden { display: none; }
 .identity-banner-action { border: 0; background: #5d4300; color: #fff; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
 @media (prefers-color-scheme: dark) { .identity-banner { background: #2a2100; color: #ffe9a8; } }
+
+/* ==========================================================================
+   SEPARACIÓN ESCRITORIO / MÓVIL
+   `mobile.css` se carga solo con (max-width: 900px), pero `mobile.js` prepara
+   sus controles también en escritorio (les quita el atributo `hidden`). Sin
+   esta guarda, la vista de computadora mostraba restos sin estilo del menú y
+   del chat móviles. Aquí quedan apagados del todo en pantallas grandes.
+   ========================================================================== */
+@media (min-width: 901px) {
+  .mobile-nav-toggle,
+  .mobile-nav-drawer,
+  .mobile-nav-backdrop,
+  .mobile-room-toggle,
+  .mobile-room-backdrop,
+  .mobile-room-sheet,
+  .mobile-chat-toggle,
+  .mobile-chat-sheet,
+  .mobile-chat-backdrop,
+  .mobile-chat-unread,
+  .mobile-sheet,
+  .mobile-sheet-backdrop,
+  .mobile-drawer,
+  .mobile-drawer-backdrop,
+  .mobile-tabs {
+    display: none !important;
+  }
+}

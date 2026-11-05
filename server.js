@@ -240,7 +240,7 @@ app.use((req, res, next) => {
   if (labPathBlock.test(req.path)) return res.status(404).send('Not found');
   next();
 });
-const revalidateAppShell = new Set(['index.html', 'app.js', 'styles.css', 'chat-format.js', 'estadio-banner.js', 'estadio.html', 'estadio.js', 'estadio.css', 'loteria.html', 'loteria.js', 'loteria.css']);
+const revalidateAppShell = new Set(['index.html', 'app.js', 'styles.css', 'mobile.css', 'mobile.js', 'gate.js', 'card-album.css', 'chat-format.js', 'estadio-banner.js', 'estadio.html', 'estadio.js', 'estadio.css', 'loteria.html', 'loteria.js', 'loteria.css']);
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: '5m',
   setHeaders(res, filePath) {

@@ -32,6 +32,35 @@
   };
 
   /* -------------------------------------------------------------------------
+     0b. COMPONENTES QUE SOLO EXISTEN EN LA VISTA MÓVIL
+     `mobile.css` se carga solo con (max-width: 900px). Estos nodos viven en el
+     HTML y este archivo les quita `hidden` al inicializarse; si eso pasa en
+     escritorio aparecen sin estilo sobre la vista de computadora. Por eso se
+     registran aquí y se encienden/apagan según el viewport.
+     ------------------------------------------------------------------------- */
+  var mobileOnlyNodes = [];
+
+  function registerMobileOnly(node) {
+    if (node && mobileOnlyNodes.indexOf(node) < 0) mobileOnlyNodes.push(node);
+    return node;
+  }
+
+  function syncMobileOnlyVisibility() {
+    var mobile = MonteCristoMobile.isMobile();
+    for (var i = 0; i < mobileOnlyNodes.length; i++) {
+      var node = mobileOnlyNodes[i];
+      if (mobile) {
+        node.removeAttribute('hidden');
+      } else {
+        // En escritorio se apagan y se cierran por si quedaron abiertos.
+        node.classList.remove('is-open');
+        node.setAttribute('hidden', '');
+      }
+    }
+    if (!mobile) document.body.style.overflow = '';
+  }
+
+  /* -------------------------------------------------------------------------
      1. CLASE EN <html> PARA SELECTORES CSS
      ------------------------------------------------------------------------- */
   function applyMobileClass() {
@@ -266,9 +295,9 @@
     var closeBtn = document.getElementById('mobile-nav-close');
     if (!drawer || !toggle) return;
 
-    // Mostrar el drawer (está oculto con hidden por defecto)
-    drawer.removeAttribute('hidden');
-    if (backdrop) backdrop.removeAttribute('hidden');
+    // El drawer solo se enciende en móvil (ver syncMobileOnlyVisibility).
+    registerMobileOnly(drawer);
+    registerMobileOnly(backdrop);
 
     function openNav() {
       drawer.classList.add('is-open');
@@ -372,12 +401,12 @@
 
     if (!sidebar || !toggle || !backdrop) return;
 
-    // Mostrar los controles móviles
-    toggle.removeAttribute('hidden');
-    if (chatToggle) chatToggle.removeAttribute('hidden');
-    if (chatSheet) chatSheet.removeAttribute('hidden');
-    if (chatBackdrop) chatBackdrop.removeAttribute('hidden');
-    if (backdrop) backdrop.removeAttribute('hidden');
+    // Los controles solo se encienden en móvil (ver syncMobileOnlyVisibility).
+    registerMobileOnly(toggle);
+    registerMobileOnly(backdrop);
+    registerMobileOnly(chatToggle);
+    registerMobileOnly(chatSheet);
+    registerMobileOnly(chatBackdrop);
 
     // --- SIDEBAR DRAWER ---
     function openSidebar() {
@@ -539,6 +568,9 @@
     var colLeft = document.querySelector('.est-col-left');
     var colCenter = document.querySelector('.est-col-center');
     var colRight = document.querySelector('.est-col-right');
+    // Carrusel de partidos: solo móvil, igual que la barra inferior.
+    var matchBar = document.getElementById('est-mobile-match-bar');
+    var matchScroll = document.getElementById('est-mobile-match-scroll');
 
     if (!colLeft || !colCenter || !colRight) return;
 
@@ -681,12 +713,14 @@
     function syncSpaces() {
       if (MonteCristoMobile.isMobile()) {
         bottomNav.removeAttribute('hidden');
+        if (matchBar) matchBar.removeAttribute('hidden');
         mountSpaces();
       } else {
         closeOpenSpace();
         releaseSpaces();
-        // La barra inferior solo existe en móvil (ver mobile.css).
+        // La barra inferior y el carrusel solo existen en móvil (mobile.css).
         bottomNav.setAttribute('hidden', '');
+        if (matchBar) matchBar.setAttribute('hidden', '');
       }
     }
 
@@ -934,11 +968,8 @@
     }
 
     // --- BARRA DE PARTIDOS MÓVIL ---
-    var matchBar = document.getElementById('est-mobile-match-bar');
-    var matchScroll = document.getElementById('est-mobile-match-scroll');
-
     if (matchBar && matchScroll && matchList) {
-      matchBar.removeAttribute('hidden');
+      if (MonteCristoMobile.isMobile()) matchBar.removeAttribute('hidden');
 
       function syncMatches() {
         var items = matchList.querySelectorAll('.est-match-item');
@@ -1197,6 +1228,13 @@
     initToastSwipeDismiss();
     initSeatLongPress();
     initInviteSwipeDismiss();
+    // Nada de interfaz móvil en la vista de computadora.
+    syncMobileOnlyVisibility();
+    var mobileOnlyTimer = 0;
+    window.addEventListener('resize', function () {
+      if (mobileOnlyTimer) clearTimeout(mobileOnlyTimer);
+      mobileOnlyTimer = setTimeout(syncMobileOnlyVisibility, 150);
+    });
   }
 
   if (document.readyState === 'loading') {

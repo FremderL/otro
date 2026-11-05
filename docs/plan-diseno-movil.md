@@ -361,6 +361,18 @@ Fase 6  →  Admin básico (si alcanza)               (1 día)
 
 ---
 
+## Separación estricta escritorio / móvil ✅ COMPLETADA
+
+Las dos vistas no comparten componentes de interfaz. `mobile.css` se carga con `media="(max-width: 900px)"`, así que sus reglas **no existen** en escritorio; por eso la separación se garantiza en tres capas:
+
+1. **CSS de escritorio**: `styles.css` y `estadio.css` cierran con un bloque `@media (min-width: 901px)` que apaga (`display: none !important`) todo lo que solo pertenece al teléfono: menú hamburguesa, drawer, chat de mesa, toggles de la mesa, barra inferior del Estadio, carrusel de partidos y las vistas propias de Tabla/Apuestas.
+2. **JS**: `mobile.js` registra esos nodos (`mobileOnlyNodes`) y solo les quita `hidden` cuando el viewport es móvil; al ensanchar la ventana los vuelve a ocultar, cierra lo que quedó abierto y libera el scroll del documento.
+3. **Caché**: `server.js` revalida `mobile.css` y `mobile.js` junto con la shell (`no-cache, must-revalidate`) para que un despliegue no mezcle HTML nuevo con CSS móvil viejo.
+
+Regresión cubierta en `tests/mobile-desktop-separation.test.js`.
+
+---
+
 ## Principios de diseño móvil
 
 1. **La mesa es lo primero.** En la mesa de juego, nada compite con la mesa y las acciones. El chat, los jugadores y el ranking se mueven a drawers/sheets.

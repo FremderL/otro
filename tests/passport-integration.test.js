@@ -123,7 +123,7 @@ test('el Pasaporte se acredita en liquidaciones válidas y el cliente no puede i
   await waitForServer(child, output);
   const health = await fetch(`http://127.0.0.1:${port}/healthz`).then(response => response.json());
   assert.equal(health.passportEnabled, true, '/healthz refleja el flag activado');
-  for (const asset of ['/', '/app.js', '/styles.css', '/estadio.html', '/estadio.js', '/estadio.css']) {
+  for (const asset of ['/', '/app.js', '/styles.css', '/mobile.css', '/mobile.js', '/estadio.html', '/estadio.js', '/estadio.css']) {
     const response = await fetch(`http://127.0.0.1:${port}${asset}`);
     assert.equal(response.headers.get('cache-control'), 'no-cache, must-revalidate', `${asset} se revalida para no mostrar una UI cacheada`);
   }
