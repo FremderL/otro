@@ -1419,7 +1419,1031 @@ body, .chat-list, .est-match-list, .lobby-chat-messages {
 }
 
 /* ---------------------------------------------------------------------------
-   21. RESPONSIVE BREAKPOINTS INTERNOS
+   21. MESA DE JUEGO — ESTRUCTURA GENERAL
+   Sidebar se convierte en drawer; el escenario ocupa todo el viewport.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .room-app {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: none !important;
+  }
+
+  /* Sidebar: oculta por defecto, se abre como drawer */
+  .room-app .sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    z-index: 960;
+    width: min(310px, 84vw) !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    transform: translateX(-110%);
+    transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+    border-right: 1px solid var(--line);
+    border-radius: 0 var(--m-radius-lg) var(--m-radius-lg) 0;
+    box-shadow: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 100% !important;
+    padding-top: var(--m-safe-top);
+    padding-bottom: var(--m-safe-bottom);
+  }
+
+  .room-app .sidebar.is-open {
+    transform: translateX(0);
+    box-shadow: 12px 0 40px rgba(0, 0, 0, .6);
+  }
+
+  .mobile-room-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 959;
+    background: rgba(0, 0, 0, .6);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease;
+  }
+
+  .mobile-room-backdrop.is-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Game main ocupa el 100% */
+  .game-main {
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .game-main::before {
+    background-size: 36px 36px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   22. MESA — HEADER (compacto en móvil)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .game-header {
+    min-height: 54px !important;
+    padding: 0 var(--m-pad) !important;
+    gap: 8px;
+    flex-wrap: wrap;
+    position: sticky !important;
+    top: 0;
+    z-index: 40;
+  }
+
+  .room-identity {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .room-identity h2 {
+    font-size: 15px !important;
+    margin-top: 2px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .game-breadcrumb {
+    font-size: 8px !important;
+  }
+
+  .room-title-row {
+    gap: 6px !important;
+  }
+
+  .room-bots-chip {
+    font-size: 7px !important;
+    padding: 2px 6px !important;
+  }
+
+  .room-share {
+    gap: 8px !important;
+    flex-shrink: 0;
+  }
+
+  .room-share .connection-mini {
+    display: none;
+  }
+
+  .room-code-display small {
+    font-size: 7px !important;
+  }
+
+  .room-code-display b {
+    font-size: 11px !important;
+    letter-spacing: .18em !important;
+  }
+
+  .btn-invite {
+    min-height: var(--m-touch-sm) !important;
+    padding: 0 10px !important;
+    font-size: 9px !important;
+  }
+
+  .btn-invite b {
+    display: none;
+  }
+
+  .btn-invite-copy {
+    min-height: var(--m-touch-sm) !important;
+    min-width: var(--m-touch-sm) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   23. MESA — GAME STAGE Y MESA DE CASINO
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .game-stage {
+    min-height: auto !important;
+    flex: 1;
+    padding: 10px 8px 0 !important;
+  }
+
+  .table-hud {
+    width: 100% !important;
+    min-height: 40px !important;
+    padding: 0 4px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .game-status {
+    min-height: 24px;
+  }
+
+  .status-pill {
+    min-height: 26px !important;
+    padding: 0 10px !important;
+    font-size: 8px !important;
+  }
+
+  /* Turn clock: mini widget en esquina superior derecha */
+  .turn-clock {
+    gap: 6px !important;
+    position: absolute;
+    right: 10px;
+    top: 62px;
+    z-index: 20;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: rgba(7, 13, 15, .92);
+    backdrop-filter: blur(10px);
+  }
+
+  .turn-clock .clock-ring {
+    width: 30px !important;
+    height: 30px !important;
+  }
+
+  .turn-clock .clock-ring span {
+    font-size: 9px !important;
+  }
+
+  .turn-clock > div:last-child small {
+    display: none !important;
+  }
+
+  .turn-clock > div:last-child b {
+    font-size: 9px !important;
+    margin-top: 0 !important;
+    max-width: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Mesa de casino: redimensionada */
+  .table-wrap {
+    min-height: 280px !important;
+  }
+
+  .casino-table {
+    width: 95% !important;
+    height: min(48vw, 280px) !important;
+    border-width: 10px !important;
+  }
+
+  .casino-table::after {
+    font-size: 28px !important;
+  }
+
+  .casino-table::before {
+    inset: 6px !important;
+  }
+
+  /* Mesa de blackjack */
+  .blackjack-table .casino-table {
+    height: min(52vw, 300px) !important;
+  }
+
+  /* Centro de la mesa (pot, community cards) */
+  .table-center {
+    transform: translate(-50%, -50%) scale(.85);
+  }
+
+  .pot-display {
+    min-height: 24px !important;
+    padding: 0 8px !important;
+    font-size: 9px !important;
+  }
+
+  .table-label {
+    font-size: 7px !important;
+    margin-bottom: 4px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   24. MESA — ASIENTOS Y CARTAS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Asientos: más compactos */
+  .table-seat {
+    width: 110px !important;
+  }
+
+  .seat-head {
+    padding: 3px 7px 3px 3px !important;
+    gap: 5px !important;
+    border-radius: 18px !important;
+  }
+
+  .seat-avatar {
+    width: 24px !important;
+    height: 24px !important;
+    font-size: 8px !important;
+  }
+
+  .seat-info {
+    min-width: 40px !important;
+    max-width: 60px !important;
+  }
+
+  .seat-info b {
+    font-size: 8.5px !important;
+  }
+
+  .seat-info span {
+    font-size: 7.5px !important;
+    margin-top: 1px !important;
+  }
+
+  .dealer-button {
+    width: 16px !important;
+    height: 16px !important;
+    right: -7px !important;
+    top: -6px !important;
+    font-size: 7px !important;
+  }
+
+  .seat-bet {
+    min-height: 17px !important;
+    padding: 0 6px !important;
+    font-size: 7.5px !important;
+    margin-top: 3px !important;
+  }
+
+  .seat-bet i {
+    width: 7px !important;
+    height: 7px !important;
+  }
+
+  .seat-status {
+    padding: 2px 5px !important;
+    font-size: 7px !important;
+    top: -11px !important;
+  }
+
+  .hand-total {
+    width: 17px !important;
+    height: 17px !important;
+    right: 4px !important;
+    top: -4px !important;
+    font-size: 8px !important;
+  }
+
+  /* Cartas del asiento: más pequeñas */
+  .seat-cards {
+    height: 36px !important;
+    margin-bottom: -2px !important;
+  }
+
+  .seat-cards .play-card {
+    width: 26px !important;
+    height: 36px !important;
+    padding: 3px !important;
+    border-radius: 4px !important;
+  }
+
+  .seat-cards .card-rank {
+    font-size: 8px !important;
+  }
+
+  .seat-cards .card-suit {
+    font-size: 7px !important;
+  }
+
+  .seat-cards .card-big-suit {
+    right: 2px !important;
+    bottom: 1px !important;
+    font-size: 10px !important;
+  }
+
+  .seat-cards .play-card.back::before {
+    inset: 2px !important;
+  }
+
+  /* Cartas comunitarias: más pequeñas */
+  .community-cards {
+    min-height: 56px !important;
+    gap: 4px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .community-cards .play-card {
+    width: 40px !important;
+    height: 56px !important;
+    padding: 4px !important;
+    border-radius: 5px !important;
+  }
+
+  .community-cards .card-rank {
+    font-size: 13px !important;
+  }
+
+  .community-cards .card-suit {
+    font-size: 10px !important;
+  }
+
+  .community-cards .card-big-suit {
+    right: 4px !important;
+    bottom: 2px !important;
+    font-size: 16px !important;
+  }
+
+  .community-cards .play-card.back::before {
+    inset: 3px !important;
+    border-width: 1px !important;
+  }
+
+  .card-placeholder {
+    width: 40px !important;
+    height: 56px !important;
+    border-radius: 5px !important;
+  }
+
+  /* Dealer area (blackjack) */
+  .dealer-area .community-cards {
+    min-height: 60px !important;
+  }
+
+  .dealer-name {
+    font-size: 7.5px !important;
+  }
+
+  .dealer-score {
+    font-size: 8px !important;
+    margin-top: 2px !important;
+  }
+
+  /* Quick bet seats (ruleta, dados, etc.) */
+  .quick-bet-seat {
+    padding: 4px 7px 4px 4px !important;
+    border-radius: 18px !important;
+  }
+
+  .quick-bet-seat .seat-avatar {
+    width: 22px !important;
+    height: 22px !important;
+    font-size: 11px !important;
+  }
+
+  .quick-bet-seat div b {
+    font-size: 8px !important;
+    max-width: 56px !important;
+  }
+
+  .quick-bet-seat div span {
+    font-size: 7px !important;
+    margin-top: 1px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   25. MESA — PANEL DE ACCIONES (fixed bottom)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .action-panel {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 50;
+    width: 100% !important;
+    min-height: auto !important;
+    padding: 0 !important;
+    padding-bottom: var(--m-safe-bottom) !important;
+    align-self: auto !important;
+    background: linear-gradient(0deg, rgba(6, 11, 13, .98) 70%, transparent);
+  }
+
+  .action-bar {
+    min-height: 60px !important;
+    padding: 8px 10px !important;
+    border-radius: 0 !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    gap: 8px !important;
+    flex-wrap: wrap;
+  }
+
+  .action-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .action-info small {
+    font-size: 7px !important;
+    margin-bottom: 2px !important;
+  }
+
+  .action-info b {
+    font-size: 15px !important;
+  }
+
+  .action-buttons {
+    gap: 4px !important;
+    flex-wrap: wrap;
+  }
+
+  .game-btn {
+    min-width: 60px !important;
+    min-height: var(--m-touch) !important;
+    padding: 0 10px !important;
+    font-size: 11px !important;
+    border-radius: 10px !important;
+  }
+
+  .raise-box {
+    border-radius: 10px !important;
+    padding: 2px !important;
+  }
+
+  .raise-box input {
+    width: 50px !important;
+    height: 38px !important;
+    font-size: 13px !important;
+  }
+
+  .bet-options {
+    gap: 5px !important;
+  }
+
+  .chip-button {
+    width: var(--m-touch) !important;
+    height: var(--m-touch) !important;
+    border-width: 3px !important;
+    font-size: 10px !important;
+  }
+
+  .waiting-copy > b {
+    font-size: 13px !important;
+  }
+
+  .waiting-copy > span {
+    font-size: 10px !important;
+  }
+
+  .result-strip {
+    gap: 4px !important;
+  }
+
+  .result-item {
+    padding: 5px 8px !important;
+    font-size: 8px !important;
+  }
+
+  /* Espacio al final del game-stage para que el action panel no tape contenido */
+  .game-stage {
+    padding-bottom: 90px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   26. MESA — CHAT DE SALA (bottom sheet)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Ocultar el chat de la sidebar en móvil */
+  .room-app .sidebar .chat-section {
+    display: none !important;
+  }
+
+  /* Botón flotante para abrir el chat */
+  .mobile-chat-toggle {
+    position: fixed;
+    bottom: calc(var(--m-safe-bottom) + 80px);
+    right: 14px;
+    z-index: 45;
+    width: 50px;
+    height: 50px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line-strong);
+    border-radius: 50%;
+    background: rgba(11, 19, 22, .95);
+    color: var(--mint);
+    font-size: 22px;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .5);
+  }
+
+  .mobile-chat-toggle .mobile-chat-unread {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 18px;
+    height: 18px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    background: var(--coral);
+    color: white;
+    font-size: 9px;
+    font-weight: 900;
+    padding: 0 4px;
+  }
+
+  /* Bottom sheet del chat */
+  .mobile-chat-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 970;
+    height: 65vh;
+    max-height: 500px;
+    background: var(--panel);
+    border-top: 1px solid var(--line-strong);
+    border-radius: var(--m-radius-lg) var(--m-radius-lg) 0 0;
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, .5);
+  }
+
+  .mobile-chat-sheet.is-open {
+    transform: translateY(0);
+  }
+
+  .mobile-chat-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px var(--m-pad);
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+
+  .mobile-chat-sheet-header h3 {
+    margin: 0;
+    font-size: var(--m-fs-title);
+    font-weight: 800;
+  }
+
+  .mobile-chat-sheet-header span {
+    color: var(--muted-2);
+    font-size: var(--m-fs-micro);
+    letter-spacing: .1em;
+  }
+
+  .mobile-chat-close {
+    width: var(--m-touch-sm);
+    height: var(--m-touch-sm);
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: var(--m-radius);
+    color: var(--muted);
+    background: rgba(255, 255, 255, .03);
+    font-size: 18px;
+    cursor: pointer;
+  }
+
+  .mobile-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: var(--m-pad);
+    scrollbar-width: thin;
+  }
+
+  .mobile-chat-reactions {
+    display: flex;
+    gap: 4px;
+    padding: 6px var(--m-pad);
+    border-top: 1px solid var(--line);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
+
+  .mobile-chat-reactions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-chat-reactions button {
+    flex-shrink: 0;
+    min-width: var(--m-touch-sm);
+    min-height: var(--m-touch-sm);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .03);
+    font-size: 16px;
+    cursor: pointer;
+  }
+
+  .mobile-chat-form {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px var(--m-pad);
+    padding-bottom: calc(var(--m-safe-bottom) + 8px);
+    border-top: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+
+  .mobile-chat-form input {
+    flex: 1;
+    min-width: 0;
+    min-height: var(--m-touch);
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .03);
+    color: white;
+    font-size: 16px !important;
+    outline: none;
+  }
+
+  .mobile-chat-form input:focus {
+    border-color: rgba(82, 224, 174, .4);
+  }
+
+  .mobile-chat-form button {
+    min-width: var(--m-touch);
+    min-height: var(--m-touch);
+    border: 1px solid rgba(82, 224, 174, .3);
+    border-radius: 10px;
+    background: rgba(82, 224, 174, .08);
+    color: var(--mint);
+    font-size: 18px;
+    cursor: pointer;
+  }
+
+  .mobile-chat-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 969;
+    background: rgba(0, 0, 0, .4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease;
+  }
+
+  .mobile-chat-backdrop.is-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   27. MESA — BOTONES FLOTANTES (drawer de jugadores y chat)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .mobile-room-toggle {
+    position: fixed;
+    top: calc(var(--m-safe-top) + 62px);
+    left: 10px;
+    z-index: 55;
+    width: var(--m-touch);
+    height: var(--m-touch);
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: var(--m-radius);
+    background: rgba(11, 19, 22, .95);
+    color: var(--text);
+    font-size: 18px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .4);
+    backdrop-filter: blur(10px);
+  }
+
+  .mobile-room-toggle .toggle-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 16px;
+    height: 16px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: var(--mint);
+    color: #061210;
+    font-size: 8px;
+    font-weight: 900;
+    padding: 0 3px;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   28. MESA — BOTS, RULETA, DADOS, FORTUNA, TRAGAMONEDAS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Panel de bots: modal fullscreen */
+  .bot-controls {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 980;
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: none !important;
+    width: 100% !important;
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+    padding-top: calc(var(--m-safe-top) + 16px) !important;
+    padding-bottom: calc(var(--m-safe-bottom) + 16px) !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 12px !important;
+  }
+
+  .bot-controls.hidden {
+    display: none !important;
+  }
+
+  .bot-controls-head {
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .bot-controls-head span {
+    font-size: var(--m-fs-title) !important;
+  }
+
+  .bot-controls-head button {
+    width: var(--m-touch-sm) !important;
+    height: var(--m-touch-sm) !important;
+    font-size: 20px !important;
+  }
+
+  .bot-controls select {
+    width: 100%;
+    min-height: var(--m-touch) !important;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--m-radius);
+    background: rgba(255, 255, 255, .03);
+    color: white;
+    font-size: 14px;
+  }
+
+  .bot-controls label {
+    margin-top: 8px;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .bot-control-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .bot-control-actions button {
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  /* Ruleta Nova: paño escalado */
+  .roulette-felt {
+    transform: scale(.65);
+    transform-origin: top center;
+    margin-bottom: -120px;
+  }
+
+  @media (min-width: 640px) {
+    .roulette-felt {
+      transform: scale(.8);
+      margin-bottom: -60px;
+    }
+  }
+
+  .roulette-wheel-wrap {
+    max-width: min(85vw, 320px);
+    margin: 0 auto;
+  }
+
+  /* Dados y moneda: más compactos */
+  .dice-stage {
+    gap: 8px !important;
+  }
+
+  .big-die {
+    width: 80px !important;
+    height: 80px !important;
+    font-size: 42px !important;
+    border-radius: 18px !important;
+  }
+
+  .coin-stage {
+    width: 100px !important;
+    height: 100px !important;
+  }
+
+  .big-coin {
+    border-width: 8px !important;
+    font-size: 16px !important;
+  }
+
+  /* Tragamonedas: rodillos más estrechos */
+  .slots-reels {
+    gap: 4px !important;
+  }
+
+  .slots-reel {
+    width: 70px !important;
+  }
+
+  /* Quick choice grid */
+  .quick-choice-grid {
+    max-width: 100% !important;
+    gap: 4px !important;
+  }
+
+  .quick-choice {
+    min-width: 54px !important;
+    min-height: var(--m-touch-sm) !important;
+    font-size: 11px !important;
+  }
+
+  .quick-choice-grid input {
+    width: 72px !important;
+    min-height: var(--m-touch-sm) !important;
+    font-size: 13px !important;
+  }
+
+  .quick-bet-controls input {
+    width: 56px !important;
+    height: var(--m-touch-sm) !important;
+    font-size: 13px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   29. MESA — SIDEBAR INTERIOR (cuando el drawer está abierto)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .room-app .sidebar .side-top {
+    min-height: 54px !important;
+    padding: 0 var(--m-pad) !important;
+  }
+
+  .room-app .sidebar .brand-mark {
+    transform: scale(.85);
+  }
+
+  .room-app .sidebar .brand-copy b {
+    font-size: 13px !important;
+  }
+
+  .room-app .sidebar .profile-card {
+    margin: 10px var(--m-pad) 8px !important;
+    padding: 10px !important;
+  }
+
+  .room-app .sidebar .side-section {
+    padding: 0 var(--m-pad) !important;
+  }
+
+  .room-app .sidebar .side-title {
+    height: 32px !important;
+    font-size: 8px !important;
+  }
+
+  .room-app .sidebar .players-list {
+    max-height: 40vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .room-app .sidebar .player-row {
+    min-height: var(--m-touch-sm) !important;
+  }
+
+  .room-app .sidebar .side-footer {
+    padding: 0 var(--m-pad) !important;
+  }
+
+  .room-app .sidebar .leave-button {
+    min-height: var(--m-touch) !important;
+    font-size: 12px !important;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Friends section */
+  .room-app .sidebar .room-friends-section {
+    padding: 0 var(--m-pad) !important;
+  }
+
+  .room-app .sidebar .room-friends-open {
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  /* Social note */
+  .room-app .sidebar .room-social-note {
+    margin: 8px var(--m-pad) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   30. MESA — FOOTER Y ELEMENTOS VARIOS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .game-footer {
+    min-height: 30px !important;
+    padding: 0 var(--m-pad) !important;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .game-footer .shortcut-hint {
+    display: none !important;
+  }
+
+  .game-footer span {
+    font-size: 7px !important;
+  }
+
+  /* Shortcut help: oculto en móvil */
+  .shortcut-help {
+    display: none !important;
+  }
+
+  /* Reaction stage y special events */
+  .reaction-stage {
+    font-size: 20px !important;
+  }
+
+  .special-event-banner {
+    padding: 8px 12px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .winner-ticker {
+    padding: 6px 12px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .tournament-banner {
+    padding: 8px 12px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  /* Round flash: más compacto */
+  .round-flash {
+    padding: 10px 18px !important;
+    font-size: 17px !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   31. RESPONSIVE BREAKPOINTS INTERNOS
    Ajustes adicionales para celulares muy pequeños (< 380px) y tablets (640–900)
    --------------------------------------------------------------------------- */
 

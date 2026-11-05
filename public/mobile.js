@@ -352,12 +352,176 @@
   }
 
   /* -------------------------------------------------------------------------
-     8. INICIALIZACIÓN
+     8. MESA DE JUEGO — SIDEBAR DRAWER Y CHAT BOTTOM SHEET
+     ------------------------------------------------------------------------- */
+  function initRoomMobile() {
+    var roomApp = document.getElementById('room-app');
+    if (!roomApp) return;
+
+    var sidebar = roomApp.querySelector('.sidebar');
+    var toggle = document.getElementById('mobile-room-toggle');
+    var backdrop = document.getElementById('mobile-room-backdrop');
+    var chatToggle = document.getElementById('mobile-chat-toggle');
+    var chatSheet = document.getElementById('mobile-chat-sheet');
+    var chatBackdrop = document.getElementById('mobile-chat-backdrop');
+    var chatClose = document.getElementById('mobile-chat-close');
+    var chatForm = document.getElementById('mobile-chat-form');
+    var chatInput = document.getElementById('mobile-chat-input');
+    var chatMessages = document.getElementById('mobile-chat-messages');
+    var chatRoomName = document.getElementById('mobile-chat-room-name');
+
+    if (!sidebar || !toggle || !backdrop) return;
+
+    // Mostrar los controles móviles
+    toggle.removeAttribute('hidden');
+    if (chatToggle) chatToggle.removeAttribute('hidden');
+    if (chatSheet) chatSheet.removeAttribute('hidden');
+    if (chatBackdrop) chatBackdrop.removeAttribute('hidden');
+    if (backdrop) backdrop.removeAttribute('hidden');
+
+    // --- SIDEBAR DRAWER ---
+    function openSidebar() {
+      sidebar.classList.add('is-open');
+      backdrop.classList.add('is-open');
+      toggle.setAttribute('aria-expanded', 'true');
+    }
+
+    function closeSidebar() {
+      sidebar.classList.remove('is-open');
+      backdrop.classList.remove('is-open');
+      toggle.setAttribute('aria-expanded', 'false');
+    }
+
+    toggle.addEventListener('click', function () {
+      if (sidebar.classList.contains('is-open')) closeSidebar();
+      else openSidebar();
+    });
+
+    backdrop.addEventListener('click', closeSidebar);
+
+    // Cerrar sidebar al hacer click en leave-room
+    var leaveBtn = sidebar.querySelector('#leave-room');
+    if (leaveBtn) {
+      leaveBtn.addEventListener('click', function () {
+        closeSidebar();
+      });
+    }
+
+    // --- CHAT BOTTOM SHEET ---
+    function openChat() {
+      if (!chatSheet) return;
+      chatSheet.classList.add('is-open');
+      if (chatBackdrop) chatBackdrop.classList.add('is-open');
+      if (chatInput) chatInput.focus();
+    }
+
+    function closeChat() {
+      if (!chatSheet) return;
+      chatSheet.classList.remove('is-open');
+      if (chatBackdrop) chatBackdrop.classList.remove('is-open');
+    }
+
+    if (chatToggle) chatToggle.addEventListener('click', openChat);
+    if (chatClose) chatClose.addEventListener('click', closeChat);
+    if (chatBackdrop) chatBackdrop.addEventListener('click', closeChat);
+
+    // Sincronizar nombre de la sala
+    var roomTitle = document.getElementById('room-title');
+    if (roomTitle && chatRoomName) {
+      var syncRoomName = function () {
+        chatRoomName.textContent = roomTitle.textContent || 'Mesa';
+      };
+      syncRoomName();
+      if (typeof MutationObserver !== 'undefined') {
+        var titleObs = new MutationObserver(syncRoomName);
+        titleObs.observe(roomTitle, { childList: true, characterData: true, subtree: true });
+      }
+    }
+
+    // --- DELEGACIÓN DE MENSAJES DEL CHAT ---
+    // Cuando el chat original (sidebar .chat-list) recibe mensajes,
+    // los clonamos al chat móvil.
+    var originalChatList = sidebar.querySelector('#chat-list');
+    var originalChatForm = sidebar.querySelector('#chat-form');
+    var originalChatInput = sidebar.querySelector('#chat-input');
+    var unreadBadge = document.getElementById('mobile-chat-unread');
+    var unreadCount = 0;
+
+    function syncMessages() {
+      if (!originalChatList || !chatMessages) return;
+      chatMessages.innerHTML = originalChatList.innerHTML;
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    if (originalChatList && typeof MutationObserver !== 'undefined') {
+      var chatObs = new MutationObserver(function () {
+        syncMessages();
+        // Incrementar no-leídos si el chat móvil está cerrado
+        if (chatSheet && !chatSheet.classList.contains('is-open')) {
+          unreadCount++;
+          if (unreadBadge) {
+            unreadBadge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+            unreadBadge.removeAttribute('hidden');
+          }
+        }
+      });
+      chatObs.observe(originalChatList, { childList: true, subtree: true });
+    }
+
+    // Resetear no-leídos al abrir
+    if (chatToggle) {
+      chatToggle.addEventListener('click', function () {
+        unreadCount = 0;
+        if (unreadBadge) unreadBadge.setAttribute('hidden', '');
+      });
+    }
+
+    // Delegar envío de mensajes: el form móvil dispara el form original
+    if (chatForm && originalChatForm && originalChatInput) {
+      chatForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var text = chatInput.value.trim();
+        if (!text) return;
+        originalChatInput.value = text;
+        originalChatForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        chatInput.value = '';
+        chatInput.focus();
+      });
+    }
+
+    // Reacciones rápidas
+    var reactionBtns = document.querySelectorAll('[data-mobile-reaction]');
+    var originalReactions = sidebar.querySelectorAll('[data-reaction]');
+    for (var i = 0; i < reactionBtns.length; i++) {
+      (function (btn) {
+        btn.addEventListener('click', function () {
+          var emoji = btn.getAttribute('data-mobile-reaction');
+          for (var j = 0; j < originalReactions.length; j++) {
+            if (originalReactions[j].getAttribute('data-reaction') === emoji) {
+              originalReactions[j].click();
+              break;
+            }
+          }
+        });
+      })(reactionBtns[i]);
+    }
+
+    // Escape cierra todo
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (chatSheet && chatSheet.classList.contains('is-open')) closeChat();
+      else if (sidebar.classList.contains('is-open')) closeSidebar();
+    });
+  }
+
+  /* -------------------------------------------------------------------------
+     9. INICIALIZACIÓN
      ------------------------------------------------------------------------- */
   function init() {
     initAllSheetDrags();
     applyMobileClass();
     initNavDrawer();
+    initRoomMobile();
   }
 
   if (document.readyState === 'loading') {

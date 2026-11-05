@@ -104,7 +104,7 @@ MonteCristo es un casino social **exclusivo para escritorio** con un ancho míni
 
 ---
 
-### Fase 2 — Mesa de juego (`.room-app` en `index.html`)
+### Fase 2 — Mesa de juego (`.room-app` en `index.html`) ✅ COMPLETADA
 
 **Esta es la pantalla más crítica y compleja.** El layout actual es `grid-template-columns: 286px 1fr` (sidebar + escenario de juego).
 

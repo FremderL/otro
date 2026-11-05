@@ -746,6 +746,40 @@
     </aside>
 
     <main class="game-main">
+      <!-- Botón hamburguesa para abrir la sidebar (solo móvil) -->
+      <button class="mobile-room-toggle" id="mobile-room-toggle" type="button" aria-label="Abrir jugadores y chat" aria-expanded="false" hidden>
+        <span>☰</span>
+        <span class="toggle-badge" id="mobile-room-badge" hidden>0</span>
+      </button>
+      <!-- Botón flotante para abrir el chat (solo móvil) -->
+      <button class="mobile-chat-toggle" id="mobile-chat-toggle" type="button" aria-label="Abrir chat de la mesa" hidden>
+        💬
+        <span class="mobile-chat-unread" id="mobile-chat-unread" hidden>0</span>
+      </button>
+      <!-- Backdrop y bottom sheet del chat (solo móvil) -->
+      <div class="mobile-chat-backdrop" id="mobile-chat-backdrop" hidden></div>
+      <div class="mobile-chat-sheet" id="mobile-chat-sheet" hidden>
+        <div class="mobile-chat-sheet-header">
+          <div><span>CHAT DE MESA</span><h3 id="mobile-chat-room-name">Mesa</h3></div>
+          <button class="mobile-chat-close" id="mobile-chat-close" type="button" aria-label="Cerrar chat">×</button>
+        </div>
+        <div class="mobile-chat-messages" id="mobile-chat-messages" role="log" aria-live="polite"></div>
+        <div class="mobile-chat-reactions" aria-label="Reacciones rápidas">
+          <button type="button" data-mobile-reaction="🔥">🔥</button>
+          <button type="button" data-mobile-reaction="👏">👏</button>
+          <button type="button" data-mobile-reaction="😂">😂</button>
+          <button type="button" data-mobile-reaction="🍀">🍀</button>
+          <button type="button" data-mobile-reaction="😱">😱</button>
+          <button type="button" data-mobile-reaction="💎">💎</button>
+        </div>
+        <form class="mobile-chat-form" id="mobile-chat-form">
+          <input id="mobile-chat-input" maxlength="180" placeholder="Escribe un mensaje…" aria-label="Mensaje a la mesa" autocomplete="off" />
+          <button type="submit" aria-label="Enviar">↑</button>
+        </form>
+      </div>
+      <!-- Backdrop para el drawer de la sidebar -->
+      <div class="mobile-room-backdrop" id="mobile-room-backdrop" hidden></div>
+
       <header class="game-header">
         <div class="room-identity">
           <div class="game-breadcrumb"><span id="game-name">TEXAS HOLD’EM</span><i></i><b id="phase-label">SALA DE ESPERA</b></div>
