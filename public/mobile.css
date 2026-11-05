@@ -2447,179 +2447,260 @@ body, .chat-list, .est-match-list, .lobby-chat-messages {
    =========================================================================== */
 
 /* ---------------------------------------------------------------------------
-   31. ESTADIO — NAV SUPERIOR (compacta en móvil)
+   31. ESTADIO — NAV SUPERIOR MINIMALISTA
+   Solo logo + tag + chips + conexión. El resto se mueve a la bottom nav.
    --------------------------------------------------------------------------- */
 @media (max-width: 900px) {
   .estadio-nav {
     display: flex !important;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 6px 10px !important;
-    height: auto !important;
-    min-height: 50px !important;
-    padding: 8px var(--m-pad) !important;
+    gap: 8px !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    padding: 0 var(--m-pad) !important;
     position: sticky !important;
     top: 0;
     z-index: 60;
-    background: rgba(5, 9, 11, .95) !important;
+    background: rgba(5, 9, 11, .96) !important;
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line) !important;
   }
 
   .estadio-nav .brand {
-    font-size: 13px !important;
+    font-size: 12px !important;
     letter-spacing: .08em !important;
     flex-shrink: 0;
   }
 
   .estadio-tag {
-    font-size: 10px !important;
-    padding-left: 10px !important;
+    font-size: 9px !important;
+    padding-left: 8px !important;
     letter-spacing: .1em !important;
-  }
-
-  .estadio-nav-right {
-    margin-left: auto !important;
-    display: flex !important;
-    align-items: center;
-    gap: 6px !important;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    max-width: 60%;
-  }
-
-  .estadio-nav-right::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Ocultar elementos menos críticos de la nav */
-  .estadio-nav-right .est-bdo-nav-link span,
-  .estadio-nav-right .est-nav-ledger-text {
-    display: none;
-  }
-
-  .estadio-nav-right .connection-badge span {
-    display: none;
+    border-left: 1px solid var(--line) !important;
   }
 
   .est-chips {
-    font-size: 12px !important;
-    padding: 3px 10px !important;
-  }
-
-  .estadio-nav-right .icon-btn {
-    width: var(--m-touch-sm) !important;
-    height: var(--m-touch-sm) !important;
-    font-size: 14px !important;
-  }
-
-  .estadio-nav-right .btn {
-    min-height: var(--m-touch-sm) !important;
-    padding: 0 8px !important;
+    margin-left: auto !important;
     font-size: 11px !important;
+    padding: 3px 10px !important;
+    flex-shrink: 0;
   }
 
-  .est-nav-ledger {
-    min-height: var(--m-touch-sm) !important;
-    padding: 0 8px !important;
+  .estadio-nav-right {
+    display: flex !important;
+    align-items: center;
+    gap: 4px !important;
+    margin-left: 0 !important;
   }
 
-  .est-nav-ledger-icon {
-    font-size: 16px !important;
+  .estadio-nav-right .connection-badge {
+    padding: 4px !important;
+  }
+
+  .estadio-nav-right .connection-badge span {
+    display: none !important;
+  }
+
+  .estadio-nav-right .connection-badge i {
+    margin: 0 !important;
+  }
+
+  /* OCULTAR todos los botones de la nav superior en móvil */
+  .estadio-nav-right .est-bdo-nav-link,
+  .estadio-nav-right .est-bdo-dedicated-back,
+  .estadio-nav-right .est-nav-ledger,
+  .estadio-nav-right #est-ads-open,
+  .estadio-nav-right #est-sound,
+  .estadio-nav-right #est-music,
+  .estadio-nav-right .btn[href="/"],
+  .estadio-nav-right .est-active-fan-pin {
+    display: none !important;
+  }
+
+  /* OCULTAR tabs antiguos (reemplazados por bottom nav) */
+  .est-mobile-tabs {
+    display: none !important;
   }
 }
 
 
 /* ---------------------------------------------------------------------------
-   32. ESTADIO — SISTEMA DE TABS PARA COLUMNAS
-   Las 3 columnas se navegan por tabs en móvil.
+   32. ESTADIO — BOTTOM NAV (navegación inferior fija)
    --------------------------------------------------------------------------- */
 @media (max-width: 900px) {
-  /* Barra de tabs sticky debajo de la nav */
-  .est-mobile-tabs {
+  .est-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
     display: flex;
-    position: sticky;
-    top: 50px;
-    z-index: 55;
-    background: rgba(5, 9, 11, .95);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    align-items: stretch;
+    justify-content: space-around;
+    height: calc(56px + var(--m-safe-bottom));
+    padding-bottom: var(--m-safe-bottom);
+    background: rgba(7, 13, 15, .97);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid var(--line-strong);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, .4);
+  }
+
+  .est-bottom-nav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    position: relative;
+    transition: color .15s;
+    padding: 4px 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .est-bottom-nav-btn:active {
+    background: rgba(255, 255, 255, .04);
+  }
+
+  .est-bottom-nav-btn.is-active {
+    color: var(--mint);
+  }
+
+  .est-bottom-nav-icon {
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  .est-bottom-nav-label {
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: .05em;
+  }
+
+  .est-bottom-nav-badge {
+    position: absolute;
+    top: 4px;
+    right: calc(50% - 18px);
+    min-width: 16px;
+    height: 16px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: var(--coral);
+    color: white;
+    font-size: 8px;
+    font-weight: 900;
+    padding: 0 4px;
+  }
+
+  .estadio-shell {
+    padding-bottom: calc(56px + var(--m-safe-bottom) + 16px) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   32b. ESTADIO — BARRA DE PARTIDOS (carrusel horizontal en col-center)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-mobile-match-bar {
+    display: block;
+    padding: 8px 0;
     border-bottom: 1px solid var(--line);
-    padding: 6px 8px;
-    gap: 4px;
+    margin-bottom: 8px;
+  }
+
+  .est-mobile-match-scroll {
+    display: flex;
+    gap: 6px;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    padding: 0 4px;
   }
 
-  .est-mobile-tabs::-webkit-scrollbar {
+  .est-mobile-match-scroll::-webkit-scrollbar {
     display: none;
   }
 
-  .est-mobile-tab {
-    flex: 1 0 auto;
-    min-width: max-content;
-    min-height: var(--m-touch-sm);
-    padding: 8px 12px;
+  .est-mobile-match-item {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
     border: 1px solid var(--line);
-    border-radius: var(--m-radius);
-    background: transparent;
-    color: var(--muted);
-    font-size: var(--m-fs-small);
-    font-weight: 700;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .025);
     cursor: pointer;
-    transition: background .15s, color .15s, border-color .15s;
+    transition: border-color .15s, background .15s;
+    min-width: max-content;
     white-space: nowrap;
+    font-size: 11px;
   }
 
-  .est-mobile-tab:active {
-    background: rgba(255, 255, 255, .05);
+  .est-mobile-match-item:active {
+    background: rgba(255, 255, 255, .06);
   }
 
-  .est-mobile-tab.is-active {
-    color: var(--mint);
-    border-color: rgba(82, 224, 174, .35);
+  .est-mobile-match-item.is-selected {
+    border-color: rgba(82, 224, 174, .5);
     background: rgba(82, 224, 174, .08);
+    color: var(--mint-2);
   }
 
-  /* Shell: 1 columna, columnas ocultas por defecto */
-  .estadio-shell {
-    display: block !important;
-    grid-template-columns: none !important;
-    padding: 10px var(--m-pad) calc(var(--m-safe-bottom) + 20px) !important;
-    gap: 0 !important;
+  .est-mobile-match-item .match-teams {
+    font-weight: 750;
+    font-size: 11px;
   }
 
-  .est-col-left,
-  .est-col-center,
-  .est-col-right {
+  .est-mobile-match-item .match-time {
+    color: var(--muted-2);
+    font-size: 9px;
+    font-weight: 700;
+  }
+
+  .est-mobile-match-item .match-live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--coral);
+    box-shadow: 0 0 6px var(--coral);
+    animation: blink 1.3s infinite;
+  }
+
+  /* Ocultar la lista original de partidos en la columna izquierda */
+  .est-col-left.is-mobile-active .est-match-list {
     display: none !important;
-    position: static !important;
-    max-height: none !important;
-    overflow-y: visible !important;
-    width: 100% !important;
-    flex-direction: column !important;
-    gap: 12px !important;
   }
 
-  /* Columna activa: visible */
-  .est-col-left.is-mobile-active,
-  .est-col-center.is-mobile-active,
-  .est-col-right.is-mobile-active {
-    display: flex !important;
+  /* Ocultar countdowns grandes */
+  .est-col-left.is-mobile-active .est-countdowns {
+    display: none !important;
   }
 
-  /* La col-left no debe ser grid de 2 columnas en móvil (override del 960px) */
-  .est-col-left.is-mobile-active {
-    display: flex !important;
-    grid-template-columns: none !important;
+  .est-col-left.is-mobile-active .est-countdown {
+    font-size: 11px !important;
+    padding: 6px 10px !important;
   }
 
-  .est-col-right.is-mobile-active {
-    display: flex !important;
-    grid-template-columns: none !important;
+  /* Ocultar elementos no deseados de la columna izquierda */
+  .est-daily-news-launch {
+    display: none !important;
+  }
+
+  .est-roster-panel {
+    display: none !important;
+  }
+
+  .est-hub-launch {
+    display: none !important;
   }
 }
 

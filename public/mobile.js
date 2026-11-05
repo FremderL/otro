@@ -515,29 +515,36 @@
   }
 
   /* -------------------------------------------------------------------------
-     9. ESTADIO — SISTEMA DE TABS PARA COLUMNAS
-     Muestra una columna a la vez en móvil según el tab seleccionado.
+     9. ESTADIO — BOTTOM NAV Y BARRA DE PARTIDOS
+     Bottom nav reemplaza los tabs. Los partidos se clonan como carrusel
+     horizontal dentro de la columna central.
      ------------------------------------------------------------------------- */
   function initEstadioTabs() {
-    var tabsBar = document.getElementById('est-mobile-tabs');
-    if (!tabsBar) return;
+    var bottomNav = document.getElementById('est-bottom-nav');
+    var oldTabsBar = document.getElementById('est-mobile-tabs');
+    if (!bottomNav) return;
 
-    var tabs = tabsBar.querySelectorAll('.est-mobile-tab');
+    var navBtns = bottomNav.querySelectorAll('.est-bottom-nav-btn[data-est-tab]');
+    var hubBtn = document.getElementById('est-bottom-nav-hub');
     var colLeft = document.querySelector('.est-col-left');
     var colCenter = document.querySelector('.est-col-center');
     var colRight = document.querySelector('.est-col-right');
 
     if (!colLeft || !colCenter || !colRight) return;
 
-    // Mostrar tabs
-    tabsBar.removeAttribute('hidden');
+    // Mostrar bottom nav y ocultar tabs antiguos
+    bottomNav.removeAttribute('hidden');
+    if (oldTabsBar) oldTabsBar.setAttribute('hidden', '');
 
-    // Marcar columna por defecto (center = Partido)
     function activateTab(tabName) {
       // Quitar activas
-      for (var i = 0; i < tabs.length; i++) {
-        tabs[i].classList.remove('is-active');
-        tabs[i].setAttribute('aria-pressed', 'false');
+      for (var i = 0; i < navBtns.length; i++) {
+        navBtns[i].classList.remove('is-active');
+        navBtns[i].setAttribute('aria-pressed', 'false');
+      }
+      if (hubBtn) {
+        hubBtn.classList.remove('is-active');
+        hubBtn.setAttribute('aria-pressed', 'false');
       }
       colLeft.classList.remove('is-mobile-active');
       colCenter.classList.remove('is-mobile-active');
@@ -552,33 +559,137 @@
         colCenter.classList.add('is-mobile-active');
       }
 
-      // Activar el tab
-      for (var j = 0; j < tabs.length; j++) {
-        if (tabs[j].getAttribute('data-est-tab') === tabName) {
-          tabs[j].classList.add('is-active');
-          tabs[j].setAttribute('aria-pressed', 'true');
+      // Activar el botón correspondiente
+      for (var j = 0; j < navBtns.length; j++) {
+        if (navBtns[j].getAttribute('data-est-tab') === tabName) {
+          navBtns[j].classList.add('is-active');
+          navBtns[j].setAttribute('aria-pressed', 'true');
         }
       }
 
       // Scroll al inicio del contenido
-      window.scrollTo({ top: tabsBar.offsetTop + tabsBar.offsetHeight, behavior: 'smooth' });
+      var scrollTarget = bottomNav.offsetTop - 48;
+      if (window.scrollY > scrollTarget) {
+        window.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+      }
     }
 
     // Inicializar con la columna central activa
     activateTab('center');
 
-    // Listeners
-    for (var k = 0; k < tabs.length; k++) {
-      (function (tab) {
-        tab.addEventListener('click', function () {
-          var tabName = tab.getAttribute('data-est-tab');
+    // Listeners de los botones de tab
+    for (var k = 0; k < navBtns.length; k++) {
+      (function (btn) {
+        btn.addEventListener('click', function () {
+          var tabName = btn.getAttribute('data-est-tab');
           activateTab(tabName);
         });
-      })(tabs[k]);
+      })(navBtns[k]);
     }
 
-    // Auto-cambiar al tab "Partido" cuando se selecciona un partido
-    // Observamos el click en .est-match-item para volver al tab de partido
+    // Botón Zona → abrir el Hub
+    if (hubBtn) {
+      hubBtn.addEventListener('click', function () {
+        var hubOpenBtn = document.getElementById('est-hub-open');
+        if (hubOpenBtn) hubOpenBtn.click();
+      });
+    }
+
+    // Sincronizar badge de apuestas
+    var navBadge = document.getElementById('est-nav-badge');
+    var bottomBadge = document.getElementById('est-bottom-nav-bet-badge');
+    if (navBadge && bottomBadge && typeof MutationObserver !== 'undefined') {
+      var syncBadge = function () {
+        if (navBadge.hidden) {
+          bottomBadge.setAttribute('hidden', '');
+        } else {
+          bottomBadge.textContent = navBadge.textContent;
+          bottomBadge.removeAttribute('hidden');
+        }
+      };
+      syncBadge();
+      var badgeObs = new MutationObserver(syncBadge);
+      badgeObs.observe(navBadge, { attributes: true, characterData: true, subtree: true });
+    }
+
+    // --- BARRA DE PARTIDOS MÓVIL ---
+    var matchBar = document.getElementById('est-mobile-match-bar');
+    var matchScroll = document.getElementById('est-mobile-match-scroll');
+    var originalMatchList = document.getElementById('est-match-list');
+
+    if (matchBar && matchScroll && originalMatchList) {
+      matchBar.removeAttribute('hidden');
+
+      function syncMatches() {
+        var items = originalMatchList.querySelectorAll('.est-match-item');
+        matchScroll.innerHTML = '';
+        for (var i = 0; i < items.length; i++) {
+          var item = items[i];
+          var mobileItem = document.createElement('div');
+          mobileItem.className = 'est-mobile-match-item';
+          if (item.classList.contains('is-selected')) {
+            mobileItem.classList.add('is-selected');
+          }
+          mobileItem.setAttribute('role', 'option');
+
+          // Extraer datos del item original
+          var homeEl = item.querySelector('.est-match-home');
+          var awayEl = item.querySelector('.est-match-away');
+          var timeEl = item.querySelector('.est-match-time');
+          var isLive = item.classList.contains('is-live');
+
+          var teamsText = '';
+          if (homeEl && awayEl) {
+            teamsText = homeEl.textContent.trim() + ' vs ' + awayEl.textContent.trim();
+          } else {
+            teamsText = item.textContent.trim().substring(0, 30);
+          }
+
+          var html = '';
+          if (isLive) {
+            html += '<span class="match-live-dot"></span>';
+          }
+          html += '<span class="match-teams">' + teamsText + '</span>';
+          if (timeEl) {
+            html += '<span class="match-time">' + timeEl.textContent.trim() + '</span>';
+          }
+          mobileItem.innerHTML = html;
+
+          // Click delega al item original
+          (function (originalItem) {
+            mobileItem.addEventListener('click', function () {
+              originalItem.click();
+              // Marcar como seleccionado
+              var allItems = matchScroll.querySelectorAll('.est-mobile-match-item');
+              for (var j = 0; j < allItems.length; j++) {
+                allItems[j].classList.remove('is-selected');
+              }
+              mobileItem.classList.add('is-selected');
+              // Asegurar que estamos en el tab de partido
+              if (!colCenter.classList.contains('is-mobile-active')) {
+                activateTab('center');
+              }
+            });
+          })(item);
+
+          matchScroll.appendChild(mobileItem);
+        }
+
+        // Scroll al item seleccionado
+        var selected = matchScroll.querySelector('.is-selected');
+        if (selected) {
+          selected.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+      }
+
+      syncMatches();
+      if (typeof MutationObserver !== 'undefined') {
+        var matchObs = new MutationObserver(syncMatches);
+        matchObs.observe(originalMatchList, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+      }
+    }
+
+    // Auto-cambiar al tab Partido cuando se selecciona un partido
     document.addEventListener('click', function (event) {
       if (!MonteCristoMobile.isMobile()) return;
       var matchItem = event.target.closest('.est-match-item');

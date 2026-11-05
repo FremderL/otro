@@ -59,12 +59,26 @@
   </header>
 
   <main id="estadio-main" class="estadio-shell">
-    <!-- Tabs móviles: solo visibles en viewport <= 900 px -->
-    <div class="est-mobile-tabs" id="est-mobile-tabs" hidden>
-      <button class="est-mobile-tab is-active" type="button" data-est-tab="center" aria-pressed="true">⚽ Partido</button>
-      <button class="est-mobile-tab" type="button" data-est-tab="left" aria-pressed="false">📋 Jornadas</button>
-      <button class="est-mobile-tab" type="button" data-est-tab="right" aria-pressed="false">🎯 Apuestas</button>
-    </div>
+    <!-- Barra de navegación inferior móvil: reemplaza la nav superior y los tabs -->
+    <nav class="est-bottom-nav" id="est-bottom-nav" hidden aria-label="Navegación del Estadio">
+      <button class="est-bottom-nav-btn is-active" type="button" data-est-tab="center" aria-pressed="true">
+        <span class="est-bottom-nav-icon">⚽</span>
+        <span class="est-bottom-nav-label">Partido</span>
+      </button>
+      <button class="est-bottom-nav-btn" type="button" data-est-tab="left" aria-pressed="false">
+        <span class="est-bottom-nav-icon">📊</span>
+        <span class="est-bottom-nav-label">Tabla</span>
+      </button>
+      <button class="est-bottom-nav-btn" type="button" data-est-tab="right" aria-pressed="false">
+        <span class="est-bottom-nav-icon">🎯</span>
+        <span class="est-bottom-nav-label">Apuestas</span>
+        <span class="est-bottom-nav-badge" id="est-bottom-nav-bet-badge" hidden>0</span>
+      </button>
+      <button class="est-bottom-nav-btn" type="button" id="est-bottom-nav-hub" aria-pressed="false">
+        <span class="est-bottom-nav-icon">👤</span>
+        <span class="est-bottom-nav-label">Zona</span>
+      </button>
+    </nav>
 
     <!-- Columna izquierda: lobby (partidos de hoy) + tabla de posiciones -->
     <aside class="est-col-left" aria-label="Partidos, posiciones y zona de afición">
@@ -126,6 +140,11 @@
         <div class="est-team est-team-home"><span class="est-crest" id="crest-home"></span><span id="name-home">Local</span><span class="est-team-cards" id="cards-home" hidden></span></div>
         <div class="est-score"><b id="score-home">0</b><span class="est-clock" id="est-clock">—</span><b id="score-away">0</b></div>
         <div class="est-team est-team-away"><span class="est-team-cards" id="cards-away" hidden></span><span id="name-away">Visita</span><span class="est-crest" id="crest-away"></span></div>
+      </div>
+
+      <!-- Selector de partidos móvil: carrusel horizontal debajo del marcador -->
+      <div class="est-mobile-match-bar" id="est-mobile-match-bar" hidden>
+        <div class="est-mobile-match-scroll" id="est-mobile-match-scroll" role="listbox" aria-label="Seleccionar partido"></div>
       </div>
 
       <section id="est-preshow" class="est-preshow" aria-labelledby="est-preshow-title" hidden>
