@@ -57,7 +57,8 @@
     freshUntil: 0,
     resultKey: null,
     helpText: '',
-    helpWarn: false
+    helpWarn: false,
+    manualMarks: new Set()
   };
 
   var socket = null;
@@ -206,23 +207,41 @@
     numbers.forEach(function (number, index) {
       var card = cardInfo(number);
       var isCalled = called.has(Number(number));
-      if (isCalled) marked++;
+      var isManual = state.manualMarks && state.manualMarks.has(Number(number));
+      if (isCalled || isManual) marked++;
       var cell = document.createElement('div');
-      cell.className = 'loteria-cell' + (isCalled ? ' is-called' : '') + (isFresh && Number(number) === state.freshNumber ? ' is-fresh' : '');
+      cell.className = 'loteria-cell'
+        + (isCalled ? ' is-called' : '')
+        + (isManual && !isCalled ? ' is-marked' : '')
+        + (isFresh && Number(number) === state.freshNumber ? ' is-fresh' : '');
       cell.setAttribute('role', 'gridcell');
-      cell.setAttribute('aria-label', card.name + ', carta ' + card.number + (isCalled ? ', cantada' : ', pendiente'));
+      cell.setAttribute('tabindex', '0');
+      cell.setAttribute('aria-label', card.name + ', carta ' + card.number + (isCalled ? ', cantada' : isManual ? ', marcada' : ', pendiente'));
       cell.setAttribute('aria-rowindex', String(Math.floor(index / 4) + 1));
       cell.setAttribute('aria-colindex', String((index % 4) + 1));
+      cell.setAttribute('data-card-number', String(number));
       var emoji = document.createElement('span');
       emoji.className = 'loteria-cell-emoji';
-      emoji.textContent = isCalled ? card.emoji : '🂠';
+      emoji.textContent = (isCalled || isManual) ? card.emoji : '🂠';
       var name = document.createElement('span');
       name.className = 'loteria-cell-name';
       name.textContent = card.name;
       var label = document.createElement('span');
       label.className = 'loteria-cell-number';
-      label.textContent = isCalled ? 'N.º ' + card.number : 'PENDIENTE';
+      label.textContent = isCalled ? 'N.º ' + card.number : isManual ? 'MARCADA' : 'PENDIENTE';
       cell.append(emoji, name, label);
+
+      // Click para marcar/desmarcar manualmente
+      cell.addEventListener('click', function () {
+        toggleManualMark(Number(number));
+      });
+      cell.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleManualMark(Number(number));
+        }
+      });
+
       els.board.appendChild(cell);
     });
 
@@ -490,10 +509,76 @@
     if (called.length > state.lastCallCount) {
       // La carta recién cantada se resalta un segundo; el anuncio accesible ya
       // lo hace la lista de cantadas (aria-live), sin avisos flotantes de más.
-      state.freshNumber = called[called.length - 1];
+      var newCard = called[called.length - 1];
+      state.freshNumber = newCard;
       state.freshUntil = Date.now() + 1000;
+      // Lectura de cartas con voz (Web Speech API)
+      speakCard(newCard);
     }
     state.lastCallCount = called.length;
+  }
+
+  // ---------- Lectura de cartas con voz ----------
+  var speechEnabled = true;
+  var speechSynth = window.speechSynthesis || null;
+
+  function speakCard(number) {
+    if (!speechEnabled || !speechSynth) return;
+    var card = cardInfo(number);
+    if (!card || !card.name) return;
+    try {
+      // Cancelar cualquier lectura anterior
+      speechSynth.cancel();
+      var utterance = new SpeechSynthesisUtterance(card.name);
+      utterance.lang = 'es-MX';
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+      // Intentar usar una voz en español si está disponible
+      var voices = speechSynth.getVoices();
+      var spanishVoice = voices.find(function (v) { return v.lang && v.lang.startsWith('es'); });
+      if (spanishVoice) utterance.voice = spanishVoice;
+      speechSynth.speak(utterance);
+    } catch (e) {
+      // Si falla la síntesis de voz, simplemente no hacer nada
+    }
+  }
+
+  // Cargar voces (algunos navegadores las cargan de forma asíncrona)
+  if (speechSynth) {
+    if (typeof speechSynth.onvoiceschanged !== 'undefined') {
+      speechSynth.onvoiceschanged = function () { /* voces listas */ };
+    }
+  }
+
+  // ---------- Marcado manual de casillas ----------
+  function toggleManualMark(number) {
+    if (!state.manualMarks) state.manualMarks = new Set();
+    var called = state.view ? state.view.called : [];
+    var isCalled = called.indexOf(number) !== -1;
+    // Si la carta ya fue cantada por el servidor, no permitir desmarcar
+    if (isCalled) return;
+    if (state.manualMarks.has(number)) {
+      state.manualMarks.delete(number);
+    } else {
+      state.manualMarks.add(number);
+    }
+    render();
+  }
+
+  // Toggle de voz: botón en la interfaz
+  function toggleVoice() {
+    speechEnabled = !speechEnabled;
+    var btn = document.getElementById('loteria-voice-toggle');
+    if (btn) {
+      btn.textContent = speechEnabled ? '🔊 Voz' : '🔇 Voz';
+      btn.setAttribute('aria-pressed', String(speechEnabled));
+      btn.title = speechEnabled ? 'Desactivar lectura de cartas por voz' : 'Activar lectura de cartas por voz';
+    }
+    if (!speechEnabled && speechSynth) {
+      speechSynth.cancel();
+    }
+    toast(speechEnabled ? 'Voz activada' : 'Voz desactivada');
   }
 
   function applyYou(you) {
@@ -569,6 +654,11 @@
   }
 
   // ---------- Eventos de interfaz ----------
+  var voiceBtn = document.getElementById('loteria-voice-toggle');
+  if (voiceBtn) {
+    voiceBtn.addEventListener('click', toggleVoice);
+  }
+
   els.join.addEventListener('click', requestJoin);
   els.invite.addEventListener('click', function () {
     var url = String(window.location.href || '').split('#')[0];
