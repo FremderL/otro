@@ -24,23 +24,23 @@ MonteCristo es un casino social **exclusivo para escritorio** con un ancho míni
 
 ## Fases del plan
 
-### Fase 0 — Fundación y variables
+### Fase 0 — Fundación y variables ✅ COMPLETADA
 
 **Objetivo:** sentar las bases CSS y eliminar la puerta de escritorio sin romper el diseño actual.
 
-| # | Tarea | Archivos | Detalle |
-|---|-------|----------|---------|
-| 0.1 | **Quitar el `min-width: 1024px` del `body`** dentro de un nuevo media query, sin tocar el valor de escritorio | `styles.css` | Hoy: `body { min-width: 1024px }`. En móvil debe ser `min-width: 100vw`. |
-| 0.2 | **Reemplazar la puerta de escritorio** por una experiencia móvil real | `gate.js`, `styles.css` | La `.desktop-gate` deja de mostrarse; se conserva el `gate-bypass` en localStorage para compatibilidad hacia atrás. |
-| 0.3 | **Definir breakpoints oficiales** | `styles.css` | `--bp-mobile: 640px`, `--bp-tablet: 900px`, `--bp-desktop: 1024px`. |
-| 0.4 | **Crear `public/mobile.css`** | nuevo archivo | Hoja de estilos exclusiva para móvil, enlazada con `<link media="(max-width: 900px)">`. Así el CSS de escritorio no crece ni se contamina. |
-| 0.5 | **Crear `public/mobile.js`** | nuevo archivo | Scripts exclusivos del móvil (gestos, drawers, navegación por tabs, detección de orientación). |
-| 0.6 | **Meta viewport** correcto en todos los HTML | `index.html`, `estadio.html`, `loteria.html` | Verificar que tengan `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">` y `user-scalable=no` para la mesa de juego. |
-| 0.7 | **Soporte `safe-area-inset`** para iPhone con notch | `mobile.css` | `padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)`. |
+| # | Tarea | Archivos | Estado |
+|---|-------|----------|--------|
+| 0.1 | **Quitar el `min-width: 1024px` del `body`** dentro de un nuevo media query, sin tocar el valor de escritorio | `mobile.css` | ✅ |
+| 0.2 | **Reemplazar la puerta de escritorio** por una experiencia móvil real | `gate.js`, `mobile.css` | ✅ |
+| 0.3 | **Definir breakpoints oficiales** | `mobile.css` | ✅ |
+| 0.4 | **Crear `public/mobile.css`** | nuevo archivo | ✅ |
+| 0.5 | **Crear `public/mobile.js`** | nuevo archivo | ✅ |
+| 0.6 | **Meta viewport** correcto en todos los HTML | `index.html`, `estadio.html`, `loteria.html` | ✅ |
+| 0.7 | **Soporte `safe-area-inset`** para iPhone con notch | `mobile.css` | ✅ |
 
 ---
 
-### Fase 1 — Lobby (`index.html` + `styles.css`)
+### Fase 1 — Lobby (`index.html` + `styles.css`) ✅ COMPLETADA
 
 **Objetivo:** el lobby es la entrada; debe sentirse nativo en un celular de 375 px sin perder identidad visual.
 

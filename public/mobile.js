@@ -255,11 +255,109 @@
   }
 
   /* -------------------------------------------------------------------------
-     7. INICIALIZACIÓN
+     7. DRAWER DE NAVEGACIÓN DEL LOBBY
+     Conecta el botón hamburguesa con el drawer, delega clicks a botones
+     originales y sincroniza el enlace del Estadio.
+     ------------------------------------------------------------------------- */
+  function initNavDrawer() {
+    var drawer = document.getElementById('mobile-nav-drawer');
+    var backdrop = document.getElementById('mobile-nav-backdrop');
+    var toggle = document.getElementById('mobile-nav-toggle');
+    var closeBtn = document.getElementById('mobile-nav-close');
+    if (!drawer || !toggle) return;
+
+    // Mostrar el drawer (está oculto con hidden por defecto)
+    drawer.removeAttribute('hidden');
+    if (backdrop) backdrop.removeAttribute('hidden');
+
+    function openNav() {
+      drawer.classList.add('is-open');
+      if (backdrop) backdrop.classList.add('is-open');
+      toggle.setAttribute('aria-expanded', 'true');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeNav() {
+      drawer.classList.remove('is-open');
+      if (backdrop) backdrop.classList.remove('is-open');
+      toggle.setAttribute('aria-expanded', 'false');
+      document.body.style.overflow = '';
+    }
+
+    toggle.addEventListener('click', function () {
+      if (drawer.classList.contains('is-open')) closeNav();
+      else openNav();
+    });
+
+    if (closeBtn) closeBtn.addEventListener('click', closeNav);
+    if (backdrop) backdrop.addEventListener('click', closeNav);
+
+    // Cerrar al hacer clic en un link del drawer
+    var links = drawer.querySelectorAll('[data-mobile-nav-link]');
+    for (var i = 0; i < links.length; i++) {
+      links[i].addEventListener('click', function () {
+        closeNav();
+      });
+    }
+
+    // Cerrar al hacer clic en botones con data-mobile-nav-close
+    var closeTriggers = drawer.querySelectorAll('[data-mobile-nav-close]');
+    for (var j = 0; j < closeTriggers.length; j++) {
+      closeTriggers[j].addEventListener('click', function () {
+        closeNav();
+      });
+    }
+
+    // Delegar clicks de botones del drawer a los botones originales del nav
+    var delegationMap = {
+      'mobile-community-btn': 'community-open-btn',
+      'mobile-notifications-btn': 'notifications-toggle',
+      'mobile-report-btn': 'report-open-btn',
+      'mobile-account-btn': 'account-open-btn'
+    };
+
+    Object.keys(delegationMap).forEach(function (mobileId) {
+      var mobileBtn = document.getElementById(mobileId);
+      var originalBtn = document.getElementById(delegationMap[mobileId]);
+      if (mobileBtn && originalBtn) {
+        mobileBtn.addEventListener('click', function () {
+          closeNav();
+          // Esperar a que la animación del drawer termine antes de abrir modal
+          setTimeout(function () { originalBtn.click(); }, 200);
+        });
+      }
+    });
+
+    // Cerrar con Escape
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && drawer.classList.contains('is-open')) {
+        closeNav();
+      }
+    });
+
+    // Sincronizar visibilidad del enlace del Estadio
+    var navEstadio = document.getElementById('nav-estadio');
+    var mobileEstadio = document.getElementById('mobile-nav-estadio');
+    if (navEstadio && mobileEstadio) {
+      var syncEstadio = function () {
+        if (navEstadio.hidden) mobileEstadio.setAttribute('hidden', '');
+        else mobileEstadio.removeAttribute('hidden');
+      };
+      syncEstadio();
+      if (typeof MutationObserver !== 'undefined') {
+        var observer = new MutationObserver(syncEstadio);
+        observer.observe(navEstadio, { attributes: true, attributeFilter: ['hidden'] });
+      }
+    }
+  }
+
+  /* -------------------------------------------------------------------------
+     8. INICIALIZACIÓN
      ------------------------------------------------------------------------- */
   function init() {
     initAllSheetDrags();
     applyMobileClass();
+    initNavDrawer();
   }
 
   if (document.readyState === 'loading') {

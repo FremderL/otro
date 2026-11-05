@@ -384,7 +384,1042 @@ body, .chat-list, .est-match-list, .lobby-chat-messages {
 }
 
 /* ---------------------------------------------------------------------------
-   9. RESPONSIVE BREAKPOINTS INTERNOS
+   9. LOBBY — NAVEGACIÓN SUPERIOR
+   Hamburguesa + drawer lateral en lugar de fila de links + acciones.
+   --------------------------------------------------------------------------- */
+
+/* Botón hamburguesa: oculto en escritorio, visible en móvil */
+.mobile-nav-toggle {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .mobile-nav-toggle {
+    display: grid;
+    place-items: center;
+    width: var(--m-touch);
+    height: var(--m-touch);
+    border: 1px solid var(--line);
+    border-radius: var(--m-radius);
+    background: rgba(255, 255, 255, .04);
+    color: var(--text);
+    font-size: 22px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  /* Nav: compacta, sin links ni acciones (van al drawer) */
+  .landing-nav {
+    height: 60px !important;
+    position: sticky !important;
+    top: 0;
+    padding: 0 var(--m-pad) !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    left: 0 !important;
+    transform: none !important;
+    background: rgba(5, 9, 11, .92);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    z-index: 50;
+    gap: 10px;
+  }
+
+  .landing-nav.shell {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .landing-nav .brand {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .landing-nav .brand-copy b {
+    font-size: 14px !important;
+  }
+
+  .landing-nav .brand-copy em {
+    font-size: 8px !important;
+  }
+
+  .landing-nav .brand-mark {
+    transform: scale(.85);
+  }
+
+  /* Ocultar links y acciones del nav (se mueven al drawer) */
+  .landing-nav .nav-links {
+    display: none !important;
+  }
+
+  .landing-nav .nav-actions {
+    display: none !important;
+  }
+
+  /* Drawer de navegación móvil */
+  .mobile-nav-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 950;
+    width: min(320px, 85vw);
+    background: linear-gradient(180deg, #0b1417, #060b0d);
+    border-right: 1px solid var(--line);
+    border-radius: 0 var(--m-radius-lg) var(--m-radius-lg) 0;
+    transform: translateX(-110%);
+    transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mobile-nav-drawer.is-open {
+    transform: translateX(0);
+    box-shadow: 12px 0 40px rgba(0, 0, 0, .6);
+  }
+
+  .mobile-nav-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 949;
+    background: rgba(0, 0, 0, .6);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease;
+  }
+
+  .mobile-nav-backdrop.is-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .mobile-nav-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: calc(var(--m-safe-top) + 16px) var(--m-pad-lg) 16px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .mobile-nav-drawer-header .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .mobile-nav-drawer-close {
+    width: var(--m-touch);
+    height: var(--m-touch);
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: var(--m-radius);
+    color: var(--muted);
+    background: rgba(255, 255, 255, .03);
+    font-size: 20px;
+    cursor: pointer;
+  }
+
+  .mobile-nav-links {
+    padding: var(--m-pad) var(--m-pad-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .mobile-nav-links a,
+  .mobile-nav-links button {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: var(--m-touch);
+    padding: 8px 14px;
+    border: 0;
+    border-radius: var(--m-radius);
+    color: var(--text);
+    background: transparent;
+    font-size: var(--m-fs-body);
+    font-weight: 650;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background .15s;
+    width: 100%;
+  }
+
+  .mobile-nav-links a:active,
+  .mobile-nav-links button:active {
+    background: rgba(255, 255, 255, .06);
+  }
+
+  .mobile-nav-links .nav-icon {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(82, 224, 174, .06);
+    color: var(--mint);
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .mobile-nav-divider {
+    height: 1px;
+    margin: 8px var(--m-pad-lg);
+    background: var(--line);
+  }
+
+  .mobile-nav-actions {
+    padding: var(--m-pad) var(--m-pad-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: auto;
+    border-top: 1px solid var(--line);
+    padding-bottom: calc(var(--m-safe-bottom) + 16px);
+  }
+
+  .mobile-nav-actions button {
+    min-height: var(--m-touch);
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--m-radius);
+    color: var(--text);
+    background: rgba(255, 255, 255, .03);
+    font-size: var(--m-fs-small);
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .mobile-nav-actions button.primary {
+    border-color: rgba(82, 224, 174, .4);
+    background: rgba(82, 224, 174, .08);
+    color: var(--mint);
+  }
+
+  .mobile-nav-actions button:active {
+    background: rgba(255, 255, 255, .08);
+  }
+
+  .mobile-nav-connection {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    margin: 4px 0;
+    border-radius: var(--m-radius);
+    background: rgba(82, 224, 174, .04);
+    font-size: var(--m-fs-small);
+    color: var(--muted);
+  }
+
+  .mobile-nav-connection i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--mint);
+    box-shadow: 0 0 8px var(--mint);
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   10. LOBBY — HERO
+   De 2 columnas a 1 columna. Botones apilados.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .hero {
+    min-height: auto !important;
+    padding-bottom: 30px;
+  }
+
+  .hero-bg {
+    animation: none !important;
+    transform: none !important;
+  }
+
+  .hero-bg::after {
+    background-size: auto, 60px 100%;
+  }
+
+  .hero-content.shell {
+    width: calc(100% - 32px) !important;
+    padding-top: 0 !important;
+  }
+
+  .hero-content {
+    grid-template-columns: 1fr !important;
+    padding-top: 24px !important;
+    gap: 0;
+  }
+
+  .hero-copy {
+    max-width: 100%;
+    padding: 30px 0 24px !important;
+  }
+
+  .hero-copy .eyebrow {
+    font-size: var(--m-fs-micro) !important;
+    margin-bottom: 14px;
+  }
+
+  .hero-copy h1 {
+    font-size: var(--m-fs-hero) !important;
+    line-height: 1.05 !important;
+    letter-spacing: -.03em !important;
+  }
+
+  .hero-copy > p {
+    max-width: 100%;
+    margin-bottom: 24px !important;
+    font-size: var(--m-fs-body) !important;
+    line-height: 1.6 !important;
+  }
+
+  .hero-actions {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .hero-actions .btn {
+    width: 100%;
+    min-height: var(--m-touch) !important;
+    justify-content: center;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  .hero-live-link {
+    display: block;
+    text-align: center;
+    margin-top: 12px;
+    padding: 10px;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .hero-proof {
+    margin-top: 20px !important;
+    justify-content: center;
+  }
+
+  /* HUD decorativo: oculto en móvil (ocupa mucho espacio) */
+  .hero-hud {
+    display: none !important;
+  }
+
+  .scroll-cue {
+    display: none !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   11. LOBBY — BANNER DEL ESTADIO
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .estadio-banner.shell {
+    width: calc(100% - 32px) !important;
+    padding: 20px 0 !important;
+  }
+
+  .estadio-banner-card {
+    flex-direction: column !important;
+    padding: var(--m-pad-lg) !important;
+    gap: 14px !important;
+  }
+
+  .estadio-banner-copy {
+    max-width: 100% !important;
+  }
+
+  .estadio-banner-copy h2 {
+    font-size: 22px !important;
+  }
+
+  .estadio-banner-copy p {
+    font-size: var(--m-fs-small) !important;
+    line-height: 1.5 !important;
+  }
+
+  .estadio-banner-meta {
+    flex-wrap: wrap;
+    gap: 6px !important;
+  }
+
+  .estadio-banner-cta {
+    display: block;
+    text-align: center;
+    padding: 12px;
+    border: 1px solid rgba(82, 224, 174, .3);
+    border-radius: var(--m-radius);
+    background: rgba(82, 224, 174, .06);
+    margin-top: 8px;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  .estadio-banner-feature {
+    width: 100% !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   12. LOBBY — SECCIONES, HEADINGS Y GRID DE JUEGOS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .lobby-section.shell {
+    width: calc(100% - 32px) !important;
+    padding: 40px 0 !important;
+  }
+
+  .section-heading {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 14px !important;
+    margin-bottom: 22px !important;
+  }
+
+  .section-heading h2 {
+    font-size: clamp(24px, 6vw, 36px) !important;
+  }
+
+  .section-heading > p,
+  .game-discovery-meta {
+    max-width: 100% !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .game-discovery-meta {
+    gap: 10px !important;
+    flex-wrap: wrap;
+  }
+
+  .game-shelf-label {
+    margin-bottom: 12px !important;
+  }
+
+  /* Grid de juegos: 1 columna en móvil, 2 en tablet */
+  .game-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  @media (min-width: 640px) {
+    .game-grid {
+      grid-template-columns: 1fr 1fr !important;
+    }
+  }
+
+  .game-card {
+    height: auto !important;
+    min-height: 340px;
+  }
+
+  .game-card > img {
+    height: 200px !important;
+    position: relative !important;
+    inset: auto !important;
+  }
+
+  .game-card-shade {
+    position: absolute;
+    bottom: 0;
+    top: auto;
+    height: 70%;
+  }
+
+  .game-info {
+    position: relative;
+    padding: var(--m-pad) !important;
+  }
+
+  .game-info h3 {
+    font-size: 18px !important;
+  }
+
+  .game-info p {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .game-info .btn-card {
+    min-height: var(--m-touch) !important;
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Quick games */
+  .quick-games-heading {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+    margin: 35px 0 16px !important;
+    padding-top: 24px !important;
+  }
+
+  .quick-game-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  @media (min-width: 640px) {
+    .quick-game-grid {
+      grid-template-columns: 1fr 1fr !important;
+    }
+  }
+
+  .quick-game-card {
+    min-height: 200px !important;
+    flex-direction: row !important;
+    padding: var(--m-pad) !important;
+    gap: 14px;
+    align-items: center;
+  }
+
+  .quick-card-media {
+    width: 80px !important;
+    height: 80px !important;
+    border-radius: var(--m-radius);
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .quick-game-copy {
+    margin-top: 0 !important;
+  }
+
+  .quick-game-copy h3 {
+    font-size: var(--m-fs-title) !important;
+    margin: 4px 0 !important;
+  }
+
+  .quick-game-copy p {
+    font-size: var(--m-fs-micro) !important;
+    line-height: 1.4 !important;
+  }
+
+  .quick-game-copy .btn-card {
+    margin-top: 8px;
+    min-height: var(--m-touch-sm) !important;
+    padding: 6px 14px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   13. LOBBY — SALAS EN VIVO
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .live-section {
+    padding: 40px 0 50px !important;
+  }
+
+  .live-section .shell {
+    width: calc(100% - 32px) !important;
+  }
+
+  .live-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 16px !important;
+  }
+
+  .live-header h2 {
+    font-size: 26px !important;
+  }
+
+  .live-header p {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .lobby-stats {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 12px !important;
+  }
+
+  .lobby-stats > span {
+    min-width: 50px;
+    padding-right: 14px;
+  }
+
+  .lobby-stats b {
+    font-size: 20px !important;
+  }
+
+  .lobby-quick-actions {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .lobby-quick-actions .btn {
+    flex: 1;
+    min-height: var(--m-touch) !important;
+    justify-content: center;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  /* Filtros: scroll horizontal */
+  .room-filters {
+    min-height: 50px !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 8px 0;
+  }
+
+  .room-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .room-filters button {
+    flex-shrink: 0;
+    min-height: var(--m-touch-sm) !important;
+    padding: 0 14px !important;
+    font-size: var(--m-fs-small) !important;
+    white-space: nowrap;
+  }
+
+  .room-filters > span {
+    flex-shrink: 0;
+    padding-left: 10px;
+  }
+
+  /* Grid de salas: 1 columna */
+  .live-rooms {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    padding-top: 14px !important;
+  }
+
+  .live-room {
+    min-height: auto !important;
+    padding: var(--m-pad) !important;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .live-room::after {
+    display: none;
+  }
+
+  .live-room-top {
+    flex: 0 0 auto;
+  }
+
+  .live-room h3 {
+    margin: 6px 0 2px !important;
+    font-size: var(--m-fs-title) !important;
+  }
+
+  .live-room-bottom {
+    margin-top: 0 !important;
+    margin-left: auto;
+  }
+
+  .join-live-room {
+    min-height: var(--m-touch-sm) !important;
+    padding: 0 16px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   14. LOBBY — TORNEOS Y RANKING
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .lobby-tournaments {
+    margin-top: 30px !important;
+  }
+
+  .tournament-calendar-head {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .tournament-calendar-head h3 {
+    font-size: 20px !important;
+  }
+
+  .tournament-calendar-head p {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .tournament-calendar-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .tournament-featured {
+    padding: var(--m-pad) !important;
+  }
+
+  /* Ranking */
+  .season-ranking {
+    margin-top: 30px !important;
+  }
+
+  .ranking-head {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .ranking-head h3 {
+    font-size: 20px !important;
+  }
+
+  .ranking-content {
+    flex-direction: column !important;
+  }
+
+  .ranking-table-head span,
+  .ranking-list span {
+    font-size: var(--m-fs-micro) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   15. LOBBY — CÓMO JUGAR
+   De 2 columnas a 1. Pasos apilados verticalmente.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .how-section {
+    grid-template-columns: 1fr !important;
+    gap: 24px !important;
+    padding: 50px 0 !important;
+  }
+
+  .how-section.shell {
+    width: calc(100% - 32px) !important;
+  }
+
+  .how-intro h2 {
+    font-size: clamp(22px, 5.5vw, 32px) !important;
+  }
+
+  .steps {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .step {
+    min-height: auto !important;
+    padding: var(--m-pad) var(--m-pad-lg) !important;
+    border-left: 2px solid rgba(82, 224, 174, .2) !important;
+  }
+
+  .step-number {
+    font-size: 36px !important;
+    right: 10px !important;
+    top: 8px !important;
+  }
+
+  .step h3 {
+    font-size: var(--m-fs-title) !important;
+  }
+
+  .step p {
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   16. LOBBY — CHAT DEL LOBBY (bottom sheet en móvil)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .lobby-chat-widget {
+    position: fixed !important;
+    bottom: calc(var(--m-safe-bottom) + 16px);
+    right: 16px;
+    z-index: 100;
+  }
+
+  .lobby-chat-bubble {
+    width: 56px !important;
+    height: 56px !important;
+    font-size: 24px !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .5);
+  }
+
+  /* Panel del chat: bottom sheet en móvil */
+  .lobby-chat-panel {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 75vh !important;
+    border-radius: var(--m-radius-lg) var(--m-radius-lg) 0 0 !important;
+    border: 0 !important;
+    border-top: 1px solid var(--line-strong) !important;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, .5) !important;
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+    z-index: 920;
+    display: flex !important;
+    flex-direction: column;
+    padding-bottom: var(--m-safe-bottom);
+  }
+
+  .lobby-chat-panel:not(.hidden) {
+    transform: translateY(0) !important;
+  }
+
+  .lobby-chat-head {
+    padding: 14px var(--m-pad) !important;
+    flex-shrink: 0;
+  }
+
+  .lobby-chat-head h3 {
+    font-size: var(--m-fs-title) !important;
+  }
+
+  .lobby-chat-head button {
+    width: var(--m-touch-sm) !important;
+    height: var(--m-touch-sm) !important;
+    font-size: 20px !important;
+  }
+
+  .lobby-chat-messages {
+    flex: 1;
+    min-height: 200px;
+    padding: var(--m-pad) !important;
+  }
+
+  .lobby-chat-form {
+    padding: 8px var(--m-pad) !important;
+    flex-shrink: 0;
+  }
+
+  .lobby-chat-form input {
+    min-height: var(--m-touch) !important;
+    font-size: 16px !important; /* evita zoom en iOS */
+  }
+
+  .lobby-chat-form button {
+    min-width: var(--m-touch) !important;
+    min-height: var(--m-touch) !important;
+  }
+
+  /* Perfil del chat (nombre + TOS) */
+  .lobby-chat-profile {
+    padding: var(--m-pad-lg) !important;
+  }
+
+  .lobby-chat-profile input {
+    min-height: var(--m-touch) !important;
+    font-size: 16px !important;
+  }
+
+  .lobby-chat-profile .btn {
+    min-height: var(--m-touch) !important;
+    width: 100%;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   17. LOBBY — INVITACIONES Y EFECTOS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .invite-inbox {
+    top: calc(var(--m-safe-top) + 66px) !important;
+    right: 8px !important;
+    left: 8px !important;
+    width: auto !important;
+    max-width: 100% !important;
+  }
+
+  .invite-toast {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Efectos estacionales: reducir densidad e intensidad */
+  .seasonal-effects {
+    opacity: .5;
+  }
+
+  .seasonal-particle {
+    animation-duration: 8s !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   18. LOBBY — FOOTER
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .landing-footer {
+    padding: 0 var(--m-pad);
+  }
+
+  .footer-inner {
+    flex-direction: column !important;
+    gap: 16px !important;
+    padding: 30px 0 !important;
+    text-align: center;
+    min-height: auto !important;
+  }
+
+  .footer-inner p {
+    text-align: center !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .footer-legal {
+    flex-direction: column;
+    gap: 10px !important;
+    align-items: center;
+  }
+
+  .footer-legal a {
+    font-size: var(--m-fs-small) !important;
+    min-height: var(--m-touch-sm);
+    display: flex;
+    align-items: center;
+  }
+
+  .footer-status {
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   19. MODALES — BOTTOM SHEETS EN MÓVIL
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .modal-backdrop {
+    background: rgba(0, 0, 0, .65) !important;
+  }
+
+  .modal-card {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 90vh !important;
+    margin: 0 !important;
+    border-radius: var(--m-radius-lg) var(--m-radius-lg) 0 0 !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: var(--m-safe-bottom) !important;
+    transform: translateY(0);
+    animation: sheetSlideUp .3s cubic-bezier(.4, 0, .2, 1);
+  }
+
+  @keyframes sheetSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  .modal-close {
+    width: var(--m-touch-sm) !important;
+    height: var(--m-touch-sm) !important;
+    font-size: 22px !important;
+  }
+
+  /* Modal de crear/unirse a sala */
+  .setup-modal-card {
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+  }
+
+  .table-setup-layout {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .segmented {
+    grid-template-columns: 1fr !important;
+  }
+
+  .segmented button {
+    min-height: var(--m-touch) !important;
+  }
+
+  .input-wrap {
+    height: var(--m-touch) !important;
+  }
+
+  .input-wrap input {
+    font-size: 16px !important; /* evita zoom en iOS */
+  }
+
+  /* Modal de perfil */
+  .profile-modal-card {
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+  }
+
+  .profile-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+  }
+
+  .progress-columns {
+    grid-template-columns: 1fr !important;
+  }
+
+  .profile-edit-form {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .password-change-fields {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Modal de comunidad */
+  .community-modal-card {
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+  }
+
+  /* Modal de pasaporte y cosméticos */
+  .passport-modal-card,
+  .cosmetics-modal-card {
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   20. SHELL Y CONTENEDORES GENERALES
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .shell {
+    width: calc(100% - 32px) !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   21. RESPONSIVE BREAKPOINTS INTERNOS
    Ajustes adicionales para celulares muy pequeños (< 380px) y tablets (640–900)
    --------------------------------------------------------------------------- */
 

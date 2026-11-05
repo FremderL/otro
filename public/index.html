@@ -38,6 +38,7 @@
 
   <section id="landing" class="landing">
     <nav class="landing-nav shell">
+      <button class="mobile-nav-toggle" id="mobile-nav-toggle" type="button" aria-label="Abrir menú" aria-expanded="false" aria-controls="mobile-nav-drawer">☰</button>
       <a class="brand" href="/" aria-label="MonteCristo, inicio">
         <span class="brand-mark"><span>♠</span></span>
         <span class="brand-copy"><b>MONTECRISTO</b><em>SOCIAL CASINO</em></span>
@@ -311,6 +312,38 @@
         <span class="footer-status"><i></i> SERVIDORES OPERATIVOS</span>
       </div>
     </footer>
+
+    <!-- Drawer de navegación móvil: solo visible en viewport <= 900 px -->
+    <div class="mobile-nav-backdrop" id="mobile-nav-backdrop" data-drawer-backdrop="mobile-nav-drawer"></div>
+    <nav class="mobile-nav-drawer" id="mobile-nav-drawer" aria-label="Menú principal" hidden>
+      <div class="mobile-nav-drawer-header">
+        <a class="brand" href="/" aria-label="MonteCristo, inicio">
+          <span class="brand-mark"><span>♠</span></span>
+          <span class="brand-copy"><b>MONTECRISTO</b><em>SOCIAL CASINO</em></span>
+        </a>
+        <button class="mobile-nav-drawer-close" id="mobile-nav-close" type="button" aria-label="Cerrar menú">×</button>
+      </div>
+      <div class="mobile-nav-links">
+        <a href="#games" data-mobile-nav-link><span class="nav-icon">♠</span> Juegos</a>
+        <a href="#live-lobby" data-mobile-nav-link><span class="nav-icon">⌁</span> Salas en vivo</a>
+        <a href="/loteria" data-mobile-nav-link><span class="nav-icon">🎴</span> Lotería</a>
+        <a href="/estadio?from=casino" id="mobile-nav-estadio" data-mobile-nav-link hidden><span class="nav-icon">🏟</span> Estadio</a>
+        <a href="#how" data-mobile-nav-link><span class="nav-icon">?</span> Cómo jugar</a>
+      </div>
+      <div class="mobile-nav-divider"></div>
+      <div class="mobile-nav-links">
+        <button type="button" id="mobile-community-btn"><span class="nav-icon">♧</span> Comunidad</button>
+        <button type="button" id="mobile-notifications-btn"><span class="nav-icon">🔔</span> Notificaciones</button>
+        <button type="button" id="mobile-report-btn"><span class="nav-icon">⚑</span> Reportar</button>
+      </div>
+      <div class="mobile-nav-actions">
+        <div class="mobile-nav-connection" id="mobile-nav-connection">
+          <i></i><span>Conectado</span>
+        </div>
+        <button type="button" id="mobile-account-btn" class="primary"><span>🔑</span> Iniciar sesión</button>
+        <button type="button" data-open-mode="join" data-mobile-nav-close><span>⌁</span> Entrar con código</button>
+      </div>
+    </nav>
   </section>
 
   <div id="join-modal" class="modal setup-modal" aria-hidden="true">
