@@ -519,12 +519,22 @@
      Bottom nav reemplaza los tabs. Los partidos se clonan como carrusel
      horizontal dentro de la columna central.
      ------------------------------------------------------------------------- */
+  /**
+   * Paneles del Estadio trasladados a las vistas móviles (Tabla y Apuestas).
+   * Vive fuera de initEstadioTabs para que una segunda llamada —o un cambio de
+   * viewport— no pierda la columna original de cada panel.
+   */
+  var estadioSpaceHomes = [];
+
   function initEstadioTabs() {
     var bottomNav = document.getElementById('est-bottom-nav');
     var oldTabsBar = document.getElementById('est-mobile-tabs');
     if (!bottomNav) return;
+    // Una sola inicialización: evita listeners y traslados duplicados.
+    if (bottomNav.dataset.estMobileReady === '1') return;
+    bottomNav.dataset.estMobileReady = '1';
 
-    var navBtns = bottomNav.querySelectorAll('.est-bottom-nav-btn[data-est-tab]');
+    var navBtns = bottomNav.querySelectorAll('.est-bottom-nav-btn[data-est-tab], .est-bottom-nav-btn[data-est-space]');
     var hubBtn = document.getElementById('est-bottom-nav-hub');
     var colLeft = document.querySelector('.est-col-left');
     var colCenter = document.querySelector('.est-col-center');
@@ -536,8 +546,11 @@
     bottomNav.removeAttribute('hidden');
     if (oldTabsBar) oldTabsBar.setAttribute('hidden', '');
 
-    function activateTab(tabName) {
-      // Quitar activas
+    /* -----------------------------------------------------------------------
+       Columnas: en móvil solo la central se recorre. Tabla y Apuestas ya no
+       son columnas apiladas: cada una abre su propia vista (más abajo).
+       --------------------------------------------------------------------- */
+    function clearNavActive() {
       for (var i = 0; i < navBtns.length; i++) {
         navBtns[i].classList.remove('is-active');
         navBtns[i].setAttribute('aria-pressed', 'false');
@@ -546,27 +559,28 @@
         hubBtn.classList.remove('is-active');
         hubBtn.setAttribute('aria-pressed', 'false');
       }
+    }
+
+    function markNavActive(name) {
+      for (var i = 0; i < navBtns.length; i++) {
+        var btnName = navBtns[i].getAttribute('data-est-space') || navBtns[i].getAttribute('data-est-tab');
+        if (btnName !== name) continue;
+        navBtns[i].classList.add('is-active');
+        navBtns[i].setAttribute('aria-pressed', 'true');
+      }
+    }
+
+    // Marca «Partido» como vista activa sin mover el scroll.
+    function markCenterColumn() {
+      clearNavActive();
       colLeft.classList.remove('is-mobile-active');
-      colCenter.classList.remove('is-mobile-active');
+      colCenter.classList.add('is-mobile-active');
       colRight.classList.remove('is-mobile-active');
+      markNavActive('center');
+    }
 
-      // Activar la columna correspondiente
-      if (tabName === 'left') {
-        colLeft.classList.add('is-mobile-active');
-      } else if (tabName === 'right') {
-        colRight.classList.add('is-mobile-active');
-      } else {
-        colCenter.classList.add('is-mobile-active');
-      }
-
-      // Activar el botón correspondiente
-      for (var j = 0; j < navBtns.length; j++) {
-        if (navBtns[j].getAttribute('data-est-tab') === tabName) {
-          navBtns[j].classList.add('is-active');
-          navBtns[j].setAttribute('aria-pressed', 'true');
-        }
-      }
-
+    function activateTab() {
+      markCenterColumn();
       // Scroll al inicio del contenido
       var scrollTarget = bottomNav.offsetTop - 48;
       if (window.scrollY > scrollTarget) {
@@ -574,15 +588,315 @@
       }
     }
 
-    // Inicializar con la columna central activa
-    activateTab('center');
+    /* -----------------------------------------------------------------------
+       Espacios propios (Tabla y Apuestas) — igual que la Zona de afición.
+       Los paneles reales del Estadio se trasladan a la vista móvil y vuelven
+       a su columna al pasar a escritorio: mismos ids, mismos listeners.
+       --------------------------------------------------------------------- */
+    var spaceMounts = [
+      { panel: 'est-lobby-panel', slot: 'est-mobile-table-body' },
+      { panel: 'est-standings-panel', slot: 'est-mobile-table-body' },
+      { panel: 'est-bet-panel', slot: 'est-mobile-bets-slot' },
+      { panel: 'est-mybets-panel', slot: 'est-mobile-mybets-slot' }
+    ];
+    var homes = estadioSpaceHomes;
 
-    // Listeners de los botones de tab
+    function findHome(panel) {
+      for (var i = 0; i < homes.length; i++) if (homes[i].panel === panel) return homes[i];
+      return null;
+    }
+
+    function mountSpaces() {
+      for (var i = 0; i < spaceMounts.length; i++) {
+        var panel = document.getElementById(spaceMounts[i].panel);
+        var slot = document.getElementById(spaceMounts[i].slot);
+        if (!panel || !slot) continue;
+        var home = findHome(panel);
+        if (!home) {
+          home = { panel: panel, parent: panel.parentNode, next: panel.nextSibling };
+          homes.push(home);
+        }
+        if (panel.parentNode !== slot) slot.appendChild(panel);
+      }
+    }
+
+    function releaseSpaces() {
+      while (homes.length) {
+        var home = homes.pop();
+        if (!home.parent) continue;
+        if (!home.parent.isConnected) continue;
+        home.parent.insertBefore(home.panel, home.next && home.next.parentNode === home.parent ? home.next : null);
+      }
+    }
+
+    var spaces = {};
+    function registerSpace(name, ids) {
+      var root = document.getElementById(ids.root);
+      if (!root) return;
+      var close = document.getElementById(ids.close);
+      var space = {
+        root: root,
+        close: close,
+        button: bottomNav.querySelector('[data-est-space="' + name + '"]')
+      };
+      spaces[name] = space;
+      if (close) close.addEventListener('click', function () { closeSpace(name); });
+    }
+
+    var openSpaceName = null;
+
+    function openSpace(name) {
+      var space = spaces[name];
+      if (!space || !MonteCristoMobile.isMobile()) return;
+      if (openSpaceName && openSpaceName !== name) {
+        var previous = spaces[openSpaceName];
+        if (previous) previous.root.hidden = true;
+      }
+      mountSpaces();
+      space.root.hidden = false;
+      openSpaceName = name;
+      document.body.classList.add('est-mobile-space-open');
+      clearNavActive();
+      markNavActive(name);
+      space.root.scrollTop = 0;
+      if (name === 'bets') { setBetsView('apostar'); syncMatchPicker(); }
+      if (space.close) space.close.focus();
+    }
+
+    function closeSpace(name) {
+      var space = spaces[name];
+      if (!space) return;
+      space.root.hidden = true;
+      if (openSpaceName === name) openSpaceName = null;
+      document.body.classList.remove('est-mobile-space-open');
+      // Al cerrar se vuelve a «Partido» sin perder el punto de lectura.
+      markCenterColumn();
+      if (space.button) space.button.focus();
+    }
+
+    function closeOpenSpace() {
+      if (openSpaceName) closeSpace(openSpaceName);
+    }
+
+    function syncSpaces() {
+      if (MonteCristoMobile.isMobile()) {
+        bottomNav.removeAttribute('hidden');
+        mountSpaces();
+      } else {
+        closeOpenSpace();
+        releaseSpaces();
+        // La barra inferior solo existe en móvil (ver mobile.css).
+        bottomNav.setAttribute('hidden', '');
+      }
+    }
+
+    registerSpace('table', { root: 'est-mobile-table', close: 'est-mobile-table-close' });
+    registerSpace('bets', { root: 'est-mobile-bets', close: 'est-mobile-bets-close' });
+
+    // Capas que se dibujan por encima de las vistas (historial, Zona, noticiero,
+    // Balón de Oro): mientras una esté abierta, el teclado es suyo.
+    var higherOverlays = ['est-ledger', 'est-hub', 'est-daily-news', 'est-bdo-ceremony', 'est-bdo-opening'];
+    function higherOverlayOpen() {
+      for (var i = 0; i < higherOverlays.length; i++) {
+        var node = document.getElementById(higherOverlays[i]);
+        if (node && !node.hidden) return true;
+      }
+      return false;
+    }
+
+    /* Escape cierra el espacio abierto y Tab queda dentro de la vista. */
+    document.addEventListener('keydown', function (event) {
+      if (!openSpaceName) return;
+      var space = spaces[openSpaceName];
+      if (!space || higherOverlayOpen()) return;
+      if (event.key === 'Escape') { event.preventDefault(); closeOpenSpace(); return; }
+      if (event.key !== 'Tab') return;
+      var nodes = space.root.querySelectorAll('button:not([disabled]), select:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])');
+      var list = Array.prototype.filter.call(nodes, function (node) { return !node.closest('[hidden]'); });
+      if (!list.length) { event.preventDefault(); space.root.focus(); return; }
+      var first = list[0];
+      var last = list[list.length - 1];
+      if (list.indexOf(document.activeElement) < 0) { event.preventDefault(); (event.shiftKey ? last : first).focus(); }
+      else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    });
+
+    /* --- Apuestas: dos sub-vistas (Apostar / Mis apuestas) ----------------- */
+    var betsRoot = spaces.bets ? spaces.bets.root : null;
+
+    function setBetsView(view) {
+      if (!betsRoot) return;
+      Array.prototype.forEach.call(betsRoot.querySelectorAll('[data-mobile-bets-view]'), function (button) {
+        button.setAttribute('aria-pressed', String(button.getAttribute('data-mobile-bets-view') === view));
+      });
+      Array.prototype.forEach.call(betsRoot.querySelectorAll('[data-mobile-bets-panel]'), function (panel) {
+        panel.hidden = panel.getAttribute('data-mobile-bets-panel') !== view;
+      });
+      betsRoot.scrollTop = 0;
+    }
+
+    if (betsRoot) {
+      Array.prototype.forEach.call(betsRoot.querySelectorAll('[data-mobile-bets-view]'), function (button) {
+        button.addEventListener('click', function () {
+          setBetsView(button.getAttribute('data-mobile-bets-view'));
+        });
+      });
+    }
+
+    // Contador de apuestas abiertas en el acceso «Mis apuestas».
+    var myBetsCount = document.getElementById('est-mybets-count');
+    var mobileBetsCount = document.getElementById('est-mobile-bets-count');
+    if (myBetsCount && mobileBetsCount && typeof MutationObserver !== 'undefined') {
+      var syncMyBetsCount = function () {
+        var text = (myBetsCount.textContent || '').trim();
+        if (myBetsCount.hidden || !text) {
+          mobileBetsCount.setAttribute('hidden', '');
+        } else {
+          mobileBetsCount.textContent = text;
+          mobileBetsCount.removeAttribute('hidden');
+        }
+      };
+      syncMyBetsCount();
+      new MutationObserver(syncMyBetsCount).observe(myBetsCount, { attributes: true, characterData: true, childList: true, subtree: true });
+    }
+
+    /* --- Apuestas: selector del partido a apostar ------------------------- */
+    var matchList = document.getElementById('est-match-list');
+    var pickerList = document.getElementById('est-mobile-match-picker-list');
+    var pickerNote = document.getElementById('est-mobile-match-picker-note');
+
+    function pickerCopy(item) {
+      var teams = item.querySelector('.est-match-teams');
+      var meta = item.querySelector('.est-match-meta');
+      var score = item.querySelector('.est-match-score');
+      var status = item.querySelector('.est-match-status');
+      var detail = [];
+      if (meta && meta.textContent.trim()) detail.push(meta.textContent.trim());
+      if (score && score.textContent.trim()) detail.push(score.textContent.trim());
+      if (status && status.textContent.trim()) detail.push(status.textContent.trim());
+      return {
+        teams: teams ? teams.textContent.trim() : item.textContent.trim(),
+        detail: detail.join(' · ')
+      };
+    }
+
+    function pickerSignature(items) {
+      var parts = [];
+      for (var i = 0; i < items.length; i++) {
+        var copy = pickerCopy(items[i]);
+        parts.push(items[i].dataset.matchId + '|' + copy.teams + '|' + copy.detail);
+      }
+      return parts.join('~');
+    }
+
+    function pickNewMatch(item) {
+      if (!item) return;
+      item.click();
+      if (pickerNote && item.querySelector('.est-match-teams')) {
+        pickerNote.textContent = 'Apostando en ' + item.querySelector('.est-match-teams').textContent.trim() + '.';
+      }
+      var betPanel = document.getElementById('est-bet-panel');
+      if (betPanel && betPanel.scrollIntoView) betPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function buildPicker(items) {
+      var focusedIndex = -1;
+      var buttons = pickerList.querySelectorAll('.est-mobile-pick-match');
+      for (var b = 0; b < buttons.length; b++) {
+        if (buttons[b] === document.activeElement) focusedIndex = b;
+      }
+      pickerList.innerHTML = '';
+      if (!items.length) {
+        var empty = document.createElement('p');
+        empty.className = 'est-mobile-pick-empty';
+        empty.textContent = 'No hay partidos programados hoy.';
+        pickerList.appendChild(empty);
+        return;
+      }
+      for (var i = 0; i < items.length; i++) {
+        (function (item, index) {
+          var copy = pickerCopy(item);
+          var selected = item.classList.contains('active');
+          var button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'est-mobile-pick-match' + (selected ? ' is-selected' : '');
+          button.setAttribute('role', 'option');
+          button.setAttribute('aria-selected', selected ? 'true' : 'false');
+          button.setAttribute('data-match-id', item.dataset.matchId || '');
+          if (selected) button.setAttribute('aria-current', 'true');
+
+          var teams = document.createElement('span');
+          teams.className = 'est-mobile-pick-teams';
+          teams.textContent = copy.teams;
+
+          var detail = document.createElement('span');
+          detail.className = 'est-mobile-pick-meta';
+          detail.textContent = copy.detail;
+
+          button.appendChild(teams);
+          button.appendChild(detail);
+          button.addEventListener('click', function () { pickNewMatch(item); });
+          pickerList.appendChild(button);
+          if (index === focusedIndex) button.focus();
+        })(items[i], i);
+      }
+    }
+
+    function syncMatchPicker() {
+      if (!matchList || !pickerList) return;
+      var items = matchList.querySelectorAll('.est-match-item');
+      var signature = pickerSignature(items);
+      if (pickerList.dataset.signature !== signature) {
+        pickerList.dataset.signature = signature;
+        buildPicker(items);
+      }
+      var buttons = pickerList.querySelectorAll('.est-mobile-pick-match');
+      var selectedLabel = '';
+      for (var i = 0; i < items.length && i < buttons.length; i++) {
+        var selected = items[i].classList.contains('active');
+        if (selected) {
+          buttons[i].classList.add('is-selected');
+          buttons[i].setAttribute('aria-selected', 'true');
+          if (items[i].querySelector('.est-match-teams')) selectedLabel = items[i].querySelector('.est-match-teams').textContent.trim();
+        } else {
+          buttons[i].classList.remove('is-selected');
+          buttons[i].setAttribute('aria-selected', 'false');
+        }
+      }
+      if (pickerNote) {
+        pickerNote.textContent = selectedLabel
+          ? 'Apostando en ' + selectedLabel + '.'
+          : 'Toca un partido para ver sus cuotas.';
+      }
+    }
+
+    if (matchList && pickerList && typeof MutationObserver !== 'undefined') {
+      syncMatchPicker();
+      new MutationObserver(syncMatchPicker).observe(matchList, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    }
+
+    // Al abrir la boleta (tras tocar una cuota) se lleva a la vista: en la
+    // vista de Apuestas el boleto vive debajo de los mercados.
+    var slip = document.getElementById('est-bet-slip');
+    if (slip && typeof MutationObserver !== 'undefined') {
+      new MutationObserver(function () {
+        if (slip.hidden || !MonteCristoMobile.isMobile() || !openSpaceName) return;
+        if (slip.scrollIntoView) slip.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }).observe(slip, { attributes: true, attributeFilter: ['hidden'] });
+    }
+
+    /* -----------------------------------------------------------------------
+       Inicialización y listeners
+       --------------------------------------------------------------------- */
+    activateTab();
+    syncSpaces();
+
     for (var k = 0; k < navBtns.length; k++) {
       (function (btn) {
         btn.addEventListener('click', function () {
-          var tabName = btn.getAttribute('data-est-tab');
-          activateTab(tabName);
+          var spaceName = btn.getAttribute('data-est-space');
+          if (spaceName) { openSpace(spaceName); return; }
+          activateTab();
         });
       })(navBtns[k]);
     }
@@ -594,6 +908,13 @@
         if (hubOpenBtn) hubOpenBtn.click();
       });
     }
+
+    // Volver a escritorio: devolver los paneles a su columna.
+    var spaceSyncTimer = 0;
+    window.addEventListener('resize', function () {
+      if (spaceSyncTimer) clearTimeout(spaceSyncTimer);
+      spaceSyncTimer = setTimeout(syncSpaces, 150);
+    });
 
     // Sincronizar badge de apuestas
     var navBadge = document.getElementById('est-nav-badge');
@@ -615,45 +936,42 @@
     // --- BARRA DE PARTIDOS MÓVIL ---
     var matchBar = document.getElementById('est-mobile-match-bar');
     var matchScroll = document.getElementById('est-mobile-match-scroll');
-    var originalMatchList = document.getElementById('est-match-list');
 
-    if (matchBar && matchScroll && originalMatchList) {
+    if (matchBar && matchScroll && matchList) {
       matchBar.removeAttribute('hidden');
 
       function syncMatches() {
-        var items = originalMatchList.querySelectorAll('.est-match-item');
+        var items = matchList.querySelectorAll('.est-match-item');
         matchScroll.innerHTML = '';
         for (var i = 0; i < items.length; i++) {
           var item = items[i];
           var mobileItem = document.createElement('div');
           mobileItem.className = 'est-mobile-match-item';
-          if (item.classList.contains('is-selected')) {
+          if (item.classList.contains('is-selected') || item.classList.contains('active')) {
             mobileItem.classList.add('is-selected');
           }
           mobileItem.setAttribute('role', 'option');
 
-          // Extraer datos del item original
-          var homeEl = item.querySelector('.est-match-home');
-          var awayEl = item.querySelector('.est-match-away');
-          var timeEl = item.querySelector('.est-match-time');
-          var isLive = item.classList.contains('is-live');
+          // Extraer datos del item original (equipos, marcador y estado)
+          var copy = pickerCopy(item);
+          var statusEl = item.querySelector('.est-match-status');
+          var isLive = item.classList.contains('live');
 
-          var teamsText = '';
-          if (homeEl && awayEl) {
-            teamsText = homeEl.textContent.trim() + ' vs ' + awayEl.textContent.trim();
-          } else {
-            teamsText = item.textContent.trim().substring(0, 30);
-          }
-
-          var html = '';
           if (isLive) {
-            html += '<span class="match-live-dot"></span>';
+            var liveDot = document.createElement('span');
+            liveDot.className = 'match-live-dot';
+            mobileItem.appendChild(liveDot);
           }
-          html += '<span class="match-teams">' + teamsText + '</span>';
-          if (timeEl) {
-            html += '<span class="match-time">' + timeEl.textContent.trim() + '</span>';
+          var teamsSpan = document.createElement('span');
+          teamsSpan.className = 'match-teams';
+          teamsSpan.textContent = copy.teams;
+          mobileItem.appendChild(teamsSpan);
+          if (statusEl && statusEl.textContent.trim()) {
+            var statusSpan = document.createElement('span');
+            statusSpan.className = 'match-time';
+            statusSpan.textContent = statusEl.textContent.trim();
+            mobileItem.appendChild(statusSpan);
           }
-          mobileItem.innerHTML = html;
 
           // Click delega al item original
           (function (originalItem) {
@@ -667,7 +985,7 @@
               mobileItem.classList.add('is-selected');
               // Asegurar que estamos en el tab de partido
               if (!colCenter.classList.contains('is-mobile-active')) {
-                activateTab('center');
+                activateTab();
               }
             });
           })(item);
@@ -685,16 +1003,17 @@
       syncMatches();
       if (typeof MutationObserver !== 'undefined') {
         var matchObs = new MutationObserver(syncMatches);
-        matchObs.observe(originalMatchList, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+        matchObs.observe(matchList, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
       }
     }
 
     // Auto-cambiar al tab Partido cuando se selecciona un partido
     document.addEventListener('click', function (event) {
       if (!MonteCristoMobile.isMobile()) return;
+      if (openSpaceName) return;
       var matchItem = event.target.closest('.est-match-item');
       if (matchItem && !colCenter.classList.contains('is-mobile-active')) {
-        setTimeout(function () { activateTab('center'); }, 100);
+        setTimeout(activateTab, 100);
       }
     });
   }
