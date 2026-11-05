@@ -65,11 +65,14 @@
         <span class="est-bottom-nav-icon">⚽</span>
         <span class="est-bottom-nav-label">Partido</span>
       </button>
-      <button class="est-bottom-nav-btn" type="button" data-est-tab="left" aria-pressed="false">
+      <!-- Tabla y Apuestas abren espacios propios a pantalla completa (móvil):
+           la jornada, las posiciones, los mercados y Mis apuestas dejan de
+           ocupar la columna y viven en su propia vista, como la Zona. -->
+      <button class="est-bottom-nav-btn" type="button" data-est-space="table" aria-haspopup="dialog" aria-controls="est-mobile-table" aria-pressed="false">
         <span class="est-bottom-nav-icon">📊</span>
         <span class="est-bottom-nav-label">Tabla</span>
       </button>
-      <button class="est-bottom-nav-btn" type="button" data-est-tab="right" aria-pressed="false">
+      <button class="est-bottom-nav-btn" type="button" data-est-space="bets" aria-haspopup="dialog" aria-controls="est-mobile-bets" aria-pressed="false">
         <span class="est-bottom-nav-icon">🎯</span>
         <span class="est-bottom-nav-label">Apuestas</span>
         <span class="est-bottom-nav-badge" id="est-bottom-nav-bet-badge" hidden>0</span>
@@ -776,6 +779,63 @@
     <div class="est-daily-news-shell">
       <header class="est-daily-news-heading"><div><p>ESTADIO MONTECRISTO · TU CITA INFORMATIVA</p><h2 id="est-daily-news-title">MonteCristo News</h2></div><button id="est-daily-news-close" type="button">Entrar al Estadio <span aria-hidden="true">→</span></button></header>
       <div id="est-daily-news-content"></div>
+    </div>
+  </div>
+
+  <!-- =======================================================================
+       VISTAS MÓVILES PROPIAS (≤ 900 px)
+       Igual que la Zona de afición, estas dos vistas dejan de vivir dentro de
+       las columnas del Estadio y ocupan su propio espacio a pantalla completa.
+       Su contenido son los paneles reales del Estadio (mismos ids, mismos
+       listeners): mobile.js los traslada aquí mientras el viewport es móvil y
+       los devuelve a su columna cuando se vuelve a escritorio.
+       ======================================================================= -->
+
+  <!-- Vista móvil: Tabla (jornada de hoy + posiciones) -->
+  <div id="est-mobile-table" class="est-hub est-mobile-space" role="dialog" aria-modal="true" aria-labelledby="est-mobile-table-title" tabindex="-1" hidden>
+    <div class="est-hub-shell">
+      <header class="est-hub-header">
+        <div>
+          <p class="est-hub-eyebrow">ESTADIO MONTECRISTO / TABLA</p>
+          <h2 id="est-mobile-table-title">Jornada y posiciones<span>.</span></h2>
+          <p>Los partidos de hoy, el reloj de la temporada y la clasificación de la liga.</p>
+        </div>
+        <button id="est-mobile-table-close" class="est-hub-close" type="button" aria-label="Cerrar la tabla">✕ <span>Cerrar</span></button>
+      </header>
+      <div id="est-mobile-table-body" class="est-mobile-space-body"></div>
+    </div>
+  </div>
+
+  <!-- Vista móvil: Apuestas (elegir partido + mercados + Mis apuestas) -->
+  <div id="est-mobile-bets" class="est-hub est-mobile-space" role="dialog" aria-modal="true" aria-labelledby="est-mobile-bets-title" tabindex="-1" hidden>
+    <div class="est-hub-shell">
+      <header class="est-hub-header">
+        <div>
+          <p class="est-hub-eyebrow">ESTADIO MONTECRISTO / APUESTAS</p>
+          <h2 id="est-mobile-bets-title">Apuestas<span>.</span></h2>
+          <p>Elige el partido, toma una cuota y sigue tus apuestas abiertas.</p>
+        </div>
+        <button id="est-mobile-bets-close" class="est-hub-close" type="button" aria-label="Cerrar apuestas">✕ <span>Cerrar</span></button>
+      </header>
+      <nav class="est-mobile-space-nav" aria-label="Secciones de apuestas">
+        <button type="button" data-mobile-bets-view="apostar" aria-pressed="true">🎯 Apostar</button>
+        <button type="button" data-mobile-bets-view="mis" aria-pressed="false">🧾 Mis apuestas <span id="est-mobile-bets-count" class="est-mobile-space-count" hidden>0</span></button>
+      </nav>
+      <div class="est-mobile-space-body">
+        <section class="est-mobile-bets-view" data-mobile-bets-panel="apostar" aria-label="Elegir partido y apostar">
+          <section class="est-mobile-match-picker" aria-labelledby="est-mobile-match-picker-title">
+            <div class="est-mobile-match-picker-head">
+              <h3 id="est-mobile-match-picker-title">Elige el partido</h3>
+              <p id="est-mobile-match-picker-note">Toca un partido para ver sus cuotas.</p>
+            </div>
+            <div id="est-mobile-match-picker-list" class="est-mobile-match-picker-list" role="listbox" aria-label="Partidos de hoy"></div>
+          </section>
+          <div id="est-mobile-bets-slot"></div>
+        </section>
+        <section class="est-mobile-bets-view" data-mobile-bets-panel="mis" aria-label="Mis apuestas abiertas" hidden>
+          <div id="est-mobile-mybets-slot"></div>
+        </section>
+      </div>
     </div>
   </div>
 

@@ -195,16 +195,28 @@ MonteCristo es un casino social **exclusivo para escritorio** con un ancho míni
 #### 3.1 Estructura general
 | Elemento actual | Cambio móvil |
 |----------------|--------------|
-| `.estadio-shell` con 3 columnas | **Una sola columna** con **navegación por tabs** en la parte superior: `⚽ Partidos` · `📊 Tabla` · `🎯 Apuestas` · `💬 Grada`. Solo se muestra la pestaña activa. |
-| `.est-col-left` (partidos + posiciones + plantillas) | Tab «Partidos». |
-| `.est-col-center` (cancha + narración + resaltados) | Tab «En vivo» (por defecto cuando hay partido). |
-| `.est-col-right` (apuestas + boleto + publicidad) | Tab «Apuestas». |
+| `.estadio-shell` con 3 columnas | **Una sola columna** con **barra de navegación inferior**: `⚽ Partido` · `📊 Tabla` · `🎯 Apuestas` · `👤 Zona`. En el flujo queda solo la columna central; Tabla, Apuestas y Zona abren **vistas propias a pantalla completa**. |
+| `.est-col-left` (partidos + posiciones) | Deja la columna: la jornada y las posiciones viven en la **vista Tabla** (botón `📊`). |
+| `.est-col-center` (cancha + narración + resaltados) | Es el contenido de la vista «Partido». |
+| `.est-col-right` (apuestas + mis apuestas) | Deja la columna: mercados y apuestas abiertas viven en la **vista Apuestas** (botón `🎯`). |
+
+#### 3.1b Vistas propias (Tabla y Apuestas) ✅ COMPLETADA
+Igual que la Zona de afición, ninguna de las dos ocupa espacio dentro de las columnas: se abren a pantalla completa y la barra inferior sigue visible para cambiar de vista.
+
+| Vista | Contenido | Acceso |
+|-------|-----------|--------|
+| **Tabla** (`#est-mobile-table`) | Panel «Jornada de hoy» (cuentas regresivas + partidos) y panel «Posiciones». | Botón `📊 Tabla` |
+| **Apuestas** (`#est-mobile-bets`) | Sub-pestañas **Apostar** (selector del partido + mercados + boleto) y **Mis apuestas** (abiertas + historial y pagos). | Botón `🎯 Apuestas` |
+
+- Los paneles son **los mismos nodos** del Estadio (`#est-lobby-panel`, `#est-standings-panel`, `#est-bet-panel`, `#est-mybets-panel`): `mobile.js` los traslada a la vista y los devuelve a su columna al volver a escritorio, así que conservan ids, listeners y datos en vivo.
+- En **Apostar** hay un selector de partido propio (`#est-mobile-match-picker-list`), alimentado por la misma jornada; al tocar un partido se cargan sus cuotas sin salir de la vista.
+- Ambas vistas bloquean el scroll del fondo, atrapan el foco, cierran con `Esc` y con su botón **Cerrar**. Solo puede haber una abierta.
 
 #### 3.2 Barra de navegación del estadio
 | Elemento actual | Cambio móvil |
 |----------------|--------------|
 | `.estadio-nav` con tag, chips, historial, navegación | Compactar: logo + chips + hamburger con las opciones secundarias. |
-| `.est-nav-ledger` (historial de apuestas) | Ícono 🧾 directo en la barra. |
+| `.est-nav-ledger` (historial de apuestas) | Vive en la vista Apuestas › **Mis apuestas** («Historial y pagos»). |
 | Cuentas regresivas | Se mueven a un **expandible** debajo de la nav (tap para ver). |
 
 #### 3.3 Panel de partidos (`.est-match-list`)
@@ -225,8 +237,8 @@ MonteCristo es un casino social **exclusivo para escritorio** con un ancho míni
 | Elemento actual | Cambio móvil |
 |----------------|--------------|
 | Mercados en lista con cuotas lado a lado | **Un mercado por fila**, cuotas como botones grandes (min 48 px de alto). |
-| `.est-bet-slip` (boleto de apuesta) | **Bottom sheet fijo** con resumen del boleto. El usuario puede expandirlo para confirmar. |
-| `.est-mybets-panel` (apuestas abiertas) | Cards compactas con cash-out. |
+| `.est-bet-slip` (boleto de apuesta) | Dentro de la vista **Apuestas › Apostar**, debajo de los mercados; al abrirse se lleva a la vista. |
+| `.est-mybets-panel` (apuestas abiertas) | Vista **Apuestas › Mis apuestas**: cards compactas con cash-out e historial. |
 
 #### 3.6 Grada / Chat del estadio
 | Elemento actual | Cambio móvil |
@@ -349,6 +361,18 @@ Fase 6  →  Admin básico (si alcanza)               (1 día)
 
 ---
 
+## Separación estricta escritorio / móvil ✅ COMPLETADA
+
+Las dos vistas no comparten componentes de interfaz. `mobile.css` se carga con `media="(max-width: 900px)"`, así que sus reglas **no existen** en escritorio; por eso la separación se garantiza en tres capas:
+
+1. **CSS de escritorio**: `styles.css` y `estadio.css` cierran con un bloque `@media (min-width: 901px)` que apaga (`display: none !important`) todo lo que solo pertenece al teléfono: menú hamburguesa, drawer, chat de mesa, toggles de la mesa, barra inferior del Estadio, carrusel de partidos y las vistas propias de Tabla/Apuestas.
+2. **JS**: `mobile.js` registra esos nodos (`mobileOnlyNodes`) y solo les quita `hidden` cuando el viewport es móvil; al ensanchar la ventana los vuelve a ocultar, cierra lo que quedó abierto y libera el scroll del documento.
+3. **Caché**: `server.js` revalida `mobile.css` y `mobile.js` junto con la shell (`no-cache, must-revalidate`) para que un despliegue no mezcle HTML nuevo con CSS móvil viejo.
+
+Regresión cubierta en `tests/mobile-desktop-separation.test.js`.
+
+---
+
 ## Principios de diseño móvil
 
 1. **La mesa es lo primero.** En la mesa de juego, nada compite con la mesa y las acciones. El chat, los jugadores y el ranking se mueven a drawers/sheets.
@@ -404,9 +428,12 @@ Fase 6  →  Admin básico (si alcanza)               (1 día)
 │  [💬 Sheet] [👥 Sheet]   │
 │                          │
 │  Estadio:                │
-│  [Tabs: ⚽│📊│🎯│💬]     │
-│  [Contenido del tab]     │
-│  [Boleto bottom sheet]   │
+│  [Partido: cancha+relato]│
+│  [⚽│📊│🎯│👤 bottom nav]  │
+│  📊 Tabla → vista propia │
+│  🎯 Apuestas → vista     │
+│    (selector + cuotas +  │
+│     mis apuestas)        │
 │                          │
 │  Lotería:                │
 │  [Cartón full width]     │

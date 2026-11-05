@@ -3433,6 +3433,221 @@ body, .chat-list, .est-match-list, .lobby-chat-messages {
   }
 }
 
+/* ---------------------------------------------------------------------------
+   41b. ESTADIO — VISTAS PROPIAS: TABLA Y APUESTAS
+   La jornada, las posiciones, los mercados y «Mis apuestas» dejan de ocupar
+   las columnas y se abren a pantalla completa desde la barra inferior, igual
+   que la Zona de afición. La barra inferior sigue visible para cambiar de vista.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  body.est-mobile-space-open {
+    overflow: hidden;
+  }
+
+  .est-mobile-space {
+    z-index: 64 !important;
+    display: block;
+    height: 100% !important;
+    max-height: none !important;
+    padding: var(--m-pad-lg) var(--m-pad) calc(56px + var(--m-safe-bottom) + 24px) !important;
+    overscroll-behavior: contain;
+  }
+
+  .est-mobile-space[hidden] {
+    display: none !important;
+  }
+
+  .est-mobile-space .est-hub-shell {
+    max-width: none;
+  }
+
+  .est-mobile-space .est-hub-header {
+    align-items: flex-start;
+    gap: 10px;
+    padding-bottom: 14px !important;
+  }
+
+  .est-mobile-space .est-hub-header h2 {
+    margin: 6px 0 0;
+    font-size: var(--m-fs-hero) !important;
+  }
+
+  .est-mobile-space .est-hub-header > div > p:last-child {
+    margin-top: 6px;
+    font-size: var(--m-fs-small);
+    line-height: 1.45;
+  }
+
+  .est-mobile-space .est-hub-close {
+    flex: none;
+    min-height: var(--m-touch-sm);
+    padding: 8px 12px;
+    font-size: var(--m-fs-small);
+  }
+
+  .est-mobile-space .est-hub-close span {
+    display: none;
+  }
+
+  .est-mobile-space-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 16px;
+  }
+
+  .est-mobile-space-body .est-panel {
+    background: rgba(255, 255, 255, .03) !important;
+    border-color: rgba(205, 232, 219, .14) !important;
+    box-shadow: none !important;
+  }
+
+  .est-mobile-space-body .est-panel-title {
+    color: #f1faf5;
+  }
+
+  /* Sub-navegación de Apuestas: Apostar / Mis apuestas */
+  .est-mobile-space-nav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding-top: 16px;
+  }
+
+  .est-mobile-space-nav button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: var(--m-touch);
+    padding: 8px 10px;
+    border: 1px solid rgba(205, 232, 219, .14);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .03);
+    color: #c5d4cc;
+    font-size: var(--m-fs-small);
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .est-mobile-space-nav button[aria-pressed="true"] {
+    border-color: rgba(82, 224, 174, .5);
+    background: rgba(82, 224, 174, .12);
+    color: var(--mint-2);
+  }
+
+  .est-mobile-space-count {
+    min-width: 18px;
+    height: 18px;
+    display: inline-grid;
+    place-items: center;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--coral);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 900;
+  }
+
+  .est-mobile-space-count[hidden] {
+    display: none !important;
+  }
+
+  .est-mobile-bets-view {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .est-mobile-bets-view[hidden] {
+    display: none !important;
+  }
+
+  /* Selector del partido a apostar */
+  .est-mobile-match-picker {
+    padding: 12px;
+    border: 1px solid rgba(205, 232, 219, .14);
+    border-radius: var(--m-radius);
+    background: rgba(255, 255, 255, .03);
+  }
+
+  .est-mobile-match-picker-head h3 {
+    margin: 0;
+    color: #eaf5ef;
+    font-family: var(--display);
+    font-size: var(--m-fs-title);
+    letter-spacing: .02em;
+  }
+
+  .est-mobile-match-picker-head p {
+    margin: 4px 0 10px;
+    color: #a9beb2;
+    font-size: var(--m-fs-micro);
+  }
+
+  .est-mobile-match-picker-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 46vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .est-mobile-pick-match {
+    display: grid;
+    gap: 3px;
+    width: 100%;
+    min-height: var(--m-touch);
+    padding: 9px 11px;
+    text-align: left;
+    border: 1px solid rgba(205, 232, 219, .13);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .02);
+    color: #e4f0e9;
+    cursor: pointer;
+  }
+
+  .est-mobile-pick-match:active {
+    background: rgba(255, 255, 255, .06);
+  }
+
+  .est-mobile-pick-match.is-selected {
+    border-color: rgba(82, 224, 174, .55);
+    background: rgba(82, 224, 174, .1);
+    color: var(--mint-2);
+  }
+
+  .est-mobile-pick-teams {
+    font-size: var(--m-fs-small);
+    font-weight: 800;
+    line-height: 1.25;
+  }
+
+  .est-mobile-pick-meta {
+    color: #9fb4aa;
+    font-size: var(--m-fs-micro);
+  }
+
+  .est-mobile-pick-match.is-selected .est-mobile-pick-meta {
+    color: rgba(82, 224, 174, .85);
+  }
+
+  .est-mobile-pick-empty {
+    margin: 0;
+    padding: 10px 2px;
+    color: #9fb4aa;
+    font-size: var(--m-fs-small);
+  }
+
+  .est-mobile-space button:focus-visible,
+  .est-mobile-space select:focus-visible,
+  .est-mobile-space input:focus-visible {
+    outline: 3px solid #9cf2c0;
+    outline-offset: 2px;
+  }
+}
+
 /* ===========================================================================
    LOTERÍA MEXICANA — DISEÑO MÓVIL
    =========================================================================== */
