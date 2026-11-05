@@ -55,6 +55,13 @@
   </header>
 
   <main id="estadio-main" class="estadio-shell">
+    <!-- Tabs móviles: solo visibles en viewport <= 900 px -->
+    <div class="est-mobile-tabs" id="est-mobile-tabs" hidden>
+      <button class="est-mobile-tab is-active" type="button" data-est-tab="center" aria-pressed="true">⚽ Partido</button>
+      <button class="est-mobile-tab" type="button" data-est-tab="left" aria-pressed="false">📋 Jornadas</button>
+      <button class="est-mobile-tab" type="button" data-est-tab="right" aria-pressed="false">🎯 Apuestas</button>
+    </div>
+
     <!-- Columna izquierda: lobby (partidos de hoy) + tabla de posiciones -->
     <aside class="est-col-left" aria-label="Partidos, posiciones y zona de afición">
       <section class="est-panel" id="est-lobby-panel">

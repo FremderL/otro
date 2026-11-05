@@ -188,7 +188,7 @@ MonteCristo es un casino social **exclusivo para escritorio** con un ancho míni
 
 ---
 
-### Fase 3 — Estadio (`estadio.html` + `estadio.css`)
+### Fase 3 — Estadio (`estadio.html` + `estadio.css`) ✅ COMPLETADA
 
 **Objetivo:** el estadio tiene un layout de **3 columnas** (`270px + 1fr + 320px`) que es el más ancho de todo el proyecto.
 

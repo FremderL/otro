@@ -2442,8 +2442,918 @@ body, .chat-list, .est-match-list, .lobby-chat-messages {
   }
 }
 
+/* ===========================================================================
+   ESTADIO MONTECRISTO — DISEÑO MÓVIL
+   =========================================================================== */
+
 /* ---------------------------------------------------------------------------
-   31. RESPONSIVE BREAKPOINTS INTERNOS
+   31. ESTADIO — NAV SUPERIOR (compacta en móvil)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .estadio-nav {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px !important;
+    height: auto !important;
+    min-height: 50px !important;
+    padding: 8px var(--m-pad) !important;
+    position: sticky !important;
+    top: 0;
+    z-index: 60;
+    background: rgba(5, 9, 11, .95) !important;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .estadio-nav .brand {
+    font-size: 13px !important;
+    letter-spacing: .08em !important;
+    flex-shrink: 0;
+  }
+
+  .estadio-tag {
+    font-size: 10px !important;
+    padding-left: 10px !important;
+    letter-spacing: .1em !important;
+  }
+
+  .estadio-nav-right {
+    margin-left: auto !important;
+    display: flex !important;
+    align-items: center;
+    gap: 6px !important;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: 60%;
+  }
+
+  .estadio-nav-right::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Ocultar elementos menos críticos de la nav */
+  .estadio-nav-right .est-bdo-nav-link span,
+  .estadio-nav-right .est-nav-ledger-text {
+    display: none;
+  }
+
+  .estadio-nav-right .connection-badge span {
+    display: none;
+  }
+
+  .est-chips {
+    font-size: 12px !important;
+    padding: 3px 10px !important;
+  }
+
+  .estadio-nav-right .icon-btn {
+    width: var(--m-touch-sm) !important;
+    height: var(--m-touch-sm) !important;
+    font-size: 14px !important;
+  }
+
+  .estadio-nav-right .btn {
+    min-height: var(--m-touch-sm) !important;
+    padding: 0 8px !important;
+    font-size: 11px !important;
+  }
+
+  .est-nav-ledger {
+    min-height: var(--m-touch-sm) !important;
+    padding: 0 8px !important;
+  }
+
+  .est-nav-ledger-icon {
+    font-size: 16px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   32. ESTADIO — SISTEMA DE TABS PARA COLUMNAS
+   Las 3 columnas se navegan por tabs en móvil.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Barra de tabs sticky debajo de la nav */
+  .est-mobile-tabs {
+    display: flex;
+    position: sticky;
+    top: 50px;
+    z-index: 55;
+    background: rgba(5, 9, 11, .95);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+    padding: 6px 8px;
+    gap: 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .est-mobile-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .est-mobile-tab {
+    flex: 1 0 auto;
+    min-width: max-content;
+    min-height: var(--m-touch-sm);
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--m-radius);
+    background: transparent;
+    color: var(--muted);
+    font-size: var(--m-fs-small);
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+    white-space: nowrap;
+  }
+
+  .est-mobile-tab:active {
+    background: rgba(255, 255, 255, .05);
+  }
+
+  .est-mobile-tab.is-active {
+    color: var(--mint);
+    border-color: rgba(82, 224, 174, .35);
+    background: rgba(82, 224, 174, .08);
+  }
+
+  /* Shell: 1 columna, columnas ocultas por defecto */
+  .estadio-shell {
+    display: block !important;
+    grid-template-columns: none !important;
+    padding: 10px var(--m-pad) calc(var(--m-safe-bottom) + 20px) !important;
+    gap: 0 !important;
+  }
+
+  .est-col-left,
+  .est-col-center,
+  .est-col-right {
+    display: none !important;
+    position: static !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+    width: 100% !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  /* Columna activa: visible */
+  .est-col-left.is-mobile-active,
+  .est-col-center.is-mobile-active,
+  .est-col-right.is-mobile-active {
+    display: flex !important;
+  }
+
+  /* La col-left no debe ser grid de 2 columnas en móvil (override del 960px) */
+  .est-col-left.is-mobile-active {
+    display: flex !important;
+    grid-template-columns: none !important;
+  }
+
+  .est-col-right.is-mobile-active {
+    display: flex !important;
+    grid-template-columns: none !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   33. ESTADIO — SCOREBOARD Y CANCHA
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-scoreboard {
+    gap: 6px !important;
+    padding: 10px var(--m-pad) !important;
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-team {
+    font-size: 13px !important;
+    gap: 6px !important;
+  }
+
+  .est-crest {
+    width: 24px !important;
+    height: 28px !important;
+  }
+
+  .est-score b {
+    font-size: 26px !important;
+    min-width: 22px !important;
+  }
+
+  .est-clock {
+    font-size: 11px !important;
+    padding: 2px 8px !important;
+  }
+
+  /* Canvas wrap: full width, altura proporcional */
+  .est-canvas-wrap {
+    width: 100%;
+    position: relative;
+    border-radius: var(--m-radius);
+    overflow: hidden;
+  }
+
+  .est-canvas-wrap canvas {
+    width: 100% !important;
+    height: auto !important;
+    display: block;
+  }
+
+  /* Goal banner: más compacto */
+  .est-goal-banner {
+    font-size: 28px !important;
+    padding: 10px 20px !important;
+  }
+
+  /* Danmaku (comentarios bala): reducir en móvil */
+  .est-danmaku {
+    opacity: .6;
+    pointer-events: none;
+  }
+
+  .est-danmaku-comment {
+    font-size: 11px !important;
+    padding: 2px 8px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   34. ESTADIO — PREVIA Y CARTELERA
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-preshow {
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-preshow-head {
+    flex-direction: column !important;
+    gap: 10px !important;
+    padding: var(--m-pad) !important;
+  }
+
+  .est-preshow-head h2 {
+    font-size: 18px !important;
+  }
+
+  .est-preshow-countdown {
+    width: 100%;
+    justify-content: space-between;
+    padding: 8px 12px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-showcase {
+    height: auto !important;
+    min-height: 280px !important;
+    max-height: 400px !important;
+  }
+
+  .est-showcase-controls {
+    gap: 4px !important;
+    padding: 4px 6px !important;
+  }
+
+  .est-compare-control {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 18px !important;
+  }
+
+  .est-compare-footer {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 6px !important;
+  }
+
+  .est-compare-auto {
+    display: none !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   35. ESTADIO — CABINA DE COMENTARISTAS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-commentary-panel {
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-commentary-head {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    padding: var(--m-pad) !important;
+  }
+
+  .est-commentary-title {
+    font-size: 16px !important;
+  }
+
+  .est-commentary-actions {
+    width: 100%;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .est-commentary-voice-toggle {
+    min-height: var(--m-touch-sm) !important;
+    padding: 0 12px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-commentary {
+    max-height: 250px !important;
+    padding: 8px var(--m-pad) !important;
+  }
+
+  .est-cmt {
+    padding: 8px !important;
+    gap: 6px !important;
+    grid-template-columns: 70px minmax(0, 1fr) !important;
+  }
+
+  .est-cmt-speaker {
+    font-size: var(--m-fs-micro) !important;
+  }
+
+  .est-cmt-text {
+    font-size: var(--m-fs-small) !important;
+    line-height: 1.5 !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   36. ESTADIO — GRADA (reacciones y chat)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-crowd-panel {
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-crowd-head {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+    padding: var(--m-pad) !important;
+  }
+
+  .est-crowd-title {
+    font-size: 16px !important;
+  }
+
+  .est-crowd-actions {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .est-crowd-mute {
+    min-height: var(--m-touch-sm) !important;
+    width: 100%;
+    padding: 0 12px !important;
+    font-size: var(--m-fs-small) !important;
+    justify-content: center;
+  }
+
+  .est-crowd-reactions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .est-crowd-react {
+    min-width: var(--m-touch-sm) !important;
+    min-height: var(--m-touch-sm) !important;
+    font-size: 18px !important;
+  }
+
+  .est-crowd-body {
+    padding: 0 var(--m-pad) var(--m-pad) !important;
+  }
+
+  .est-crowd-feed {
+    max-height: 200px !important;
+  }
+
+  .est-crowd-form {
+    padding: 8px 0 !important;
+  }
+
+  .est-crowd-input-row {
+    gap: 6px;
+  }
+
+  .est-crowd-input-row input {
+    min-height: var(--m-touch) !important;
+    font-size: 16px !important;
+    padding: 0 12px !important;
+  }
+
+  .est-crowd-send {
+    min-width: var(--m-touch) !important;
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  /* Moderación de grada */
+  .est-stands-vote {
+    padding: var(--m-pad) !important;
+  }
+
+  .est-stands-btn {
+    min-height: var(--m-touch-sm) !important;
+    font-size: var(--m-fs-small) !important;
+    padding: 0 14px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   37. ESTADIO — PANEL DE APUESTAS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-panel {
+    border-radius: var(--m-radius) !important;
+    padding: var(--m-pad) !important;
+  }
+
+  .est-panel-title {
+    font-size: 15px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .est-cap-notice {
+    font-size: var(--m-fs-micro) !important;
+    margin-bottom: 10px !important;
+  }
+
+  /* Mercados: botones más grandes */
+  .est-markets {
+    gap: 6px !important;
+  }
+
+  .est-market-group {
+    padding: 8px 0 !important;
+  }
+
+  .est-market-group h3 {
+    font-size: var(--m-fs-small) !important;
+    margin-bottom: 6px !important;
+  }
+
+  .est-selections {
+    grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)) !important;
+    gap: 5px !important;
+  }
+
+  .est-selection {
+    min-height: var(--m-touch) !important;
+    padding: 6px 4px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-selection b {
+    font-size: 13px !important;
+  }
+
+  /* Bet slip: más táctil */
+  .est-bet-slip {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius) !important;
+    margin-top: 12px !important;
+  }
+
+  .est-slip-head {
+    font-size: var(--m-fs-body) !important;
+    padding-bottom: 8px !important;
+  }
+
+  .est-slip-odds {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-stake-label {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-stake-label input {
+    min-height: var(--m-touch) !important;
+    font-size: 16px !important;
+    width: 100%;
+    padding: 0 12px !important;
+    margin-top: 6px !important;
+  }
+
+  .est-denoms {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px !important;
+    margin-top: 8px !important;
+  }
+
+  .est-denoms button {
+    min-height: var(--m-touch-sm) !important;
+    min-width: 60px;
+    padding: 0 10px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-place {
+    width: 100%;
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-body) !important;
+    margin-top: 10px !important;
+  }
+
+  /* Mis apuestas */
+  .est-mybets {
+    max-height: 300px !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .est-bets-link {
+    min-height: var(--m-touch) !important;
+    padding: 8px 12px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   38. ESTADIO — PANEL IZQUIERDO (partidos, posiciones, hub)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-countdown {
+    font-size: var(--m-fs-small) !important;
+    padding: 8px 12px !important;
+  }
+
+  .est-countdowns {
+    gap: 6px !important;
+    padding: 8px 0 !important;
+  }
+
+  .est-countdown-row {
+    gap: 6px !important;
+    flex-wrap: wrap;
+  }
+
+  .est-countdown-label {
+    font-size: var(--m-fs-micro) !important;
+    min-width: 90px;
+  }
+
+  .est-countdown-clock {
+    font-size: 12px !important;
+  }
+
+  .est-match-list {
+    gap: 6px !important;
+  }
+
+  .est-match-item {
+    padding: 8px !important;
+    border-radius: var(--m-radius) !important;
+    grid-template-columns: 1fr auto !important;
+    gap: 4px 6px !important;
+  }
+
+  .est-match-item .est-team {
+    font-size: 12px !important;
+  }
+
+  /* Hub launch: más compacto */
+  .est-hub-launch {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-hub-launch-kicker {
+    font-size: 8px !important;
+  }
+
+  .est-hub-launch strong {
+    font-size: 16px !important;
+  }
+
+  .est-hub-launch > span:nth-child(3) {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-hub-launch-action {
+    font-size: var(--m-fs-small) !important;
+    min-height: var(--m-touch-sm);
+    display: flex;
+    align-items: center;
+  }
+
+  /* Tabla de posiciones */
+  .est-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .est-standings {
+    font-size: var(--m-fs-small) !important;
+    min-width: 280px;
+  }
+
+  .est-standings th,
+  .est-standings td {
+    padding: 6px 8px !important;
+  }
+
+  /* Daily news launch */
+  .est-daily-news-launch {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-daily-news-launch h2 {
+    font-size: 16px !important;
+  }
+
+  .est-daily-news-launch button {
+    min-height: var(--m-touch) !important;
+    width: 100%;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  /* Roster panel */
+  .est-roster-panel {
+    padding: var(--m-pad) !important;
+  }
+
+  .est-roster-panel select {
+    width: 100%;
+    min-height: var(--m-touch) !important;
+    font-size: 14px !important;
+    margin: 8px 0 !important;
+  }
+
+  .est-roster-list {
+    max-height: 300px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   39. ESTADIO — HIGHLIGHTS Y TEXT FALLBACK
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-highlights {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-highlights-head {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .est-highlights-head button {
+    width: 100%;
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  .est-highlights h3 {
+    font-size: var(--m-fs-title) !important;
+  }
+
+  .est-text-fallback {
+    padding: var(--m-pad) !important;
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   40. ESTADIO — MODALES (ledger, daily news, hub, ads)
+   Ya se benefician de los estilos genéricos de la sección 19 (modales),
+   pero agregamos ajustes específicos.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Ledger (historial de apuestas) */
+  .est-ledger {
+    max-height: 85vh !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .est-ledger-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .est-ledger-row {
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    gap: 10px !important;
+    padding: 10px !important;
+  }
+
+  .est-ledger-legs li {
+    font-size: var(--m-fs-small) !important;
+    gap: 8px !important;
+  }
+
+  /* Hub (zona de afición) */
+  .est-hub {
+    padding: var(--m-pad-lg) var(--m-pad) calc(var(--m-safe-bottom) + 20px) !important;
+    max-height: 90vh !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .est-hub-header {
+    padding-bottom: 14px !important;
+  }
+
+  .est-hub-layout {
+    display: block !important;
+    padding-top: 14px !important;
+  }
+
+  .est-hub-nav {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .est-hub-nav > p {
+    display: none !important;
+  }
+
+  .est-hub-nav button {
+    padding: 8px !important;
+    min-height: var(--m-touch) !important;
+  }
+
+  .est-hub-nav-icon {
+    width: 26px !important;
+    height: 26px !important;
+    flex-basis: 26px !important;
+  }
+
+  .est-hub-nav-arrow {
+    display: none !important;
+  }
+
+  /* Fantasy */
+  .est-fantasy-hero {
+    padding: 16px !important;
+  }
+
+  .est-fantasy-formation {
+    min-width: 70px !important;
+    padding: 8px !important;
+  }
+
+  .est-fantasy-formation strong {
+    font-size: 18px !important;
+  }
+
+  .est-fantasy-side {
+    grid-template-columns: 1fr !important;
+  }
+
+  .est-fantasy-players {
+    grid-template-columns: repeat(2, 1fr) !important;
+    padding: 10px !important;
+  }
+
+  /* Daily news modal */
+  .est-daily-news-modal {
+    padding: 10px !important;
+    max-height: 85vh !important;
+  }
+
+  .est-daily-news-heading {
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .est-daily-news-heading button {
+    width: 100% !important;
+    min-height: var(--m-touch) !important;
+  }
+
+  .est-news-controls {
+    gap: 6px !important;
+  }
+
+  .est-news-controls button {
+    flex: 1 1 42%;
+    min-height: var(--m-touch-sm) !important;
+    padding: 8px 6px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  /* Studio de publicidad */
+  .est-ads {
+    padding: var(--m-pad) !important;
+  }
+
+  .est-ads h2 {
+    font-size: 16px !important;
+  }
+
+  .est-studio-preview-box {
+    margin: 8px 0 !important;
+  }
+
+  .est-studio-preview-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 6px !important;
+  }
+
+  .est-studio-mode-pills {
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+  }
+
+  .est-mode-pill {
+    min-height: var(--m-touch-sm) !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-preset-thumbnails {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 4px !important;
+  }
+
+  .est-upload-dropzone {
+    padding: var(--m-pad) !important;
+    min-height: 100px !important;
+  }
+
+  .est-promo-form {
+    gap: 12px !important;
+  }
+
+  .est-studio-text-fields {
+    gap: 10px !important;
+  }
+
+  .est-studio-grid-2,
+  .est-studio-grid-3 {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+
+  .est-promo-compose summary {
+    min-height: var(--m-touch) !important;
+    padding: 8px 12px !important;
+    font-size: var(--m-fs-body) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   41. ESTADIO — ENTRADA ANIMADA (compacta en móvil)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-enter-title {
+    padding: 0 var(--m-pad-lg) !important;
+  }
+
+  .est-enter-name {
+    font-size: 28px !important;
+  }
+
+  .est-enter-sub {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-enter-skip {
+    min-height: var(--m-touch) !important;
+    padding: 8px 24px !important;
+    font-size: var(--m-fs-body) !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   42. RESPONSIVE BREAKPOINTS INTERNOS
    Ajustes adicionales para celulares muy pequeños (< 380px) y tablets (640–900)
    --------------------------------------------------------------------------- */
 

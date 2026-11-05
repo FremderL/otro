@@ -515,13 +515,88 @@
   }
 
   /* -------------------------------------------------------------------------
-     9. INICIALIZACIÓN
+     9. ESTADIO — SISTEMA DE TABS PARA COLUMNAS
+     Muestra una columna a la vez en móvil según el tab seleccionado.
+     ------------------------------------------------------------------------- */
+  function initEstadioTabs() {
+    var tabsBar = document.getElementById('est-mobile-tabs');
+    if (!tabsBar) return;
+
+    var tabs = tabsBar.querySelectorAll('.est-mobile-tab');
+    var colLeft = document.querySelector('.est-col-left');
+    var colCenter = document.querySelector('.est-col-center');
+    var colRight = document.querySelector('.est-col-right');
+
+    if (!colLeft || !colCenter || !colRight) return;
+
+    // Mostrar tabs
+    tabsBar.removeAttribute('hidden');
+
+    // Marcar columna por defecto (center = Partido)
+    function activateTab(tabName) {
+      // Quitar activas
+      for (var i = 0; i < tabs.length; i++) {
+        tabs[i].classList.remove('is-active');
+        tabs[i].setAttribute('aria-pressed', 'false');
+      }
+      colLeft.classList.remove('is-mobile-active');
+      colCenter.classList.remove('is-mobile-active');
+      colRight.classList.remove('is-mobile-active');
+
+      // Activar la columna correspondiente
+      if (tabName === 'left') {
+        colLeft.classList.add('is-mobile-active');
+      } else if (tabName === 'right') {
+        colRight.classList.add('is-mobile-active');
+      } else {
+        colCenter.classList.add('is-mobile-active');
+      }
+
+      // Activar el tab
+      for (var j = 0; j < tabs.length; j++) {
+        if (tabs[j].getAttribute('data-est-tab') === tabName) {
+          tabs[j].classList.add('is-active');
+          tabs[j].setAttribute('aria-pressed', 'true');
+        }
+      }
+
+      // Scroll al inicio del contenido
+      window.scrollTo({ top: tabsBar.offsetTop + tabsBar.offsetHeight, behavior: 'smooth' });
+    }
+
+    // Inicializar con la columna central activa
+    activateTab('center');
+
+    // Listeners
+    for (var k = 0; k < tabs.length; k++) {
+      (function (tab) {
+        tab.addEventListener('click', function () {
+          var tabName = tab.getAttribute('data-est-tab');
+          activateTab(tabName);
+        });
+      })(tabs[k]);
+    }
+
+    // Auto-cambiar al tab "Partido" cuando se selecciona un partido
+    // Observamos el click en .est-match-item para volver al tab de partido
+    document.addEventListener('click', function (event) {
+      if (!MonteCristoMobile.isMobile()) return;
+      var matchItem = event.target.closest('.est-match-item');
+      if (matchItem && !colCenter.classList.contains('is-mobile-active')) {
+        setTimeout(function () { activateTab('center'); }, 100);
+      }
+    });
+  }
+
+  /* -------------------------------------------------------------------------
+     10. INICIALIZACIÓN
      ------------------------------------------------------------------------- */
   function init() {
     initAllSheetDrags();
     applyMobileClass();
     initNavDrawer();
     initRoomMobile();
+    initEstadioTabs();
   }
 
   if (document.readyState === 'loading') {
