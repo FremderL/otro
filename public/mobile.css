@@ -3758,8 +3758,392 @@ body, .chat-list, .est-match-list, .lobby-chat-messages {
   }
 }
 
+/* ===========================================================================
+   FASE 5 — COMPONENTES TRANSVERSALES
+   Tipografía, gestos, toasts, focus, PWA y accesibilidad móvil.
+   =========================================================================== */
+
 /* ---------------------------------------------------------------------------
-   48. RESPONSIVE BREAKPOINTS INTERNOS
+   48. TIPOGRAFÍA REFINADA
+   Escalas consistentes para mejor legibilidad en móvil.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Títulos principales del sistema */
+  .modal-card h2,
+  .modal-card h3 {
+    font-size: var(--m-fs-title) !important;
+    line-height: 1.2 !important;
+  }
+
+  /* Texto base: mejor legibilidad en pantalla chica */
+  .modal-card p,
+  .modal-card li,
+  .modal-card span,
+  .modal-card small {
+    line-height: 1.55 !important;
+  }
+
+  /* Kicker / eyebrows: más legibles */
+  .kicker {
+    font-size: 8px !important;
+    letter-spacing: .12em !important;
+  }
+
+  /* Badges y pills: más compactos pero legibles */
+  .badge,
+  .est-badge {
+    font-size: 8px !important;
+    padding: 3px 7px !important;
+    min-height: 20px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Buttons dentro de modales: mejor espaciado */
+  .modal-card .btn {
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-body) !important;
+    padding: 8px 16px !important;
+  }
+
+  /* Inputs dentro de modales */
+  .modal-card input,
+  .modal-card select,
+  .modal-card textarea {
+    font-size: 16px !important;
+    min-height: var(--m-touch) !important;
+  }
+
+  /* Textareas: altura mínima cómoda */
+  .modal-card textarea {
+    min-height: 100px !important;
+    padding: 10px 12px !important;
+    line-height: 1.5 !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   49. SCROLL Y OVERFLOW
+   Comportamiento nativo de iOS/Android.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Prevenir overscroll bounce en el body (iOS) */
+  html.is-mobile {
+    overscroll-behavior-y: none;
+  }
+
+  /* Todos los contenedores con scroll: momentum nativo */
+  .chat-list,
+  .lobby-chat-messages,
+  .est-match-list,
+  .est-crowd-feed,
+  .est-commentary,
+  .est-mybets,
+  .est-roster-list,
+  .est-standings,
+  .loteria-players-list,
+  .loteria-called-list,
+  .mobile-chat-messages,
+  .players-list,
+  .mobile-nav-drawer,
+  .mobile-sheet {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Scrollbars ocultos en elementos horizontales */
+  .room-filters::-webkit-scrollbar,
+  .est-mobile-tabs::-webkit-scrollbar,
+  .estadio-nav-right::-webkit-scrollbar,
+  .loteria-called-list::-webkit-scrollbar,
+  .mobile-chat-reactions::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   50. FOCUS STATES MEJORADOS PARA TÁCTIL
+   En móvil, el focus visible no debería ser tan prominente como en escritorio.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* En móvil, quitar outline por defecto y usar :focus-visible */
+  *:focus {
+    outline: none;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--mint);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Botones con estado :active más pronunciado (feedback táctil) */
+  button:active,
+  .btn:active,
+  .game-btn:active,
+  .mobile-tab:active,
+  .est-mobile-tab:active,
+  .est-selection:active,
+  .quick-choice:active {
+    transform: scale(.97);
+    opacity: .85;
+    transition: transform .08s, opacity .08s;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   51. TOASTS MEJORADOS
+   Centrados arriba, con swipe-to-dismiss y mejor animación.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .toast-stack {
+    right: 50% !important;
+    transform: translateX(50%);
+    width: calc(100vw - 24px) !important;
+    max-width: 420px;
+    top: calc(var(--m-safe-top) + 10px) !important;
+    gap: 6px !important;
+  }
+
+  .toast {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    min-height: 54px !important;
+    padding: 8px 10px !important;
+    border-radius: var(--m-radius) !important;
+    grid-template-columns: 30px 1fr 16px !important;
+    gap: 8px !important;
+    cursor: grab;
+    touch-action: pan-y;
+  }
+
+  .toast:active {
+    cursor: grabbing;
+  }
+
+  .toast-icon {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 13px !important;
+  }
+
+  .toast-copy b {
+    font-size: 10px !important;
+    margin-bottom: 1px !important;
+  }
+
+  .toast-copy span {
+    font-size: 9px !important;
+    line-height: 1.35 !important;
+  }
+
+  .toast-close {
+    min-width: 28px;
+    min-height: 28px;
+    display: grid;
+    place-items: center;
+    font-size: 14px;
+    border-radius: 6px;
+  }
+
+  .toast-close:active {
+    background: rgba(255, 255, 255, .08);
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   52. INVITE INBOX MEJORADO
+   Las invitaciones flotantes mejor adaptadas al móvil.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .invite-inbox {
+    top: calc(var(--m-safe-top) + 56px) !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: 100% !important;
+    z-index: 750;
+  }
+
+  .invite-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 10px !important;
+    border-radius: var(--m-radius) !important;
+    grid-template-columns: 34px 1fr auto !important;
+    gap: 8px !important;
+    cursor: grab;
+    touch-action: pan-y;
+  }
+
+  .invite-card:active {
+    cursor: grabbing;
+  }
+
+  .invite-card b {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .invite-card p {
+    font-size: 10px !important;
+    line-height: 1.4 !important;
+  }
+
+  .invite-card .btn {
+    min-height: var(--m-touch-sm) !important;
+    font-size: 10px !important;
+    padding: 0 10px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   53. PWA-LIKE META STYLES
+   Comportamiento de app nativa para móviles.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Status bar color consistente con el fondo */
+  html {
+    background-color: var(--bg, #05090b);
+  }
+
+  /* Prevenir text-size-adjust en orientación landscape */
+  html.is-mobile body {
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* Prevenir callout de información en iOS (long-press en links) */
+  html.is-mobile a,
+  html.is-mobile button,
+  html.is-mobile img {
+    -webkit-touch-callout: none;
+  }
+
+  /* Restaurar callout en contenido de texto normal */
+  html.is-mobile p,
+  html.is-mobile li,
+  html.is-mobile span,
+  html.is-mobile .chat-msg,
+  html.is-mobile .est-cmt-text,
+  html.is-mobile .loteria-cell-name {
+    -webkit-touch-callout: default;
+  }
+
+  /* Prevenir selección de texto en elementos interactivos */
+  html.is-mobile .game-btn,
+  html.is-mobile .btn,
+  html.is-mobile .chip-button,
+  html.is-mobile .seat-head,
+  html.is-mobile .mobile-tab,
+  html.is-mobile .est-mobile-tab,
+  html.is-mobile .est-selection,
+  html.is-mobile .quick-choice,
+  html.is-mobile .room-filters button,
+  html.is-mobile .loteria-cell,
+  html.is-mobile .est-crowd-react {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   54. LONG-PRESS FEEDBACK
+   Indicador visual de que un long-press está en progreso.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .table-seat,
+  .player-row,
+  .quick-bet-seat {
+    position: relative;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Animación sutil de "pulsación larga" */
+  @keyframes longPressPulse {
+    0% { box-shadow: 0 0 0 0 rgba(82, 224, 174, .4); }
+    70% { box-shadow: 0 0 0 8px rgba(82, 224, 174, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(82, 224, 174, 0); }
+  }
+
+  /* El feedback se activa vía JS con clase temporal */
+  .is-long-pressing .seat-head,
+  .is-long-pressing .player-avatar {
+    animation: longPressPulse .6s ease;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   55. CONNECTION OVERLAY (pantalla de carga)
+   Mejor adaptado al móvil.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .connection-overlay {
+    padding: var(--m-pad-lg) !important;
+  }
+
+  .loader-brand {
+    max-width: 280px !important;
+    padding: var(--m-pad-lg) !important;
+  }
+
+  .loader-wordmark b {
+    font-size: 15px !important;
+  }
+
+  .loader-wordmark small {
+    font-size: 8px !important;
+  }
+
+  .loader-helper {
+    font-size: 10px !important;
+    text-align: center;
+    margin-top: 14px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   56. ACCESSIBILITY: REDUCED MOTION
+   Refinar las animaciones cuando el usuario prefiere movimiento reducido.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .invite-card,
+  .mobile-drawer,
+  .mobile-sheet,
+  .mobile-drawer-backdrop,
+  .mobile-sheet-backdrop,
+  .mobile-nav-drawer,
+  .mobile-nav-backdrop,
+  .mobile-chat-sheet,
+  .mobile-chat-backdrop,
+  .mobile-room-backdrop,
+  .lobby-chat-panel {
+    animation: none !important;
+    transition-duration: .01ms !important;
+  }
+
+  .room-app .sidebar {
+    transition-duration: .01ms !important;
+  }
+
+  .hero-bg {
+    animation: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   57. RESPONSIVE BREAKPOINTS INTERNOS
    Ajustes adicionales para celulares muy pequeños (< 380px) y tablets (640–900)
    --------------------------------------------------------------------------- */
 

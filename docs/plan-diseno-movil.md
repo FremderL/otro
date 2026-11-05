@@ -272,7 +272,7 @@ MonteCristo es un casino social **exclusivo para escritorio** con un ancho míni
 
 ---
 
-### Fase 5 — Componentes transversales
+### Fase 5 — Componentes transversales ✅ COMPLETADA
 
 #### 5.1 Modales → Bottom Sheets
 Todos los modales del sistema se convierten en bottom sheets en móvil:

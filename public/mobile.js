@@ -589,7 +589,174 @@
   }
 
   /* -------------------------------------------------------------------------
-     10. INICIALIZACIÓN
+     10. GESTO SWIPE-TO-DISMISS PARA TOASTS
+     Los toasts del sistema se pueden descartar deslizando horizontalmente.
+     ------------------------------------------------------------------------- */
+  function initToastSwipeDismiss() {
+    var stack = document.getElementById('toast-stack');
+    if (!stack) return;
+
+    function attachSwipe(toast) {
+      if (toast._swipeAttached) return;
+      toast._swipeAttached = true;
+
+      var startX = 0;
+      var currentX = 0;
+      var dragging = false;
+      var threshold = 80;
+
+      toast.addEventListener('touchstart', function (e) {
+        var touch = e.touches ? e.touches[0] : e;
+        startX = touch.clientX;
+        dragging = true;
+        toast.style.transition = 'none';
+      }, { passive: true });
+
+      toast.addEventListener('touchmove', function (e) {
+        if (!dragging) return;
+        var touch = e.touches ? e.touches[0] : e;
+        currentX = touch.clientX - startX;
+        toast.style.transform = 'translateX(' + currentX + 'px)';
+        toast.style.opacity = String(Math.max(0, 1 - Math.abs(currentX) / 200));
+      }, { passive: true });
+
+      toast.addEventListener('touchend', function () {
+        if (!dragging) return;
+        dragging = false;
+        toast.style.transition = '';
+        if (Math.abs(currentX) > threshold) {
+          // Dismiss
+          toast.style.transform = 'translateX(' + (currentX > 0 ? 400 : -400) + 'px)';
+          toast.style.opacity = '0';
+          setTimeout(function () {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+          }, 250);
+        } else {
+          toast.style.transform = '';
+          toast.style.opacity = '';
+        }
+        currentX = 0;
+      });
+    }
+
+    // Observar toasts nuevos
+    if (typeof MutationObserver !== 'undefined') {
+      var observer = new MutationObserver(function () {
+        var toasts = stack.querySelectorAll('.toast');
+        for (var i = 0; i < toasts.length; i++) {
+          attachSwipe(toasts[i]);
+        }
+      });
+      observer.observe(stack, { childList: true, subtree: true });
+    }
+
+    // Adjuntar a toasts existentes
+    var existing = stack.querySelectorAll('.toast');
+    for (var i = 0; i < existing.length; i++) {
+      attachSwipe(existing[i]);
+    }
+  }
+
+  /* -------------------------------------------------------------------------
+     11. LONG-PRESS EN ASIENTOS PARA VER FICHA DEL JUGADOR
+     En escritorio se abre con click; en móvil con long-press (600ms).
+     ------------------------------------------------------------------------- */
+  function initSeatLongPress() {
+    var pressTimer = null;
+    var longPressDuration = 600;
+    var moved = false;
+
+    document.addEventListener('touchstart', function (e) {
+      var seat = e.target.closest('.table-seat, .player-row, .quick-bet-seat');
+      if (!seat) return;
+      moved = false;
+      pressTimer = setTimeout(function () {
+        if (!moved) {
+          // Simular click en el avatar o el seat-head para abrir la ficha
+          var clickable = seat.querySelector('.seat-head, .player-avatar, .seat-avatar');
+          if (clickable) clickable.click();
+          else seat.click();
+        }
+      }, longPressDuration);
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function () {
+      moved = true;
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchend', function () {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    });
+
+    document.addEventListener('touchcancel', function () {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    });
+  }
+
+  /* -------------------------------------------------------------------------
+     12. INVITE INBOX — SWIPE TO DISMISS
+     Las invitaciones flotantes se pueden descartar con swipe lateral.
+     ------------------------------------------------------------------------- */
+  function initInviteSwipeDismiss() {
+    var inbox = document.getElementById('invite-inbox');
+    if (!inbox) return;
+
+    if (typeof MutationObserver !== 'undefined') {
+      var observer = new MutationObserver(function () {
+        var cards = inbox.querySelectorAll('.invite-card, .invite-toast');
+        for (var i = 0; i < cards.length; i++) {
+          if (cards[i]._swipeAttached) continue;
+          cards[i]._swipeAttached = true;
+          (function (card) {
+            var startX = 0;
+            var currentX = 0;
+            var dragging = false;
+            card.addEventListener('touchstart', function (e) {
+              startX = e.touches[0].clientX;
+              dragging = true;
+              card.style.transition = 'none';
+            }, { passive: true });
+            card.addEventListener('touchmove', function (e) {
+              if (!dragging) return;
+              currentX = e.touches[0].clientX - startX;
+              card.style.transform = 'translateX(' + currentX + 'px)';
+              card.style.opacity = String(Math.max(0, 1 - Math.abs(currentX) / 200));
+            }, { passive: true });
+            card.addEventListener('touchend', function () {
+              if (!dragging) return;
+              dragging = false;
+              card.style.transition = '';
+              if (Math.abs(currentX) > 80) {
+                card.style.transform = 'translateX(' + (currentX > 0 ? 400 : -400) + 'px)';
+                card.style.opacity = '0';
+                setTimeout(function () {
+                  if (card.parentNode) card.parentNode.removeChild(card);
+                }, 250);
+              } else {
+                card.style.transform = '';
+                card.style.opacity = '';
+              }
+              currentX = 0;
+            });
+          })(cards[i]);
+        }
+      });
+      observer.observe(inbox, { childList: true, subtree: true });
+    }
+  }
+
+  /* -------------------------------------------------------------------------
+     13. INICIALIZACIÓN
      ------------------------------------------------------------------------- */
   function init() {
     initAllSheetDrags();
@@ -597,6 +764,9 @@
     initNavDrawer();
     initRoomMobile();
     initEstadioTabs();
+    initToastSwipeDismiss();
+    initSeatLongPress();
+    initInviteSwipeDismiss();
   }
 
   if (document.readyState === 'loading') {
