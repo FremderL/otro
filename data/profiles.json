@@ -1,6 +1,6 @@
 {
   "seasons": {
-    "current": "2026-10",
+    "current": "2026-11",
     "history": [
       {
         "type": "closed",
@@ -11,12 +11,37 @@
         "bannerAwarded": false,
         "closedAt": 1791664153125,
         "timeZone": "America/Mexico_City"
+      },
+      {
+        "type": "closed",
+        "month": "2026-10",
+        "podium": [
+          {
+            "profileId": "90a8968c-bd35-4acc-8957-c5f00665a8b4",
+            "name": "kjkjkjkj",
+            "avatar": "fox",
+            "chips": 800,
+            "medals": 1,
+            "championBanner": true
+          }
+        ],
+        "players": 1,
+        "winnerId": "90a8968c-bd35-4acc-8957-c5f00665a8b4",
+        "bannerAwarded": true,
+        "closedAt": 1793889841101,
+        "timeZone": "America/Mexico_City"
       }
     ],
     "clubTreasury": {
-      "seasonKey": "2026-10",
+      "seasonKey": "2026-11",
       "accounts": {},
-      "history": []
+      "history": [
+        {
+          "seasonKey": "2026-10",
+          "closedAt": 1793889841101,
+          "top": []
+        }
+      ]
     }
   },
   "profiles": [
@@ -24,7 +49,7 @@
       "id": "90a8968c-bd35-4acc-8957-c5f00665a8b4",
       "name": "kjkjkjkj",
       "avatar": "fox",
-      "chips": 800,
+      "chips": 1000,
       "stats": {
         "roundsPlayed": 2,
         "wins": 0,
@@ -40,9 +65,14 @@
       "gamesPlayed": [
         "poker"
       ],
+      "preferences": {
+        "autoBots": true,
+        "botsStay": false,
+        "tableInvites": true
+      },
       "passport": {
         "currentSeason": {
-          "key": "2026-10",
+          "key": "2026-11",
           "points": 0,
           "games": [],
           "processedRoundIds": []
@@ -68,6 +98,9 @@
         "counts": {}
       },
       "lobbyTournamentPayouts": [],
+      "appliedChipOperations": [],
+      "footballPendingPayments": [],
+      "footballPendingStakes": [],
       "gameStats": {
         "poker": {
           "rounds": 2,
@@ -77,17 +110,13 @@
       },
       "balanceHistory": [
         {
-          "t": 1791928821547,
-          "chips": 800
-        },
-        {
-          "t": 1791928855150,
-          "chips": 800
+          "t": 1793889841101,
+          "chips": 1000
         }
       ],
       "achievements": [],
-      "championBanner": false,
-      "medals": 0,
+      "championBanner": true,
+      "medals": 1,
       "challenges": {},
       "rotatingChallenges": {
         "daily": {
@@ -129,13 +158,24 @@
           "amount": 0,
           "reason": "Empate en poker",
           "time": 1791928855150
+        },
+        {
+          "amount": 0,
+          "reason": "Nueva temporada 2026-11: saldo reiniciado a 1000",
+          "time": 1793889841101
         }
       ],
       "promotions": [],
+      "footballFantasy": null,
+      "footballFanClub": null,
       "flags": {
         "tosVersion": "2026-09-28",
         "tosAcceptedAt": 1791928704617
       },
+      "guestImports": [],
+      "mergedInto": null,
+      "mergedAt": null,
+      "mergeOperationId": null,
       "username": "fhsdfhskhfks",
       "passwordHash": "d43d464cd88d9c88e49f9f8770e10476:471a6e1b4848b95b9c60efdbbe71c3cd025706e5685838f80665c4c5ee258f23be6ac63a59f3e35c1fc0d421ccf1f461417fa24f86cd90497a6f1441f31569bf",
       "role": "user",
@@ -157,7 +197,8 @@
         "mfaEnrolledAt": null
       },
       "createdAt": 1791928704616,
-      "updatedAt": 1791928916401
+      "updatedAt": 1793889841101
     }
-  ]
+  ],
+  "importJournal": null
 }
