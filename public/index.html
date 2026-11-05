@@ -2,13 +2,19 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover" />
+  <meta name="theme-color" content="#060b0d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#060b0d" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="description" content="MonteCristo: póker, blackjack, ruleta y minijuegos en vivo con amigos. Fichas 100% virtuales, perfiles, retos y logros." />
   <title>MonteCristo — Casino social</title>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/card-album.css" />
+  <link rel="stylesheet" href="/mobile.css" media="(max-width: 900px)" />
   <script src="/gate.js"></script>
+  <script src="/mobile.js" defer></script>
 </head>
 <body>
   <!-- Puerta de escritorio: pantallas menores a 1024 px no son compatibles -->
@@ -36,6 +42,7 @@
 
   <section id="landing" class="landing">
     <nav class="landing-nav shell">
+      <button class="mobile-nav-toggle" id="mobile-nav-toggle" type="button" aria-label="Abrir menú" aria-expanded="false" aria-controls="mobile-nav-drawer">☰</button>
       <a class="brand" href="/" aria-label="MonteCristo, inicio">
         <span class="brand-mark"><span>♠</span></span>
         <span class="brand-copy"><b>MONTECRISTO</b><em>SOCIAL CASINO</em></span>
@@ -309,6 +316,38 @@
         <span class="footer-status"><i></i> SERVIDORES OPERATIVOS</span>
       </div>
     </footer>
+
+    <!-- Drawer de navegación móvil: solo visible en viewport <= 900 px -->
+    <div class="mobile-nav-backdrop" id="mobile-nav-backdrop" data-drawer-backdrop="mobile-nav-drawer"></div>
+    <nav class="mobile-nav-drawer" id="mobile-nav-drawer" aria-label="Menú principal" hidden>
+      <div class="mobile-nav-drawer-header">
+        <a class="brand" href="/" aria-label="MonteCristo, inicio">
+          <span class="brand-mark"><span>♠</span></span>
+          <span class="brand-copy"><b>MONTECRISTO</b><em>SOCIAL CASINO</em></span>
+        </a>
+        <button class="mobile-nav-drawer-close" id="mobile-nav-close" type="button" aria-label="Cerrar menú">×</button>
+      </div>
+      <div class="mobile-nav-links">
+        <a href="#games" data-mobile-nav-link><span class="nav-icon">♠</span> Juegos</a>
+        <a href="#live-lobby" data-mobile-nav-link><span class="nav-icon">⌁</span> Salas en vivo</a>
+        <a href="/loteria" data-mobile-nav-link><span class="nav-icon">🎴</span> Lotería</a>
+        <a href="/estadio?from=casino" id="mobile-nav-estadio" data-mobile-nav-link hidden><span class="nav-icon">🏟</span> Estadio</a>
+        <a href="#how" data-mobile-nav-link><span class="nav-icon">?</span> Cómo jugar</a>
+      </div>
+      <div class="mobile-nav-divider"></div>
+      <div class="mobile-nav-links">
+        <button type="button" id="mobile-community-btn"><span class="nav-icon">♧</span> Comunidad</button>
+        <button type="button" id="mobile-notifications-btn"><span class="nav-icon">🔔</span> Notificaciones</button>
+        <button type="button" id="mobile-report-btn"><span class="nav-icon">⚑</span> Reportar</button>
+      </div>
+      <div class="mobile-nav-actions">
+        <div class="mobile-nav-connection" id="mobile-nav-connection">
+          <i></i><span>Conectado</span>
+        </div>
+        <button type="button" id="mobile-account-btn" class="primary"><span>🔑</span> Iniciar sesión</button>
+        <button type="button" data-open-mode="join" data-mobile-nav-close><span>⌁</span> Entrar con código</button>
+      </div>
+    </nav>
   </section>
 
   <div id="join-modal" class="modal setup-modal" aria-hidden="true">
@@ -711,6 +750,40 @@
     </aside>
 
     <main class="game-main">
+      <!-- Botón hamburguesa para abrir la sidebar (solo móvil) -->
+      <button class="mobile-room-toggle" id="mobile-room-toggle" type="button" aria-label="Abrir jugadores y chat" aria-expanded="false" hidden>
+        <span>☰</span>
+        <span class="toggle-badge" id="mobile-room-badge" hidden>0</span>
+      </button>
+      <!-- Botón flotante para abrir el chat (solo móvil) -->
+      <button class="mobile-chat-toggle" id="mobile-chat-toggle" type="button" aria-label="Abrir chat de la mesa" hidden>
+        💬
+        <span class="mobile-chat-unread" id="mobile-chat-unread" hidden>0</span>
+      </button>
+      <!-- Backdrop y bottom sheet del chat (solo móvil) -->
+      <div class="mobile-chat-backdrop" id="mobile-chat-backdrop" hidden></div>
+      <div class="mobile-chat-sheet" id="mobile-chat-sheet" hidden>
+        <div class="mobile-chat-sheet-header">
+          <div><span>CHAT DE MESA</span><h3 id="mobile-chat-room-name">Mesa</h3></div>
+          <button class="mobile-chat-close" id="mobile-chat-close" type="button" aria-label="Cerrar chat">×</button>
+        </div>
+        <div class="mobile-chat-messages" id="mobile-chat-messages" role="log" aria-live="polite"></div>
+        <div class="mobile-chat-reactions" aria-label="Reacciones rápidas">
+          <button type="button" data-mobile-reaction="🔥">🔥</button>
+          <button type="button" data-mobile-reaction="👏">👏</button>
+          <button type="button" data-mobile-reaction="😂">😂</button>
+          <button type="button" data-mobile-reaction="🍀">🍀</button>
+          <button type="button" data-mobile-reaction="😱">😱</button>
+          <button type="button" data-mobile-reaction="💎">💎</button>
+        </div>
+        <form class="mobile-chat-form" id="mobile-chat-form">
+          <input id="mobile-chat-input" maxlength="180" placeholder="Escribe un mensaje…" aria-label="Mensaje a la mesa" autocomplete="off" />
+          <button type="submit" aria-label="Enviar">↑</button>
+        </form>
+      </div>
+      <!-- Backdrop para el drawer de la sidebar -->
+      <div class="mobile-room-backdrop" id="mobile-room-backdrop" hidden></div>
+
       <header class="game-header">
         <div class="room-identity">
           <div class="game-breadcrumb"><span id="game-name">TEXAS HOLD’EM</span><i></i><b id="phase-label">SALA DE ESPERA</b></div>

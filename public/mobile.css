@@ -1,0 +1,4266 @@
+/* =============================================================================
+   MonteCristo — Diseño Móvil
+   Hoja de estilos exclusiva para móviles y pantallas pequeñas.
+   Se carga con <link media="(max-width: 900px)"> para no afectar escritorio.
+   ============================================================================= */
+
+/* ---------------------------------------------------------------------------
+   0. BREAKPOINTS Y VARIABLES MÓVILES
+   --------------------------------------------------------------------------- */
+:root {
+  /* Breakpoints de referencia (no son CSS env() pero sirven como documentación) */
+  /* --bp-mobile:  640px;  Celulares pequeños y medianos */
+  /* --bp-tablet:  900px;  Tablets y phablets */
+  /* --bp-desktop: 1024px; Escritorio (no aplica aquí) */
+
+  /* Overrides móviles para spacing y tipografía */
+  --m-gap: 10px;
+  --m-pad: 14px;
+  --m-pad-lg: 18px;
+  --m-radius: 12px;
+  --m-radius-lg: 16px;
+
+  /* Tipografía móvil (ligeramente más grande para legibilidad en pantalla chica) */
+  --m-fs-hero: 28px;
+  --m-fs-title: 16px;
+  --m-fs-subtitle: 14px;
+  --m-fs-body: 13px;
+  --m-fs-small: 11px;
+  --m-fs-micro: 10px;
+
+  /* Objetivos táctiles: mínimo 44x44 px (estándar Apple HIG / Material Design) */
+  --m-touch: 44px;
+  --m-touch-sm: 38px;
+
+  /* Safe area insets para iPhone con notch/Dynamic Island */
+  --m-safe-top: env(safe-area-inset-top, 0px);
+  --m-safe-right: env(safe-area-inset-right, 0px);
+  --m-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --m-safe-left: env(safe-area-inset-left, 0px);
+
+  /* Z-index para capas móviles */
+  --m-z-drawer: 900;
+  --m-z-sheet: 910;
+  --m-z-toast: 920;
+  --m-z-overlay: 899;
+}
+
+/* ---------------------------------------------------------------------------
+   0.1 ELIMINAR MIN-WIDTH DE ESCRITORIO
+   El body en styles.css tiene min-width: 1024px; aquí lo quitamos.
+   --------------------------------------------------------------------------- */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 0 !important;
+  overflow: auto !important;
+  overflow-x: hidden !important;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Sobreescribir el overflow:hidden que styles.css aplica en su media query < 1024px */
+@media (max-width: 1023.98px) {
+  body {
+    overflow: auto !important;
+    overflow-x: hidden !important;
+  }
+  /* Con gate-bypass en móvil, no forzar min-width de escritorio */
+  html.gate-bypass body {
+    min-width: 0 !important;
+    overflow: auto !important;
+    overflow-x: hidden !important;
+  }
+}
+
+/* Prevenir selección de texto en elementos de juego (mesa, botones) */
+.game-btn, .chip-button, .action-bar, .seat-head, .play-card {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---------------------------------------------------------------------------
+   1. PUERTA DE ESCRITORIO — DESACTIVADA EN MÓVIL
+   La .desktop-gate ya no se muestra; el CSS de escritorio la oculta con display:none
+   y el media query de styles.css la muestra solo < 1024px. Aquí la forzamos oculta.
+   --------------------------------------------------------------------------- */
+.desktop-gate {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------------------
+   2. LAYOUT BASE MÓVIL
+   --------------------------------------------------------------------------- */
+
+/* Scroll suave con momentum en iOS */
+body, .chat-list, .est-match-list, .lobby-chat-messages {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Ocultar scrollbars en elementos con scroll horizontal (carruseles) */
+.mobile-scroll-x {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.mobile-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   3. DRAWER LATERAL (reemplaza sidebars fijas)
+   Base para drawers que deslizan desde la izquierda o derecha.
+   --------------------------------------------------------------------------- */
+.mobile-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--m-z-overlay);
+  background: rgba(0, 0, 0, .55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease;
+}
+
+.mobile-drawer-backdrop.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mobile-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  z-index: var(--m-z-drawer);
+  width: min(300px, 82vw);
+  background: var(--panel, #0b1316);
+  border: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+  padding: calc(var(--m-safe-top) + 12px) var(--m-pad) calc(var(--m-safe-bottom) + 12px);
+}
+
+.mobile-drawer--left {
+  left: 0;
+  border-right: 1px solid var(--line, rgba(194,223,216,.11));
+  border-radius: 0 var(--m-radius-lg) var(--m-radius-lg) 0;
+  transform: translateX(-105%);
+}
+
+.mobile-drawer--right {
+  right: 0;
+  border-left: 1px solid var(--line, rgba(194,223,216,.11));
+  border-radius: var(--m-radius-lg) 0 0 var(--m-radius-lg);
+  transform: translateX(105%);
+}
+
+.mobile-drawer.is-open {
+  transform: translateX(0);
+  box-shadow: 8px 0 30px rgba(0, 0, 0, .5);
+}
+
+.mobile-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line, rgba(194,223,216,.11));
+}
+
+.mobile-drawer-close {
+  width: var(--m-touch);
+  height: var(--m-touch);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line, rgba(194,223,216,.11));
+  border-radius: var(--m-radius);
+  color: var(--muted, #829397);
+  background: rgba(255, 255, 255, .03);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------
+   4. BOTTOM SHEET (reemplaza modales centrados)
+   --------------------------------------------------------------------------- */
+.mobile-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--m-z-overlay);
+  background: rgba(0, 0, 0, .55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease;
+}
+
+.mobile-sheet-backdrop.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mobile-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--m-z-sheet);
+  max-height: 85vh;
+  background: var(--panel, #0b1316);
+  border-top: 1px solid var(--line-strong, rgba(194,223,216,.19));
+  border-radius: var(--m-radius-lg) var(--m-radius-lg) 0 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  transform: translateY(100%);
+  transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+  padding: 0 var(--m-pad) calc(var(--m-safe-bottom) + 12px);
+}
+
+.mobile-sheet.is-open {
+  transform: translateY(0);
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, .5);
+}
+
+/* Drag handle en la parte superior del bottom sheet */
+.mobile-sheet-handle {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 8px;
+  background: inherit;
+  z-index: 2;
+  cursor: grab;
+}
+
+.mobile-sheet-handle::before {
+  content: '';
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, .15);
+}
+
+.mobile-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0 14px;
+}
+
+.mobile-sheet-close {
+  width: var(--m-touch-sm);
+  height: var(--m-touch-sm);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line, rgba(194,223,216,.11));
+  border-radius: var(--m-radius);
+  color: var(--muted, #829397);
+  background: rgba(255, 255, 255, .03);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------
+   5. TABS MÓVILES (para Estadio y secciones con múltiples paneles)
+   --------------------------------------------------------------------------- */
+.mobile-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--line, rgba(194,223,216,.11));
+  border-radius: var(--m-radius);
+  background: rgba(255, 255, 255, .02);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.mobile-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-tab {
+  flex: 1 0 auto;
+  min-width: max-content;
+  min-height: var(--m-touch-sm);
+  padding: 8px 14px;
+  border: 0;
+  border-radius: calc(var(--m-radius) - 2px);
+  color: var(--muted, #829397);
+  background: transparent;
+  font-size: var(--m-fs-small);
+  font-weight: 750;
+  letter-spacing: .03em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .2s, color .2s;
+}
+
+.mobile-tab:active {
+  background: rgba(255, 255, 255, .05);
+}
+
+.mobile-tab.is-active {
+  color: var(--mint, #52e0ae);
+  background: rgba(82, 224, 174, .08);
+}
+
+/* ---------------------------------------------------------------------------
+   6. BOTONES TÁCTILES
+   --------------------------------------------------------------------------- */
+
+/* Todos los botones interactivos en móvil deben ser tocables */
+.mobile-touch-target {
+  min-width: var(--m-touch);
+  min-height: var(--m-touch);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Hamburguesa para menú lateral */
+.mobile-hamburger {
+  width: var(--m-touch);
+  height: var(--m-touch);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line, rgba(194,223,216,.11));
+  border-radius: var(--m-radius);
+  background: rgba(255, 255, 255, .03);
+  color: var(--text, #f2f6f4);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------
+   7. TOASTS MÓVILES (centrados arriba, ancho completo)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .toast-stack {
+    right: 50% !important;
+    transform: translateX(50%);
+    width: calc(100vw - 28px) !important;
+    max-width: 400px;
+    top: calc(var(--m-safe-top) + 12px) !important;
+  }
+
+  .toast {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   8. UTILIDADES
+   --------------------------------------------------------------------------- */
+
+/* Ocultar solo en móvil */
+.mobile-only {
+  display: block;
+}
+
+.desktop-only {
+  display: none !important;
+}
+
+/* Spacer para safe-area inferior (barras de acción fijas) */
+.mobile-safe-bottom {
+  padding-bottom: calc(var(--m-safe-bottom) + 8px);
+}
+
+/* Ocultar scrollbar de un contenedor sin quitar el scroll */
+.mobile-no-scrollbar {
+  scrollbar-width: none;
+}
+.mobile-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   9. LOBBY — NAVEGACIÓN SUPERIOR
+   Hamburguesa + drawer lateral en lugar de fila de links + acciones.
+   --------------------------------------------------------------------------- */
+
+/* Botón hamburguesa: oculto en escritorio, visible en móvil */
+.mobile-nav-toggle {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .mobile-nav-toggle {
+    display: grid;
+    place-items: center;
+    width: var(--m-touch);
+    height: var(--m-touch);
+    border: 1px solid var(--line);
+    border-radius: var(--m-radius);
+    background: rgba(255, 255, 255, .04);
+    color: var(--text);
+    font-size: 22px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  /* Nav: compacta, sin links ni acciones (van al drawer) */
+  .landing-nav {
+    height: 60px !important;
+    position: sticky !important;
+    top: 0;
+    padding: 0 var(--m-pad) !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    left: 0 !important;
+    transform: none !important;
+    background: rgba(5, 9, 11, .92);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    z-index: 50;
+    gap: 10px;
+  }
+
+  .landing-nav.shell {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .landing-nav .brand {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .landing-nav .brand-copy b {
+    font-size: 14px !important;
+  }
+
+  .landing-nav .brand-copy em {
+    font-size: 8px !important;
+  }
+
+  .landing-nav .brand-mark {
+    transform: scale(.85);
+  }
+
+  /* Ocultar links y acciones del nav (se mueven al drawer) */
+  .landing-nav .nav-links {
+    display: none !important;
+  }
+
+  .landing-nav .nav-actions {
+    display: none !important;
+  }
+
+  /* Drawer de navegación móvil */
+  .mobile-nav-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 950;
+    width: min(320px, 85vw);
+    background: linear-gradient(180deg, #0b1417, #060b0d);
+    border-right: 1px solid var(--line);
+    border-radius: 0 var(--m-radius-lg) var(--m-radius-lg) 0;
+    transform: translateX(-110%);
+    transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mobile-nav-drawer.is-open {
+    transform: translateX(0);
+    box-shadow: 12px 0 40px rgba(0, 0, 0, .6);
+  }
+
+  .mobile-nav-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 949;
+    background: rgba(0, 0, 0, .6);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease;
+  }
+
+  .mobile-nav-backdrop.is-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .mobile-nav-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: calc(var(--m-safe-top) + 16px) var(--m-pad-lg) 16px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .mobile-nav-drawer-header .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .mobile-nav-drawer-close {
+    width: var(--m-touch);
+    height: var(--m-touch);
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: var(--m-radius);
+    color: var(--muted);
+    background: rgba(255, 255, 255, .03);
+    font-size: 20px;
+    cursor: pointer;
+  }
+
+  .mobile-nav-links {
+    padding: var(--m-pad) var(--m-pad-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .mobile-nav-links a,
+  .mobile-nav-links button {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: var(--m-touch);
+    padding: 8px 14px;
+    border: 0;
+    border-radius: var(--m-radius);
+    color: var(--text);
+    background: transparent;
+    font-size: var(--m-fs-body);
+    font-weight: 650;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background .15s;
+    width: 100%;
+  }
+
+  .mobile-nav-links a:active,
+  .mobile-nav-links button:active {
+    background: rgba(255, 255, 255, .06);
+  }
+
+  .mobile-nav-links .nav-icon {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(82, 224, 174, .06);
+    color: var(--mint);
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .mobile-nav-divider {
+    height: 1px;
+    margin: 8px var(--m-pad-lg);
+    background: var(--line);
+  }
+
+  .mobile-nav-actions {
+    padding: var(--m-pad) var(--m-pad-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: auto;
+    border-top: 1px solid var(--line);
+    padding-bottom: calc(var(--m-safe-bottom) + 16px);
+  }
+
+  .mobile-nav-actions button {
+    min-height: var(--m-touch);
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--m-radius);
+    color: var(--text);
+    background: rgba(255, 255, 255, .03);
+    font-size: var(--m-fs-small);
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .mobile-nav-actions button.primary {
+    border-color: rgba(82, 224, 174, .4);
+    background: rgba(82, 224, 174, .08);
+    color: var(--mint);
+  }
+
+  .mobile-nav-actions button:active {
+    background: rgba(255, 255, 255, .08);
+  }
+
+  .mobile-nav-connection {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    margin: 4px 0;
+    border-radius: var(--m-radius);
+    background: rgba(82, 224, 174, .04);
+    font-size: var(--m-fs-small);
+    color: var(--muted);
+  }
+
+  .mobile-nav-connection i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--mint);
+    box-shadow: 0 0 8px var(--mint);
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   10. LOBBY — HERO
+   De 2 columnas a 1 columna. Botones apilados.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .hero {
+    min-height: auto !important;
+    padding-bottom: 30px;
+  }
+
+  .hero-bg {
+    animation: none !important;
+    transform: none !important;
+  }
+
+  .hero-bg::after {
+    background-size: auto, 60px 100%;
+  }
+
+  .hero-content.shell {
+    width: calc(100% - 32px) !important;
+    padding-top: 0 !important;
+  }
+
+  .hero-content {
+    grid-template-columns: 1fr !important;
+    padding-top: 24px !important;
+    gap: 0;
+  }
+
+  .hero-copy {
+    max-width: 100%;
+    padding: 30px 0 24px !important;
+  }
+
+  .hero-copy .eyebrow {
+    font-size: var(--m-fs-micro) !important;
+    margin-bottom: 14px;
+  }
+
+  .hero-copy h1 {
+    font-size: var(--m-fs-hero) !important;
+    line-height: 1.05 !important;
+    letter-spacing: -.03em !important;
+  }
+
+  .hero-copy > p {
+    max-width: 100%;
+    margin-bottom: 24px !important;
+    font-size: var(--m-fs-body) !important;
+    line-height: 1.6 !important;
+  }
+
+  .hero-actions {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .hero-actions .btn {
+    width: 100%;
+    min-height: var(--m-touch) !important;
+    justify-content: center;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  .hero-live-link {
+    display: block;
+    text-align: center;
+    margin-top: 12px;
+    padding: 10px;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .hero-proof {
+    margin-top: 20px !important;
+    justify-content: center;
+  }
+
+  /* HUD decorativo: oculto en móvil (ocupa mucho espacio) */
+  .hero-hud {
+    display: none !important;
+  }
+
+  .scroll-cue {
+    display: none !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   11. LOBBY — BANNER DEL ESTADIO
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .estadio-banner.shell {
+    width: calc(100% - 32px) !important;
+    padding: 20px 0 !important;
+  }
+
+  .estadio-banner-card {
+    flex-direction: column !important;
+    padding: var(--m-pad-lg) !important;
+    gap: 14px !important;
+  }
+
+  .estadio-banner-copy {
+    max-width: 100% !important;
+  }
+
+  .estadio-banner-copy h2 {
+    font-size: 22px !important;
+  }
+
+  .estadio-banner-copy p {
+    font-size: var(--m-fs-small) !important;
+    line-height: 1.5 !important;
+  }
+
+  .estadio-banner-meta {
+    flex-wrap: wrap;
+    gap: 6px !important;
+  }
+
+  .estadio-banner-cta {
+    display: block;
+    text-align: center;
+    padding: 12px;
+    border: 1px solid rgba(82, 224, 174, .3);
+    border-radius: var(--m-radius);
+    background: rgba(82, 224, 174, .06);
+    margin-top: 8px;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  .estadio-banner-feature {
+    width: 100% !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   12. LOBBY — SECCIONES, HEADINGS Y GRID DE JUEGOS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .lobby-section.shell {
+    width: calc(100% - 32px) !important;
+    padding: 40px 0 !important;
+  }
+
+  .section-heading {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 14px !important;
+    margin-bottom: 22px !important;
+  }
+
+  .section-heading h2 {
+    font-size: clamp(24px, 6vw, 36px) !important;
+  }
+
+  .section-heading > p,
+  .game-discovery-meta {
+    max-width: 100% !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .game-discovery-meta {
+    gap: 10px !important;
+    flex-wrap: wrap;
+  }
+
+  .game-shelf-label {
+    margin-bottom: 12px !important;
+  }
+
+  /* Grid de juegos: 1 columna en móvil, 2 en tablet */
+  .game-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  @media (min-width: 640px) {
+    .game-grid {
+      grid-template-columns: 1fr 1fr !important;
+    }
+  }
+
+  .game-card {
+    height: auto !important;
+    min-height: 340px;
+  }
+
+  .game-card > img {
+    height: 200px !important;
+    position: relative !important;
+    inset: auto !important;
+  }
+
+  .game-card-shade {
+    position: absolute;
+    bottom: 0;
+    top: auto;
+    height: 70%;
+  }
+
+  .game-info {
+    position: relative;
+    padding: var(--m-pad) !important;
+  }
+
+  .game-info h3 {
+    font-size: 18px !important;
+  }
+
+  .game-info p {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .game-info .btn-card {
+    min-height: var(--m-touch) !important;
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Quick games */
+  .quick-games-heading {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+    margin: 35px 0 16px !important;
+    padding-top: 24px !important;
+  }
+
+  .quick-game-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  @media (min-width: 640px) {
+    .quick-game-grid {
+      grid-template-columns: 1fr 1fr !important;
+    }
+  }
+
+  .quick-game-card {
+    min-height: 200px !important;
+    flex-direction: row !important;
+    padding: var(--m-pad) !important;
+    gap: 14px;
+    align-items: center;
+  }
+
+  .quick-card-media {
+    width: 80px !important;
+    height: 80px !important;
+    border-radius: var(--m-radius);
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .quick-game-copy {
+    margin-top: 0 !important;
+  }
+
+  .quick-game-copy h3 {
+    font-size: var(--m-fs-title) !important;
+    margin: 4px 0 !important;
+  }
+
+  .quick-game-copy p {
+    font-size: var(--m-fs-micro) !important;
+    line-height: 1.4 !important;
+  }
+
+  .quick-game-copy .btn-card {
+    margin-top: 8px;
+    min-height: var(--m-touch-sm) !important;
+    padding: 6px 14px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   13. LOBBY — SALAS EN VIVO
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .live-section {
+    padding: 40px 0 50px !important;
+  }
+
+  .live-section .shell {
+    width: calc(100% - 32px) !important;
+  }
+
+  .live-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 16px !important;
+  }
+
+  .live-header h2 {
+    font-size: 26px !important;
+  }
+
+  .live-header p {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .lobby-stats {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 12px !important;
+  }
+
+  .lobby-stats > span {
+    min-width: 50px;
+    padding-right: 14px;
+  }
+
+  .lobby-stats b {
+    font-size: 20px !important;
+  }
+
+  .lobby-quick-actions {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .lobby-quick-actions .btn {
+    flex: 1;
+    min-height: var(--m-touch) !important;
+    justify-content: center;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  /* Filtros: scroll horizontal */
+  .room-filters {
+    min-height: 50px !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 8px 0;
+  }
+
+  .room-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .room-filters button {
+    flex-shrink: 0;
+    min-height: var(--m-touch-sm) !important;
+    padding: 0 14px !important;
+    font-size: var(--m-fs-small) !important;
+    white-space: nowrap;
+  }
+
+  .room-filters > span {
+    flex-shrink: 0;
+    padding-left: 10px;
+  }
+
+  /* Grid de salas: 1 columna */
+  .live-rooms {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    padding-top: 14px !important;
+  }
+
+  .live-room {
+    min-height: auto !important;
+    padding: var(--m-pad) !important;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .live-room::after {
+    display: none;
+  }
+
+  .live-room-top {
+    flex: 0 0 auto;
+  }
+
+  .live-room h3 {
+    margin: 6px 0 2px !important;
+    font-size: var(--m-fs-title) !important;
+  }
+
+  .live-room-bottom {
+    margin-top: 0 !important;
+    margin-left: auto;
+  }
+
+  .join-live-room {
+    min-height: var(--m-touch-sm) !important;
+    padding: 0 16px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   14. LOBBY — TORNEOS Y RANKING
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .lobby-tournaments {
+    margin-top: 30px !important;
+  }
+
+  .tournament-calendar-head {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .tournament-calendar-head h3 {
+    font-size: 20px !important;
+  }
+
+  .tournament-calendar-head p {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .tournament-calendar-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .tournament-featured {
+    padding: var(--m-pad) !important;
+  }
+
+  /* Ranking */
+  .season-ranking {
+    margin-top: 30px !important;
+  }
+
+  .ranking-head {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .ranking-head h3 {
+    font-size: 20px !important;
+  }
+
+  .ranking-content {
+    flex-direction: column !important;
+  }
+
+  .ranking-table-head span,
+  .ranking-list span {
+    font-size: var(--m-fs-micro) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   15. LOBBY — CÓMO JUGAR
+   De 2 columnas a 1. Pasos apilados verticalmente.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .how-section {
+    grid-template-columns: 1fr !important;
+    gap: 24px !important;
+    padding: 50px 0 !important;
+  }
+
+  .how-section.shell {
+    width: calc(100% - 32px) !important;
+  }
+
+  .how-intro h2 {
+    font-size: clamp(22px, 5.5vw, 32px) !important;
+  }
+
+  .steps {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .step {
+    min-height: auto !important;
+    padding: var(--m-pad) var(--m-pad-lg) !important;
+    border-left: 2px solid rgba(82, 224, 174, .2) !important;
+  }
+
+  .step-number {
+    font-size: 36px !important;
+    right: 10px !important;
+    top: 8px !important;
+  }
+
+  .step h3 {
+    font-size: var(--m-fs-title) !important;
+  }
+
+  .step p {
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   16. LOBBY — CHAT DEL LOBBY (bottom sheet en móvil)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .lobby-chat-widget {
+    position: fixed !important;
+    bottom: calc(var(--m-safe-bottom) + 16px);
+    right: 16px;
+    z-index: 100;
+  }
+
+  .lobby-chat-bubble {
+    width: 56px !important;
+    height: 56px !important;
+    font-size: 24px !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .5);
+  }
+
+  /* Panel del chat: bottom sheet en móvil */
+  .lobby-chat-panel {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 75vh !important;
+    border-radius: var(--m-radius-lg) var(--m-radius-lg) 0 0 !important;
+    border: 0 !important;
+    border-top: 1px solid var(--line-strong) !important;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, .5) !important;
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+    z-index: 920;
+    display: flex !important;
+    flex-direction: column;
+    padding-bottom: var(--m-safe-bottom);
+  }
+
+  .lobby-chat-panel:not(.hidden) {
+    transform: translateY(0) !important;
+  }
+
+  .lobby-chat-head {
+    padding: 14px var(--m-pad) !important;
+    flex-shrink: 0;
+  }
+
+  .lobby-chat-head h3 {
+    font-size: var(--m-fs-title) !important;
+  }
+
+  .lobby-chat-head button {
+    width: var(--m-touch-sm) !important;
+    height: var(--m-touch-sm) !important;
+    font-size: 20px !important;
+  }
+
+  .lobby-chat-messages {
+    flex: 1;
+    min-height: 200px;
+    padding: var(--m-pad) !important;
+  }
+
+  .lobby-chat-form {
+    padding: 8px var(--m-pad) !important;
+    flex-shrink: 0;
+  }
+
+  .lobby-chat-form input {
+    min-height: var(--m-touch) !important;
+    font-size: 16px !important; /* evita zoom en iOS */
+  }
+
+  .lobby-chat-form button {
+    min-width: var(--m-touch) !important;
+    min-height: var(--m-touch) !important;
+  }
+
+  /* Perfil del chat (nombre + TOS) */
+  .lobby-chat-profile {
+    padding: var(--m-pad-lg) !important;
+  }
+
+  .lobby-chat-profile input {
+    min-height: var(--m-touch) !important;
+    font-size: 16px !important;
+  }
+
+  .lobby-chat-profile .btn {
+    min-height: var(--m-touch) !important;
+    width: 100%;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   17. LOBBY — INVITACIONES Y EFECTOS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .invite-inbox {
+    top: calc(var(--m-safe-top) + 66px) !important;
+    right: 8px !important;
+    left: 8px !important;
+    width: auto !important;
+    max-width: 100% !important;
+  }
+
+  .invite-toast {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Efectos estacionales: reducir densidad e intensidad */
+  .seasonal-effects {
+    opacity: .5;
+  }
+
+  .seasonal-particle {
+    animation-duration: 8s !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   18. LOBBY — FOOTER
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .landing-footer {
+    padding: 0 var(--m-pad);
+  }
+
+  .footer-inner {
+    flex-direction: column !important;
+    gap: 16px !important;
+    padding: 30px 0 !important;
+    text-align: center;
+    min-height: auto !important;
+  }
+
+  .footer-inner p {
+    text-align: center !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .footer-legal {
+    flex-direction: column;
+    gap: 10px !important;
+    align-items: center;
+  }
+
+  .footer-legal a {
+    font-size: var(--m-fs-small) !important;
+    min-height: var(--m-touch-sm);
+    display: flex;
+    align-items: center;
+  }
+
+  .footer-status {
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   19. MODALES — BOTTOM SHEETS EN MÓVIL
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .modal-backdrop {
+    background: rgba(0, 0, 0, .65) !important;
+  }
+
+  .modal-card {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 90vh !important;
+    margin: 0 !important;
+    border-radius: var(--m-radius-lg) var(--m-radius-lg) 0 0 !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: var(--m-safe-bottom) !important;
+    transform: translateY(0);
+    animation: sheetSlideUp .3s cubic-bezier(.4, 0, .2, 1);
+  }
+
+  @keyframes sheetSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  .modal-close {
+    width: var(--m-touch-sm) !important;
+    height: var(--m-touch-sm) !important;
+    font-size: 22px !important;
+  }
+
+  /* Modal de crear/unirse a sala */
+  .setup-modal-card {
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+  }
+
+  .table-setup-layout {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .segmented {
+    grid-template-columns: 1fr !important;
+  }
+
+  .segmented button {
+    min-height: var(--m-touch) !important;
+  }
+
+  .input-wrap {
+    height: var(--m-touch) !important;
+  }
+
+  .input-wrap input {
+    font-size: 16px !important; /* evita zoom en iOS */
+  }
+
+  /* Modal de perfil */
+  .profile-modal-card {
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+  }
+
+  .profile-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+  }
+
+  .progress-columns {
+    grid-template-columns: 1fr !important;
+  }
+
+  .profile-edit-form {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .password-change-fields {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Modal de comunidad */
+  .community-modal-card {
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+  }
+
+  /* Modal de pasaporte y cosméticos */
+  .passport-modal-card,
+  .cosmetics-modal-card {
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   20. SHELL Y CONTENEDORES GENERALES
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .shell {
+    width: calc(100% - 32px) !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   21. MESA DE JUEGO — ESTRUCTURA GENERAL
+   Sidebar se convierte en drawer; el escenario ocupa todo el viewport.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .room-app {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: none !important;
+  }
+
+  /* Sidebar: oculta por defecto, se abre como drawer */
+  .room-app .sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    z-index: 960;
+    width: min(310px, 84vw) !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    transform: translateX(-110%);
+    transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+    border-right: 1px solid var(--line);
+    border-radius: 0 var(--m-radius-lg) var(--m-radius-lg) 0;
+    box-shadow: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 100% !important;
+    padding-top: var(--m-safe-top);
+    padding-bottom: var(--m-safe-bottom);
+  }
+
+  .room-app .sidebar.is-open {
+    transform: translateX(0);
+    box-shadow: 12px 0 40px rgba(0, 0, 0, .6);
+  }
+
+  .mobile-room-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 959;
+    background: rgba(0, 0, 0, .6);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease;
+  }
+
+  .mobile-room-backdrop.is-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Game main ocupa el 100% */
+  .game-main {
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .game-main::before {
+    background-size: 36px 36px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   22. MESA — HEADER (compacto en móvil)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .game-header {
+    min-height: 54px !important;
+    padding: 0 var(--m-pad) !important;
+    gap: 8px;
+    flex-wrap: wrap;
+    position: sticky !important;
+    top: 0;
+    z-index: 40;
+  }
+
+  .room-identity {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .room-identity h2 {
+    font-size: 15px !important;
+    margin-top: 2px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .game-breadcrumb {
+    font-size: 8px !important;
+  }
+
+  .room-title-row {
+    gap: 6px !important;
+  }
+
+  .room-bots-chip {
+    font-size: 7px !important;
+    padding: 2px 6px !important;
+  }
+
+  .room-share {
+    gap: 8px !important;
+    flex-shrink: 0;
+  }
+
+  .room-share .connection-mini {
+    display: none;
+  }
+
+  .room-code-display small {
+    font-size: 7px !important;
+  }
+
+  .room-code-display b {
+    font-size: 11px !important;
+    letter-spacing: .18em !important;
+  }
+
+  .btn-invite {
+    min-height: var(--m-touch-sm) !important;
+    padding: 0 10px !important;
+    font-size: 9px !important;
+  }
+
+  .btn-invite b {
+    display: none;
+  }
+
+  .btn-invite-copy {
+    min-height: var(--m-touch-sm) !important;
+    min-width: var(--m-touch-sm) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   23. MESA — GAME STAGE Y MESA DE CASINO
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .game-stage {
+    min-height: auto !important;
+    flex: 1;
+    padding: 10px 8px 0 !important;
+  }
+
+  .table-hud {
+    width: 100% !important;
+    min-height: 40px !important;
+    padding: 0 4px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .game-status {
+    min-height: 24px;
+  }
+
+  .status-pill {
+    min-height: 26px !important;
+    padding: 0 10px !important;
+    font-size: 8px !important;
+  }
+
+  /* Turn clock: mini widget en esquina superior derecha */
+  .turn-clock {
+    gap: 6px !important;
+    position: absolute;
+    right: 10px;
+    top: 62px;
+    z-index: 20;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: rgba(7, 13, 15, .92);
+    backdrop-filter: blur(10px);
+  }
+
+  .turn-clock .clock-ring {
+    width: 30px !important;
+    height: 30px !important;
+  }
+
+  .turn-clock .clock-ring span {
+    font-size: 9px !important;
+  }
+
+  .turn-clock > div:last-child small {
+    display: none !important;
+  }
+
+  .turn-clock > div:last-child b {
+    font-size: 9px !important;
+    margin-top: 0 !important;
+    max-width: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Mesa de casino: redimensionada */
+  .table-wrap {
+    min-height: 280px !important;
+  }
+
+  .casino-table {
+    width: 95% !important;
+    height: min(48vw, 280px) !important;
+    border-width: 10px !important;
+  }
+
+  .casino-table::after {
+    font-size: 28px !important;
+  }
+
+  .casino-table::before {
+    inset: 6px !important;
+  }
+
+  /* Mesa de blackjack */
+  .blackjack-table .casino-table {
+    height: min(52vw, 300px) !important;
+  }
+
+  /* Centro de la mesa (pot, community cards) */
+  .table-center {
+    transform: translate(-50%, -50%) scale(.85);
+  }
+
+  .pot-display {
+    min-height: 24px !important;
+    padding: 0 8px !important;
+    font-size: 9px !important;
+  }
+
+  .table-label {
+    font-size: 7px !important;
+    margin-bottom: 4px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   24. MESA — ASIENTOS Y CARTAS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Asientos: más compactos */
+  .table-seat {
+    width: 110px !important;
+  }
+
+  .seat-head {
+    padding: 3px 7px 3px 3px !important;
+    gap: 5px !important;
+    border-radius: 18px !important;
+  }
+
+  .seat-avatar {
+    width: 24px !important;
+    height: 24px !important;
+    font-size: 8px !important;
+  }
+
+  .seat-info {
+    min-width: 40px !important;
+    max-width: 60px !important;
+  }
+
+  .seat-info b {
+    font-size: 8.5px !important;
+  }
+
+  .seat-info span {
+    font-size: 7.5px !important;
+    margin-top: 1px !important;
+  }
+
+  .dealer-button {
+    width: 16px !important;
+    height: 16px !important;
+    right: -7px !important;
+    top: -6px !important;
+    font-size: 7px !important;
+  }
+
+  .seat-bet {
+    min-height: 17px !important;
+    padding: 0 6px !important;
+    font-size: 7.5px !important;
+    margin-top: 3px !important;
+  }
+
+  .seat-bet i {
+    width: 7px !important;
+    height: 7px !important;
+  }
+
+  .seat-status {
+    padding: 2px 5px !important;
+    font-size: 7px !important;
+    top: -11px !important;
+  }
+
+  .hand-total {
+    width: 17px !important;
+    height: 17px !important;
+    right: 4px !important;
+    top: -4px !important;
+    font-size: 8px !important;
+  }
+
+  /* Cartas del asiento: más pequeñas */
+  .seat-cards {
+    height: 36px !important;
+    margin-bottom: -2px !important;
+  }
+
+  .seat-cards .play-card {
+    width: 26px !important;
+    height: 36px !important;
+    padding: 3px !important;
+    border-radius: 4px !important;
+  }
+
+  .seat-cards .card-rank {
+    font-size: 8px !important;
+  }
+
+  .seat-cards .card-suit {
+    font-size: 7px !important;
+  }
+
+  .seat-cards .card-big-suit {
+    right: 2px !important;
+    bottom: 1px !important;
+    font-size: 10px !important;
+  }
+
+  .seat-cards .play-card.back::before {
+    inset: 2px !important;
+  }
+
+  /* Cartas comunitarias: más pequeñas */
+  .community-cards {
+    min-height: 56px !important;
+    gap: 4px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .community-cards .play-card {
+    width: 40px !important;
+    height: 56px !important;
+    padding: 4px !important;
+    border-radius: 5px !important;
+  }
+
+  .community-cards .card-rank {
+    font-size: 13px !important;
+  }
+
+  .community-cards .card-suit {
+    font-size: 10px !important;
+  }
+
+  .community-cards .card-big-suit {
+    right: 4px !important;
+    bottom: 2px !important;
+    font-size: 16px !important;
+  }
+
+  .community-cards .play-card.back::before {
+    inset: 3px !important;
+    border-width: 1px !important;
+  }
+
+  .card-placeholder {
+    width: 40px !important;
+    height: 56px !important;
+    border-radius: 5px !important;
+  }
+
+  /* Dealer area (blackjack) */
+  .dealer-area .community-cards {
+    min-height: 60px !important;
+  }
+
+  .dealer-name {
+    font-size: 7.5px !important;
+  }
+
+  .dealer-score {
+    font-size: 8px !important;
+    margin-top: 2px !important;
+  }
+
+  /* Quick bet seats (ruleta, dados, etc.) */
+  .quick-bet-seat {
+    padding: 4px 7px 4px 4px !important;
+    border-radius: 18px !important;
+  }
+
+  .quick-bet-seat .seat-avatar {
+    width: 22px !important;
+    height: 22px !important;
+    font-size: 11px !important;
+  }
+
+  .quick-bet-seat div b {
+    font-size: 8px !important;
+    max-width: 56px !important;
+  }
+
+  .quick-bet-seat div span {
+    font-size: 7px !important;
+    margin-top: 1px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   25. MESA — PANEL DE ACCIONES (fixed bottom)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .action-panel {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 50;
+    width: 100% !important;
+    min-height: auto !important;
+    padding: 0 !important;
+    padding-bottom: var(--m-safe-bottom) !important;
+    align-self: auto !important;
+    background: linear-gradient(0deg, rgba(6, 11, 13, .98) 70%, transparent);
+  }
+
+  .action-bar {
+    min-height: 60px !important;
+    padding: 8px 10px !important;
+    border-radius: 0 !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    gap: 8px !important;
+    flex-wrap: wrap;
+  }
+
+  .action-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .action-info small {
+    font-size: 7px !important;
+    margin-bottom: 2px !important;
+  }
+
+  .action-info b {
+    font-size: 15px !important;
+  }
+
+  .action-buttons {
+    gap: 4px !important;
+    flex-wrap: wrap;
+  }
+
+  .game-btn {
+    min-width: 60px !important;
+    min-height: var(--m-touch) !important;
+    padding: 0 10px !important;
+    font-size: 11px !important;
+    border-radius: 10px !important;
+  }
+
+  .raise-box {
+    border-radius: 10px !important;
+    padding: 2px !important;
+  }
+
+  .raise-box input {
+    width: 50px !important;
+    height: 38px !important;
+    font-size: 13px !important;
+  }
+
+  .bet-options {
+    gap: 5px !important;
+  }
+
+  .chip-button {
+    width: var(--m-touch) !important;
+    height: var(--m-touch) !important;
+    border-width: 3px !important;
+    font-size: 10px !important;
+  }
+
+  .waiting-copy > b {
+    font-size: 13px !important;
+  }
+
+  .waiting-copy > span {
+    font-size: 10px !important;
+  }
+
+  .result-strip {
+    gap: 4px !important;
+  }
+
+  .result-item {
+    padding: 5px 8px !important;
+    font-size: 8px !important;
+  }
+
+  /* Espacio al final del game-stage para que el action panel no tape contenido */
+  .game-stage {
+    padding-bottom: 90px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   26. MESA — CHAT DE SALA (bottom sheet)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Ocultar el chat de la sidebar en móvil */
+  .room-app .sidebar .chat-section {
+    display: none !important;
+  }
+
+  /* Botón flotante para abrir el chat */
+  .mobile-chat-toggle {
+    position: fixed;
+    bottom: calc(var(--m-safe-bottom) + 80px);
+    right: 14px;
+    z-index: 45;
+    width: 50px;
+    height: 50px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line-strong);
+    border-radius: 50%;
+    background: rgba(11, 19, 22, .95);
+    color: var(--mint);
+    font-size: 22px;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .5);
+  }
+
+  .mobile-chat-toggle .mobile-chat-unread {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 18px;
+    height: 18px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    background: var(--coral);
+    color: white;
+    font-size: 9px;
+    font-weight: 900;
+    padding: 0 4px;
+  }
+
+  /* Bottom sheet del chat */
+  .mobile-chat-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 970;
+    height: 65vh;
+    max-height: 500px;
+    background: var(--panel);
+    border-top: 1px solid var(--line-strong);
+    border-radius: var(--m-radius-lg) var(--m-radius-lg) 0 0;
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, .5);
+  }
+
+  .mobile-chat-sheet.is-open {
+    transform: translateY(0);
+  }
+
+  .mobile-chat-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px var(--m-pad);
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+
+  .mobile-chat-sheet-header h3 {
+    margin: 0;
+    font-size: var(--m-fs-title);
+    font-weight: 800;
+  }
+
+  .mobile-chat-sheet-header span {
+    color: var(--muted-2);
+    font-size: var(--m-fs-micro);
+    letter-spacing: .1em;
+  }
+
+  .mobile-chat-close {
+    width: var(--m-touch-sm);
+    height: var(--m-touch-sm);
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: var(--m-radius);
+    color: var(--muted);
+    background: rgba(255, 255, 255, .03);
+    font-size: 18px;
+    cursor: pointer;
+  }
+
+  .mobile-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: var(--m-pad);
+    scrollbar-width: thin;
+  }
+
+  .mobile-chat-reactions {
+    display: flex;
+    gap: 4px;
+    padding: 6px var(--m-pad);
+    border-top: 1px solid var(--line);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
+
+  .mobile-chat-reactions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-chat-reactions button {
+    flex-shrink: 0;
+    min-width: var(--m-touch-sm);
+    min-height: var(--m-touch-sm);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .03);
+    font-size: 16px;
+    cursor: pointer;
+  }
+
+  .mobile-chat-form {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px var(--m-pad);
+    padding-bottom: calc(var(--m-safe-bottom) + 8px);
+    border-top: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+
+  .mobile-chat-form input {
+    flex: 1;
+    min-width: 0;
+    min-height: var(--m-touch);
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .03);
+    color: white;
+    font-size: 16px !important;
+    outline: none;
+  }
+
+  .mobile-chat-form input:focus {
+    border-color: rgba(82, 224, 174, .4);
+  }
+
+  .mobile-chat-form button {
+    min-width: var(--m-touch);
+    min-height: var(--m-touch);
+    border: 1px solid rgba(82, 224, 174, .3);
+    border-radius: 10px;
+    background: rgba(82, 224, 174, .08);
+    color: var(--mint);
+    font-size: 18px;
+    cursor: pointer;
+  }
+
+  .mobile-chat-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 969;
+    background: rgba(0, 0, 0, .4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease;
+  }
+
+  .mobile-chat-backdrop.is-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   27. MESA — BOTONES FLOTANTES (drawer de jugadores y chat)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .mobile-room-toggle {
+    position: fixed;
+    top: calc(var(--m-safe-top) + 62px);
+    left: 10px;
+    z-index: 55;
+    width: var(--m-touch);
+    height: var(--m-touch);
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: var(--m-radius);
+    background: rgba(11, 19, 22, .95);
+    color: var(--text);
+    font-size: 18px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .4);
+    backdrop-filter: blur(10px);
+  }
+
+  .mobile-room-toggle .toggle-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 16px;
+    height: 16px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: var(--mint);
+    color: #061210;
+    font-size: 8px;
+    font-weight: 900;
+    padding: 0 3px;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   28. MESA — BOTS, RULETA, DADOS, FORTUNA, TRAGAMONEDAS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Panel de bots: modal fullscreen */
+  .bot-controls {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 980;
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: none !important;
+    width: 100% !important;
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+    padding-top: calc(var(--m-safe-top) + 16px) !important;
+    padding-bottom: calc(var(--m-safe-bottom) + 16px) !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 12px !important;
+  }
+
+  .bot-controls.hidden {
+    display: none !important;
+  }
+
+  .bot-controls-head {
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .bot-controls-head span {
+    font-size: var(--m-fs-title) !important;
+  }
+
+  .bot-controls-head button {
+    width: var(--m-touch-sm) !important;
+    height: var(--m-touch-sm) !important;
+    font-size: 20px !important;
+  }
+
+  .bot-controls select {
+    width: 100%;
+    min-height: var(--m-touch) !important;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--m-radius);
+    background: rgba(255, 255, 255, .03);
+    color: white;
+    font-size: 14px;
+  }
+
+  .bot-controls label {
+    margin-top: 8px;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .bot-control-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .bot-control-actions button {
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  /* Ruleta Nova: paño escalado */
+  .roulette-felt {
+    transform: scale(.65);
+    transform-origin: top center;
+    margin-bottom: -120px;
+  }
+
+  @media (min-width: 640px) {
+    .roulette-felt {
+      transform: scale(.8);
+      margin-bottom: -60px;
+    }
+  }
+
+  .roulette-wheel-wrap {
+    max-width: min(85vw, 320px);
+    margin: 0 auto;
+  }
+
+  /* Dados y moneda: más compactos */
+  .dice-stage {
+    gap: 8px !important;
+  }
+
+  .big-die {
+    width: 80px !important;
+    height: 80px !important;
+    font-size: 42px !important;
+    border-radius: 18px !important;
+  }
+
+  .coin-stage {
+    width: 100px !important;
+    height: 100px !important;
+  }
+
+  .big-coin {
+    border-width: 8px !important;
+    font-size: 16px !important;
+  }
+
+  /* Tragamonedas: rodillos más estrechos */
+  .slots-reels {
+    gap: 4px !important;
+  }
+
+  .slots-reel {
+    width: 70px !important;
+  }
+
+  /* Quick choice grid */
+  .quick-choice-grid {
+    max-width: 100% !important;
+    gap: 4px !important;
+  }
+
+  .quick-choice {
+    min-width: 54px !important;
+    min-height: var(--m-touch-sm) !important;
+    font-size: 11px !important;
+  }
+
+  .quick-choice-grid input {
+    width: 72px !important;
+    min-height: var(--m-touch-sm) !important;
+    font-size: 13px !important;
+  }
+
+  .quick-bet-controls input {
+    width: 56px !important;
+    height: var(--m-touch-sm) !important;
+    font-size: 13px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   29. MESA — SIDEBAR INTERIOR (cuando el drawer está abierto)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .room-app .sidebar .side-top {
+    min-height: 54px !important;
+    padding: 0 var(--m-pad) !important;
+  }
+
+  .room-app .sidebar .brand-mark {
+    transform: scale(.85);
+  }
+
+  .room-app .sidebar .brand-copy b {
+    font-size: 13px !important;
+  }
+
+  .room-app .sidebar .profile-card {
+    margin: 10px var(--m-pad) 8px !important;
+    padding: 10px !important;
+  }
+
+  .room-app .sidebar .side-section {
+    padding: 0 var(--m-pad) !important;
+  }
+
+  .room-app .sidebar .side-title {
+    height: 32px !important;
+    font-size: 8px !important;
+  }
+
+  .room-app .sidebar .players-list {
+    max-height: 40vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .room-app .sidebar .player-row {
+    min-height: var(--m-touch-sm) !important;
+  }
+
+  .room-app .sidebar .side-footer {
+    padding: 0 var(--m-pad) !important;
+  }
+
+  .room-app .sidebar .leave-button {
+    min-height: var(--m-touch) !important;
+    font-size: 12px !important;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Friends section */
+  .room-app .sidebar .room-friends-section {
+    padding: 0 var(--m-pad) !important;
+  }
+
+  .room-app .sidebar .room-friends-open {
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  /* Social note */
+  .room-app .sidebar .room-social-note {
+    margin: 8px var(--m-pad) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   30. MESA — FOOTER Y ELEMENTOS VARIOS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .game-footer {
+    min-height: 30px !important;
+    padding: 0 var(--m-pad) !important;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .game-footer .shortcut-hint {
+    display: none !important;
+  }
+
+  .game-footer span {
+    font-size: 7px !important;
+  }
+
+  /* Shortcut help: oculto en móvil */
+  .shortcut-help {
+    display: none !important;
+  }
+
+  /* Reaction stage y special events */
+  .reaction-stage {
+    font-size: 20px !important;
+  }
+
+  .special-event-banner {
+    padding: 8px 12px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .winner-ticker {
+    padding: 6px 12px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .tournament-banner {
+    padding: 8px 12px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  /* Round flash: más compacto */
+  .round-flash {
+    padding: 10px 18px !important;
+    font-size: 17px !important;
+  }
+}
+
+/* ===========================================================================
+   ESTADIO MONTECRISTO — DISEÑO MÓVIL
+   =========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   31. ESTADIO — NAV SUPERIOR MINIMALISTA
+   Solo logo + tag + chips + conexión. El resto se mueve a la bottom nav.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .estadio-nav {
+    display: flex !important;
+    align-items: center;
+    gap: 8px !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    padding: 0 var(--m-pad) !important;
+    position: sticky !important;
+    top: 0;
+    z-index: 60;
+    background: rgba(5, 9, 11, .96) !important;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line) !important;
+  }
+
+  .estadio-nav .brand {
+    font-size: 12px !important;
+    letter-spacing: .08em !important;
+    flex-shrink: 0;
+  }
+
+  .estadio-tag {
+    font-size: 9px !important;
+    padding-left: 8px !important;
+    letter-spacing: .1em !important;
+    border-left: 1px solid var(--line) !important;
+  }
+
+  .est-chips {
+    margin-left: auto !important;
+    font-size: 11px !important;
+    padding: 3px 10px !important;
+    flex-shrink: 0;
+  }
+
+  .estadio-nav-right {
+    display: flex !important;
+    align-items: center;
+    gap: 4px !important;
+    margin-left: 0 !important;
+  }
+
+  .estadio-nav-right .connection-badge {
+    padding: 4px !important;
+  }
+
+  .estadio-nav-right .connection-badge span {
+    display: none !important;
+  }
+
+  .estadio-nav-right .connection-badge i {
+    margin: 0 !important;
+  }
+
+  /* OCULTAR todos los botones de la nav superior en móvil */
+  .estadio-nav-right .est-bdo-nav-link,
+  .estadio-nav-right .est-bdo-dedicated-back,
+  .estadio-nav-right .est-nav-ledger,
+  .estadio-nav-right #est-ads-open,
+  .estadio-nav-right #est-sound,
+  .estadio-nav-right #est-music,
+  .estadio-nav-right .btn[href="/"],
+  .estadio-nav-right .est-active-fan-pin {
+    display: none !important;
+  }
+
+  /* OCULTAR tabs antiguos (reemplazados por bottom nav) */
+  .est-mobile-tabs {
+    display: none !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   32. ESTADIO — BOTTOM NAV (navegación inferior fija)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-around;
+    height: calc(56px + var(--m-safe-bottom));
+    padding-bottom: var(--m-safe-bottom);
+    background: rgba(7, 13, 15, .97);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid var(--line-strong);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, .4);
+  }
+
+  .est-bottom-nav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    position: relative;
+    transition: color .15s;
+    padding: 4px 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .est-bottom-nav-btn:active {
+    background: rgba(255, 255, 255, .04);
+  }
+
+  .est-bottom-nav-btn.is-active {
+    color: var(--mint);
+  }
+
+  .est-bottom-nav-icon {
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  .est-bottom-nav-label {
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: .05em;
+  }
+
+  .est-bottom-nav-badge {
+    position: absolute;
+    top: 4px;
+    right: calc(50% - 18px);
+    min-width: 16px;
+    height: 16px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: var(--coral);
+    color: white;
+    font-size: 8px;
+    font-weight: 900;
+    padding: 0 4px;
+  }
+
+  .estadio-shell {
+    padding-bottom: calc(56px + var(--m-safe-bottom) + 16px) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   32b. ESTADIO — BARRA DE PARTIDOS (carrusel horizontal en col-center)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-mobile-match-bar {
+    display: block;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 8px;
+  }
+
+  .est-mobile-match-scroll {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 0 4px;
+  }
+
+  .est-mobile-match-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .est-mobile-match-item {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .025);
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    min-width: max-content;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+
+  .est-mobile-match-item:active {
+    background: rgba(255, 255, 255, .06);
+  }
+
+  .est-mobile-match-item.is-selected {
+    border-color: rgba(82, 224, 174, .5);
+    background: rgba(82, 224, 174, .08);
+    color: var(--mint-2);
+  }
+
+  .est-mobile-match-item .match-teams {
+    font-weight: 750;
+    font-size: 11px;
+  }
+
+  .est-mobile-match-item .match-time {
+    color: var(--muted-2);
+    font-size: 9px;
+    font-weight: 700;
+  }
+
+  .est-mobile-match-item .match-live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--coral);
+    box-shadow: 0 0 6px var(--coral);
+    animation: blink 1.3s infinite;
+  }
+
+  /* Ocultar la lista original de partidos en la columna izquierda */
+  .est-col-left.is-mobile-active .est-match-list {
+    display: none !important;
+  }
+
+  /* Ocultar countdowns grandes */
+  .est-col-left.is-mobile-active .est-countdowns {
+    display: none !important;
+  }
+
+  .est-col-left.is-mobile-active .est-countdown {
+    font-size: 11px !important;
+    padding: 6px 10px !important;
+  }
+
+  /* Ocultar elementos no deseados de la columna izquierda */
+  .est-daily-news-launch {
+    display: none !important;
+  }
+
+  .est-roster-panel {
+    display: none !important;
+  }
+
+  .est-hub-launch {
+    display: none !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   33. ESTADIO — SCOREBOARD Y CANCHA
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-scoreboard {
+    gap: 6px !important;
+    padding: 10px var(--m-pad) !important;
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-team {
+    font-size: 13px !important;
+    gap: 6px !important;
+  }
+
+  .est-crest {
+    width: 24px !important;
+    height: 28px !important;
+  }
+
+  .est-score b {
+    font-size: 26px !important;
+    min-width: 22px !important;
+  }
+
+  .est-clock {
+    font-size: 11px !important;
+    padding: 2px 8px !important;
+  }
+
+  /* Canvas wrap: full width, altura proporcional */
+  .est-canvas-wrap {
+    width: 100%;
+    position: relative;
+    border-radius: var(--m-radius);
+    overflow: hidden;
+  }
+
+  .est-canvas-wrap canvas {
+    width: 100% !important;
+    height: auto !important;
+    display: block;
+  }
+
+  /* Goal banner: más compacto */
+  .est-goal-banner {
+    font-size: 28px !important;
+    padding: 10px 20px !important;
+  }
+
+  /* Danmaku (comentarios bala): reducir en móvil */
+  .est-danmaku {
+    opacity: .6;
+    pointer-events: none;
+  }
+
+  .est-danmaku-comment {
+    font-size: 11px !important;
+    padding: 2px 8px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   34. ESTADIO — PREVIA Y CARTELERA
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-preshow {
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-preshow-head {
+    flex-direction: column !important;
+    gap: 10px !important;
+    padding: var(--m-pad) !important;
+  }
+
+  .est-preshow-head h2 {
+    font-size: 18px !important;
+  }
+
+  .est-preshow-countdown {
+    width: 100%;
+    justify-content: space-between;
+    padding: 8px 12px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-showcase {
+    height: auto !important;
+    min-height: 280px !important;
+    max-height: 400px !important;
+  }
+
+  .est-showcase-controls {
+    gap: 4px !important;
+    padding: 4px 6px !important;
+  }
+
+  .est-compare-control {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 18px !important;
+  }
+
+  .est-compare-footer {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 6px !important;
+  }
+
+  .est-compare-auto {
+    display: none !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   35. ESTADIO — CABINA DE COMENTARISTAS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-commentary-panel {
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-commentary-head {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    padding: var(--m-pad) !important;
+  }
+
+  .est-commentary-title {
+    font-size: 16px !important;
+  }
+
+  .est-commentary-actions {
+    width: 100%;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .est-commentary-voice-toggle {
+    min-height: var(--m-touch-sm) !important;
+    padding: 0 12px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-commentary {
+    max-height: 250px !important;
+    padding: 8px var(--m-pad) !important;
+  }
+
+  .est-cmt {
+    padding: 8px !important;
+    gap: 6px !important;
+    grid-template-columns: 70px minmax(0, 1fr) !important;
+  }
+
+  .est-cmt-speaker {
+    font-size: var(--m-fs-micro) !important;
+  }
+
+  .est-cmt-text {
+    font-size: var(--m-fs-small) !important;
+    line-height: 1.5 !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   36. ESTADIO — GRADA (reacciones y chat)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-crowd-panel {
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-crowd-head {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+    padding: var(--m-pad) !important;
+  }
+
+  .est-crowd-title {
+    font-size: 16px !important;
+  }
+
+  .est-crowd-actions {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .est-crowd-mute {
+    min-height: var(--m-touch-sm) !important;
+    width: 100%;
+    padding: 0 12px !important;
+    font-size: var(--m-fs-small) !important;
+    justify-content: center;
+  }
+
+  .est-crowd-reactions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .est-crowd-react {
+    min-width: var(--m-touch-sm) !important;
+    min-height: var(--m-touch-sm) !important;
+    font-size: 18px !important;
+  }
+
+  .est-crowd-body {
+    padding: 0 var(--m-pad) var(--m-pad) !important;
+  }
+
+  .est-crowd-feed {
+    max-height: 200px !important;
+  }
+
+  .est-crowd-form {
+    padding: 8px 0 !important;
+  }
+
+  .est-crowd-input-row {
+    gap: 6px;
+  }
+
+  .est-crowd-input-row input {
+    min-height: var(--m-touch) !important;
+    font-size: 16px !important;
+    padding: 0 12px !important;
+  }
+
+  .est-crowd-send {
+    min-width: var(--m-touch) !important;
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  /* Moderación de grada */
+  .est-stands-vote {
+    padding: var(--m-pad) !important;
+  }
+
+  .est-stands-btn {
+    min-height: var(--m-touch-sm) !important;
+    font-size: var(--m-fs-small) !important;
+    padding: 0 14px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   37. ESTADIO — PANEL DE APUESTAS
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-panel {
+    border-radius: var(--m-radius) !important;
+    padding: var(--m-pad) !important;
+  }
+
+  .est-panel-title {
+    font-size: 15px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .est-cap-notice {
+    font-size: var(--m-fs-micro) !important;
+    margin-bottom: 10px !important;
+  }
+
+  /* Mercados: botones más grandes */
+  .est-markets {
+    gap: 6px !important;
+  }
+
+  .est-market-group {
+    padding: 8px 0 !important;
+  }
+
+  .est-market-group h3 {
+    font-size: var(--m-fs-small) !important;
+    margin-bottom: 6px !important;
+  }
+
+  .est-selections {
+    grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)) !important;
+    gap: 5px !important;
+  }
+
+  .est-selection {
+    min-height: var(--m-touch) !important;
+    padding: 6px 4px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-selection b {
+    font-size: 13px !important;
+  }
+
+  /* Bet slip: más táctil */
+  .est-bet-slip {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius) !important;
+    margin-top: 12px !important;
+  }
+
+  .est-slip-head {
+    font-size: var(--m-fs-body) !important;
+    padding-bottom: 8px !important;
+  }
+
+  .est-slip-odds {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-stake-label {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-stake-label input {
+    min-height: var(--m-touch) !important;
+    font-size: 16px !important;
+    width: 100%;
+    padding: 0 12px !important;
+    margin-top: 6px !important;
+  }
+
+  .est-denoms {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px !important;
+    margin-top: 8px !important;
+  }
+
+  .est-denoms button {
+    min-height: var(--m-touch-sm) !important;
+    min-width: 60px;
+    padding: 0 10px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-place {
+    width: 100%;
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-body) !important;
+    margin-top: 10px !important;
+  }
+
+  /* Mis apuestas */
+  .est-mybets {
+    max-height: 300px !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .est-bets-link {
+    min-height: var(--m-touch) !important;
+    padding: 8px 12px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   38. ESTADIO — PANEL IZQUIERDO (partidos, posiciones, hub)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-countdown {
+    font-size: var(--m-fs-small) !important;
+    padding: 8px 12px !important;
+  }
+
+  .est-countdowns {
+    gap: 6px !important;
+    padding: 8px 0 !important;
+  }
+
+  .est-countdown-row {
+    gap: 6px !important;
+    flex-wrap: wrap;
+  }
+
+  .est-countdown-label {
+    font-size: var(--m-fs-micro) !important;
+    min-width: 90px;
+  }
+
+  .est-countdown-clock {
+    font-size: 12px !important;
+  }
+
+  .est-match-list {
+    gap: 6px !important;
+  }
+
+  .est-match-item {
+    padding: 8px !important;
+    border-radius: var(--m-radius) !important;
+    grid-template-columns: 1fr auto !important;
+    gap: 4px 6px !important;
+  }
+
+  .est-match-item .est-team {
+    font-size: 12px !important;
+  }
+
+  /* Hub launch: más compacto */
+  .est-hub-launch {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-hub-launch-kicker {
+    font-size: 8px !important;
+  }
+
+  .est-hub-launch strong {
+    font-size: 16px !important;
+  }
+
+  .est-hub-launch > span:nth-child(3) {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-hub-launch-action {
+    font-size: var(--m-fs-small) !important;
+    min-height: var(--m-touch-sm);
+    display: flex;
+    align-items: center;
+  }
+
+  /* Tabla de posiciones */
+  .est-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .est-standings {
+    font-size: var(--m-fs-small) !important;
+    min-width: 280px;
+  }
+
+  .est-standings th,
+  .est-standings td {
+    padding: 6px 8px !important;
+  }
+
+  /* Daily news launch */
+  .est-daily-news-launch {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-daily-news-launch h2 {
+    font-size: 16px !important;
+  }
+
+  .est-daily-news-launch button {
+    min-height: var(--m-touch) !important;
+    width: 100%;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  /* Roster panel */
+  .est-roster-panel {
+    padding: var(--m-pad) !important;
+  }
+
+  .est-roster-panel select {
+    width: 100%;
+    min-height: var(--m-touch) !important;
+    font-size: 14px !important;
+    margin: 8px 0 !important;
+  }
+
+  .est-roster-list {
+    max-height: 300px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   39. ESTADIO — HIGHLIGHTS Y TEXT FALLBACK
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-highlights {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius) !important;
+  }
+
+  .est-highlights-head {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .est-highlights-head button {
+    width: 100%;
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  .est-highlights h3 {
+    font-size: var(--m-fs-title) !important;
+  }
+
+  .est-text-fallback {
+    padding: var(--m-pad) !important;
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   40. ESTADIO — MODALES (ledger, daily news, hub, ads)
+   Ya se benefician de los estilos genéricos de la sección 19 (modales),
+   pero agregamos ajustes específicos.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Ledger (historial de apuestas) */
+  .est-ledger {
+    max-height: 85vh !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .est-ledger-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .est-ledger-row {
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    gap: 10px !important;
+    padding: 10px !important;
+  }
+
+  .est-ledger-legs li {
+    font-size: var(--m-fs-small) !important;
+    gap: 8px !important;
+  }
+
+  /* Hub (zona de afición) */
+  .est-hub {
+    padding: var(--m-pad-lg) var(--m-pad) calc(var(--m-safe-bottom) + 20px) !important;
+    max-height: 90vh !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .est-hub-header {
+    padding-bottom: 14px !important;
+  }
+
+  .est-hub-layout {
+    display: block !important;
+    padding-top: 14px !important;
+  }
+
+  .est-hub-nav {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .est-hub-nav > p {
+    display: none !important;
+  }
+
+  .est-hub-nav button {
+    padding: 8px !important;
+    min-height: var(--m-touch) !important;
+  }
+
+  .est-hub-nav-icon {
+    width: 26px !important;
+    height: 26px !important;
+    flex-basis: 26px !important;
+  }
+
+  .est-hub-nav-arrow {
+    display: none !important;
+  }
+
+  /* Fantasy */
+  .est-fantasy-hero {
+    padding: 16px !important;
+  }
+
+  .est-fantasy-formation {
+    min-width: 70px !important;
+    padding: 8px !important;
+  }
+
+  .est-fantasy-formation strong {
+    font-size: 18px !important;
+  }
+
+  .est-fantasy-side {
+    grid-template-columns: 1fr !important;
+  }
+
+  .est-fantasy-players {
+    grid-template-columns: repeat(2, 1fr) !important;
+    padding: 10px !important;
+  }
+
+  /* Daily news modal */
+  .est-daily-news-modal {
+    padding: 10px !important;
+    max-height: 85vh !important;
+  }
+
+  .est-daily-news-heading {
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .est-daily-news-heading button {
+    width: 100% !important;
+    min-height: var(--m-touch) !important;
+  }
+
+  .est-news-controls {
+    gap: 6px !important;
+  }
+
+  .est-news-controls button {
+    flex: 1 1 42%;
+    min-height: var(--m-touch-sm) !important;
+    padding: 8px 6px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  /* Studio de publicidad */
+  .est-ads {
+    padding: var(--m-pad) !important;
+  }
+
+  .est-ads h2 {
+    font-size: 16px !important;
+  }
+
+  .est-studio-preview-box {
+    margin: 8px 0 !important;
+  }
+
+  .est-studio-preview-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 6px !important;
+  }
+
+  .est-studio-mode-pills {
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+  }
+
+  .est-mode-pill {
+    min-height: var(--m-touch-sm) !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-preset-thumbnails {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 4px !important;
+  }
+
+  .est-upload-dropzone {
+    padding: var(--m-pad) !important;
+    min-height: 100px !important;
+  }
+
+  .est-promo-form {
+    gap: 12px !important;
+  }
+
+  .est-studio-text-fields {
+    gap: 10px !important;
+  }
+
+  .est-studio-grid-2,
+  .est-studio-grid-3 {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+
+  .est-promo-compose summary {
+    min-height: var(--m-touch) !important;
+    padding: 8px 12px !important;
+    font-size: var(--m-fs-body) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   41. ESTADIO — ENTRADA ANIMADA (compacta en móvil)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .est-enter-title {
+    padding: 0 var(--m-pad-lg) !important;
+  }
+
+  .est-enter-name {
+    font-size: 28px !important;
+  }
+
+  .est-enter-sub {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .est-enter-skip {
+    min-height: var(--m-touch) !important;
+    padding: 8px 24px !important;
+    font-size: var(--m-fs-body) !important;
+  }
+}
+
+/* ===========================================================================
+   LOTERÍA MEXICANA — DISEÑO MÓVIL
+   =========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   42. LOTERÍA — TOPBAR (compacta)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .loteria-topbar {
+    width: 100% !important;
+    padding: 10px var(--m-pad) !important;
+    gap: 8px !important;
+    min-height: 50px;
+  }
+
+  .loteria-topbar .brand-copy b {
+    font-size: 13px !important;
+  }
+
+  .loteria-topbar .brand-copy em {
+    font-size: 8px !important;
+  }
+
+  .loteria-topbar .brand-mark {
+    transform: scale(.85);
+  }
+
+  .loteria-topbar-actions {
+    gap: 6px !important;
+    flex-shrink: 0;
+  }
+
+  .loteria-topbar-actions .connection-badge span {
+    display: none;
+  }
+
+  .loteria-balance {
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+  }
+
+  .loteria-topbar-actions .btn {
+    min-height: var(--m-touch-sm) !important;
+    padding: 0 8px !important;
+    font-size: 10px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   43. LOTERÍA — HERO Y ESTADO DE RONDA
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .loteria-shell {
+    width: calc(100% - 28px) !important;
+    margin-bottom: 40px !important;
+    gap: 18px !important;
+  }
+
+  .loteria-hero {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .loteria-hero-copy h1 {
+    font-size: clamp(28px, 7vw, 40px) !important;
+    margin: 8px 0 10px !important;
+  }
+
+  .loteria-hero-copy p {
+    font-size: var(--m-fs-small) !important;
+    line-height: 1.6 !important;
+  }
+
+  .loteria-hero-facts {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+    margin-top: 14px !important;
+  }
+
+  .loteria-hero-facts li {
+    padding: 10px !important;
+    border-radius: var(--m-radius) !important;
+  }
+
+  .loteria-hero-facts b {
+    font-size: 18px !important;
+  }
+
+  .loteria-hero-facts span {
+    font-size: 8px !important;
+  }
+
+  /* Status card */
+  .loteria-status-card {
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+    border-radius: var(--m-radius-lg) !important;
+    gap: 12px !important;
+  }
+
+  .loteria-status-head {
+    flex-wrap: wrap;
+    gap: 8px !important;
+  }
+
+  .loteria-phase {
+    font-size: 8.5px !important;
+    padding: 5px 10px !important;
+  }
+
+  .loteria-clock {
+    font-size: 10px !important;
+  }
+
+  .loteria-pot {
+    padding: 14px 16px !important;
+    border-radius: var(--m-radius) !important;
+  }
+
+  .loteria-pot b {
+    font-size: 34px !important;
+  }
+
+  .loteria-pot small {
+    font-size: 8px !important;
+  }
+
+  .loteria-status-meta {
+    gap: 6px !important;
+  }
+
+  .loteria-status-meta span {
+    flex: 1;
+    justify-content: center;
+    padding: 6px 8px !important;
+    font-size: 10px !important;
+    min-width: 0;
+  }
+
+  .loteria-actions {
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+
+  .loteria-actions .btn {
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  .loteria-help {
+    font-size: 10px !important;
+  }
+
+  .loteria-invite {
+    min-height: var(--m-touch-sm);
+    display: flex;
+    align-items: center;
+    font-size: 11px !important;
+  }
+
+  /* Formulario de identidad */
+  .loteria-identity {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius) !important;
+    gap: 10px !important;
+  }
+
+  .loteria-identity p {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .loteria-field input,
+  .loteria-field select {
+    min-height: var(--m-touch) !important;
+    font-size: 16px !important;
+  }
+
+  .loteria-tos {
+    font-size: 10px !important;
+  }
+
+  .loteria-identity-actions {
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+
+  .loteria-identity-actions .btn {
+    min-height: var(--m-touch) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   44. LOTERÍA — CARTÓN 4×4
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .loteria-table {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .loteria-board-card {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius-lg) !important;
+  }
+
+  .loteria-panel-head {
+    margin-bottom: 10px !important;
+    gap: 8px !important;
+  }
+
+  .loteria-panel-head h2 {
+    font-size: 16px !important;
+    margin-top: 4px !important;
+  }
+
+  .loteria-board-progress,
+  .loteria-badge {
+    min-width: 36px !important;
+    padding: 4px 8px !important;
+    font-size: 10px !important;
+  }
+
+  .loteria-board {
+    gap: 6px !important;
+  }
+
+  .loteria-cell {
+    min-height: 72px !important;
+    padding: 6px 4px !important;
+    border-radius: 10px !important;
+    gap: 1px !important;
+  }
+
+  .loteria-cell-emoji {
+    font-size: 20px !important;
+  }
+
+  .loteria-cell-name {
+    font-size: 8.5px !important;
+    line-height: 1.2 !important;
+  }
+
+  .loteria-cell-number {
+    font-size: 7px !important;
+  }
+
+  .loteria-cell.is-called::after {
+    font-size: 20px !important;
+  }
+
+  .loteria-board-note {
+    font-size: 9px !important;
+    margin-top: 10px !important;
+    line-height: 1.5 !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   45. LOTERÍA — PANEL LATERAL (cantadas + jugadores)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .loteria-side {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .loteria-panel {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius-lg) !important;
+  }
+
+  /* Cantadas: fila horizontal con scroll */
+  .loteria-called-list {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 6px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 4px 0 !important;
+    max-height: none !important;
+  }
+
+  .loteria-called-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .loteria-called-list .loteria-called-item {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 56px;
+    padding: 6px 8px;
+    border: 1px solid rgba(82, 224, 174, .25);
+    border-radius: 8px;
+    background: rgba(82, 224, 174, .06);
+    text-align: center;
+  }
+
+  .loteria-called-list .loteria-called-item .loteria-called-emoji {
+    font-size: 18px;
+  }
+
+  .loteria-called-list .loteria-called-item .loteria-called-name {
+    font-size: 7.5px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* Jugadores: lista compacta */
+  .loteria-players-list {
+    max-height: 200px !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .loteria-players-list li {
+    min-height: var(--m-touch-sm) !important;
+    padding: 6px 8px !important;
+    font-size: var(--m-fs-small) !important;
+    gap: 6px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   46. LOTERÍA — RESULTADO (overlay full-screen)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .loteria-result {
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+    border-radius: var(--m-radius-lg) !important;
+  }
+
+  .loteria-result h2 {
+    font-size: 22px !important;
+  }
+
+  .loteria-result h3 {
+    font-size: 16px !important;
+  }
+
+  .loteria-result p,
+  .loteria-result li {
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   47. LOTERÍA — REGLAS Y TOAST
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .loteria-rules {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius-lg) !important;
+  }
+
+  .loteria-rules h2 {
+    font-size: 16px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .loteria-rules li {
+    font-size: var(--m-fs-small) !important;
+    line-height: 1.5 !important;
+    margin-bottom: 6px !important;
+  }
+
+  .loteria-rules li b {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .loteria-tip {
+    font-size: 10px !important;
+    line-height: 1.5 !important;
+    margin-top: 10px !important;
+    padding: 10px !important;
+    border-radius: 8px !important;
+  }
+
+  .loteria-legal {
+    font-size: 9px !important;
+    margin-top: 8px !important;
+  }
+
+  /* Toast: centrado arriba */
+  .loteria-toast {
+    left: 14px !important;
+    right: 14px !important;
+    bottom: auto !important;
+    top: calc(var(--m-safe-top) + 56px) !important;
+    width: auto !important;
+    max-width: 100% !important;
+    font-size: var(--m-fs-small) !important;
+    padding: 10px 14px !important;
+    border-radius: var(--m-radius) !important;
+    text-align: center;
+  }
+}
+
+/* ===========================================================================
+   FASE 5 — COMPONENTES TRANSVERSALES
+   Tipografía, gestos, toasts, focus, PWA y accesibilidad móvil.
+   =========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   48. TIPOGRAFÍA REFINADA
+   Escalas consistentes para mejor legibilidad en móvil.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Títulos principales del sistema */
+  .modal-card h2,
+  .modal-card h3 {
+    font-size: var(--m-fs-title) !important;
+    line-height: 1.2 !important;
+  }
+
+  /* Texto base: mejor legibilidad en pantalla chica */
+  .modal-card p,
+  .modal-card li,
+  .modal-card span,
+  .modal-card small {
+    line-height: 1.55 !important;
+  }
+
+  /* Kicker / eyebrows: más legibles */
+  .kicker {
+    font-size: 8px !important;
+    letter-spacing: .12em !important;
+  }
+
+  /* Badges y pills: más compactos pero legibles */
+  .badge,
+  .est-badge {
+    font-size: 8px !important;
+    padding: 3px 7px !important;
+    min-height: 20px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Buttons dentro de modales: mejor espaciado */
+  .modal-card .btn {
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-body) !important;
+    padding: 8px 16px !important;
+  }
+
+  /* Inputs dentro de modales */
+  .modal-card input,
+  .modal-card select,
+  .modal-card textarea {
+    font-size: 16px !important;
+    min-height: var(--m-touch) !important;
+  }
+
+  /* Textareas: altura mínima cómoda */
+  .modal-card textarea {
+    min-height: 100px !important;
+    padding: 10px 12px !important;
+    line-height: 1.5 !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   49. SCROLL Y OVERFLOW
+   Comportamiento nativo de iOS/Android.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Prevenir overscroll bounce en el body (iOS) */
+  html.is-mobile {
+    overscroll-behavior-y: none;
+  }
+
+  /* Todos los contenedores con scroll: momentum nativo */
+  .chat-list,
+  .lobby-chat-messages,
+  .est-match-list,
+  .est-crowd-feed,
+  .est-commentary,
+  .est-mybets,
+  .est-roster-list,
+  .est-standings,
+  .loteria-players-list,
+  .loteria-called-list,
+  .mobile-chat-messages,
+  .players-list,
+  .mobile-nav-drawer,
+  .mobile-sheet {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Scrollbars ocultos en elementos horizontales */
+  .room-filters::-webkit-scrollbar,
+  .est-mobile-tabs::-webkit-scrollbar,
+  .estadio-nav-right::-webkit-scrollbar,
+  .loteria-called-list::-webkit-scrollbar,
+  .mobile-chat-reactions::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   50. FOCUS STATES MEJORADOS PARA TÁCTIL
+   En móvil, el focus visible no debería ser tan prominente como en escritorio.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* En móvil, quitar outline por defecto y usar :focus-visible */
+  *:focus {
+    outline: none;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--mint);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Botones con estado :active más pronunciado (feedback táctil) */
+  button:active,
+  .btn:active,
+  .game-btn:active,
+  .mobile-tab:active,
+  .est-mobile-tab:active,
+  .est-selection:active,
+  .quick-choice:active {
+    transform: scale(.97);
+    opacity: .85;
+    transition: transform .08s, opacity .08s;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   51. TOASTS MEJORADOS
+   Centrados arriba, con swipe-to-dismiss y mejor animación.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .toast-stack {
+    right: 50% !important;
+    transform: translateX(50%);
+    width: calc(100vw - 24px) !important;
+    max-width: 420px;
+    top: calc(var(--m-safe-top) + 10px) !important;
+    gap: 6px !important;
+  }
+
+  .toast {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    min-height: 54px !important;
+    padding: 8px 10px !important;
+    border-radius: var(--m-radius) !important;
+    grid-template-columns: 30px 1fr 16px !important;
+    gap: 8px !important;
+    cursor: grab;
+    touch-action: pan-y;
+  }
+
+  .toast:active {
+    cursor: grabbing;
+  }
+
+  .toast-icon {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 13px !important;
+  }
+
+  .toast-copy b {
+    font-size: 10px !important;
+    margin-bottom: 1px !important;
+  }
+
+  .toast-copy span {
+    font-size: 9px !important;
+    line-height: 1.35 !important;
+  }
+
+  .toast-close {
+    min-width: 28px;
+    min-height: 28px;
+    display: grid;
+    place-items: center;
+    font-size: 14px;
+    border-radius: 6px;
+  }
+
+  .toast-close:active {
+    background: rgba(255, 255, 255, .08);
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   52. INVITE INBOX MEJORADO
+   Las invitaciones flotantes mejor adaptadas al móvil.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .invite-inbox {
+    top: calc(var(--m-safe-top) + 56px) !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: 100% !important;
+    z-index: 750;
+  }
+
+  .invite-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 10px !important;
+    border-radius: var(--m-radius) !important;
+    grid-template-columns: 34px 1fr auto !important;
+    gap: 8px !important;
+    cursor: grab;
+    touch-action: pan-y;
+  }
+
+  .invite-card:active {
+    cursor: grabbing;
+  }
+
+  .invite-card b {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .invite-card p {
+    font-size: 10px !important;
+    line-height: 1.4 !important;
+  }
+
+  .invite-card .btn {
+    min-height: var(--m-touch-sm) !important;
+    font-size: 10px !important;
+    padding: 0 10px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   53. PWA-LIKE META STYLES
+   Comportamiento de app nativa para móviles.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* Status bar color consistente con el fondo */
+  html {
+    background-color: var(--bg, #05090b);
+  }
+
+  /* Prevenir text-size-adjust en orientación landscape */
+  html.is-mobile body {
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* Prevenir callout de información en iOS (long-press en links) */
+  html.is-mobile a,
+  html.is-mobile button,
+  html.is-mobile img {
+    -webkit-touch-callout: none;
+  }
+
+  /* Restaurar callout en contenido de texto normal */
+  html.is-mobile p,
+  html.is-mobile li,
+  html.is-mobile span,
+  html.is-mobile .chat-msg,
+  html.is-mobile .est-cmt-text,
+  html.is-mobile .loteria-cell-name {
+    -webkit-touch-callout: default;
+  }
+
+  /* Prevenir selección de texto en elementos interactivos */
+  html.is-mobile .game-btn,
+  html.is-mobile .btn,
+  html.is-mobile .chip-button,
+  html.is-mobile .seat-head,
+  html.is-mobile .mobile-tab,
+  html.is-mobile .est-mobile-tab,
+  html.is-mobile .est-selection,
+  html.is-mobile .quick-choice,
+  html.is-mobile .room-filters button,
+  html.is-mobile .loteria-cell,
+  html.is-mobile .est-crowd-react {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   54. LONG-PRESS FEEDBACK
+   Indicador visual de que un long-press está en progreso.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .table-seat,
+  .player-row,
+  .quick-bet-seat {
+    position: relative;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Animación sutil de "pulsación larga" */
+  @keyframes longPressPulse {
+    0% { box-shadow: 0 0 0 0 rgba(82, 224, 174, .4); }
+    70% { box-shadow: 0 0 0 8px rgba(82, 224, 174, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(82, 224, 174, 0); }
+  }
+
+  /* El feedback se activa vía JS con clase temporal */
+  .is-long-pressing .seat-head,
+  .is-long-pressing .player-avatar {
+    animation: longPressPulse .6s ease;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   55. CONNECTION OVERLAY (pantalla de carga)
+   Mejor adaptado al móvil.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .connection-overlay {
+    padding: var(--m-pad-lg) !important;
+  }
+
+  .loader-brand {
+    max-width: 280px !important;
+    padding: var(--m-pad-lg) !important;
+  }
+
+  .loader-wordmark b {
+    font-size: 15px !important;
+  }
+
+  .loader-wordmark small {
+    font-size: 8px !important;
+  }
+
+  .loader-helper {
+    font-size: 10px !important;
+    text-align: center;
+    margin-top: 14px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   56. ACCESSIBILITY: REDUCED MOTION
+   Refinar las animaciones cuando el usuario prefiere movimiento reducido.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .invite-card,
+  .mobile-drawer,
+  .mobile-sheet,
+  .mobile-drawer-backdrop,
+  .mobile-sheet-backdrop,
+  .mobile-nav-drawer,
+  .mobile-nav-backdrop,
+  .mobile-chat-sheet,
+  .mobile-chat-backdrop,
+  .mobile-room-backdrop,
+  .lobby-chat-panel {
+    animation: none !important;
+    transition-duration: .01ms !important;
+  }
+
+  .room-app .sidebar {
+    transition-duration: .01ms !important;
+  }
+
+  .hero-bg {
+    animation: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   57. RESPONSIVE BREAKPOINTS INTERNOS
+   Ajustes adicionales para celulares muy pequeños (< 380px) y tablets (640–900)
+   --------------------------------------------------------------------------- */
+
+/* Celulares muy pequeños (iPhone SE, Galaxy Fold exterior) */
+@media (max-width: 380px) {
+  :root {
+    --m-pad: 10px;
+    --m-pad-lg: 14px;
+    --m-fs-hero: 24px;
+    --m-fs-title: 14px;
+    --m-fs-body: 12px;
+  }
+}
+
+/* Tablets y phablets (640–900 px) */
+@media (min-width: 640px) and (max-width: 900px) {
+  :root {
+    --m-pad: 18px;
+    --m-pad-lg: 24px;
+    --m-fs-hero: 32px;
+    --m-fs-title: 18px;
+  }
+
+  .mobile-drawer {
+    width: min(360px, 70vw);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   10. ANIMACIÓN REDUCIDA
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .mobile-drawer,
+  .mobile-sheet,
+  .mobile-drawer-backdrop,
+  .mobile-sheet-backdrop {
+    transition: none !important;
+  }
+}

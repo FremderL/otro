@@ -2,12 +2,19 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover" />
+  <meta name="theme-color" content="#060b0d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#060b0d" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="description" content="Estadio MonteCristo: liga de fútbol simulada en vivo, con cancha 2D, relato de dos voces y apuestas con fichas virtuales." />
   <title>Estadio MonteCristo — Liga en vivo</title>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/estadio.css" />
+  <link rel="stylesheet" href="/mobile.css" media="(max-width: 900px)" />
+  <script src="/gate.js"></script>
+  <script src="/mobile.js" defer></script>
 </head>
 <body class="estadio-body">
   <!-- Animación de entrada (casino → Estadio). Vive oculta por defecto; solo la
@@ -52,6 +59,27 @@
   </header>
 
   <main id="estadio-main" class="estadio-shell">
+    <!-- Barra de navegación inferior móvil: reemplaza la nav superior y los tabs -->
+    <nav class="est-bottom-nav" id="est-bottom-nav" hidden aria-label="Navegación del Estadio">
+      <button class="est-bottom-nav-btn is-active" type="button" data-est-tab="center" aria-pressed="true">
+        <span class="est-bottom-nav-icon">⚽</span>
+        <span class="est-bottom-nav-label">Partido</span>
+      </button>
+      <button class="est-bottom-nav-btn" type="button" data-est-tab="left" aria-pressed="false">
+        <span class="est-bottom-nav-icon">📊</span>
+        <span class="est-bottom-nav-label">Tabla</span>
+      </button>
+      <button class="est-bottom-nav-btn" type="button" data-est-tab="right" aria-pressed="false">
+        <span class="est-bottom-nav-icon">🎯</span>
+        <span class="est-bottom-nav-label">Apuestas</span>
+        <span class="est-bottom-nav-badge" id="est-bottom-nav-bet-badge" hidden>0</span>
+      </button>
+      <button class="est-bottom-nav-btn" type="button" id="est-bottom-nav-hub" aria-pressed="false">
+        <span class="est-bottom-nav-icon">👤</span>
+        <span class="est-bottom-nav-label">Zona</span>
+      </button>
+    </nav>
+
     <!-- Columna izquierda: lobby (partidos de hoy) + tabla de posiciones -->
     <aside class="est-col-left" aria-label="Partidos, posiciones y zona de afición">
       <section class="est-panel" id="est-lobby-panel">
@@ -112,6 +140,11 @@
         <div class="est-team est-team-home"><span class="est-crest" id="crest-home"></span><span id="name-home">Local</span><span class="est-team-cards" id="cards-home" hidden></span></div>
         <div class="est-score"><b id="score-home">0</b><span class="est-clock" id="est-clock">—</span><b id="score-away">0</b></div>
         <div class="est-team est-team-away"><span class="est-team-cards" id="cards-away" hidden></span><span id="name-away">Visita</span><span class="est-crest" id="crest-away"></span></div>
+      </div>
+
+      <!-- Selector de partidos móvil: carrusel horizontal debajo del marcador -->
+      <div class="est-mobile-match-bar" id="est-mobile-match-bar" hidden>
+        <div class="est-mobile-match-scroll" id="est-mobile-match-scroll" role="listbox" aria-label="Seleccionar partido"></div>
       </div>
 
       <section id="est-preshow" class="est-preshow" aria-labelledby="est-preshow-title" hidden>

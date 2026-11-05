@@ -308,6 +308,50 @@
 .loteria-cell.is-fresh { animation: loteria-call 1s ease-out; }
 .loteria-cell.is-win { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(229, 189, 114, .45), 0 18px 44px rgba(229, 189, 114, .18); }
 
+/* Marcado manual por el usuario */
+.loteria-cell.is-marked {
+  border-color: rgba(77, 219, 232, .55);
+  background: radial-gradient(circle at 50% 20%, rgba(77, 219, 232, .22), rgba(10, 28, 32, .95));
+  box-shadow: 0 0 0 1px rgba(77, 219, 232, .25), 0 8px 22px rgba(77, 219, 232, .1);
+  transform: translateY(-1px);
+  cursor: pointer;
+}
+.loteria-cell.is-marked .loteria-cell-number { color: var(--cyan); }
+.loteria-cell.is-marked::after {
+  content: "✎";
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  color: var(--cyan);
+  font-size: 11px;
+  font-weight: 900;
+}
+/* Las celdas son clickeables para marcado manual */
+.loteria-cell:not(.is-empty):not(.is-called) {
+  cursor: pointer;
+  transition: transform .15s, border-color .2s, background .2s;
+}
+.loteria-cell:not(.is-empty):not(.is-called):hover {
+  border-color: rgba(77, 219, 232, .35);
+  background: rgba(77, 219, 232, .04);
+}
+.loteria-cell:not(.is-empty):not(.is-called):active {
+  transform: scale(.96);
+}
+
+/* Botón de voz en la topbar */
+.loteria-voice-btn {
+  min-width: 72px;
+  font-size: 11px !important;
+  font-weight: 750 !important;
+  letter-spacing: .02em;
+  transition: background .2s, border-color .2s;
+}
+.loteria-voice-btn[aria-pressed="false"] {
+  opacity: .6;
+  border-color: var(--line) !important;
+}
+
 @keyframes loteria-call {
   0% { transform: scale(.94); box-shadow: 0 0 0 0 rgba(82, 224, 174, .6); }
   60% { transform: scale(1.03); }
