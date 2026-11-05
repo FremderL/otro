@@ -261,7 +261,7 @@ MonteCristo es un casino social **exclusivo para escritorio** con un ancho míni
 
 ---
 
-### Fase 4 — Lotería mexicana (`loteria.html` + `loteria.css`)
+### Fase 4 — Lotería mexicana (`loteria.html` + `loteria.css`) ✅ COMPLETADA
 
 | Elemento actual | Cambio móvil |
 |----------------|--------------|

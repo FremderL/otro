@@ -3352,8 +3352,414 @@ body, .chat-list, .est-match-list, .lobby-chat-messages {
   }
 }
 
+/* ===========================================================================
+   LOTERÍA MEXICANA — DISEÑO MÓVIL
+   =========================================================================== */
+
 /* ---------------------------------------------------------------------------
-   42. RESPONSIVE BREAKPOINTS INTERNOS
+   42. LOTERÍA — TOPBAR (compacta)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .loteria-topbar {
+    width: 100% !important;
+    padding: 10px var(--m-pad) !important;
+    gap: 8px !important;
+    min-height: 50px;
+  }
+
+  .loteria-topbar .brand-copy b {
+    font-size: 13px !important;
+  }
+
+  .loteria-topbar .brand-copy em {
+    font-size: 8px !important;
+  }
+
+  .loteria-topbar .brand-mark {
+    transform: scale(.85);
+  }
+
+  .loteria-topbar-actions {
+    gap: 6px !important;
+    flex-shrink: 0;
+  }
+
+  .loteria-topbar-actions .connection-badge span {
+    display: none;
+  }
+
+  .loteria-balance {
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+  }
+
+  .loteria-topbar-actions .btn {
+    min-height: var(--m-touch-sm) !important;
+    padding: 0 8px !important;
+    font-size: 10px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   43. LOTERÍA — HERO Y ESTADO DE RONDA
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .loteria-shell {
+    width: calc(100% - 28px) !important;
+    margin-bottom: 40px !important;
+    gap: 18px !important;
+  }
+
+  .loteria-hero {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .loteria-hero-copy h1 {
+    font-size: clamp(28px, 7vw, 40px) !important;
+    margin: 8px 0 10px !important;
+  }
+
+  .loteria-hero-copy p {
+    font-size: var(--m-fs-small) !important;
+    line-height: 1.6 !important;
+  }
+
+  .loteria-hero-facts {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+    margin-top: 14px !important;
+  }
+
+  .loteria-hero-facts li {
+    padding: 10px !important;
+    border-radius: var(--m-radius) !important;
+  }
+
+  .loteria-hero-facts b {
+    font-size: 18px !important;
+  }
+
+  .loteria-hero-facts span {
+    font-size: 8px !important;
+  }
+
+  /* Status card */
+  .loteria-status-card {
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+    border-radius: var(--m-radius-lg) !important;
+    gap: 12px !important;
+  }
+
+  .loteria-status-head {
+    flex-wrap: wrap;
+    gap: 8px !important;
+  }
+
+  .loteria-phase {
+    font-size: 8.5px !important;
+    padding: 5px 10px !important;
+  }
+
+  .loteria-clock {
+    font-size: 10px !important;
+  }
+
+  .loteria-pot {
+    padding: 14px 16px !important;
+    border-radius: var(--m-radius) !important;
+  }
+
+  .loteria-pot b {
+    font-size: 34px !important;
+  }
+
+  .loteria-pot small {
+    font-size: 8px !important;
+  }
+
+  .loteria-status-meta {
+    gap: 6px !important;
+  }
+
+  .loteria-status-meta span {
+    flex: 1;
+    justify-content: center;
+    padding: 6px 8px !important;
+    font-size: 10px !important;
+    min-width: 0;
+  }
+
+  .loteria-actions {
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+
+  .loteria-actions .btn {
+    min-height: var(--m-touch) !important;
+    font-size: var(--m-fs-body) !important;
+  }
+
+  .loteria-help {
+    font-size: 10px !important;
+  }
+
+  .loteria-invite {
+    min-height: var(--m-touch-sm);
+    display: flex;
+    align-items: center;
+    font-size: 11px !important;
+  }
+
+  /* Formulario de identidad */
+  .loteria-identity {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius) !important;
+    gap: 10px !important;
+  }
+
+  .loteria-identity p {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .loteria-field input,
+  .loteria-field select {
+    min-height: var(--m-touch) !important;
+    font-size: 16px !important;
+  }
+
+  .loteria-tos {
+    font-size: 10px !important;
+  }
+
+  .loteria-identity-actions {
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+
+  .loteria-identity-actions .btn {
+    min-height: var(--m-touch) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   44. LOTERÍA — CARTÓN 4×4
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .loteria-table {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .loteria-board-card {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius-lg) !important;
+  }
+
+  .loteria-panel-head {
+    margin-bottom: 10px !important;
+    gap: 8px !important;
+  }
+
+  .loteria-panel-head h2 {
+    font-size: 16px !important;
+    margin-top: 4px !important;
+  }
+
+  .loteria-board-progress,
+  .loteria-badge {
+    min-width: 36px !important;
+    padding: 4px 8px !important;
+    font-size: 10px !important;
+  }
+
+  .loteria-board {
+    gap: 6px !important;
+  }
+
+  .loteria-cell {
+    min-height: 72px !important;
+    padding: 6px 4px !important;
+    border-radius: 10px !important;
+    gap: 1px !important;
+  }
+
+  .loteria-cell-emoji {
+    font-size: 20px !important;
+  }
+
+  .loteria-cell-name {
+    font-size: 8.5px !important;
+    line-height: 1.2 !important;
+  }
+
+  .loteria-cell-number {
+    font-size: 7px !important;
+  }
+
+  .loteria-cell.is-called::after {
+    font-size: 20px !important;
+  }
+
+  .loteria-board-note {
+    font-size: 9px !important;
+    margin-top: 10px !important;
+    line-height: 1.5 !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   45. LOTERÍA — PANEL LATERAL (cantadas + jugadores)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .loteria-side {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .loteria-panel {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius-lg) !important;
+  }
+
+  /* Cantadas: fila horizontal con scroll */
+  .loteria-called-list {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 6px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 4px 0 !important;
+    max-height: none !important;
+  }
+
+  .loteria-called-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .loteria-called-list .loteria-called-item {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 56px;
+    padding: 6px 8px;
+    border: 1px solid rgba(82, 224, 174, .25);
+    border-radius: 8px;
+    background: rgba(82, 224, 174, .06);
+    text-align: center;
+  }
+
+  .loteria-called-list .loteria-called-item .loteria-called-emoji {
+    font-size: 18px;
+  }
+
+  .loteria-called-list .loteria-called-item .loteria-called-name {
+    font-size: 7.5px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* Jugadores: lista compacta */
+  .loteria-players-list {
+    max-height: 200px !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .loteria-players-list li {
+    min-height: var(--m-touch-sm) !important;
+    padding: 6px 8px !important;
+    font-size: var(--m-fs-small) !important;
+    gap: 6px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   46. LOTERÍA — RESULTADO (overlay full-screen)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .loteria-result {
+    padding: var(--m-pad-lg) var(--m-pad) !important;
+    border-radius: var(--m-radius-lg) !important;
+  }
+
+  .loteria-result h2 {
+    font-size: 22px !important;
+  }
+
+  .loteria-result h3 {
+    font-size: 16px !important;
+  }
+
+  .loteria-result p,
+  .loteria-result li {
+    font-size: var(--m-fs-small) !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   47. LOTERÍA — REGLAS Y TOAST
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .loteria-rules {
+    padding: var(--m-pad) !important;
+    border-radius: var(--m-radius-lg) !important;
+  }
+
+  .loteria-rules h2 {
+    font-size: 16px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .loteria-rules li {
+    font-size: var(--m-fs-small) !important;
+    line-height: 1.5 !important;
+    margin-bottom: 6px !important;
+  }
+
+  .loteria-rules li b {
+    font-size: var(--m-fs-small) !important;
+  }
+
+  .loteria-tip {
+    font-size: 10px !important;
+    line-height: 1.5 !important;
+    margin-top: 10px !important;
+    padding: 10px !important;
+    border-radius: 8px !important;
+  }
+
+  .loteria-legal {
+    font-size: 9px !important;
+    margin-top: 8px !important;
+  }
+
+  /* Toast: centrado arriba */
+  .loteria-toast {
+    left: 14px !important;
+    right: 14px !important;
+    bottom: auto !important;
+    top: calc(var(--m-safe-top) + 56px) !important;
+    width: auto !important;
+    max-width: 100% !important;
+    font-size: var(--m-fs-small) !important;
+    padding: 10px 14px !important;
+    border-radius: var(--m-radius) !important;
+    text-align: center;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   48. RESPONSIVE BREAKPOINTS INTERNOS
    Ajustes adicionales para celulares muy pequeños (< 380px) y tablets (640–900)
    --------------------------------------------------------------------------- */
 
