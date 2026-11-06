@@ -1429,6 +1429,13 @@ body, .chat-list, .est-match-list, .lobby-chat-messages {
     grid-template-columns: none !important;
   }
 
+  /* La mesa no forma parte del flujo del lobby hasta entrar en una sala.
+     Esta regla necesita más especificidad que .room-app porque mobile.css se
+     carga después de la regla general .hidden. */
+  .room-app.hidden {
+    display: none !important;
+  }
+
   /* Sidebar: oculta por defecto, se abre como drawer */
   .room-app .sidebar {
     position: fixed !important;
@@ -2765,6 +2772,50 @@ body, .chat-list, .est-match-list, .lobby-chat-messages {
     font-size: 11px !important;
     padding: 2px 8px !important;
   }
+}
+
+/* En teléfonos el escudo, el nombre y las tarjetas no compiten por el mismo
+   renglón. Cada equipo usa toda su columna y el nombre se parte por palabras;
+   break-word solo actúa como último recurso para una palabra que no quepa. */
+@media (max-width: 600px) {
+  .est-scoreboard {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 8px !important;
+  }
+
+  .est-team {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px !important;
+    min-width: 0;
+    font-size: clamp(11px, 3.2vw, 13px) !important;
+    line-height: 1.25;
+  }
+
+  .est-team-home { justify-items: start; }
+  .est-team-away { justify-items: end; }
+
+  .est-team .est-crest { grid-row: 1; }
+
+  .est-team > span.est-team-name {
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+    overflow-wrap: break-word;
+    word-break: normal;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .est-team .est-team-cards {
+    grid-row: 3;
+    margin-top: 2px;
+  }
+
+  .est-score { gap: 6px; }
+  .est-clock { white-space: nowrap; }
+  .est-score-crest-img { width: 24px; height: 28px; }
 }
 
 

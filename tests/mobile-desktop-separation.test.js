@@ -15,6 +15,7 @@ const ROOT = path.join(__dirname, '..');
 const readPublic = file => fs.readFileSync(path.join(ROOT, 'public', file), 'utf8');
 const MOBILE_CLIENT = readPublic('mobile.js');
 const STYLES = readPublic('styles.css');
+const MOBILE_STYLES = readPublic('mobile.css');
 const ESTADIO_STYLES = readPublic('estadio.css');
 const INDEX_HTML = readPublic('index.html');
 const ESTADIO_HTML = readPublic('estadio.html');
@@ -64,6 +65,34 @@ test('en móvil los controles del casino se encienden como antes', () => {
     for (const id of CASINO_MOBILE_IDS) {
       assert.equal(isHidden(doc.getElementById(id)), false, `${id} se enciende en móvil`);
     }
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('la mesa oculta no se renderiza después del footer del casino móvil', () => {
+  const dom = new JSDOM(INDEX_HTML, { pretendToBeVisual: true });
+  try {
+    const { window } = dom;
+    const doc = window.document;
+    const room = doc.getElementById('room-app');
+    assert.ok(room.classList.contains('hidden'), 'la mesa nace oculta mientras el usuario está en el lobby');
+    assert.equal(doc.getElementById('mobile-chat-toggle').closest('.room-app.hidden'), room,
+      'los controles del chat quedan dentro de esa mesa oculta');
+
+    // Aísla las reglas de la cascada móvil para comprobar su comportamiento
+    // real: antes, .room-app ganaba a .hidden por cargarse después.
+    const layout = MOBILE_STYLES.match(/\.room-app\s*\{\s*display: flex !important;[^}]+\}/);
+    const guard = MOBILE_STYLES.match(/\.room-app\.hidden\s*\{\s*display: none !important;\s*\}/);
+    assert.ok(layout, 'la mesa activa conserva su disposición móvil');
+    assert.ok(guard, 'la mesa inactiva tiene una guarda explícita contra el display móvil');
+    const style = doc.createElement('style');
+    style.textContent = '.hidden { display: none !important; }\n' + layout[0] + '\n' + guard[0];
+    doc.head.appendChild(style);
+
+    assert.equal(window.getComputedStyle(room).display, 'none', 'el footer queda como el final real del lobby');
+    room.classList.remove('hidden');
+    assert.equal(window.getComputedStyle(room).display, 'flex', 'al entrar en una sala la mesa vuelve a mostrarse');
   } finally {
     dom.window.close();
   }

@@ -12,6 +12,7 @@ const { JSDOM } = require('jsdom');
 
 const HTML = fs.readFileSync(path.join(__dirname, '..', 'public', 'estadio.html'), 'utf8');
 const MOBILE = fs.readFileSync(path.join(__dirname, '..', 'public', 'mobile.js'), 'utf8');
+const MOBILE_STYLES = fs.readFileSync(path.join(__dirname, '..', 'public', 'mobile.css'), 'utf8');
 
 function createHarness({ width = 390 } = {}) {
   const dom = new JSDOM(HTML, {
@@ -191,6 +192,33 @@ test('el selector se sincroniza con la jornada y se vacía cuando no hay partido
     assert.equal(picker.querySelectorAll('.est-mobile-pick-match').length, 0, 'se limpia al vaciar la jornada');
   } finally {
     h.close();
+  }
+});
+
+test('el marcador de teléfono da su propia fila al nombre y no lo divide letra por letra', () => {
+  const dom = new JSDOM(HTML);
+  try {
+    const doc = dom.window.document;
+    for (const id of ['name-home', 'name-away']) {
+      assert.ok(doc.getElementById(id).classList.contains('est-team-name'), `${id} tiene estilos propios`);
+    }
+
+    const phone = MOBILE_STYLES.match(/@media \(max-width: 600px\) \{([\s\S]*?)\n\}/);
+    assert.ok(phone, 'existe una disposición específica para teléfonos');
+    assert.match(phone[0], /grid-template-columns: minmax\(0, 1fr\) auto minmax\(0, 1fr\)/,
+      'los equipos y el resultado tienen columnas independientes');
+
+    const name = phone[0].match(/\.est-team > span\.est-team-name \{([^}]+)\}/);
+    assert.ok(name, 'el nombre ocupa una fila completa dentro de su equipo');
+    assert.match(name[1], /grid-row: 2/);
+    assert.match(name[1], /width: 100%/);
+    assert.match(name[1], /overflow-wrap: break-word/, 'una palabra solo se rompe si ella sola no cabe');
+    assert.match(name[1], /word-break: normal/, 'no se fuerza el corte entre letras');
+    assert.match(name[1], /white-space: normal/, 'los nombres largos pueden usar varias líneas');
+    assert.match(phone[0], /\.est-team \.est-team-cards \{[^}]*grid-row: 3/,
+      'las tarjetas ya no les quitan ancho a los nombres');
+  } finally {
+    dom.window.close();
   }
 });
 
