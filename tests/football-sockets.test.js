@@ -825,6 +825,38 @@ test('socket BDO usa identidad suscrita, devuelve mercado público y descarta cu
     selection: 'candidate-test', stake: 100, idempotencyKey: 'socket-bdo-key-001'
   });
   assert.equal(ctx.betPlacements.at(-1).kind, 'future');
+
+  // Hidratación de recibo en subscribe, market suscrito y rechazo boleto_ya_colocado (sin afectar socket no suscrito ni broadcast).
+  ctx.betting.getBallonDorTicketForProfile = (pid, month) => (pid === subscribed.profile.id && (!month || month === ctx.month))
+    ? {
+      id: 'bdo_test', market: 'balon_de_oro', selection: 'candidate-test',
+      stake: 100, odds: 3.25, potentialPayout: 325, status: 'open',
+      payout: null, payoutApplied: false, placedAt: 1, seasonMonth: ctx.month, profileId: 'no-publicar'
+    } : null;
+  ctx.betting.placeBallonDorBet = async () => ({
+    ok: false,
+    code: 'boleto_ya_colocado',
+    future: {
+      id: 'bdo_test', market: 'balon_de_oro', selection: 'candidate-test',
+      stake: 100, odds: 3.25, potentialPayout: 325, status: 'open',
+      payout: null, payoutApplied: false, placedAt: 1, seasonMonth: ctx.month, profileId: 'no-publicar'
+    }
+  });
+  const resub = subscribe(ctx, socket, { scope: 'lobby', name: 'BDO socket' });
+  assert.equal(resub.ballonDorReceipt?.id, 'bdo_test');
+  assert.doesNotMatch(JSON.stringify(resub.ballonDorReceipt), /profileId|no-publicar/);
+  const subMarket = socket._fire('football:ballon_dor_market', {});
+  assert.equal(subMarket.ballonDorReceipt?.id, 'bdo_test');
+  const anonSocket = ctx.io.connect();
+  const anonMarket = anonSocket._fire('football:ballon_dor_market', {});
+  assert.equal('ballonDorReceipt' in anonMarket, false, 'socket no suscrito solo recibe mercado público');
+  const dupReply = await new Promise(resolve => socket._fire('football:ballon_dor_bet', {
+    selection: 'other-cand', stake: 100, idemKey: 'socket-bdo-key-002'
+  }, resolve));
+  assert.equal(dupReply.ok, false);
+  assert.equal(dupReply.code, 'boleto_ya_colocado');
+  assert.equal(dupReply.future?.id, 'bdo_test');
+  assert.doesNotMatch(JSON.stringify(dupReply.future), /profileId|no-publicar/);
 });
 
 

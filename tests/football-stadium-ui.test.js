@@ -167,7 +167,13 @@ function createHarness(options = {}) {
       if (event === 'football:fantasy_save' && options.onFantasySave) { ack(options.onFantasySave(payload)); return; }
       if (event === 'football:fantasy_ranking_opt' && options.onFantasyOpt) { ack(options.onFantasyOpt(payload)); return; }
       if (event === 'football:ballon_dor_market') {
-        if (typeof ack === 'function') ack({ ok: true, market: currentBallonDorMarket });
+        if (typeof ack === 'function') {
+          ack({
+            ok: true,
+            market: currentBallonDorMarket,
+            ...(options.ballonDorReceipt !== undefined ? { ballonDorReceipt: options.ballonDorReceipt } : {})
+          });
+        }
         return;
       }
       if (event === 'football:ballon_dor_bet') {
@@ -190,10 +196,22 @@ function createHarness(options = {}) {
       }
       if (event !== 'football:subscribe') return;
       if (payload.scope === 'lobby') {
-        ack({ ok: true, teams, profile: { id: 'alice', chips: 1000 }, lobby });
+        ack({
+          ok: true,
+          teams,
+          profile: { id: 'alice', chips: 1000 },
+          lobby,
+          ...(options.ballonDorReceipt !== undefined ? { ballonDorReceipt: options.ballonDorReceipt } : {})
+        });
       } else {
         if (options.onMatchSubscribe) { options.onMatchSubscribe(payload, ack, { teams, matchState }); return; }
-        ack({ ok: true, teams, profile: { id: 'alice', chips: 1000 }, matchState });
+        ack({
+          ok: true,
+          teams,
+          profile: { id: 'alice', chips: 1000 },
+          matchState,
+          ...(options.ballonDorReceipt !== undefined ? { ballonDorReceipt: options.ballonDorReceipt } : {})
+        });
       }
     }
   };
@@ -410,7 +428,14 @@ function createHarness(options = {}) {
     }
     return {
       ok: true,
-      json: async () => ({ ok: true, teams, tosVersion: '2026-09-28', lobby, profile: { id: 'alice', chips: 1000 } })
+      json: async () => ({
+        ok: true,
+        teams,
+        tosVersion: '2026-09-28',
+        lobby,
+        profile: { id: 'alice', chips: 1000 },
+        ...(options.ballonDorReceipt !== undefined ? { ballonDorReceipt: options.ballonDorReceipt } : {})
+      })
     };
   };
   window.io = options.socketMissing ? undefined : () => socket;
@@ -2441,6 +2466,116 @@ test('Balón de Oro no habilita apuestas hasta aceptar la versión vigente de T�
   assert.ok(document.querySelector('[data-bdo-select="bdo-club-1"]'));
   chooseBallonDorCandidate(h, 'bdo-club-1', 100);
   assert.equal(document.getElementById('est-bdo-review').disabled, false);
+});
+
+test('Balón de Oro conserva el recibo al recargar aunque el historial tenga 100 apuestas posteriores y bloquea nuevas selecciones', async t => {
+  const existingReceipt = {
+    id: 'bdo-persisted-1',
+    seasonMonth: '2026-10',
+    market: 'balon_de_oro',
+    selection: 'bdo-club-2',
+    odds: 2.1,
+    stake: 150,
+    potentialPayout: 315,
+    status: 'open',
+    payout: null,
+    payoutApplied: false,
+    placedAt: 1000
+  };
+  const hundredBets = Array.from({ length: 100 }, (_, i) => ({
+    kind: 'bet', id: 'bet-' + i, matchId: 'ui-match', market: '1x2', selection: 'home',
+    stake: 10, odds: 2.0, potentialPayout: 20, status: 'open', payout: null, placedAt: 2000 + i
+  }));
+  const h = await createBallonDorHarness({
+    path: '/balon-de-oro',
+    openingCompleted: true,
+    ballonDorReceipt: existingReceipt,
+    betHistory: { entries: hundredBets, ballonDorTicket: existingReceipt, summary: { total: 101 } }
+  });
+  t.after(h.close);
+  await h.flush();
+  const { document } = h.window;
+  assert.equal(document.getElementById('est-bdo-receipt').hidden, false, 'el recibo se hidrata al cargar');
+  assert.equal(document.getElementById('est-bdo-slip').hidden, true, 'el formulario de apuesta permanece oculto');
+  assert.match(document.getElementById('est-bdo-receipt-body').textContent, /Delantero 2/);
+  assert.match(document.getElementById('est-bdo-receipt-body').textContent, /150 fichas/);
+  assert.equal(document.querySelectorAll('[data-bdo-select]').length, 0, 'ningún candidato muestra botón Elegir');
+  const myBetsReq = h.requests.find(item => item.url.startsWith('/api/estadio/my-bets'));
+  assert.ok(myBetsReq && myBetsReq.options.credentials === 'same-origin', 'historial viaja con credenciales same-origin');
+});
+
+test('Balón de Oro recupera de inmediato el recibo existente si otra pestaña colocó antes y llega boleto_ya_colocado', async t => {
+  const existingFuture = {
+    id: 'bdo-other-tab-1',
+    seasonMonth: '2026-10',
+    market: 'balon_de_oro',
+    selection: 'bdo-club-3',
+    odds: 2.2,
+    stake: 120,
+    potentialPayout: 264,
+    status: 'open',
+    payout: null,
+    payoutApplied: false,
+    placedAt: 1500
+  };
+  const h = await createBallonDorHarness({
+    onBallonDorSocketBet: () => ({
+      ok: false,
+      code: 'boleto_ya_colocado',
+      error: 'boleto_ya_colocado',
+      future: existingFuture
+    })
+  });
+  t.after(h.close);
+  const { document } = h.window;
+  chooseBallonDorCandidate(h, 'bdo-club-1', 100);
+  document.getElementById('est-bdo-review').click();
+  assert.equal(document.getElementById('est-bdo-confirmation').hidden, false);
+
+  document.getElementById('est-bdo-confirm').click();
+  await h.flush();
+  assert.equal(document.getElementById('est-bdo-slip').hidden, true, 'cierra el cupón atascado');
+  assert.equal(document.getElementById('est-bdo-receipt').hidden, false, 'muestra de inmediato el boleto existente');
+  assert.match(document.getElementById('est-bdo-receipt-body').textContent, /Delantero 3/);
+  assert.match(document.getElementById('est-bdo-receipt-body').textContent, /120 fichas/);
+  assert.equal(document.querySelectorAll('[data-bdo-select]').length, 0);
+});
+
+test('Balón de Oro mantiene bloqueada la selección ante void sin reembolso aplicado y la libera al aplicarse en ciclo activo', async t => {
+  let receipt = {
+    id: 'bdo-void-pending',
+    seasonMonth: '2026-10',
+    market: 'balon_de_oro',
+    selection: 'bdo-club-1',
+    odds: 2.5,
+    stake: 100,
+    potentialPayout: 250,
+    status: 'void',
+    payout: 100,
+    payoutApplied: false,
+    placedAt: 1000
+  };
+  const h = await createBallonDorHarness({
+    ballonDorReceipt: receipt,
+    betHistory: () => ({ entries: [{ ...receipt, kind: 'future' }], ballonDorTicket: receipt, summary: { total: 1 } })
+  });
+  t.after(h.close);
+  await h.flush();
+  const { document } = h.window;
+  assert.equal(document.getElementById('est-bdo-receipt').hidden, false);
+  assert.match(document.getElementById('est-bdo-receipt-body').textContent, /reembolso en proceso/);
+  assert.equal(document.querySelectorAll('[data-bdo-select]').length, 0);
+
+  receipt = null;
+  h.advanceTime(5000);
+  h.handlers['football:ballon_dor_market']({ market: ballonDorMarket({ updatedAt: 200 }) });
+  // Al refrescar historial una vez acreditado el reembolso, la selección vuelve a habilitarse.
+  document.getElementById('est-ledger-open').click();
+  await h.flush();
+  document.getElementById('est-ledger-close').click();
+  assert.equal(document.getElementById('est-bdo-receipt').hidden, true);
+  assert.equal(document.getElementById('est-bdo-slip').hidden, false);
+  assert.equal(document.querySelectorAll('[data-bdo-select]').length, 16);
 });
 
 
