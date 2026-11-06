@@ -956,3 +956,81 @@ test('un reembolso completado permite elegir otro candidato sin reutilizar la cl
     assert.equal(h.store.getFutures({ profileId: h.profile.id, seasonMonth: SEASON }).length, 2);
   } finally { h.cleanup(); }
 });
+
+test('el boleto activo del Balón de Oro nunca se pierde por límite de historial, expone recibo directo y se adjunta en boleto_ya_colocado', async () => {
+  const h = tempHarness({ chips: 1000, createProfiles: true });
+  try {
+    await activateWithSnapshot(h, openAt);
+    let now = openAt + 2000;
+    const betting = createBettingService({ store: h.store, profiles: h.profiles, now: () => now, log: () => {} });
+    neutralizeProgression(h.profile);
+    const placed = await betting.placeBallonDorBet({
+      profile: h.profile,
+      selection: h.league.ballonDor.candidates[0].id,
+      stake: 100,
+      idempotencyKey: 'bdo-pin-history-1',
+      placedAt: now
+    });
+    assert.equal(placed.ok, true, placed.code);
+
+    // Inserta 120 apuestas de partido posteriores para rebasar limit=100.
+    const matchId = h.league.calendar.matches[0].id;
+    for (let i = 0; i < 120; i++) {
+      now += 1000;
+      h.store.insertBet({
+        id: `bet_fill_${i}`,
+        idempotencyKey: `idem_fill_${i}`,
+        profileId: h.profile.id,
+        matchId,
+        market: '1x2',
+        selection: 'home',
+        stake: 10,
+        oddsAtPlacement: 2.0,
+        potentialPayout: 20,
+        status: 'open',
+        placedAt: now
+      });
+    }
+
+    const history = betting.getBetHistory(h.profile.id, { limit: 100 });
+    assert.equal(history.entries.length, 100, 'respeta el tope solicitado');
+    assert.ok(history.entries.some(e => e.kind === 'future' && e.id === placed.future.id),
+      'el boleto activo del Balón de Oro sigue presente en entries tras >100 apuestas');
+    assert.equal(history.ballonDorTicket?.id, placed.future.id);
+    assert.equal(betting.getBallonDorTicketForProfile(h.profile.id, SEASON)?.id, placed.future.id);
+    const serialized = JSON.stringify({ ticket: history.ballonDorTicket });
+    assert.doesNotMatch(serialized, /profileId|idempotencyKey/);
+
+    // Intento duplicado con otra clave y candidato devuelve boleto_ya_colocado junto con el recibo existente.
+    const dup = await betting.placeBallonDorBet({
+      profile: h.profile,
+      selection: h.league.ballonDor.candidates[1].id,
+      stake: 100,
+      idempotencyKey: 'bdo-pin-history-dup',
+      placedAt: now + 500
+    });
+    assert.equal(dup.ok, false);
+    assert.equal(dup.code, 'boleto_ya_colocado');
+    assert.equal(dup.future?.id, placed.future.id);
+    assert.doesNotMatch(JSON.stringify(dup.future), /profileId|idempotencyKey/);
+
+    // Anulación aún sin aplicar reembolso sigue bloqueando y exponiéndose; al aplicar reembolso en ciclo activo libera.
+    h.store.voidFuture(placed.future.id, { settledAt: now + 600, payout: 100 });
+    const pendingVoid = betting.getBallonDorTicketForProfile(h.profile.id, SEASON);
+    assert.equal(pendingVoid?.id, placed.future.id);
+    assert.equal(pendingVoid?.status, 'void');
+    assert.equal(pendingVoid?.payoutApplied, false);
+
+    await betting.refundBallonDorBets(SEASON, 'ajuste_admin', now + 700);
+    assert.equal(betting.getBallonDorTicketForProfile(h.profile.id, SEASON), null,
+      'en mercado activo, un boleto anulado ya reembolsado permite reemplazo');
+
+    // Si el ciclo pasa a cancelado, el recibo reembolsado sí se muestra para constancia del usuario.
+    await h.store.transitionBallonDor(SEASON, 'cancelled', { at: now + 800, reason: 'temporada_truncada' });
+    const cancelledVoid = betting.getBallonDorTicketForProfile(h.profile.id, SEASON);
+    assert.equal(cancelledVoid?.id, placed.future.id);
+    assert.equal(cancelledVoid?.status, 'void');
+    assert.equal(cancelledVoid?.payoutApplied, true);
+  } finally { h.cleanup(); }
+});
+

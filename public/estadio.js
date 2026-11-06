@@ -374,6 +374,41 @@
     if (launchCopy) launchCopy.textContent = 'En la primera visita se abre una presentación individual de los 16 candidatos. La fecha de llegada no importa: puedes conocer el evento aunque entres avanzado el ciclo.';
   }
 
+  function syncAuthenticatedProfile(nextProfile, payload) {
+    if (!nextProfile) return false;
+    var profileChanged = Boolean(S.profile && S.profile.id && S.profile.id !== nextProfile.id);
+    if (profileChanged) {
+      S.betHistory = null;
+      S.betHistoryFetchedAt = 0;
+      S.ballonDorReceipt = null;
+      S.ballonDorReview = null;
+      S.ballonDorIdempotencyKey = null;
+    }
+    S.profile = nextProfile;
+    S.chips = nextProfile.chips;
+    updateChips();
+    if (payload && Object.prototype.hasOwnProperty.call(payload, 'ballonDorReceipt')
+        && !S.ballonDorRequestedSeasonMonth) {
+      S.ballonDorReceipt = payload.ballonDorReceipt || null;
+      if (S.ballonDorReceipt) {
+        S.ballonDorReview = null;
+        S.ballonDorIdempotencyKey = null;
+      }
+    }
+    return profileChanged;
+  }
+
+  function clearAuthenticatedProfile() {
+    S.profile = null;
+    S.chips = 0;
+    S.betHistory = null;
+    S.betHistoryFetchedAt = 0;
+    S.ballonDorReceipt = null;
+    S.ballonDorReview = null;
+    S.ballonDorIdempotencyKey = null;
+    updateChips();
+  }
+
   function boot() {
     configureBallonDorPage();
     maybePlayEntry();
@@ -399,12 +434,12 @@
         return fetch('/api/estadio/state?token=' + encodeURIComponent(S.token), { cache: 'no-store', credentials: 'same-origin' })
           .then(function (r) { return r.json(); })
           .then(function (data) {
-            if (data && data.code === 'account_session_required') { S.profile = null; S.chips = 0; updateChips(); var ib = document.getElementById('est-identity-banner'); if (ib) ib.classList.remove('hidden'); return; }
+            if (data && data.code === 'account_session_required') { clearAuthenticatedProfile(); renderBallonDorMarket(); var ib = document.getElementById('est-identity-banner'); if (ib) ib.classList.remove('hidden'); return; }
             if (!data || !data.ok) return;
             S.teams = data.teams || {};
             S.tosVersion = data.tosVersion || TOS_FALLBACK;
             if (data.profile) {
-              S.profile = data.profile; S.chips = data.profile.chips; updateChips();
+              syncAuthenticatedProfile(data.profile, data);
               if (data.profile.id) loadBetHistory({ force: true });
               renderBallonDorMarket();
             }
@@ -584,8 +619,8 @@
     S.socket.emit('football:subscribe', { scope: 'lobby', token: S.token, name: S.name, avatar: S.avatar, tos: S.tosVersion }, function (res) {
       if (!res || !res.ok) return onSubError(res);
       S.teams = res.teams || S.teams;
-      if (res.code === 'account_session_required') { S.profile = null; S.chips = 0; updateChips(); var ib = document.getElementById('est-identity-banner'); if (ib) ib.classList.remove('hidden'); return; }
-      if (res.profile) { S.profile = res.profile; S.chips = res.profile.chips; updateChips(); }
+      if (res.code === 'account_session_required') { clearAuthenticatedProfile(); renderBallonDorMarket(); var ib = document.getElementById('est-identity-banner'); if (ib) ib.classList.remove('hidden'); return; }
+      if (res.profile) syncAuthenticatedProfile(res.profile, res);
       refreshFantasy();
       refreshFan();
       renderBallonDorMarket();
@@ -681,6 +716,13 @@
       if (result && result.ok) {
         S.ballonDorRequestSeq++;
         setBallonDorFeed('socket', 'En vivo · Socket.IO');
+        if (Object.prototype.hasOwnProperty.call(result, 'ballonDorReceipt')) {
+          S.ballonDorReceipt = result.ballonDorReceipt || null;
+          if (S.ballonDorReceipt) {
+            S.ballonDorReview = null;
+            S.ballonDorIdempotencyKey = null;
+          }
+        }
         applyBallonDorMarket(result.market || null);
       }
     });
@@ -945,20 +987,30 @@
     })[reason] || 'El ciclo se canceló (' + String(reason || 'motivo no disponible').replace(/[_<>]/g, ' ') + ').';
   }
 
+  function isReplacedActiveVoid(market, item) {
+    return Boolean(market && market.status === 'active' && item && item.status === 'void' && item.payoutApplied !== false);
+  }
+
   function currentBallonDorTicket() {
     var market = S.ballonDorMarket;
     var month = market && market.seasonMonth;
     var entries = S.betHistory && Array.isArray(S.betHistory.entries) ? S.betHistory.entries : [];
+    var pinned = S.betHistory && S.betHistory.ballonDorTicket;
+    if (pinned && pinned.market === BALLON_DOR_MARKET
+        && (!month || pinned.seasonMonth === month)
+        && !isReplacedActiveVoid(market, pinned)) {
+      return pinned;
+    }
     var entry = entries.find(function (item) {
       return item.kind === 'future' && item.market === BALLON_DOR_MARKET
         && (!month || item.seasonMonth === month)
-        && !(market && market.status === 'active' && item.status === 'void');
+        && !isReplacedActiveVoid(market, item);
     });
     if (entry) return entry;
     if (S.ballonDorReceipt && S.ballonDorReceipt.market === BALLON_DOR_MARKET
         && (!month || S.ballonDorReceipt.seasonMonth === month)
-        && !(market && market.status === 'active' && (S.ballonDorReceipt.status === 'void'
-          || entries.some(function (item) { return item.id === S.ballonDorReceipt.id && item.status === 'void'; })))) return S.ballonDorReceipt;
+        && !isReplacedActiveVoid(market, S.ballonDorReceipt)
+        && !entries.some(function (item) { return item.id === S.ballonDorReceipt.id && isReplacedActiveVoid(market, item); })) return S.ballonDorReceipt;
     return null;
   }
 
@@ -2485,6 +2537,10 @@
   }
 
   function chooseBallonDorCandidate(candidateId) {
+    if (currentBallonDorTicket()) {
+      renderBallonDorMarket();
+      return;
+    }
     S.ballonDorSelection = candidateId;
     S.ballonDorReview = null;
     S.ballonDorIdempotencyKey = null;
@@ -2559,14 +2615,16 @@
     if (!ticket) return;
     var receiptCandidate = (market.candidates || []).find(function (c) { return c.id === ticket.selection; });
     var name = receiptCandidate ? esc(receiptCandidate.playerName) + ' · ' + clubCrestMarkup(receiptCandidate.clubId, 'est-inline-crest') + esc(receiptCandidate.clubName) : esc(ballonDorCandidateName(market, ticket.selection));
+    var pendingRefund = ticket.status === 'void' && ticket.payoutApplied === false;
     var statusLabels = {
       pending: 'Confirmación pendiente de persistencia', open: 'Activa · cuota congelada',
-      won: 'Ganada · premio acreditado', lost: 'No acertada', void: 'Anulada · stake reembolsado'
+      won: 'Ganada · premio acreditado', lost: 'No acertada',
+      void: pendingRefund ? 'Anulada · reembolso en proceso' : 'Anulada · stake reembolsado'
     };
     var payout = Math.max(0, Number(ticket.payout) || 0);
     var status = statusLabels[ticket.status] || 'Estado: ' + String(ticket.status || 'no disponible');
     var payoutLine = ticket.status === 'void'
-      ? 'Reembolso exacto: ' + fmt(payout) + ' fichas.'
+      ? (pendingRefund ? 'Reembolso pendiente de acreditación.' : 'Reembolso exacto: ' + fmt(payout) + ' fichas.')
       : ticket.status === 'won'
         ? 'Pago acreditado: ' + fmt(payout) + ' fichas (neto ' + fmt(payout - Number(ticket.stake || 0)) + ').'
         : ticket.status === 'lost' ? 'Pago: 0 fichas.'
@@ -2687,6 +2745,14 @@
           S.ballonDorIdempotencyKey = null;
           el['est-tos'].hidden = false;
         }
+        if (result && result.code === 'boleto_ya_colocado') {
+          S.ballonDorReview = null;
+          S.ballonDorIdempotencyKey = null;
+          if (result.future && result.future.market === BALLON_DOR_MARKET) {
+            S.ballonDorReceipt = result.future;
+            S.ballonDorSelection = result.future.selection || S.ballonDorSelection;
+          }
+        }
         setBallonDorMessage(bdoErrorText(result && result.code), 'error');
         if (result && ['mercado_cerrado', 'boleto_ya_colocado', 'persistencia_pendiente'].indexOf(result.code) >= 0) {
           loadBallonDorMarket();
@@ -2768,9 +2834,9 @@
       }
       S.teams = res.teams || S.teams;
       if (res.profile) {
-        var profileChanged = S.profile && S.profile.id !== res.profile.id;
-        S.profile = res.profile; S.chips = res.profile.chips; updateChips();
-        if (profileChanged) { S.betHistory = null; S.betHistoryFetchedAt = 0; loadBetHistory({ force: true }); }
+        var profileChanged = syncAuthenticatedProfile(res.profile, res);
+        renderBallonDorMarket();
+        if (profileChanged) loadBetHistory({ force: true });
       }
       applyMatchState(res.matchState);
       updateCrowdAvailability();
@@ -6566,17 +6632,20 @@
   // --- Datos ---
   function loadBetHistory(options) {
     var force = Boolean(options && options.force);
-    if (!S.token) return Promise.resolve(null);
+    if (!S.token && !(S.profile && S.profile.id)) return Promise.resolve(null);
     if (!force && S.betHistory && S.betHistoryFetchedAt && (Date.now() - S.betHistoryFetchedAt) < 4000) return Promise.resolve(S.betHistory);
     var seen = betsSeenAt();
-    var url = '/api/estadio/my-bets?token=' + encodeURIComponent(S.token) + '&limit=100';
-    if (seen > 0) url += '&since=' + Math.floor(seen);
+    var params = [];
+    if (S.token) params.push('token=' + encodeURIComponent(S.token));
+    params.push('limit=100');
+    if (seen > 0) params.push('since=' + Math.floor(seen));
+    var url = '/api/estadio/my-bets?' + params.join('&');
     var seq = ++S.betsRequestSeq;
     var balanceVersion = S.balanceVersion || 0;
     S.betsLoading = true;
     S.betsError = null;
     if (ledgerOpen()) renderLedger();
-    return fetch(url, { cache: 'no-store' })
+    return fetch(url, { cache: 'no-store', credentials: 'same-origin' })
       .then(function (r) { return r.json().catch(function () { return null; }); })
       .then(function (data) {
         if (seq !== S.betsRequestSeq) return null;
@@ -6596,6 +6665,13 @@
         }
         S.betHistory = data.history;
         S.betHistoryFetchedAt = Date.now();
+        if (!S.ballonDorRequestedSeasonMonth && Object.prototype.hasOwnProperty.call(data.history, 'ballonDorTicket')) {
+          S.ballonDorReceipt = data.history.ballonDorTicket || null;
+          if (S.ballonDorReceipt) {
+            S.ballonDorReview = null;
+            S.ballonDorIdempotencyKey = null;
+          }
+        }
         if (data.profile && data.profile.chips != null && balanceVersion === (S.balanceVersion || 0)) {
           S.chips = Number(data.profile.chips) || 0; updateChips();
         }

@@ -571,3 +571,53 @@ test('sesión verificada prevalece sobre el token invitado en saldos, historial 
   failure = true;
   assert.equal((await request('GET', '/api/estadio/my-bets', { cookie: 'session=valid' })).statusCode, 503, 'fallo de sesión no cae al invitado');
 });
+
+test('HTTP hidrata ballonDorReceipt en /api/estadio/state y adjunta future público en 409 boleto_ya_colocado sin tocar /api/estadio/ballon-dor', async t => {
+  const existingFuture = {
+    id: 'bdo_existing_1',
+    profileId: 'secret-profile',
+    idempotencyKey: 'secret-idem',
+    seasonMonth: '2026-11',
+    market: 'balon_de_oro',
+    selection: 'cand_1',
+    odds: 4.5,
+    stake: 50,
+    potentialPayout: 225,
+    status: 'open',
+    payout: null,
+    payoutApplied: false,
+    placedAt: 12345,
+    settledAt: null
+  };
+  const betting = {
+    getBallonDorTicketForProfile: profileId => profileId === 'alice-id' ? existingFuture : null,
+    placeBallonDorBet: async () => ({ ok: false, code: 'boleto_ya_colocado', future: existingFuture })
+  };
+  const marketService = { getMarket: () => ({ market: 'balon_de_oro', seasonMonth: '2026-11', status: 'active', candidates: [] }) };
+  const ctx = setup({ betting, ballonDorMarket: marketService });
+  t.after(ctx.cleanup);
+  ctx.profiles.getProfile = token => token === 'alice-token' ? { id: 'alice-id', name: 'Alice', avatar: 'fox', chips: 100 } : null;
+
+  const anonState = await runAsync(ctx.app, 'GET', '/api/estadio/state', { query: {} });
+  assert.equal(anonState.statusCode, 200);
+  assert.equal(anonState.body.ballonDorReceipt, null);
+
+  const authState = await runAsync(ctx.app, 'GET', '/api/estadio/state', { query: { token: 'alice-token' } });
+  assert.equal(authState.statusCode, 200);
+  assert.equal(authState.body.ballonDorReceipt?.id, 'bdo_existing_1');
+  assert.doesNotMatch(JSON.stringify(authState.body.ballonDorReceipt), /profileId|idempotencyKey|secret/);
+
+  const pubMarket = await runAsync(ctx.app, 'GET', '/api/estadio/ballon-dor', { query: { token: 'alice-token' } });
+  assert.equal(pubMarket.statusCode, 200);
+  assert.equal('ballonDorReceipt' in pubMarket.body, false, 'la ruta pública del mercado no adjunta recibo personal');
+
+  const dupBet = await runAsync(ctx.app, 'POST', '/api/estadio/ballon-dor/bet', {
+    headers: { origin: 'https://arena.local', host: 'arena.local', 'idempotency-key': 'dup-key-12345' },
+    body: { token: 'alice-token', selection: 'cand_2', stake: 50, tos: 'v1' }
+  });
+  assert.equal(dupBet.statusCode, 409);
+  assert.equal(dupBet.body.code, 'boleto_ya_colocado');
+  assert.equal(dupBet.body.future?.id, 'bdo_existing_1');
+  assert.doesNotMatch(JSON.stringify(dupBet.body.future), /profileId|idempotencyKey|secret/);
+});
+
