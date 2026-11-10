@@ -1334,6 +1334,65 @@ test('la UI V2 respeta el fotograma del servidor y el reloj de quince segundos p
   assert.match(h.window.document.getElementById('est-clock').textContent, /11'/);
 });
 
+test('las cuotas que mueven los simulados se ven: flecha desde el primer cambio y boleta con el precio vigente', async t => {
+  const bets = [];
+  const h = createHarness({ onBet(payload) { bets.push(payload); } });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window, handlers, match } = h;
+  const doc = window.document;
+  const group = () => doc.querySelectorAll('.est-market-group')[0];
+  const selection = index => group().querySelectorAll('.est-sel')[index];
+  assert.equal(doc.querySelectorAll('.est-sel-move').length, 0, 'recién entrado no hay movimiento que mostrar');
+
+  // Con la boleta abierta sobre «local» (2.10) llega dinero simulado: baja a 2.05 y la visita sube.
+  selection(0).click();
+  assert.equal(doc.getElementById('est-slip-odds').textContent, '2.10');
+  const impliedBefore = doc.getElementById('est-slip-implied').textContent;
+  assert.match(impliedBefore, /48/, '1 / 2.10 = 47,6 %');
+  handlers['football:odds']({ matchId: match.id, market: '1x2', suspended: false,
+    selections: [market('home', 2.05), market('draw', 3.2), market('away', 3.6)] });
+
+  // Antes hacía falta un SEGUNDO cambio para ver la flecha: el primero no tenía con qué compararse.
+  assert.ok(selection(0).querySelector('.est-sel-move.down'), 'la cuota que baja se marca desde el primer cambio');
+  assert.ok(selection(2).querySelector('.est-sel-move.up'), 'la que sube también');
+  assert.equal(selection(1).querySelector('.est-sel-move'), null, 'la que no cambió no lleva flecha');
+  assert.match(selection(0).textContent, /2\.05/);
+
+  // La boleta sigue abierta y enseña el precio que de verdad se va a aplicar.
+  assert.equal(doc.getElementById('est-bet-slip').hidden, false);
+  assert.equal(doc.getElementById('est-slip-odds').textContent, '2.05');
+  assert.notEqual(doc.getElementById('est-slip-implied').textContent, impliedBefore, 'la probabilidad implícita acompaña al precio');
+  assert.match(doc.getElementById('est-slip-implied').textContent, /49/, '1 / 2.05 = 48,8 %');
+  assert.match(doc.getElementById('est-bet-msg').textContent, /La cuota cambió de 2\.10 a 2\.05/);
+
+  // El movimiento de OTRO mercado no toca la boleta.
+  handlers['football:odds']({ matchId: match.id, market: 'double_chance', suspended: false,
+    selections: [market('1x', 1.25), market('12', 1.4), market('x2', 1.9)] });
+  assert.equal(doc.getElementById('est-slip-odds').textContent, '2.05');
+  // Ni el de otro partido.
+  handlers['football:odds']({ matchId: 'otro-partido', market: '1x2', suspended: false,
+    selections: [market('home', 9), market('draw', 9), market('away', 9)] });
+  assert.equal(doc.getElementById('est-slip-odds').textContent, '2.05');
+  assert.match(selection(0).textContent, /2\.05/);
+
+  // Un segundo cambio, ahora al alza, actualiza flecha, boleta y aviso.
+  handlers['football:odds']({ matchId: match.id, market: '1x2', suspended: false,
+    selections: [market('home', 2.15), market('draw', 3.2), market('away', 3.6)] });
+  assert.ok(selection(0).querySelector('.est-sel-move.up'));
+  assert.equal(selection(2).querySelector('.est-sel-move'), null, 'la flecha indica el último cambio, no uno viejo');
+  assert.equal(doc.getElementById('est-slip-odds').textContent, '2.15');
+  assert.match(doc.getElementById('est-bet-msg').textContent, /La cuota cambió de 2\.05 a 2\.15/);
+
+  // La apuesta no manda precio: lo pone el servidor, que es quien lo conoce.
+  doc.getElementById('est-stake').value = '100';
+  doc.getElementById('est-place-bet').click();
+  assert.equal(bets.length, 1);
+  assert.equal(bets[0].market, '1x2');
+  assert.equal(bets[0].selection, 'home');
+  assert.ok(!('odds' in bets[0]) && !('price' in bets[0]), 'el cliente no dicta la cuota');
+});
+
 test('la boleta conserva la clave al perder una respuesta y permite reintentar después del kickoff', async t => {
   let calls = 0;
   const h = createHarness({ onBet(payload, ack) {

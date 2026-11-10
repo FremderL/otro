@@ -21,11 +21,11 @@ Este documento mide las tres con un instrumento que ya está en el repo (`npm ru
 
 El prior del motor v4 se generó con **2.048 partidos sintéticos completos** y se contrastó con **2.048 semillas independientes**: 16 espejos de plantillas más 16 cruces de equipos, con 64 réplicas de entrenamiento y 64 de control por cruce. El control difirió como máximo 1,90 puntos porcentuales en 1X2; los goles medios visitantes difirieron 0,047. Son chequeos de estabilidad del simulador, **no una calibración con resultados reales ni con precios de casas**. La proyección sigue ponderando ratings, Elo, atributos y promedio goleador disponibles en el producto.
 
-Para 1X2 el sistema publica el **6 % de overround**: si las probabilidades justas son `pᵢ`, los precios parten de `1 / pᵢ` y se acortan para que `Σ(1 / cuotaᵢ) ≈ 1,06`. La probabilidad justa se conserva separada del porcentaje implícito de la cuota; la interfaz/API devuelve ambos, junto al overround y el hold teórico. El hold proporcional es `(overround − 1) / overround`: con 1,06 equivale a `0,06 / 1,06 ≈ 5,66 %`, no a 6 %.
+Para 1X2 el sistema publica el **15 % de overround** (era 6 % hasta noviembre de 2026; ver [§8](#8-noviembre-de-2026-el-1x2-pasa-al-15--decisión-de-producto)): si las probabilidades justas son `pᵢ`, los precios parten de `1 / pᵢ` y se acortan para que `Σ(1 / cuotaᵢ) ≈ 1,15`. La probabilidad justa se conserva separada del porcentaje implícito de la cuota; la interfaz/API devuelve ambos, junto al overround y el hold teórico. El hold proporcional es `(overround − 1) / overround`: con 1,15 equivale a `0,15 / 1,15 ≈ 13,04 %`, no a 15 %.
 
 **¿Todos los partidos deberían tener Local 2.00 / Empate 4.00 / Visitante 2.00? No.** Esos precios implican 50 % + 25 % + 50 % = **125 %** (25 % de overround, hold proporcional de 20 %). Al quitar el margen representan un partido con probabilidades 40/20/40. Además, no reflejan la fuerza de cada equipo; un favorito claro no debe cotizar igual que un duelo parejo.
 
-Como referencia de metodología, Pinnacle explica la conversión `1/cuota`, la incorporación de margen y el uso de información de equipo y mercado para ajustar precios ([guía de cuotas](https://pinnacle.com/en/betting-articles/betting-strategy/betting-odds-explained/qen2dcqrvncnv4jf), [cómo operan los bookmakers](https://pinnacle.com/en/betting-articles/Betting-Strategy/how-bookmakers-make-money/MFT2YXK5C98V4HT5)). Pinnacle publica márgenes estrechos en mercados líquidos (su tabla histórica anuncia 1,5 % para 1X2 de Premier League), mientras que esta simulación usa 6 % como objetivo recreativo del producto ([tabla de márgenes de Pinnacle](https://pinnacle.com/en/betting-articles/Soccer/new-soccer-season/L5K2F8FLQU43428L)). No se copian cuotas en vivo ni se afirma que el simulador tenga sus datos: no tenemos feed de lesiones, árbitros, apuestas o movimiento de mercado. También Betfair Exchange es distinto: sus precios los emparejan participantes y cobra comisión, no es el mismo esquema de overround fijo ([ayuda de Betfair Exchange](https://content.betfair.com/xgHelp/?product=games&sWhichKey=cdr.general)).
+Como referencia de metodología, Pinnacle explica la conversión `1/cuota`, la incorporación de margen y el uso de información de equipo y mercado para ajustar precios ([guía de cuotas](https://pinnacle.com/en/betting-articles/betting-strategy/betting-odds-explained/qen2dcqrvncnv4jf), [cómo operan los bookmakers](https://pinnacle.com/en/betting-articles/Betting-Strategy/how-bookmakers-make-money/MFT2YXK5C98V4HT5)). Pinnacle publica márgenes estrechos en mercados líquidos (su tabla histórica anuncia 1,5 % para 1X2 de Premier League), mientras que esta simulación usa 15 % en el 1X2 por decisión de producto (el 6 % anterior sí caía en la banda recreativa) ([tabla de márgenes de Pinnacle](https://pinnacle.com/en/betting-articles/Soccer/new-soccer-season/L5K2F8FLQU43428L)). No se copian cuotas en vivo ni se afirma que el simulador tenga sus datos: no tenemos feed de lesiones, árbitros, apuestas o movimiento de mercado. También Betfair Exchange es distinto: sus precios los emparejan participantes y cobra comisión, no es el mismo esquema de overround fijo ([ayuda de Betfair Exchange](https://content.betfair.com/xgHelp/?product=games&sWhichKey=cdr.general)).
 
 ---
 
@@ -173,6 +173,8 @@ Hoy solo se mueve el 1X2 en vivo con **+1 %** de margen. Una casa real: 5–8 % 
 
 Una cuota real se mueve. Hoy hay peso del dinero (`MONEY_WEIGHT = 0,30`, tope ±6 % por actualización y ±25 % acumulado) y un flujo simulado. Para que se sienta real falta que el movimiento tenga **memoria** (apertura → cierre) y que existan **límites**: cada casa limita el stake en mercados de cola larga y en cuotas altas. Sin límites, un mercado al 18 % sigue siendo explotable por un bot que sepa más que el modelo.
 
+> **Hecho en noviembre de 2026 (§9).** El movimiento ya tiene memoria: la cuota abre en el precio del modelo y los apostadores simulados la llevan, aporte a aporte, hasta el precio de cierre durante las doce horas previas al partido. Los límites de stake por mercado siguen pendientes.
+
 ---
 
 ## 4. Cómo saber que ya es realista (criterios de aceptación)
@@ -253,6 +255,8 @@ npm run football:odds-audit -- --margins          # solo márgenes
 El piso anti-arbitraje sigue siendo un invariante **por mercado**: 4 % general y 2 % en el hándicap asiático
 (`ASIAN_MIN_MARGIN`). En ambos casos el libro tiene margen positivo — nunca es arbitrable.
 
+> El 6 % del 1X2 de esta tabla es el de la fase A. Desde noviembre de 2026 el 1X2 cotiza al 15 % ([§8](#8-noviembre-de-2026-el-1x2-pasa-al-15--decisión-de-producto)); los demás mercados siguen como aquí.
+
 ### Fase B — ventaja de local normalizada (`lib/football/ratings.js`)
 
 `λ_local = leagueAvg · att · def · √homeAdv` y `λ_visita = leagueAvg · att · def / √homeAdv`.
@@ -301,3 +305,224 @@ fuente autoritativa de liquidación (§15.4); `cleanMatch` los preserva al recar
 
 **Pendiente de la palanca C (no incluido):** tarjetas y córners por línea (necesitan su propio modelo de
 λ por equipo y su archivo en el asentado) y precio en vivo de los mercados nuevos (hoy en vivo solo 1X2).
+
+---
+
+## 8. Noviembre de 2026: el 1X2 pasa al 15 % (decisión de producto)
+
+**Qué se pidió.** Las cuotas del resultado se seguían viendo demasiado altas (capturas con 2.65 / 3.35 / 2.40 y
+2.25 / 3.60 / 2.65). Se eligió que **todas las selecciones del 1X2 paguen menos**, con un margen del **15 %**, y
+**solo en ese mercado**.
+
+**Qué cambió.** Un número: `MARGINS['1x2']` en `lib/football/odds.js` pasa de `0.06` a `0.15`. El 1X2 en vivo sigue
+siendo «base + 1 %», así que queda en 16 %. No cambian las probabilidades, el motor del partido ni la fórmula de
+precios: es el mismo partido, cobrado más caro. Los boletos ya vendidos conservan la cuota con la que se compraron.
+
+**Medido** (`2026-11`, 240 partidos, pipeline real `v2-estimated-3`). Hay dos fotos porque el precio que ve el
+jugador no se queda en el de apertura: los apostadores simulados (§11.6) cargan al favorito y la regla
+`min(modelo, movido)` solo deja bajar precios respecto a la apertura, así que al cierre el margen efectivo es unos
+2,5 puntos mayor que el configurado. Eso ya pasaba con el 6 % (las capturas sumaban 109–110 %) y no cambió.
+Desde §9 ese recorrido se ve: la cuota **abre** en la primera tabla y **cierra** en la segunda, moviéndose durante
+las doce horas previas al saque inicial. Antes se publicaba el precio de cierre desde el primer momento.
+
+*Precio de apertura* (lo que mide `npm run football:odds-audit`):
+
+| | Antes (6 %) | Ahora (15 %) |
+| --- | --- | --- |
+| Favorito, mediana | 2.20 | **2.05** |
+| Favorito, mitad central de los partidos | 1.97–2.45 | 1.81–2.15 |
+| Favorito, mínimo–máximo | 1.52–2.50 | 1.42–2.40 |
+| Partidos con favorito por debajo de 2.00 | 65 de 240 (27 %) | **110 de 240 (46 %)** |
+| No favorito, mediana | 3.05 | 2.75 |
+| Empate, mediana | 3.60 | 3.35 |
+| Margen medido | 6,0 % | 15,0 % |
+| Parte de lo apostado que retiene la casa (hold) | 5,7 % | 13,0 % |
+
+*Precio de cierre en pantalla* (servicio de apuestas con el libro simulado completo y sin apuestas reales: lo que
+se ve al saque inicial):
+
+| | Antes (6 %) | Ahora (15 %) |
+| --- | --- | --- |
+| Favorito, mediana | 2.15 | **1.95** |
+| Favorito, mitad central de los partidos | 1.85–2.30 | 1.71–2.10 |
+| Favorito, mínimo–máximo | 1.42–2.50 | 1.30–2.40 |
+| Partidos con favorito por debajo de 2.00 | 96 de 240 (40 %) | **147 de 240 (61 %)** |
+| No favorito, mediana | 3.05 | 2.75 |
+| Empate, mediana | 3.60 | 3.35 |
+| Margen publicado, media | 8,6 % | 17,6 % |
+| Parte de lo apostado que retiene la casa (hold) | 8,0 % | 15,0 % |
+
+(La columna «Ahora» está medida con el peso del dinero proporcional de §9; con la fórmula anterior daba 1.72–2.10,
+145 de 240, 17,7 % y 15,1 %: el nivel de cierre es el mismo.)
+
+**Lo que este cambio no hace.** No convierte a los favoritos en favoritos de 1.50: el motor sigue viendo la liga muy
+pareja (la probabilidad justa del favorito va de 37 % a 62 %, con mediana 42 %). Para eso hay que separar más a los
+equipos fuertes de los débiles en el generador, que es otro trabajo (ver `docs/estadio-cuotas-favoritos.md`).
+
+**Efectos que conviene tener presentes.**
+
+- El 15 % queda **por encima** de la banda de las casas reales (2–8 %) a propósito. La banda no se movió: el
+  auditor muestra el 1X2 como `decisión de producto` y deja de proponer bajarlo, pero solo mientras lo publicado
+  coincida con lo decidido (`PRODUCT_MARGIN_DECISIONS` en `lib/football/odds-audit.js`, ±0,5 puntos). Si alguien
+  cambia el margen sin actualizar esa tabla, vuelve a salir como desviación.
+- Los mercados vecinos **no** cambiaron con el margen (comprobado sobre las 19.920 selecciones del resto del
+  catálogo: ninguna movió su precio; el ajuste posterior de §9 sí retoca algunos precios de cierre, en ambos
+  sentidos y sin cambiar el nivel), y uno de ellos vende **la misma apuesta**: en los 240 partidos hay una línea ±0.5 de hándicap
+  asiático que equivale a «gana el local» (local −0.5) o a «gana la visita» (visita −0.5), y sigue al 2,5 %. Medido
+  en pantalla al cierre, paga una mediana de **+15,4 %** más que el 1X2 por el mismo resultado (mínimo +4 %, nueve
+  de cada diez casos por debajo de +22 %; en la apertura la mediana es +9,6 %; antes del cambio ya pagaba +6,1 %):
+  por ejemplo 1.85 en el 1X2 y 2.15 en el asiático. La doble oportunidad (6 %) y la
+  línea 0 del asiático («gana o se devuelve») tampoco se encarecieron. Quien conozca esos mercados esquiva el
+  margen nuevo; cerrarlo es subir `MARGINS.asian_handicap` (y, si se quiere, `double_chance`), que quedó fuera de
+  esta decisión.
+- El cambio solo baja precios —de las 720 selecciones de 1X2, 712 bajan, 8 se quedan igual por el redondeo de la
+  rejilla y ninguna sube—, así que no puede abrir un arbitraje que no existiera antes.
+- En vivo el favorito toca el precio mínimo (1.05) antes: cuando su probabilidad pasa de ~82 % (con el 7 %
+  anterior era ~89 %). De ahí en adelante el margen efectivo va bajando hacia el piso del 4 %, igual que antes;
+  el mercado no se cierra ni queda arbitrable.
+- El cash-out no usa el margen del mercado (paga `apuesta × cuota comprada × probabilidad actual × 0,90`), pero
+  como la cuota comprada es más baja, retirarse nada más apostar devuelve cerca del 78 % de lo apostado en vez del
+  85 %.
+- Los partidos ya comprometidos **también** cambian de precio al desplegar: el compromiso congela la matriz de
+  probabilidades, no el margen, que se aplica al publicar.
+
+**Cómo volver a ajustarlo.** Cambiar el número en `MARGINS['1x2']` y el mismo valor en `PRODUCT_MARGIN_DECISIONS`
+(la prueba `tests/football-odds-realism.test.js` exige que coincidan). Referencia medida sobre la misma temporada,
+con precios de apertura (al cierre el favorito queda unas 5–10 centésimas por debajo):
+
+| Margen | Favorito, mediana | Favorito bajo 2.00 | Hold |
+| --- | --- | --- | --- |
+| 6 % | 2.20 | 27 % | 5,7 % |
+| 15 % (vigente) | 2.05 | 46 % | 13,0 % |
+| 20 % | 1.96 | 58 % | 16,7 % |
+| 25 % | 1.90 | 71 % | 20,0 % |
+| 30 % | 1.82 | 93 % | 23,1 % |
+
+---
+
+## 9. Noviembre de 2026: los apostadores simulados apuestan de verdad en el tiempo
+
+**Qué se pidió.** «Se supone que hay bots para que apuesten y puedan cambiar el porcentaje de apuestas.» Los había
+—el flujo simulado de §11.6 del diseño—, pero no hacían lo que el diseño prometía («llegando en aportes cada
+30–60 s»): `SimulatedFlow` calculaba **una sola vez** el reparto de cada mercado y lo dejaba fijo. Resultado: la
+cuota previa y su «impl. N %» (el único porcentaje que se ve) nacían ya en su valor final y no se movían nunca
+solas; `football:odds` solo salía tras una apuesta real o, en vivo, para el 1X2.
+
+**Qué hace ahora.** El mismo dinero simulado llega **repartido en el tiempo**:
+
+1. Cada mercado previo tiene un **calendario determinista de aportes** (`schedule` en
+   `lib/football/simulated-flow.js`): entre 14 y 30 boletos por mercado, el triple en el 1X2 (y los que hagan falta
+   para que ninguno sea demasiado grande, ver abajo), de tamaños desiguales, colocados dentro de las **doce horas
+   previas** al saque inicial. Cada selección recibe su dinero a su propio ritmo, así que por el camino la cuota
+   sube y baja en vez de deslizarse en línea recta.
+2. La suma de los aportes es **exactamente** el libro de antes (`distribute`): no cambia cuánto dinero simulado
+   hay ni a qué selección va, solo cuándo llega. Lo que todavía no llegó cuenta como dinero **neutro** (repartido
+   según la probabilidad del modelo, que no empuja ninguna cuota), así que el volumen es constante y la influencia
+   frente al dinero real (tabla de §11.6, prueba T20) es la misma a cualquier hora.
+3. Por lo tanto la cuota **abre** en el precio del modelo, **se mueve** con cada aporte y **cierra** en el precio
+   que antes se veía desde el principio.
+4. El libro vigente es una función pura de (seed del partido, mercado, saque inicial, hora): no se guarda nada, un
+   reinicio da el mismo precio en el mismo instante y un partido reprogramado arrastra su calendario.
+5. Un barrido del scheduler (`runOddsSweep`, cada 2 s) difunde `football:odds` a las salas de partidos **por
+   empezar que tengan gente dentro**, y solo para los mercados cuyo precio visible cambió. Antes de recalcular
+   pregunta si llegó algún aporte a ese mercado desde la vuelta anterior (`arrivedBetween`); casi siempre la
+   respuesta es «no» y no se calcula nada. En vivo no interviene: ahí manda el motor del partido.
+
+**El precio se mueve de forma proporcional.** `applyMoneyWeight` volvía a publicar el mercado entero buscando en la
+rejilla la combinación más cercana al margen objetivo. Eso es discontinuo: con el libro anterior, un boleto de 63
+fichas a la visita bajaba su cuota de 2.65 a 2.40 (−9,4 %) y podía **subir** la del local. Con un libro fijo no se
+notaba; con aportes llegando a cada rato, la cuota habría dado saltos. Ahora cada precio es
+`apertura × probabilidad del modelo / probabilidad ajustada por el dinero`, redondeado a la rejilla, con el mismo
+tope acumulado de ±25 % y el mismo piso de margen del 4 %. Más dinero en una selección baja **su** cuota y nunca
+la de las demás; un libro neutro deja la apertura intacta (salvo en el hándicap asiático: su margen del 2,5 %
+queda bajo el piso del 4 %, así que el piso recorta el precio haya o no dinero, igual que antes: 2.50 se publica
+como 2.40 hasta que el dinero carga el otro lado). Aplica igual al dinero real. Además, ningún aporte
+simulado mueve por sí solo una cuota más de ~4 % (`MAX_APORTE_MOVE`), por debajo del 6 % por actualización de
+§10.4 del diseño. Medido en el 1X2 de los 240 partidos (16.154 aportes): el 43 % no llega a cambiar el precio
+visible, el 90 % lo mueve un 2 % o menos y el mayor salto fue de 3,1 %.
+
+La fórmula nueva no cambia el nivel de precios, solo cómo se llega a él. Comparando el precio de cierre de todo el
+catálogo con la fórmula anterior (60 partidos, 5.160 selecciones): cambia el 24 % de los precios, casi siempre por
+un paso de rejilla (el 98 % de las diferencias queda entre −2,4 % y +2,7 %), 551 a la baja y 710 al alza, con una
+media de +0,06 %.
+
+**Medido** (`2026-11`, 240 partidos, servicio de apuestas como en producción, sin apuestas reales). 1X2 en
+pantalla según la hora:
+
+| Momento | Favorito: mitad central | Favorito, mediana | Favorito bajo 2.00 | Margen publicado | Hold |
+| --- | --- | --- | --- | --- | --- |
+| Apertura (más de 12 h antes) | 1.81–2.15 | 2.05 | 110 de 240 (46 %) | 15,0 % | 13,0 % |
+| 6 h antes | 1.81–2.15 | 2.00 | 120 (50 %) | 16,1 % | 13,9 % |
+| 3 h antes | 1.79–2.15 | 1.98 | 124 (52 %) | 16,7 % | 14,3 % |
+| 1 h antes | 1.75–2.15 | 1.96 | 136 (57 %) | 17,2 % | 14,7 % |
+| 15 min antes | 1.73–2.10 | 1.94 | 143 (60 %) | 17,5 % | 14,9 % |
+| Cierre (saque inicial) | 1.71–2.10 | 1.95 | 147 (61 %) | 17,6 % | 15,0 % |
+
+El empate (mediana 3.35) y el no favorito (2.75) oscilan alrededor de su apertura y terminan casi donde empezaron;
+el favorito baja en promedio un 4,3 % (el sesgo de público de §11.6). Cuánto dinero ha llegado: 9 % nueve horas
+antes, 21 % a seis horas, 41 % a tres, 68 % a una, 88 % a quince minutos.
+
+Ritmo. El 1X2 de cada partido recibe entre 46 y 90 aportes (mediana 67), que producen una mediana de **40 cambios
+de precio visibles** (de 23 a 53 en nueve de cada diez partidos; mínimo 11, máximo 67). Contando los 26 mercados
+son unos 1.300 aportes y unos 830 cambios por partido (muestra de 10 partidos, igual que la tabla siguiente):
+
+| Tramo antes del saque inicial | Un cambio en el 1X2 cada… | Un cambio en la página cada… |
+| --- | --- | --- |
+| 12 h a 6 h | 50 min | 104 s |
+| 6 h a 3 h | 22 min | 63 s |
+| 3 h a 1 h | 13 min | 34 s |
+| 1 h a 15 min | 6 min | 17 s |
+| Últimos 15 min | 3 min | 11 s |
+
+En los dos sentidos: en esa muestra, 181 precios del 1X2 subieron y 224 bajaron.
+
+**Consecuencia que conviene tener presente.** Antes el jugador veía el precio de cierre desde que abría el
+partido; ahora quien apuesta temprano encuentra el precio de apertura, que para el favorito es algo mejor (2.05
+de mediana en vez de 1.95) y con el que la casa retiene 13 % en vez de 15 %. El precio de cierre no cambió. Si se
+quiere que ni siquiera la apertura pase de ahí, la palanca es el margen (§8), no los simulados.
+
+**En pantalla.** El protocolo no cambia (`football:odds` lleva lo mismo de siempre: clave, precio y probabilidad
+implícita). En `public/estadio.js`:
+
+- la flecha ▲/▼ aparece desde el **primer** cambio (antes hacía falta un segundo, porque el primero no tenía con
+  qué compararse);
+- si la cuota se mueve con la **boleta abierta**, la boleta pasa a mostrar el precio vigente y avisa («La cuota
+  cambió de 2.10 a 2.05.»). Antes se quedaba con el precio del clic aunque el servidor cobrara el nuevo;
+- el precio lo sigue poniendo el servidor al confirmar. Si cambia justo en ese instante, la apuesta no se cobra y
+  el jugador lee «La cuota cambió justo al confirmar…» en vez de un código.
+
+Lo que **no** se añadió: ningún indicador de «% de apuestas por selección» ni volumen apostado. La decisión D8 y
+la prueba T19 lo prohíben a propósito (el flujo simulado es invisible: no aparece como jugador ni como dato), y
+mostrar como «apuestas de la gente» un reparto que es sintético sería engañoso. Si se quiere ese indicador, es
+una decisión de producto aparte.
+
+**Lo que no cambia.** El dinero simulado sigue sin ser dinero: no mueve fichas, no cuenta para la exposición ni
+para los topes (T18), no viaja en ningún payload (T19) y pierde influencia en cuanto hay apuestas reales (T20).
+Los boletos vendidos conservan su cuota. Los T&C del Estadio ya declaran que las cuotas incorporan un flujo de
+referencia simulado.
+
+**Auditoría.** `football_simulated_flow` se registra **una vez por partido y mercado**, con el libro completo, el
+número de aportes y la ventana (`aportes`, `opensAt`, `closesAt`); el total por partido de `/healthz` tampoco se
+duplica. No hay una línea de log por aporte (serían ~1.300 por partido): el calendario se regenera exactamente con
+`schedule(match, mercado, probabilidades)` a partir del seed.
+
+**Cómo ajustarlo.**
+
+| Qué | Dónde | Valor |
+| --- | --- | --- |
+| Cuánto antes empiezan a apostar | `FOOTBALL_SIM_WINDOW_MS` | 12 h. `0` = libro completo desde el principio (comportamiento anterior) |
+| Cada cuánto se avisa a las salas | `FOOTBALL_ODDS_SWEEP_MS` | 2000 ms |
+| Cuántos boletos por mercado | `APORTES_MIN`, `APORTES_MAX`, `MAIN_MARKET_FACTOR` | 14–30, ×3 en el 1X2 |
+| Cuánto se concentran al final | `ARRIVAL_CURVE` | 3 (más alto = más dinero a última hora) |
+| Cuánto mueve un solo boleto | `MAX_APORTE_MOVE` | 4 % |
+| Cuánto dinero simulado hay y hacia dónde va | `VOLUME_MIN`/`VOLUME_MAX`, `PUBLIC_BIAS` | 500–5.000 fichas, exponente 1,6 |
+| Cuánto pesa frente al dinero real | `FOOTBALL_SIM_WEIGHT`, `FOOTBALL_SIM_SOFTENER` | 0,6 y 2.000 fichas |
+| Cuánto mueve el dinero una cuota | `MONEY_WEIGHT` en `lib/football/odds.js` | 0,30 |
+
+Las constantes sin variable de entorno están en `lib/football/simulated-flow.js`.
+
+**Pruebas.** `tests/football-simulated-flow.test.js` (calendario, suma exacta, ventana, tope por aporte,
+determinismo, registro único), `tests/football-odds.test.js` (movimiento monótono y continuo),
+`tests/football-betting.test.js` (apertura = modelo, cierre = libro completo, sin exposición),
+`tests/football-sockets.test.js` (el barrido solo difunde cambios reales, a salas ocupadas y antes del partido),
+`tests/football-pregame.test.js` (scheduler) y `tests/football-stadium-ui.test.js` (flecha y boleta).

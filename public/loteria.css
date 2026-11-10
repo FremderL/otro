@@ -176,6 +176,10 @@
 
 .loteria-actions { display: flex; gap: 10px; }
 .loteria-actions .btn { flex: 1; }
+/* Los botones del sitio declaran `display: inline-flex`, y eso le gana al
+   atributo `hidden` del navegador: sin esta regla un botón oculto de la sala
+   seguía a la vista (por ejemplo "Salir y recuperar" antes de haber entrado). */
+.loteria-body .btn[hidden] { display: none; }
 
 .loteria-help { min-height: 16px; margin: 0; color: var(--muted-2); font-size: 11px; line-height: 1.6; }
 .loteria-help.is-warn { color: #ffc2a8; }
@@ -262,6 +266,14 @@
   font-size: 11px;
   font-weight: 800;
 }
+
+.loteria-board-tools {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+}
+.loteria-change-btn { min-height: 34px; padding: 0 13px; white-space: nowrap; }
 
 .loteria-board {
   display: grid;
@@ -356,6 +368,15 @@
   0% { transform: scale(.94); box-shadow: 0 0 0 0 rgba(82, 224, 174, .6); }
   60% { transform: scale(1.03); }
   100% { transform: translateY(-2px); }
+}
+
+/* Cambio de cartón: las 16 cartas nuevas entran girando, columna a columna. */
+.loteria-board.is-swapping .loteria-cell { animation: loteria-swap .34s ease-out backwards; }
+.loteria-board.is-swapping .loteria-cell:nth-child(4n + 2) { animation-delay: .04s; }
+.loteria-board.is-swapping .loteria-cell:nth-child(4n + 3) { animation-delay: .08s; }
+.loteria-board.is-swapping .loteria-cell:nth-child(4n + 4) { animation-delay: .12s; }
+@keyframes loteria-swap {
+  from { opacity: 0; transform: perspective(600px) rotateY(75deg) scale(.92); }
 }
 
 .loteria-board-note { margin: 14px 0 0; color: var(--muted-2); font-size: 10.5px; line-height: 1.65; }
@@ -499,5 +520,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .loteria-cell, .loteria-called-item { animation: none; transition: none; }
+  .loteria-board.is-swapping .loteria-cell { animation: none; }
   .loteria-phase::before { animation: none; }
 }

@@ -4382,6 +4382,11 @@
     if (ms.stands !== undefined) renderStands(ms.stands);
     if (S.match && ms.match && S.match.id !== ms.match.id) cancelCommentarySpeech();
     S.match = ms.match; S.markets = ms.markets || {}; S.movement = {};
+    // Referencia para las flechas: el primer cambio de cuota ya se compara con el
+    // precio con el que se abrió la sala (antes salía sin flecha).
+    Object.keys(S.markets).forEach(function (mk) {
+      (S.markets[mk] || []).forEach(function (s) { S.movement[mk + ':' + s.key] = { price: s.price, dir: 'flat' }; });
+    });
     var stadiumMain = document.getElementById('estadio-main');
     if (stadiumMain) stadiumMain.classList.toggle('is-result-only', Boolean(ms.match.resultOnly));
     S.myBets = (ms.myBets || []).slice();
@@ -6355,7 +6360,25 @@
       var prev = S.movement[mk] && S.movement[mk].price;
       S.movement[mk] = { price: s.price, dir: prev == null ? 'flat' : (s.price > prev ? 'up' : s.price < prev ? 'down' : 'flat') };
     });
+    syncSlipPrice(data);
     renderMarkets();
+  }
+  // La cuota puede moverse con la boleta abierta (otra apuesta, los apostadores
+  // simulados, el propio partido). La boleta muestra SIEMPRE el precio vigente,
+  // que es el que aplica el servidor al confirmar, y avisa del cambio.
+  function syncSlipPrice(data) {
+    var slip = S.slip;
+    if (!slip || slip.matchId !== data.matchId || slip.market !== data.market) return;
+    var current = null;
+    (data.selections || []).forEach(function (s) { if (s.key === slip.selection) current = s; });
+    if (!current || current.price === slip.price) return;
+    var previous = slip.price;
+    slip.price = current.price; slip.implied = current.implied;
+    el['est-slip-odds'].textContent = Number(current.price).toFixed(2);
+    el['est-slip-implied'].textContent = pct(current.implied);
+    if (!S.submitting) {
+      betMsg('La cuota cambió de ' + Number(previous).toFixed(2) + ' a ' + Number(current.price).toFixed(2) + '.', current.price > previous);
+    }
   }
   function renderMarkets() {
     var box = el['est-markets'];
@@ -6504,7 +6527,8 @@
       market_suspended: 'Mercado suspendido momentáneamente.', selection_closed: 'Mercado cerrado.',
       match_ended: 'El partido ya terminó.', rate_limit: 'Demasiadas apuestas seguidas; espera un momento.',
       window_cerrada: 'Fuera de la ventana de apuestas.', no_match: 'Partido no encontrado.',
-      mercado_ya_apostado: 'Ya apostaste en esta categoría: solo se permite una selección por mercado.'
+      mercado_ya_apostado: 'Ya apostaste en esta categoría: solo se permite una selección por mercado.',
+      mercado_cambio: 'La cuota cambió justo al confirmar y no se cobró nada. Revisa el precio y vuelve a apostar.'
     })[code] || ('No se pudo apostar (' + (code || 'error') + ').');
   }
 

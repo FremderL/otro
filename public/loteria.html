@@ -112,7 +112,10 @@
       <div class="loteria-board-card">
         <header class="loteria-panel-head">
           <div><span class="kicker">TU CARTÓN</span><h2 id="loteria-board-title">Sin cartón en esta ronda</h2></div>
-          <span id="loteria-board-progress" class="loteria-board-progress">0/16</span>
+          <div class="loteria-board-tools">
+            <button id="loteria-change-board" class="btn btn-ghost btn-small loteria-change-btn" type="button" title="Recibe otro cartón al azar, sin costo, mientras la inscripción siga abierta" hidden>🔄 Cambiar cartón</button>
+            <span id="loteria-board-progress" class="loteria-board-progress">0/16</span>
+          </div>
         </header>
         <div id="loteria-board" class="loteria-board" role="grid" aria-label="Cartón de 16 cartas" aria-rowcount="4" aria-colcount="4"></div>
         <p class="loteria-board-note">El marcado es automático: el servidor decide qué cartas se cantan y quién completa el cartón primero. Tu cartón solo lo ves tú.</p>
@@ -143,7 +146,7 @@
       <h2 id="loteria-rules-title">Reglas de la sala</h2>
       <ul>
         <li><b>Entrada:</b> 50 fichas virtuales por ronda, sin recompras ni apuestas adicionales.</li>
-        <li><b>Inscripción:</b> 60 segundos. Puedes salir antes del cierre y recuperar tus 50 fichas.</li>
+        <li><b>Inscripción:</b> 60 segundos. Antes del cierre puedes cambiar de cartón sin costo o salir y recuperar tus 50 fichas.</li>
         <li><b>Canto:</b> una carta cada 2 segundos, siempre desde el servidor y en orden aleatorio del mazo de 54.</li>
         <li><b>Victoria:</b> el primer cartón con sus 16 cartas cantadas. Si varios completan a la vez, se reparten el bote en partes iguales.</li>
         <li><b>Sobrante:</b> las fichas que no se pueden repartir en partes enteras se acumulan para la siguiente ronda.</li>

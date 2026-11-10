@@ -2,8 +2,8 @@
 
 // Integración real: se levanta server.js en un proceso aparte (con archivos de
 // estado temporales y una inscripción corta) y tres dispositivos juegan una
-// ronda completa de Lotería por Socket.IO. Comprueba cobro, reembolso, canto,
-// bote, privacidad del cartón y pagos exactos.
+// ronda completa de Lotería por Socket.IO. Comprueba cobro, reembolso, cambio
+// de cartón, canto, bote, privacidad del cartón y pagos exactos.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -94,12 +94,18 @@ function waitForState(socket, predicate, timeoutMs = 20000) {
   });
 }
 
+// Dos cartones son el mismo si tienen las mismas 16 cartas, en cualquier orden.
+function sameCards(a, b) {
+  const key = board => [...board].sort((x, y) => x - y).join(',');
+  return Array.isArray(a) && Array.isArray(b) && key(a) === key(b);
+}
+
 function readProfiles(filePath) {
   const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   return new Map((data.profiles || []).map(profile => [profile.id, profile]));
 }
 
-test('sala real: cobro, reembolso antes del cierre, canto automático y reparto exacto', { timeout: 90000 }, async t => {
+test('sala real: cobro, reembolso y cambio de cartón antes del cierre, canto automático y reparto exacto', { timeout: 90000 }, async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'loteria-sockets-'));
   const profilePath = path.join(directory, 'profiles.json');
   const loteriaPath = path.join(directory, 'loteria.json');
@@ -161,8 +167,54 @@ test('sala real: cobro, reembolso antes del cierre, canto automático y reparto 
   assert.equal(aliceJoin.you.chips, 1000 - ENTRY);
   assert.notDeepEqual(aliceJoin.you.board, bobJoin.you.board);
 
-  // El servidor cierra la inscripción y canta cartas solo.
-  const settled = await waitForState(alice, snapshot => snapshot.game && (snapshot.game.status === 'settled' || snapshot.game.status === 'cancelled'), 45000);
+  // Con la inscripción abierta Ana cambia de cartón: gratis, sorteado por el
+  // servidor, privado y actualizado en sus otras pestañas.
+  const aliceTab = await connectSocket(port, 'alice-device');
+  sockets.push(aliceTab);
+  const tabSub = await emitAck(aliceTab, 'loteria_subscribe');
+  assert.deepEqual(tabSub.you.board, aliceJoin.you.board, 'la otra pestaña ve el mismo cartón');
+  const bobPrivate = [];
+  bob.on('loteria_you', you => bobPrivate.push(you));
+  const tabUpdate = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('La otra pestaña no recibió el cartón nuevo.')), 6000);
+    aliceTab.once('loteria_you', you => { clearTimeout(timer); resolve(you); });
+  });
+  // El navegador no elige cartas: aunque mande un cartón (el de Beto), se ignora.
+  const changed = await emitAck(alice, 'loteria_change_board', { board: bobJoin.you.board });
+  assert.equal(changed.ok, true, changed.error);
+  assert.equal(changed.board.length, 16);
+  assert.equal(new Set(changed.board).size, 16, 'sin cartas repetidas');
+  assert.ok(changed.board.every(card => Number.isInteger(card) && card >= 1 && card <= 54));
+  assert.ok(!sameCards(changed.board, aliceJoin.you.board), 'el cartón nuevo no es el anterior');
+  assert.ok(!sameCards(changed.board, bobJoin.you.board), 'el cartón lo sortea el servidor, no el navegador');
+  assert.deepEqual(changed.you.board, changed.board);
+  assert.deepEqual(changed.state.game.board, changed.board);
+  assert.equal(changed.you.chips, 1000 - ENTRY, 'cambiar de cartón no cuesta fichas');
+  assert.equal(changed.state.game.count, 2);
+  assert.equal(changed.state.game.pot, ENTRY * 2, 'el bote no cambia');
+  assert.deepEqual((await tabUpdate).board, changed.board, 'la otra pestaña recibe el cartón nuevo');
+  // Ida y vuelta por el socket de Beto: lo que el cambio le hubiera enviado ya
+  // llegó. Su cartón es el mismo y nada privado de Ana pasó por su conexión.
+  const bobAfter = await emitAck(bob, 'loteria_subscribe');
+  assert.deepEqual(bobAfter.you.board, bobJoin.you.board, 'el cartón de Beto no cambia');
+  assert.ok(bobPrivate.every(you => sameCards(you.board, bobJoin.you.board)), 'a Beto no le llega el cartón de Ana');
+  // Sin cartón no hay nada que cambiar (Carol se salió) y no se le cobra nada.
+  const outsider = await emitAck(carol, 'loteria_change_board');
+  assert.equal(outsider.ok, false);
+  assert.equal(outsider.code, 'not_joined');
+  const carolAfter = await emitAck(carol, 'loteria_subscribe');
+  assert.equal(carolAfter.you.board, null);
+  assert.equal(carolAfter.you.chips, 1000);
+
+  // El servidor cierra la inscripción y canta cartas solo. Desde ese momento el
+  // cartón queda fijo.
+  const settledState = waitForState(alice, snapshot => snapshot.game && (snapshot.game.status === 'settled' || snapshot.game.status === 'cancelled'), 45000);
+  settledState.catch(() => {}); // si falla antes, el error que importa es el de abajo
+  await waitForState(alice, snapshot => snapshot.game && snapshot.game.status !== 'registration', 30000);
+  const late = await emitAck(alice, 'loteria_change_board');
+  assert.equal(late.ok, false, 'no se cambia de cartón con la ronda en marcha');
+  assert.equal(late.code, 'already_started');
+  const settled = await settledState;
   assert.equal(settled.game.status, 'settled', `la ronda debía resolverse con dos cartones. Servidor:\n${output.text}`);
   assert.equal(settled.game.count, 2);
   assert.equal(settled.game.result.pot, ENTRY * 2);
@@ -173,6 +225,12 @@ test('sala real: cobro, reembolso antes del cierre, canto automático y reparto 
   const paid = winners.reduce((sum, winner) => sum + winner.amount, 0);
   assert.equal(paid + settled.game.result.carry, ENTRY * 2);
   assert.equal(settled.game.board, null, 'el estado difundido no lleva el cartón de nadie');
+  // Gana quien completa su cartón y nadie más: Ana se juzga con el cartón
+  // NUEVO (el que pidió al cambiar), no con el que recibió al entrar.
+  const calledCards = new Set(settled.game.called);
+  const winnerNames = new Set(winners.map(winner => winner.name));
+  assert.equal(changed.board.every(card => calledCards.has(card)), winnerNames.has('Ana'), 'Ana juega con su cartón nuevo');
+  assert.equal(bobJoin.you.board.every(card => calledCards.has(card)), winnerNames.has('Beto'), 'Beto juega con su cartón');
 
   // Todo estado público mantiene la privacidad de los cartones.
   for (const snapshot of publicStates) {

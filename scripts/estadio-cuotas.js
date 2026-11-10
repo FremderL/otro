@@ -52,6 +52,7 @@ function verdictLabel(verdict) {
   if (verdict === 'en_banda') return 'en banda';
   if (verdict === 'alto') return 'ALTO';
   if (verdict === 'bajo') return 'BAJO';
+  if (verdict === 'decision_producto') return 'decisión de producto';
   return 'sin datos';
 }
 
@@ -92,6 +93,16 @@ function main() {
     console.log(
       `${row.label.padEnd(24)} ${pct(row.meanMargin).padStart(12)}   ${band.padEnd(14)}  ${verdictLabel(row.verdict)}`
     );
+  }
+
+  // Márgenes fuera de la banda real a propósito: se explican, no se corrigen.
+  const decided = rows.filter(([, row]) => row.verdict === 'decision_producto');
+  if (decided.length) {
+    console.log(`\nDECISIONES DE PRODUCTO (${decided.length})`);
+    for (const [, row] of decided) {
+      const side = row.bandVerdict === 'bajo' ? 'por debajo' : 'por encima';
+      console.log(` · ${row.label}: ${pct(row.meanMargin, 1)}, ${side} de la banda real a propósito. ${row.decision}`);
+    }
   }
 
   if (!args.margins && distribution) {
