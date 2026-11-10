@@ -3922,6 +3922,17 @@ body, .chat-list, .est-match-list, .lobby-chat-messages {
     font-size: 10px !important;
   }
 
+  /* Botón "Cambiar cartón": compacto, pero con altura cómoda para el dedo. */
+  .loteria-board-tools {
+    gap: 6px !important;
+  }
+
+  .loteria-change-btn {
+    min-height: var(--m-touch-sm) !important;
+    padding: 0 10px !important;
+    font-size: var(--m-fs-small) !important;
+  }
+
   .loteria-board {
     gap: 6px !important;
   }

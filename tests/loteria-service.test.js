@@ -1,9 +1,9 @@
 'use strict';
 
-// Pruebas del servicio de la Lotería mexicana: cobro, reembolso, reparto,
-// idempotencia de pagos y recuperación tras un reinicio. Usan un almacén de
-// perfiles en memoria con la misma interfaz que los backends reales
-// (getProfile/touch/persistProfile) y un reloj inyectado.
+// Pruebas del servicio de la Lotería mexicana: cobro, reembolso, cambio de
+// cartón, reparto, idempotencia de pagos y recuperación tras un reinicio. Usan
+// un almacén de perfiles en memoria con la misma interfaz que los backends
+// reales (getProfile/touch/persistProfile) y un reloj inyectado.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -121,6 +121,202 @@ test('salir antes del cierre reembolsa una sola vez y permite reentrar con nuevo
   assert.equal(service.state.game.players.length, 1);
   await service.leave('alice');
   assert.equal(profiles.chips('alice'), 100);
+});
+
+// ---------- Cambio de cartón ----------
+const boardFrom = first => Array.from({ length: 16 }, (_, index) => first + index);
+
+test('cambiar de cartón es gratis y privado, se guarda en disco y no mueve ni una ficha', async t => {
+  const now = { value: 2_000_000 };
+  const statePath = makeStatePath(t);
+  const profiles = new FakeProfiles({ alice: 500, bob: 500 });
+  const announced = [];
+  const service = makeService({ profiles, statePath, now, onStateChange: snapshot => announced.push(snapshot) });
+  await service.start();
+
+  const joined = await service.join('alice');
+  await service.join('bob');
+  assert.deepEqual(joined.board, boardFrom(1));
+  const before = JSON.parse(JSON.stringify(profiles.getProfile('alice')));
+  const persistCalls = profiles.persistCalls;
+  announced.length = 0;
+
+  const changed = await service.changeBoard('alice');
+  assert.equal(changed.ok, true);
+  assert.deepEqual(changed.board, boardFrom(2), 'con el azar de prueba el cartón nuevo se desplaza una carta');
+  assert.deepEqual(changed.state.game.board, changed.board);
+  assert.equal(changed.state.game.joined, true);
+  assert.deepEqual(service.youFor('alice').board, changed.board);
+  assert.deepEqual(service.snapshotFor('alice').game.board, changed.board);
+
+  // Ni saldo, ni movimientos, ni operaciones aplicadas, ni guardados de perfil.
+  const after = profiles.getProfile('alice');
+  assert.equal(after.chips, 450);
+  assert.deepEqual(after.transactions, before.transactions);
+  assert.deepEqual(after.appliedChipOperations, before.appliedChipOperations);
+  assert.deepEqual(after.gameStats, before.gameStats);
+  assert.equal(profiles.persistCalls, persistCalls);
+  assert.equal(service.state.pending.length, 0);
+
+  // La ronda pública sigue igual: mismo bote, mismos cartones, nadie más
+  // cambia de cartón y no hace falta avisar a la sala.
+  assert.equal(changed.state.game.pot, 100);
+  assert.equal(changed.state.game.count, 2);
+  assert.deepEqual(service.snapshotFor('bob').game.board, boardFrom(1));
+  assert.equal(service.snapshotFor(null).game.board, null);
+  assert.ok(!JSON.stringify(changed.state).includes('profileId'));
+  assert.equal(announced.length, 0);
+
+  // Queda escrito en el archivo de estado y sobrevive a un reinicio.
+  const stored = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  assert.deepEqual(stored.game.players.find(player => player.profileId === 'alice').board, changed.board);
+  service.stop();
+  const restarted = makeService({ profiles, statePath, now });
+  await restarted.start();
+  t.after(() => restarted.stop());
+  assert.deepEqual(restarted.snapshotFor('alice').game.board, changed.board);
+  assert.equal(profiles.chips('alice'), 450, 'reiniciar no vuelve a cobrar la entrada');
+
+  // La entrada sigue siendo la misma: salir devuelve exactamente 50 fichas.
+  const left = await restarted.leave('alice');
+  assert.equal(left.refunded, true);
+  assert.equal(profiles.chips('alice'), 500);
+});
+
+test('cambiar de cartón se rechaza sin inscripción, con la inscripción cerrada y con la ronda resuelta', async t => {
+  const now = { value: 3_000_000 };
+  const profiles = new FakeProfiles({ alice: 500, bob: 500, carol: 500 });
+  const idle = makeService({ profiles, statePath: makeStatePath(t), now });
+  assert.equal((await idle.changeBoard('alice')).code, 'no_game');
+
+  const service = makeService({ profiles, statePath: makeStatePath(t), now });
+  await service.start();
+  t.after(() => service.stop());
+  await service.join('alice');
+  await service.join('bob');
+  service.state.game.players[1].board = boardFrom(20);
+
+  // Sin cartón no hay nada que cambiar, y pedirlo no inscribe ni cobra.
+  const outsider = await service.changeBoard('carol');
+  assert.equal(outsider.ok, false);
+  assert.equal(outsider.code, 'not_joined');
+  assert.equal((await service.changeBoard('desconocido')).code, 'not_joined');
+  assert.equal(profiles.chips('carol'), 500);
+  assert.equal(service.state.game.players.length, 2);
+
+  // En el instante del cierre ya no se puede, aunque el reloj del servicio
+  // todavía no haya pasado la ronda a "cantando".
+  now.value += 1000;
+  assert.equal(service.state.game.status, 'registration');
+  const late = await service.changeBoard('alice');
+  assert.equal(late.ok, false);
+  assert.equal(late.code, 'already_started');
+  assert.match(late.error, /inscripción ya cerró/u);
+  assert.deepEqual(service.youFor('alice').board, boardFrom(1));
+
+  await service.tick();
+  assert.equal(service.state.game.status, 'calling');
+  now.value += 30;
+  await service.tick();
+  assert.equal(service.state.game.called.length, 3);
+  assert.equal((await service.changeBoard('alice')).code, 'already_started');
+  assert.deepEqual(service.youFor('alice').board, boardFrom(1));
+
+  now.value += 130;
+  await service.tick();
+  assert.equal(service.state.game.status, 'settled');
+  assert.equal((await service.changeBoard('alice')).code, 'already_started');
+  assert.deepEqual(service.state.game.result.winners.map(winner => winner.profileId), ['alice']);
+});
+
+test('el cartón cambiado es el que juega la ronda', async t => {
+  const now = { value: 4_000_000 };
+  const profiles = new FakeProfiles({ alice: 300, bob: 300 });
+  const service = makeService({ profiles, statePath: makeStatePath(t), now });
+  await service.start();
+  t.after(() => service.stop());
+  await service.join('alice');
+  await service.join('bob');
+  // Ambos reciben las cartas 1 a 16; Alice cambia y pasa a tener de la 2 a la 17.
+  assert.deepEqual((await service.changeBoard('alice')).board, boardFrom(2));
+
+  now.value += 1000;
+  await service.tick();
+  now.value += 160; // se cantan las cartas 1 a 16
+  await service.tick();
+  const game = service.state.game;
+  assert.equal(game.status, 'settled');
+  assert.equal(game.called.length, 16);
+  // A Alice le falta la carta 17: con su cartón original habría empatado.
+  assert.deepEqual(game.result.winners.map(winner => [winner.profileId, winner.amount]), [['bob', 100]]);
+  assert.equal(service.snapshotFor('alice').game.result.won, false);
+  assert.equal(profiles.chips('alice'), 250);
+  assert.deepEqual(profiles.getProfile('alice').gameStats.loteria, { rounds: 1, wins: 0, net: -50 });
+});
+
+test('cambiar de cartón tiene un tope contra ráfagas que no afecta a los demás y se libera solo', async t => {
+  const now = { value: 6_000_000 };
+  const profiles = new FakeProfiles({ alice: 500, bob: 500 });
+  const service = makeService({
+    profiles, statePath: makeStatePath(t), now,
+    registrationMs: 60_000, boardChangeLimit: 3, boardChangeWindowMs: 1000
+  });
+  await service.start();
+  t.after(() => service.stop());
+  await service.join('alice');
+  await service.join('bob');
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    assert.equal((await service.changeBoard('alice')).ok, true, `cambio ${attempt} dentro del tope`);
+  }
+  const kept = service.youFor('alice').board;
+  const blocked = await service.changeBoard('alice');
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.code, 'rate_limited');
+  assert.match(blocked.error, /Espera 1 s/u);
+  assert.deepEqual(service.youFor('alice').board, kept, 'el intento frenado no cambia el cartón');
+  // El tope es por persona.
+  assert.equal((await service.changeBoard('bob')).ok, true);
+
+  now.value += 1000;
+  const again = await service.changeBoard('alice');
+  assert.equal(again.ok, true);
+  assert.notDeepEqual(again.board, kept);
+
+  assert.throws(() => makeService({ profiles, now, boardChangeLimit: 0 }), TypeError);
+  assert.throws(() => makeService({ profiles, now, boardChangeWindowMs: 0 }), TypeError);
+  assert.throws(() => makeService({ profiles, now, boardChangeLimit: 1.5 }), TypeError);
+});
+
+test('si el cartón nuevo no se puede guardar, se conserva el anterior', async t => {
+  const now = { value: 8_000_000 };
+  const statePath = makeStatePath(t);
+  const profiles = new FakeProfiles({ alice: 500 });
+  const logged = [];
+  const service = makeService({ profiles, statePath, now, log: (event, data) => logged.push({ event, data }) });
+  await service.start();
+  t.after(() => service.stop());
+  await service.join('alice');
+  assert.deepEqual(service.youFor('alice').board, boardFrom(1));
+
+  // Se apunta el estado a una ruta imposible (una carpeta dentro de un archivo
+  // normal) para que el guardado falle como fallaría un disco lleno.
+  service.statePath = path.join(statePath, 'sub', 'loteria.json');
+  const failed = await service.changeBoard('alice');
+  assert.equal(failed.ok, false);
+  assert.equal(failed.code, 'save_failed');
+  assert.match(failed.error, /Conservas el anterior/u);
+  assert.deepEqual(service.youFor('alice').board, boardFrom(1));
+  assert.deepEqual(service.snapshotFor('alice').game.board, boardFrom(1));
+  assert.ok(logged.some(item => item.event === 'loteria_state_save_failed'));
+  assert.equal(profiles.chips('alice'), 450);
+
+  service.statePath = statePath;
+  const changed = await service.changeBoard('alice');
+  assert.equal(changed.ok, true);
+  assert.deepEqual(changed.board, boardFrom(2));
+  const stored = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  assert.deepEqual(stored.game.players[0].board, boardFrom(2));
 });
 
 test('con menos de dos cartones la ronda se cancela y devuelve la entrada, conservando el acumulado', async t => {

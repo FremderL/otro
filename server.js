@@ -2549,6 +2549,17 @@ function loteriaSocketsFor(profileId) {
   }
   return total;
 }
+// Cambios que solo afectan a una persona (su cartón nuevo): se avisa a todas
+// sus pestañas de la Lotería y a nadie más. El cartón es privado y el estado
+// público de la ronda no cambió, así que no hace falta difundir a la sala.
+function emitLoteriaYou(profileId) {
+  if (!loteria || !loteriaEnabled || !profileId) return;
+  const you = loteria.youFor(profileId);
+  if (!you) return;
+  for (const client of io.sockets.sockets.values()) {
+    if (client.data?.loteriaProfileId === profileId) client.emit('loteria_you', you);
+  }
+}
 
 // Identidad económica fail-closed: cookie válida → cuenta; dispositivo vinculado
 // sin cookie → solo lectura; invitado únicamente en dispositivo no vinculado o
@@ -2677,6 +2688,21 @@ io.on('connection', socket => {
     if (!result.ok) return ackResult(ack, actionError(result.error, result.code));
     ackOk(ack, { refunded: Boolean(result.refunded), state: result.state, you: loteria.youFor(profile.id) });
     broadcastLoteriaState();
+  });
+
+  // Cambiar de cartón: gratis y solo con la inscripción abierta (el servicio
+  // lo rechaza en cuanto empieza el canto). No mueve fichas ni cambia el estado
+  // público, así que solo se actualizan las pestañas de quien lo pidió.
+  socket.on('loteria_change_board', async (_payload = {}, ack) => {
+    if (!loteriaEnabled || !loteria) return ackError(ack, 'La Lotería todavía no está disponible.');
+    const profileId = socket.data.loteriaProfileId || loteriaProfileIdForSocket(socket);
+    const profile = profileId ? profiles.getProfile(profileId) : null;
+    if (!profile) return ackError(ack, 'No encontramos tu perfil.');
+    const result = await loteria.changeBoard(profile.id);
+    if (!result.ok) return ackResult(ack, actionError(result.error, result.code));
+    ackOk(ack, { board: result.board, state: result.state, you: loteria.youFor(profile.id) });
+    emitLoteriaYou(profile.id);
+    logEvent('loteria_board_changed', { profileId: profile.id, gameId: result.state?.game?.id || null });
   });
 
   // Regla acordada: quien se va antes del cierre recupera su entrada. Cuando la

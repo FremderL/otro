@@ -94,6 +94,7 @@ Apuesta inicial, pedir, plantarse, doblar y pago de Blackjack 3:2. Cada turno di
 
 - Sala común para todo el casino (no una mesa privada): de 2 a 100 cartones por ronda y 54 cartas en el mazo, cada una con su nombre tradicional y su emoji.
 - Entrada de 50 fichas virtuales. La inscripción dura 60 segundos; salir antes del cierre reembolsa la entrada y, una vez cerrada, el cartón sigue participando aunque la persona se desconecte.
+- **Cambiar cartón:** mientras la inscripción siga abierta, el botón «🔄 Cambiar cartón» sustituye el cartón por otro al azar, sin costo y las veces que se quiera (con un tope contra ráfagas). El cartón nuevo lo sortea el servidor —no se eligen cartas— y al cerrar la inscripción queda fijo.
 - El canto es automático: una carta cada 2 segundos, en el orden que decidió el servidor con aleatoriedad criptográfica. El marcado del cartón es automático y cada persona solo ve el suyo.
 - Si al cierre hay menos de dos cartones, la ronda se cancela, se devuelven las entradas y el acumulado previo se conserva.
 - Empate: reparto en fichas enteras iguales y el sobrante queda como acumulado de la siguiente ronda.

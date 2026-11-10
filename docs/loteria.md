@@ -4,7 +4,8 @@ Estado: **jugable** en la sala común del casino (`/loteria`). Entrada de 50
 fichas virtuales, inscripción de 60 segundos, dos a cien personas, cartón de 16
 cartas, canto cada dos segundos y victoria con cartón completo. Si hay empate,
 las fichas se reparten en partes enteras iguales y el sobrante se acumula para
-la siguiente ronda. El marcado es automático.
+la siguiente ronda. El marcado es automático. Mientras la inscripción siga
+abierta, cada quien puede **cambiar su cartón** por otro al azar, sin costo.
 
 ## Cómo se juega
 
@@ -14,9 +15,12 @@ la siguiente ronda. El marcado es automático.
    mesas).
 3. El servidor recibe el pago y entrega un cartón de 16 cartas distinto por
    persona. Solo su dueño lo ve.
-4. Al cerrar la inscripción empieza el canto automático: una carta cada dos
+4. Si el cartón no convence, **🔄 Cambiar cartón** (junto al contador `0/16`)
+   lo sustituye por otro al azar. Es gratis y se puede repetir, pero solo hasta
+   que cierre la inscripción: el botón desaparece en cuanto empieza el canto.
+5. Al cerrar la inscripción empieza el canto automático: una carta cada dos
    segundos, en el orden aleatorio que decidió el servidor.
-5. Gana el primer cartón con sus 16 cartas cantadas. El premio se acredita en
+6. Gana el primer cartón con sus 16 cartas cantadas. El premio se acredita en
    el perfil en el mismo paso de la liquidación.
 
 ## Reglas acordadas
@@ -30,6 +34,13 @@ la siguiente ronda. El marcado es automático.
   premio (regla pedida por el usuario).
 - Desconectarse de la página durante la inscripción equivale a salir: si no hay
   otra pestaña del mismo perfil en la lotería, se reembolsa la entrada.
+- Cambiar de cartón durante la inscripción es **gratis** y no toca el bote ni
+  el lugar en la ronda. El cartón nuevo lo sortea el servidor entre las 54
+  cartas (nunca las mismas 16 de antes); no se eligen cartas ni se puede volver
+  al cartón anterior. Al cerrar la inscripción el cartón queda fijo: el que se
+  tenía en ese momento es el que juega y cobra.
+- Tope contra ráfagas: 30 cambios cada 10 segundos por perfil. Al pasarlo se
+  avisa cuántos segundos faltan y el cartón vigente se conserva.
 - Empate: reparto en fichas enteras iguales; el sobrante (`pot mod n`) queda
   como acumulado (`carry`) de la siguiente ronda.
 - El premio se calcula con el bote de la ronda: `carry + 50 × cartones`.
@@ -68,6 +79,10 @@ antes de abrir el puerto. Los sockets del casino lo leen en diferido.
   confirmado y se paga el resultado ya confirmado**.
 - Si el guardado del perfil falla, el movimiento se queda en `pending` y se
   reintenta en el siguiente ciclo; nunca se cobra dos veces.
+- Cambiar de cartón **no mueve fichas**: no genera `operationId` ni entra en
+  `pending`. El cartón nuevo se guarda en `LOTERIA_STATE_PATH` antes de
+  responder; si ese guardado falla se restaura el cartón anterior y se informa
+  del error, así que lo que ve la persona siempre es lo que quedó en disco.
 - El archivo de estado se escribe de forma atómica (`.tmp` + `rename`). Si el
   JSON está corrupto, se descarta y se abre una ronda nueva sin tumbar el
   servicio.
@@ -79,6 +94,7 @@ antes de abrir el puerto. Los sockets del casino lo leen en diferido.
 | `loteria_subscribe` | cliente → servidor (ack) | Devuelve catálogo de cartas, versión de Términos, estado público e identidad/saldo del suscriptor. |
 | `loteria_join` | cliente → servidor (ack) | Verifica Términos, cobra la entrada y entrega el cartón privado. |
 | `loteria_leave` | cliente → servidor (ack) | Cancela y reembolsa solo durante la inscripción. |
+| `loteria_change_board` | cliente → servidor (ack) | Sustituye el cartón propio por otro al azar, solo durante la inscripción. El payload se ignora: el navegador no propone cartas. Responde `{ board, state, you }` o un error con `code` (`not_joined`, `already_started`, `rate_limited`, `save_failed`, `no_game`). El cartón nuevo se envía por `loteria_you` a las demás pestañas del mismo perfil y a nadie más; no se difunde `loteria_state` porque el estado público no cambia. |
 | `loteria_state` | servidor → todos | Estado público de la ronda: fase, bote, cartones, cartas cantadas, nombres y resultado. Nunca incluye cartones ajenos ni identificadores de perfil. |
 | `loteria_you` | servidor → cada suscriptor | Saldo, cartón propio y si está inscrito. |
 | `profile_event` | servidor → el perfil | Logros, retos y cosméticos ganados con la ronda. |
@@ -86,6 +102,9 @@ antes de abrir el puerto. Los sockets del casino lo leen en diferido.
 La identidad sigue la misma regla que las mesas (`lib/seat-identity.js`): con
 sesión de cuenta verificada se usa el perfil de la cuenta; sin ella, el perfil
 del dispositivo. Nunca se acepta un identificador enviado en el payload.
+`loteria_change_board` no está entre los eventos de solo lectura de
+`lib/socket-identity-guard.js`: un dispositivo vinculado a una cuenta sin sesión
+vigente no puede cambiar el cartón de esa cuenta.
 
 ## Configuración
 
@@ -100,16 +119,25 @@ del dispositivo. Nunca se acepta un identificador enviado en el payload.
 ## Pruebas
 
 - `tests/loteria-game.test.js`: reglas puras (límites, privacidad, cierre,
-  empate, acumulado, doble liquidación).
+  empate, acumulado, doble liquidación, cambio de cartón solo para inscritos y
+  solo con la inscripción abierta, sin repetir las mismas 16 cartas).
 - `tests/loteria-service.test.js`: cobro, saldo insuficiente, salida y
   reembolso, cancelación con menos de dos cartones, reparto, persistencia de
   estadísticas sin logros, reintento tras un guardado fallido, recuperación
-  tras reinicio y archivo corrupto.
+  tras reinicio y archivo corrupto; y del cambio de cartón, que es gratis y
+  privado, que el cartón cambiado es el que juega la ronda, el tope contra
+  ráfagas y la restauración del cartón anterior si no se puede guardar.
 - `tests/loteria-ui.test.js`: la página real en jsdom (cartón, cantadas,
-  botones, identidad y Términos, pantalla de resultado y CSP).
+  botones, identidad y Términos, pantalla de resultado y CSP; el botón de
+  cambiar cartón solo aparece inscrito y con la inscripción abierta, pinta el
+  cartón nuevo, avisa de los errores y se libera si se cae la conexión).
 - `tests/loteria-sockets.test.js`: servidor real en un proceso aparte con tres
-  dispositivos; cobro, reembolso, canto, privacidad, reparto exacto y apertura
-  de la siguiente ronda.
+  dispositivos; cobro, reembolso, cambio de cartón (gratis, sorteado por el
+  servidor aunque el navegador envíe uno, sincronizado entre pestañas, privado
+  y rechazado con la ronda en marcha), canto, privacidad, reparto exacto con el
+  cartón nuevo y apertura de la siguiente ronda.
+- `tests/socket-identity-guard.test.js`: el cambio de cartón exige identidad
+  vigente, igual que entrar a la ronda.
 - `tests/loteria-pg.test.js`: adaptador PostgreSQL experimental aislado (solo
   corre con `LOTERIA_TEST_DATABASE_URL`).
 
@@ -124,5 +152,10 @@ del dispositivo. Nunca se acepta un identificador enviado en el payload.
   reinicia saldos al cambiar el mes). La ronda termina y paga con el saldo
   nuevo; no se han hecho pruebas de caída justo en ese instante.
 - El cartón es de una sola ronda: no se reutiliza ni se conserva entre rondas.
+- El tope de cambios de cartón vive en la memoria del proceso: se reinicia con
+  el servidor y no se comparte entre réplicas (coherente con el límite de una
+  sola instancia).
+- Las casillas marcadas a mano son una ayuda visual del navegador y pertenecen
+  a un cartón concreto: se borran al cambiar de cartón y al empezar otra ronda.
 - La pantalla no tiene animación de baraja ni sonido; el marcado es instantáneo
   y el resultado se anuncia con texto accesible.

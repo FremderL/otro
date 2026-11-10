@@ -1,6 +1,7 @@
 // Lotería mexicana MonteCristo — cliente de la sala común.
 // El servidor es la única autoridad: aquí solo se dibuja el estado que llega
-// por Socket.IO y se envían las dos acciones posibles (entrar y salir).
+// por Socket.IO y se envían las tres acciones posibles (entrar, cambiar de
+// cartón y salir).
 // Sin scripts ni manejadores inline (CSP: script-src 'self').
 (function () {
   'use strict';
@@ -34,6 +35,7 @@
     identityCancel: document.getElementById('loteria-identity-cancel'),
     boardTitle: document.getElementById('loteria-board-title'),
     boardProgress: document.getElementById('loteria-board-progress'),
+    changeBoard: document.getElementById('loteria-change-board'),
     board: document.getElementById('loteria-board'),
     called: document.getElementById('loteria-called'),
     calledCount: document.getElementById('loteria-called-count'),
@@ -52,6 +54,8 @@
     skew: 0,
     connected: false,
     busy: false,
+    changingBoard: false,
+    boardKey: '',
     lastCallCount: 0,
     freshNumber: null,
     freshUntil: 0,
@@ -64,6 +68,7 @@
   var socket = null;
   var toastTimer = null;
   var clockTimer = null;
+  var swapTimer = null;
 
   function deviceToken() {
     try {
@@ -182,8 +187,31 @@
     return null;
   }
 
+  // Las marcas manuales pertenecen a un cartón concreto. Si el cartón deja de
+  // ser el mismo (se cambió por otro o empezó otra ronda) se parte de cero, y
+  // cuando un cartón sustituye a otro se anima el relevo para que se note.
+  function syncBoardIdentity(numbers) {
+    var key = numbers ? numbers.join(',') : '';
+    if (key === state.boardKey) return;
+    var replaced = Boolean(key && state.boardKey);
+    state.boardKey = key;
+    state.manualMarks.clear();
+    if (replaced) playBoardSwap();
+  }
+
+  function playBoardSwap() {
+    els.board.classList.remove('is-swapping');
+    // Leer el ancho obliga a recalcular estilos: así la animación vuelve a
+    // empezar aunque el cambio anterior siga a medias.
+    void els.board.offsetWidth;
+    els.board.classList.add('is-swapping');
+    clearTimeout(swapTimer);
+    swapTimer = setTimeout(function () { els.board.classList.remove('is-swapping'); }, 500);
+  }
+
   function renderBoard(view) {
     var numbers = boardNumbers();
+    syncBoardIdentity(numbers);
     var called = new Set(view ? view.called : []);
     var isFresh = state.freshNumber && Date.now() < state.freshUntil;
     els.board.textContent = '';
@@ -350,6 +378,12 @@
     els.leave.hidden = !(joined && open);
     els.join.disabled = state.busy || !state.connected || disabledRoom || joined || !open || full;
     els.leave.disabled = state.busy || !state.connected;
+    // El cartón solo se puede cambiar mientras la inscripción siga abierta.
+    if (els.changeBoard) {
+      els.changeBoard.hidden = !(joined && open);
+      els.changeBoard.disabled = state.busy || !state.connected;
+      els.changeBoard.textContent = state.changingBoard ? 'Cambiando…' : '🔄 Cambiar cartón';
+    }
 
     if (state.busy) els.join.textContent = 'Confirmando…';
     else if (joined) els.join.textContent = 'Tu cartón sigue en juego';
@@ -359,7 +393,7 @@
     if (state.helpText) return;
     if (disabledRoom) help('La Lotería no está disponible en este momento.', true);
     else if (!state.connected) help('Sin conexión con la sala. Reintentando…', true);
-    else if (joined && open) help('Estás inscrito. Puedes salir antes del cierre y recuperar tu entrada.');
+    else if (joined && open) help('Estás inscrito. Antes del cierre puedes cambiar de cartón o salir y recuperar tu entrada.');
     else if (joined) help('Tu cartón sigue jugando hasta el final de la ronda.');
     else if (open) {
       var minimum = snapshot ? snapshot.minPlayers : 2;
@@ -522,6 +556,30 @@
     });
   }
 
+  // Pide otro cartón al azar. El servidor solo lo concede con la inscripción
+  // abierta y no mueve fichas; el cartón nuevo llega en la respuesta. El aviso
+  // va en el toast y no en la ayuda de la tarjeta de estado: el botón vive
+  // junto al cartón y en pantallas pequeñas esa tarjeta queda fuera de vista.
+  function requestChangeBoard() {
+    if (state.busy) return;
+    state.busy = true;
+    state.changingBoard = true;
+    renderActions(state.view, state.snapshot);
+    socket.emit('loteria_change_board', {}, function (response) {
+      state.busy = false;
+      state.changingBoard = false;
+      if (!response || !response.ok) {
+        toast((response && response.error) || 'No pudimos cambiar tu cartón. Inténtalo de nuevo.');
+        renderActions(state.view, state.snapshot);
+        return;
+      }
+      if (response.state) applySnapshot(response.state);
+      if (response.you) applyYou(response.you);
+      toast('🔄 Cartón cambiado: tienes 16 cartas nuevas.');
+      render();
+    });
+  }
+
   function applySnapshot(snapshot) {
     state.snapshot = snapshot || null;
     state.view = snapshot && snapshot.game ? snapshot.game : null;
@@ -643,6 +701,11 @@
     });
     socket.on('disconnect', function () {
       setConnection('disconnected', 'Reconectando');
+      // Socket.IO descarta las respuestas pendientes al cortarse la conexión:
+      // sin esto, una acción a medias dejaría los botones bloqueados hasta
+      // recargar la página. Al reconectar, la suscripción trae el estado real.
+      state.busy = false;
+      state.changingBoard = false;
       help('Se perdió la conexión con la sala. Reintentando…', true);
       renderActions(state.view, state.snapshot);
     });
@@ -695,6 +758,7 @@
     fallback();
   });
   els.leave.addEventListener('click', requestLeave);
+  if (els.changeBoard) els.changeBoard.addEventListener('click', requestChangeBoard);
   els.identityCancel.addEventListener('click', function () { showIdentity(false); help(''); });
   els.identity.addEventListener('submit', function (event) {
     event.preventDefault();

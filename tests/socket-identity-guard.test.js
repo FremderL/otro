@@ -27,6 +27,8 @@ test('un dispositivo vinculado sin sesión no puede apostar ni reclamar bonos', 
   assert.equal(ack.code, 'account_session_required');
   assert.equal(await guard.guard(socket, 'daily_bonus_claim', [{}]), false);
   assert.equal(await guard.guard(socket, 'loteria_join', [{}]), false);
+  // Cambiar de cartón actúa sobre la inscripción de un perfil: no es una lectura.
+  assert.equal(await guard.guard(socket, 'loteria_change_board', [{}]), false);
 });
 
 test('las lecturas públicas siguen disponibles con sesión caducada', async () => {
@@ -38,6 +40,7 @@ test('las lecturas públicas siguen disponibles con sesión caducada', async () 
 test('un invitado real conserva acceso económico', async () => {
   const { guard, socket } = harness();
   assert.equal(await guard.guard(socket, 'football:bet', [{ stake: 100 }]), true);
+  assert.equal(await guard.guard(socket, 'loteria_change_board', [{}]), true);
 });
 
 test('una sesión válida permite acciones y se renueva con actividad', async () => {

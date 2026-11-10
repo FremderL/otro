@@ -54,3 +54,60 @@ test('rechaza tiempos inválidos y bote que podría desbordarse', () => {
   assert.equal(L.join(game, 'a', NaN, rand).reason,'closed');
   assert.equal(L.disconnect(game, 'a', 1).reason,'already_started');
 });
+
+test('cambio de cartón: solo inscritos, solo con la inscripción abierta y sin tocar a nadie más', () => {
+  const game = L.newGame({ id:'cambio', openedAt:100, random:rand });
+  L.join(game,'a',100,rand); L.join(game,'b',100,rand);
+  const before = L.publicState(game,'a').board;
+  const deck = [...game.deck];
+
+  const changed = L.changeBoard(game,'a',101,rand);
+  assert.equal(changed.ok,true);
+  assert.equal(changed.board.length,16); assert.equal(new Set(changed.board).size,16);
+  assert.ok(changed.board.every(n => Number.isInteger(n) && n >= 1 && n <= 54));
+  assert.ok(changed.board.some(n => !before.includes(n)), 'el cartón nuevo trae al menos una carta distinta');
+  assert.deepEqual(L.publicState(game,'a').board, changed.board);
+  // El resultado es una copia: modificarlo no altera el cartón guardado.
+  changed.board[0] = 99;
+  assert.notEqual(L.publicState(game,'a').board[0], 99);
+  // Ni el cartón ajeno, ni el mazo, ni el bote, ni la inscripción cambian.
+  assert.deepEqual(L.publicState(game,'b').board, before);
+  assert.deepEqual(game.deck, deck);
+  assert.equal(game.players.length,2);
+  assert.equal(L.publicState(game,'a').pot,100);
+  assert.equal(L.publicState(game,'otro').board,null);
+
+  assert.equal(L.changeBoard(game,'nadie',101,rand).reason,'not_joined');
+  const kept = L.publicState(game,'a').board;
+  assert.equal(L.changeBoard(game,'a',game.closesAt,rand).reason,'already_started');
+  assert.equal(L.changeBoard(game,'a',NaN,rand).reason,'already_started');
+  assert.equal(L.changeBoard(game,'a',1,rand).reason,'already_started');
+  assert.deepEqual(L.advance(game,game.closesAt),[{type:'started'}]);
+  assert.equal(L.changeBoard(game,'a',game.closesAt,rand).reason,'already_started');
+  assert.deepEqual(L.publicState(game,'a').board, kept, 'con el canto en marcha el cartón queda fijo');
+});
+
+test('cambio de cartón: nunca repite las mismas 16 cartas y rechaza aleatoriedad inválida', () => {
+  const game = L.newGame({ id:'azar', openedAt:0 });
+  L.join(game,'a',0);
+  for (let i = 0; i < 300; i++) {
+    const previous = new Set(L.publicState(game,'a').board);
+    const changed = L.changeBoard(game,'a',1);
+    assert.equal(changed.ok,true);
+    assert.equal(new Set(changed.board).size,16);
+    assert.ok(changed.board.every(n => Number.isInteger(n) && n >= 1 && n <= 54));
+    assert.ok(changed.board.some(n => !previous.has(n)));
+  }
+  // Aunque el sorteo devuelva justo las mismas cartas (aquí, las 16 primeras
+  // del mazo ordenado), el cartón entregado es otro.
+  const fixed = L.newGame({ id:'fijo', openedAt:0, random:rand });
+  L.join(fixed,'a',0,rand);
+  assert.deepEqual(L.publicState(fixed,'a').board, Array.from({length:16},(_,i)=>i+1));
+  assert.deepEqual(L.changeBoard(fixed,'a',1,rand).board, Array.from({length:16},(_,i)=>i+2));
+  assert.deepEqual(L.changeBoard(fixed,'a',2,rand).board, Array.from({length:16},(_,i)=>i+1));
+  // Un generador inválido no deja el cartón a medias.
+  const kept = L.publicState(fixed,'a').board;
+  assert.throws(() => L.changeBoard(fixed,'a',3,() => -1),RangeError);
+  assert.throws(() => L.changeBoard(fixed,'a',3,n => n),RangeError);
+  assert.deepEqual(L.publicState(fixed,'a').board, kept);
+});
