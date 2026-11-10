@@ -91,7 +91,7 @@
     }
   }
   function setActiveProfileSection(sectionId) {
-    const section = document.querySelector(`[data-profile-section="${sectionId}"]`);
+    const section = document.querySelector(`#profile-modal [data-profile-section="${sectionId}"]`);
     if (!section || section.classList.contains('hidden')) sectionId = 'overview';
     $$('[data-profile-jump]').forEach(button => {
       const active = button.dataset.profileJump === sectionId;
@@ -105,11 +105,11 @@
   }
   function jumpToProfileSection(sectionId, moveFocus = false) {
     const scrollRoot = document.getElementById('profile-content-scroll');
-    let target = document.querySelector(`[data-profile-section="${sectionId}"]`);
+    let target = document.querySelector(`#profile-modal [data-profile-section="${sectionId}"]`);
     if (!scrollRoot) return;
     if (!target || target.classList.contains('hidden')) {
       sectionId = 'overview';
-      target = document.querySelector('[data-profile-section="overview"]');
+      target = document.querySelector('#profile-modal [data-profile-section="overview"]');
     }
     if (!target) return;
     const rootTop = scrollRoot.getBoundingClientRect().top;
@@ -122,7 +122,7 @@
     const scrollRoot = document.getElementById('profile-content-scroll');
     if (!scrollRoot) return;
     const activationLine = scrollRoot.getBoundingClientRect().top + 42;
-    const sections = $$('[data-profile-section]').filter(section => !section.classList.contains('hidden'));
+    const sections = $$('#profile-modal [data-profile-section]').filter(section => !section.classList.contains('hidden'));
     let active = sections[0];
     for (const section of sections) {
       if (section.getBoundingClientRect().top <= activationLine) active = section;
@@ -284,8 +284,75 @@
   const ACCOUNT_SESSION_FIELDS = [
     'accountId', 'username', 'name', 'avatar', 'chips', 'stats', 'achievements', 'gamesPlayed',
     'featuredAchievements', 'allAchievements', 'challenges', 'dailyChallenges', 'weeklyChallenges',
-    'gameStats', 'balanceHistory', 'medals', 'championBanner', 'dailyBonusClaimed', 'dailyBonusAvailableAt', 'passport', 'collection', 'cardAlbum', 'fanPin'
+    'gameStats', 'balanceHistory', 'medals', 'championBanner', 'dailyBonusClaimed', 'dailyBonusAvailableAt',
+    'passport', 'collection', 'cardAlbum', 'fanPin', 'fanBanner', 'fanBanners', 'clubSeasonBadges', 'keybindings'
   ];
+  const KEYBINDING_STORAGE_KEY = 'montecristo-keybindings';
+  const KEYBINDING_CATALOG = [
+    { id: 'startGame', group: 'general', defaultKey: ' ', label: 'Empezar juego / Nueva ronda', hint: 'Inicia partida, reparte cartas, lanza la ronda o abre la siguiente' },
+    { id: 'focusBetInput', group: 'betting', defaultKey: 'b', label: 'Ingresar cantidad de apuesta', hint: 'Activa el cuadro numérico para escribir la apuesta con 0–9' },
+    { id: 'confirmBet', group: 'betting', defaultKey: 'Enter', label: 'Confirmar apuesta', hint: 'Confirma el monto ingresado en Blackjack, juegos rápidos o subida' },
+    { id: 'doubleAndConfirm', group: 'betting', defaultKey: 'x', label: 'Duplicar apuesta y confirmar al instante', hint: 'Multiplica ×2 tu apuesta actual o anterior y la envía de inmediato' },
+    { id: 'doubleBetOnly', group: 'betting', defaultKey: 'v', label: 'Duplicar monto sin confirmar (×2)', hint: 'Duplica la cifra del cuadro de apuesta sin enviarla aún' },
+    { id: 'bjHit', group: 'blackjack', defaultKey: 'h', label: 'Pedir carta', hint: 'Solicita una carta adicional en Blackjack' },
+    { id: 'bjStand', group: 'blackjack', defaultKey: 's', label: 'Plantarse', hint: 'Cierra tu mano actual en Blackjack' },
+    { id: 'bjDouble', group: 'blackjack', defaultKey: 'd', label: 'Doblar mano', hint: 'Duplica la apuesta y recibe una sola carta en Blackjack' },
+    { id: 'bjSplit', group: 'blackjack', defaultKey: 'p', label: 'Dividir par', hint: 'Separa dos cartas de igual valor en dos manos' },
+    { id: 'bjInsurance', group: 'blackjack', defaultKey: 'i', label: 'Seguro', hint: 'Toma seguro cuando la casa muestra un As' },
+    { id: 'pokerFold', group: 'poker', defaultKey: 'f', label: 'Retirarse (Fold)', hint: 'Abandona la mano actual en Póker' },
+    { id: 'pokerCheckCall', group: 'poker', defaultKey: 'c', label: 'Pasar / Igualar', hint: 'Pasa sin apuesta o iguala la apuesta activa en Póker' },
+    { id: 'pokerRaiseFocus', group: 'poker', defaultKey: 'r', label: 'Escribir subida', hint: 'Enfoca el cuadro de subida en Póker para teclear con números' },
+    { id: 'pokerSubmitRaise', group: 'poker', defaultKey: 'u', label: 'Confirmar subida directa', hint: 'Ejecuta la subida con el monto actual en Póker' },
+    { id: 'pokerAllIn', group: 'poker', defaultKey: 'a', label: 'All-in', hint: 'Apuesta todas tus fichas disponibles en Póker' },
+    { id: 'quickPrevChoice', group: 'quick', defaultKey: 'q', label: 'Opción anterior', hint: 'Recorre hacia atrás las opciones en Ruleta, Dados, Moneda o Rueda' },
+    { id: 'quickNextChoice', group: 'quick', defaultKey: 'e', label: 'Opción siguiente', hint: 'Recorre hacia adelante las opciones en Ruleta, Dados, Moneda o Rueda' },
+    { id: 'skipAnimation', group: 'general', defaultKey: 'k', label: 'Saltar animación', hint: 'Muestra al instante el giro de Ruleta, Tragamonedas o Rueda' },
+    { id: 'focusChat', group: 'general', defaultKey: 't', label: 'Escribir en el chat', hint: 'Enfoca la barra de mensajes de la mesa' }
+  ];
+  const KEYBINDING_DEFAULTS = Object.fromEntries(KEYBINDING_CATALOG.map(item => [item.id, item.defaultKey]));
+  const KEYBINDING_IDS = KEYBINDING_CATALOG.map(item => item.id);
+  function normalizeClientKey(rawKey) {
+    if (typeof rawKey !== 'string' || !rawKey.length || rawKey.length > 16) return null;
+    if (rawKey === ' ' || rawKey === 'Space' || rawKey === 'Spacebar') return ' ';
+    if (rawKey === 'Enter') return 'Enter';
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(rawKey)) return rawKey;
+    if (['Escape', 'Tab', 'Backspace', 'Delete', '?'].includes(rawKey)) return null;
+    if (rawKey.length === 1) {
+      const ch = rawKey.toLowerCase();
+      if (ch >= '0' && ch <= '9') return null;
+      if ((ch >= 'a' && ch <= 'z') || '[],.;/-='.includes(ch)) return ch;
+    }
+    return null;
+  }
+  function sanitizeClientKeybindings(raw) {
+    const out = { ...KEYBINDING_DEFAULTS };
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    for (const id of KEYBINDING_IDS) {
+      if (!Object.prototype.hasOwnProperty.call(raw, id)) continue;
+      const normalized = normalizeClientKey(raw[id]);
+      if (!normalized) continue;
+      const prevOwner = KEYBINDING_IDS.find(other => other !== id && out[other] === normalized);
+      if (prevOwner) out[prevOwner] = out[id];
+      out[id] = normalized;
+    }
+    return out;
+  }
+  function readLocalKeybindings() {
+    try {
+      return sanitizeClientKeybindings(JSON.parse(localStorage.getItem(KEYBINDING_STORAGE_KEY) || '{}'));
+    } catch (_) {
+      return { ...KEYBINDING_DEFAULTS };
+    }
+  }
+  function formatKeyLabel(key) {
+    if (key === ' ') return 'Espacio';
+    if (key === 'Enter') return 'Enter';
+    if (key === 'ArrowUp') return '↑';
+    if (key === 'ArrowDown') return '↓';
+    if (key === 'ArrowLeft') return '←';
+    if (key === 'ArrowRight') return '→';
+    return String(key || '').toUpperCase();
+  }
   const ui = {
     accountMode: 'login',
     accountSession: readAccountSession(),
@@ -299,6 +366,9 @@
     lastGameSignature: '', lastChatSignature: '', shouldResume: false, joining: false,
     lastEventKey: '', clockTimer: null, dailyBonusTimer: null, previousRanks: new Map(), previousChips: new Map(), lastMeChips: null,
     preferences: readLocalPreferences(),
+    keybindings: readLocalKeybindings(),
+    capturingKeyAction: null,
+    lastBetByGame: {},
     profileOpen: false, profileNameDirty: false, profileSection: 'overview', collectionFilter: 'all', albumFilter: 'all', albumLastPullId: null, profileStale: false,
     betRanking: null, betRankingSource: 'total', betRankingSubscribed: false,
     profileRevision: 0, // sube con cada snapshot de perfil aplicado (ver applyProfileSnapshot)
@@ -583,6 +653,12 @@
       persistLocalPreferences();
       renderPreferences();
     }
+    if (profile.keybindings && typeof profile.keybindings === 'object' && !Array.isArray(profile.keybindings)) {
+      ui.keybindings = sanitizeClientKeybindings(profile.keybindings);
+      persistLocalKeybindings();
+      renderKeybindingsConfig();
+      renderShortcutHelp();
+    }
     const viewer = ui.room?.viewerProfile || null;
     if (viewer && viewer.id === profile.id) {
       ui.room.viewerProfile = profile;
@@ -658,6 +734,144 @@
     if (response.profile) applyProfileSnapshot(response.profile);
     renderPreferences();
     setPreferencesStatus('Preferencia guardada en tu perfil.');
+  }
+  function persistLocalKeybindings() {
+    try { localStorage.setItem(KEYBINDING_STORAGE_KEY, JSON.stringify(ui.keybindings)); } catch (_) { /* modo privado */ }
+  }
+  function keyHint(actionId) {
+    return escapeHtml(formatKeyLabel(ui.keybindings?.[actionId] || KEYBINDING_DEFAULTS[actionId] || ''));
+  }
+  function setKeybindingsStatus(message, isError = false) {
+    const el = document.getElementById('keybindings-status');
+    if (!el) return;
+    el.textContent = message || '';
+    el.classList.toggle('hidden', !message);
+    el.classList.toggle('is-error', Boolean(isError));
+  }
+  function renderShortcutHelp() {
+    const list = document.getElementById('shortcut-help-list');
+    if (!list) return;
+    const k = id => `<kbd>${keyHint(id)}</kbd>`;
+    list.innerHTML = [
+      `<li>${k('startGame')} Empezar juego / Nueva ronda</li>`,
+      `<li>${k('focusBetInput')} Ingresar cantidad (0–9) · ${k('confirmBet')} Confirmar</li>`,
+      `<li>${k('doubleAndConfirm')} Duplicar apuesta y confirmar · ${k('doubleBetOnly')} Solo ×2</li>`,
+      `<li>${k('bjHit')} Pedir · ${k('bjStand')} Plantarse · ${k('bjDouble')} Doblar · ${k('bjSplit')} Dividir</li>`,
+      `<li>${k('pokerFold')} Fold · ${k('pokerCheckCall')} Pasar/Igualar · ${k('pokerRaiseFocus')} Subida · ${k('pokerAllIn')} All-in</li>`,
+      `<li>${k('quickPrevChoice')} / ${k('quickNextChoice')} Cambiar opción · ${k('skipAnimation')} Saltar animación</li>`,
+      `<li>${k('focusChat')} Escribir en chat · <kbd>Esc</kbd> Cerrar paneles</li>`
+    ].join('');
+  }
+  function renderKeybindingsConfig() {
+    const grid = document.getElementById('keybindings-grid');
+    if (!grid) return;
+    const groups = [
+      { id: 'general', title: 'Mesa y partida', subtitle: 'Inicio, animaciones y chat' },
+      { id: 'betting', title: 'Apuestas y números (0–9)', subtitle: 'Cantidad personalizada y confirmación rápida' },
+      { id: 'blackjack', title: 'Blackjack', subtitle: 'Decisiones de mano desde teclado' },
+      { id: 'poker', title: 'Póker y juegos rápidos', subtitle: 'Apuestas de póker y selector rápido' }
+    ];
+    const itemsFor = groupId => KEYBINDING_CATALOG.filter(item => groupId === 'poker' ? (item.group === 'poker' || item.group === 'quick') : item.group === groupId);
+    grid.innerHTML = groups.map(group => `
+      <div class="keybind-group">
+        <div class="progress-title"><span>${escapeHtml(group.title.toUpperCase())}</span><small>${escapeHtml(group.subtitle)}</small></div>
+        <div class="keybind-list">
+          ${itemsFor(group.id).map(item => {
+            const capturing = ui.capturingKeyAction === item.id;
+            const currentKey = ui.keybindings?.[item.id] || item.defaultKey;
+            return `<div class="keybind-row ${capturing ? 'is-capturing' : ''}" role="listitem" data-keybind-row="${escapeHtml(item.id)}">
+              <div class="keybind-copy"><b>${escapeHtml(item.label)}</b><small>${escapeHtml(item.hint)}</small></div>
+              <button type="button" class="keybind-btn ${capturing ? 'is-capturing' : ''}" data-rebind-action="${escapeHtml(item.id)}" aria-label="Asignar tecla para ${escapeHtml(item.label)}">
+                ${capturing ? 'Pulsa una tecla…' : `<kbd>${escapeHtml(formatKeyLabel(currentKey))}</kbd>`}
+              </button>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`).join('');
+  }
+  async function saveKeybindingChange(changes) {
+    const previous = { ...(ui.keybindings || KEYBINDING_DEFAULTS) };
+    if (changes.reset === true) {
+      ui.keybindings = { ...KEYBINDING_DEFAULTS };
+    } else {
+      const next = { ...previous };
+      let swappedLabel = null;
+      for (const [id, rawKey] of Object.entries(changes)) {
+        const normalized = normalizeClientKey(rawKey);
+        if (!normalized || !KEYBINDING_IDS.includes(id)) continue;
+        const conflictId = KEYBINDING_IDS.find(other => other !== id && next[other] === normalized);
+        if (conflictId) {
+          next[conflictId] = next[id];
+          swappedLabel = KEYBINDING_CATALOG.find(item => item.id === conflictId)?.label || conflictId;
+        }
+        next[id] = normalized;
+      }
+      ui.keybindings = next;
+      if (swappedLabel) {
+        setKeybindingsStatus(`Tecla actualizada (se intercambió con «${swappedLabel}» para evitar duplicados).`);
+      }
+    }
+    persistLocalKeybindings();
+    renderKeybindingsConfig();
+    renderShortcutHelp();
+    if (ui.room) renderActions();
+    const profile = currentViewerProfile();
+    if (!profile) {
+      if (changes.reset) setKeybindingsStatus('Se restablecieron los controles predeterminados en este dispositivo.');
+      else if (!document.getElementById('keybindings-status')?.textContent) setKeybindingsStatus('Tecla guardada en este dispositivo.');
+      return;
+    }
+    const payload = { keybindings: changes };
+    if (!inTable()) payload.accountId = ui.accountSession?.accountId;
+    const response = await emitAck('keybindings_update', payload);
+    if (!response.ok) {
+      ui.keybindings = previous;
+      persistLocalKeybindings();
+      renderKeybindingsConfig();
+      renderShortcutHelp();
+      if (ui.room) renderActions();
+      setKeybindingsStatus(response.error || 'No se pudo guardar la tecla en el servidor.', true);
+      return;
+    }
+    if (response.keybindings) ui.keybindings = sanitizeClientKeybindings(response.keybindings);
+    persistLocalKeybindings();
+    if (response.profile) applyProfileSnapshot(response.profile);
+    renderKeybindingsConfig();
+    renderShortcutHelp();
+    if (ui.room) renderActions();
+    setKeybindingsStatus(changes.reset ? 'Controles restablecidos y guardados en tu perfil.' : 'Tecla guardada en tu perfil.');
+  }
+  function preferencesModalIsOpen() {
+    return Boolean(document.getElementById('preferences-modal')?.classList.contains('open'));
+  }
+  function openPreferencesModal(target = 'automation') {
+    const modal = document.getElementById('preferences-modal');
+    if (!modal) return;
+    ui.capturingKeyAction = null;
+    renderPreferences();
+    renderKeybindingsConfig();
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    toggleShortcutHelp(false);
+    scrollToPreferencesSection(target);
+    modal.querySelector('.modal-close')?.focus();
+  }
+  function closePreferencesModal() {
+    const modal = document.getElementById('preferences-modal');
+    if (!modal || !modal.classList.contains('open')) return;
+    ui.capturingKeyAction = null;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.toggle('modal-open', Boolean(document.querySelector('.modal.open')));
+  }
+  function scrollToPreferencesSection(target = 'automation') {
+    const scroll = document.getElementById('preferences-modal-scroll');
+    const section = document.getElementById(target === 'controls' ? 'preferences-section-controls' : 'profile-section-preferences');
+    $$('[data-preferences-jump]').forEach(btn => btn.classList.toggle('active', btn.dataset.preferencesJump === target));
+    if (!scroll || !section) return;
+    const delta = section.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+    scroll.scrollTop = Math.max(0, scroll.scrollTop + delta - 8);
   }
   // Saldo de la cuenta cambiado por una respuesta que solo trae `profileChips`
   // (p. ej. tesorería del club). Mismas fuentes que applyProfileSnapshot.
@@ -774,9 +988,74 @@
     if (!item) return '';
     return `<span class="passport-nameplate" title="Título del Pasaporte · ${escapeHtml(item.seasonLabel)}">${escapeHtml(item.icon)} ${escapeHtml(item.name)}</span>`;
   }
+  const VALID_FAN_CLUB_ABBRS = /^(FAR|RMD|ATC|MUN|LVP|ARS|BAY|BDO|JUV|PSG|RSU|RDB|WHM|NAB|CDC|BEN)$/;
+  const VALID_FAN_PIN_IDS = ['club-pin', 'fan-1', 'fan-2', 'fan-3', 'fan-4', 'fan-5', 'fan-champ'];
   function fanPinMarkup(pin) {
-    if (!pin || !/^(FAR|RMD|ATC|MUN|LVP|ARS|BAY|BDO|JUV|PSG|RSU|RDB|WHM|NAB|CDC|BEN)$/.test(pin.abbr || '') || !['club-pin','fan-1','fan-2','fan-3'].includes(pin.pin)) return '';
-    return `<img class="fan-pin fan-pin-${pin.pin}" src="/assets/escudos/${pin.abbr}.svg" alt="" title="Pin de ${escapeHtml(pin.clubName || 'afición')}" />`;
+    if (!pin || !VALID_FAN_CLUB_ABBRS.test(pin.abbr || '')) return '';
+    const hasPin = VALID_FAN_PIN_IDS.includes(pin.pin);
+    const titleLabel = typeof pin.titleLabel === 'string' && pin.titleLabel.trim() ? pin.titleLabel.trim().slice(0, 48) : '';
+    if (!hasPin && !titleLabel) return '';
+    const parts = [];
+    if (hasPin) {
+      const tip = `Pin de ${escapeHtml(pin.clubName || 'afición')}${pin.pinTitle ? ` · ${escapeHtml(pin.pinTitle)}` : ''}`;
+      const badge = pin.pinBadge ? `<i class="fan-pin-emblem" aria-hidden="true">${escapeHtml(String(pin.pinBadge).slice(0, 3))}</i>` : '';
+      parts.push(`<span class="fan-pin-wrap fan-pin-wrap-${pin.pin}" title="${tip}"><img class="fan-pin fan-pin-${pin.pin}" src="/assets/escudos/${pin.abbr}.svg" alt="" title="${tip}" />${badge}</span>`);
+    }
+    if (titleLabel) {
+      parts.push(`<span class="fan-title-pill" title="Título de Mi afición">${escapeHtml(titleLabel)}</span>`);
+    }
+    return parts.join('');
+  }
+  const VALID_BANNER_ART = new Set(['/assets/banners/club-banner-bg.jpg', '/assets/banners/champion-banner-bg.jpg']);
+  function sanitizeHexColor(raw, fallback) {
+    return typeof raw === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(raw.trim()) ? raw.trim() : fallback;
+  }
+  function validFanBanner(banner) {
+    if (!banner || typeof banner !== 'object' || !VALID_FAN_CLUB_ABBRS.test(banner.abbr || '')) return null;
+    if (!['club-banner', 'champion-banner'].includes(banner.banner)) return null;
+    const isChamp = banner.banner === 'champion-banner' || Boolean(banner.isReigningChampion);
+    const art = VALID_BANNER_ART.has(banner.art)
+      ? banner.art
+      : (isChamp ? '/assets/banners/champion-banner-bg.jpg' : '/assets/banners/club-banner-bg.jpg');
+    return {
+      abbr: banner.abbr,
+      clubName: String(banner.clubName || banner.abbr).slice(0, 48),
+      primary: sanitizeHexColor(banner.primary, '#1d5240'),
+      secondary: sanitizeHexColor(banner.secondary, '#0c181c'),
+      banner: banner.banner,
+      isChamp,
+      seasonMonth: typeof banner.seasonMonth === 'string' ? banner.seasonMonth.slice(0, 10) : null,
+      art,
+      crest: `/assets/escudos/${banner.abbr}.svg`
+    };
+  }
+  function fanBannerBackdropMarkup(rawBanner, { compact = false } = {}) {
+    const b = validFanBanner(rawBanner);
+    if (!b) return '';
+    const ribbon = b.isChamp
+      ? `<span class="fan-banner-ribbon is-champ">♛ CAMPEÓN VIGENTE${b.seasonMonth ? ` · ${escapeHtml(b.seasonMonth)}` : ''}</span>`
+      : `<span class="fan-banner-ribbon">${escapeHtml(b.clubName)}</span>`;
+    return `<div class="fan-banner-surface ${b.isChamp ? 'is-champion' : 'is-club'} ${compact ? 'is-compact' : ''}" style="--fan-banner-primary:${escapeHtml(b.primary)};--fan-banner-secondary:${escapeHtml(b.secondary)}">
+      <img class="fan-banner-bg-img" src="${escapeHtml(b.art)}" alt="" decoding="async" />
+      <div class="fan-banner-tint"></div>
+      <div class="fan-banner-emblem-wrap">
+        ${ribbon}
+        <img class="fan-banner-crest" src="${escapeHtml(b.crest)}" alt="" decoding="async" />
+      </div>
+    </div>`;
+  }
+  function fanBannerRankingPillMarkup(rawBanner) {
+    const b = validFanBanner(rawBanner);
+    if (!b) return '';
+    const tip = b.isChamp
+      ? `Banner de Campeón Vigente · ${escapeHtml(b.clubName)}${b.seasonMonth ? ` (${escapeHtml(b.seasonMonth)})` : ''}`
+      : `Banner oficial · ${escapeHtml(b.clubName)}`;
+    return `<span class="ranking-fan-banner-pill ${b.isChamp ? 'is-champion' : ''}" style="--fan-banner-primary:${escapeHtml(b.primary)};--fan-banner-secondary:${escapeHtml(b.secondary)}" title="${tip}">
+      <img class="ranking-fan-banner-bg" src="${escapeHtml(b.art)}" alt="" decoding="async" />
+      <span class="ranking-fan-banner-shade"></span>
+      <img class="ranking-fan-banner-crest" src="${escapeHtml(b.crest)}" alt="" decoding="async" />
+      <b>${b.isChamp ? `♛ ${escapeHtml(b.abbr)}` : escapeHtml(b.abbr)}</b>
+    </span>`;
   }
   function cosmeticFrameClass(collection) {
     const style = collection?.equipped?.frame?.style;
@@ -1174,10 +1453,35 @@
     updateTableSetupPreview();
   }));
   document.addEventListener('keydown', event => {
+    if (ui.capturingKeyAction) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === 'Escape') {
+        ui.capturingKeyAction = null;
+        renderKeybindingsConfig();
+        setKeybindingsStatus('Asignación cancelada.');
+        return;
+      }
+      const normalized = normalizeClientKey(event.key);
+      if (!normalized) {
+        setKeybindingsStatus('Esa tecla está reservada (0–9 para cantidades, Esc y Tab para navegación). Elige otra.', true);
+        return;
+      }
+      const actionId = ui.capturingKeyAction;
+      ui.capturingKeyAction = null;
+      saveKeybindingChange({ [actionId]: normalized });
+      return;
+    }
     if (event.key !== 'Escape') return;
+    const activeEl = document.activeElement;
+    if (activeEl && ['blackjack-bet-amount', 'quick-bet-amount', 'raise-amount'].includes(activeEl.id)) {
+      activeEl.blur();
+      return;
+    }
+    if (preferencesModalIsOpen()) { closePreferencesModal(); return; }
     if (bettingSpaceModalIsOpen()) { closeBettingSpaceModal(); return; }
     closeCollectionModal(); closeModal(); closeProfileModal(); closeAccountModal(); closeInviteModal(); closeTableProfile(); toggleShortcutHelp(false);
-  });
+  }, true);
   // Fases 5 y 6: saltar animaciones (botones presentes en mesa o panel de acciones)
   document.addEventListener('click', event => {
     if (!event.target.closest) return;
@@ -1190,6 +1494,7 @@
   function toggleShortcutHelp(force) {
     const panel = document.getElementById('shortcut-help');
     if (!panel) return;
+    renderShortcutHelp();
     const show = typeof force === 'boolean' ? force : panel.classList.contains('hidden');
     panel.classList.toggle('hidden', !show);
   }
@@ -1198,24 +1503,123 @@
     if (element && !element.disabled) { element.click(); return true; }
     return false;
   }
+  function activeBetAmountInput() {
+    return document.getElementById('blackjack-bet-amount')
+      || document.getElementById('quick-bet-amount')
+      || document.getElementById('raise-amount')
+      || null;
+  }
+  function focusActiveBetInput(initialDigit = null) {
+    const input = activeBetAmountInput();
+    if (!input || input.disabled) return false;
+    input.focus();
+    if (initialDigit !== null) {
+      input.value = String(initialDigit);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    } else {
+      input.select?.();
+    }
+    return true;
+  }
+  function cycleQuickChoice(direction) {
+    const buttons = $$('#action-panel [data-quick-choice]').filter(btn => !btn.disabled);
+    if (!buttons.length) return false;
+    const currentIdx = Math.max(0, buttons.findIndex(btn => btn.classList.contains('active')));
+    const nextIdx = (currentIdx + direction + buttons.length) % buttons.length;
+    buttons[nextIdx].click();
+    return true;
+  }
+  function executeConfiguredAction(actionId) {
+    if (actionId === 'startGame') {
+      return pressButton('[data-event="poker_start"]')
+        || pressButton('[data-event="blackjack_start"]')
+        || pressButton('[data-event="blackjack_new"]')
+        || pressButton('[data-event="quick_resolve"]')
+        || pressButton('[data-event="quick_new"]')
+        || pressButton('[data-take-seat]');
+    }
+    if (actionId === 'focusBetInput') return focusActiveBetInput();
+    if (actionId === 'confirmBet') {
+      return pressButton('[data-blackjack-custom-bet]')
+        || pressButton('[data-quick-bet]')
+        || pressButton('[data-poker-action="raise"]');
+    }
+    if (actionId === 'doubleAndConfirm') {
+      if (pressButton('[data-double-confirm-bet]')) return true;
+      const raiseInput = document.getElementById('raise-amount');
+      if (raiseInput) {
+        const min = Number(raiseInput.min) || 10;
+        const max = Number(ui.me?.chips) || 0;
+        const doubled = Math.max(min, (Math.floor(Number(raiseInput.value) || min)) * 2);
+        raiseInput.value = String(max > 0 ? Math.min(max, doubled) : doubled);
+        return pressButton('[data-poker-action="raise"]');
+      }
+      return false;
+    }
+    if (actionId === 'doubleBetOnly') {
+      if (pressButton('[data-bet-double-only]') || pressButton('[data-quick-double]')) return true;
+      const raiseInput = document.getElementById('raise-amount');
+      if (raiseInput) {
+        const min = Number(raiseInput.min) || 10;
+        const max = Number(ui.me?.chips) || 0;
+        const doubled = Math.max(min, (Math.floor(Number(raiseInput.value) || min)) * 2);
+        raiseInput.value = String(max > 0 ? Math.min(max, doubled) : doubled);
+        playTone('notice');
+        return true;
+      }
+      return false;
+    }
+    if (actionId === 'bjHit') return pressButton('[data-event="blackjack_hit"]');
+    if (actionId === 'bjStand') return pressButton('[data-event="blackjack_stand"]');
+    if (actionId === 'bjDouble') return pressButton('[data-event="blackjack_double"]');
+    if (actionId === 'bjSplit') return pressButton('[data-event="blackjack_split"]');
+    if (actionId === 'bjInsurance') return pressButton('[data-event="blackjack_insurance"]');
+    if (actionId === 'pokerFold') return pressButton('[data-poker-action="fold"]');
+    if (actionId === 'pokerCheckCall') return pressButton('[data-poker-action="check"]') || pressButton('[data-poker-action="call"]');
+    if (actionId === 'pokerRaiseFocus') {
+      const input = document.getElementById('raise-amount');
+      if (input) { input.focus(); input.select?.(); return true; }
+      return false;
+    }
+    if (actionId === 'pokerSubmitRaise') return pressButton('[data-poker-action="raise"]');
+    if (actionId === 'pokerAllIn') return pressButton('[data-poker-action="allin"]');
+    if (actionId === 'quickPrevChoice') return cycleQuickChoice(-1);
+    if (actionId === 'quickNextChoice') return cycleQuickChoice(1);
+    if (actionId === 'skipAnimation') {
+      return pressButton('[data-roulette-skip]')
+        || pressButton('[data-slots-skip]')
+        || pressButton('[data-fortune-skip]');
+    }
+    if (actionId === 'focusChat') {
+      if (els.chatInput) { els.chatInput.focus(); return true; }
+      return false;
+    }
+    return false;
+  }
   document.addEventListener('keydown', event => {
+    if (ui.capturingKeyAction) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const target = event.target;
     if (target && target.id === 'raise-amount' && event.key === 'Enter') { event.preventDefault(); pressButton('[data-poker-action="raise"]'); return; }
     if (target && target.id === 'quick-bet-amount' && event.key === 'Enter') { event.preventDefault(); pressButton('[data-quick-bet]'); return; }
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+    if (target && target.id === 'blackjack-bet-amount' && event.key === 'Enter') { event.preventDefault(); pressButton('[data-blackjack-custom-bet]'); return; }
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return;
+    if (document.querySelector('.modal.open')) return;
     if (event.key === '?') { event.preventDefault(); toggleShortcutHelp(); return; }
     if (!ui.room) return;
-    const key = event.key.toLowerCase();
-    if (key === 'f') pressButton('[data-poker-action="fold"]');
-    else if (key === 'c') { if (!pressButton('[data-poker-action="check"]')) pressButton('[data-poker-action="call"]'); }
-    else if (key === 'r') { const input = document.getElementById('raise-amount'); if (input) { event.preventDefault(); input.focus(); input.select?.(); } }
-    else if (key === 'a') pressButton('[data-poker-action="allin"]');
-    else if (key === 'h') pressButton('[data-event="blackjack_hit"]');
-    else if (key === 's') pressButton('[data-event="blackjack_stand"]');
-    else if (key === 'd') pressButton('[data-event="blackjack_double"]');
-    else if (key === 'enter') pressButton('[data-quick-bet]');
-    else if (key === 't') { if (els.chatInput) { event.preventDefault(); els.chatInput.focus(); } }
+    if (event.key.length === 1 && event.key >= '0' && event.key <= '9') {
+      if (focusActiveBetInput(event.key)) {
+        event.preventDefault();
+        return;
+      }
+    }
+    const normalized = normalizeClientKey(event.key);
+    if (!normalized) return;
+    const bindings = ui.keybindings || KEYBINDING_DEFAULTS;
+    const matchedAction = KEYBINDING_IDS.find(id => bindings[id] === normalized);
+    if (matchedAction && executeConfiguredAction(matchedAction)) {
+      event.preventDefault();
+    }
   });
 
   els.form.addEventListener('submit', async event => {
@@ -1388,23 +1792,36 @@
     const monthName = monthNames[Number(month) - 1] || season.month;
     $('#ranking-title').textContent = `Temporada de ${monthName} ${year || ''}`.trim();
     const posIcons = ['🥇', '🥈', '🥉'];
-    // Fase 11.4: junto al nombre, el banner dorado (único, de por vida) y las
-    // medallas de oro (una por cada temporada ganada, se coleccionan).
-    const badgesFor = entry => `${entry.championBanner ? '<span class="ranking-champion-flag" title="Banner dorado de por vida: fue líder de una temporada">🎖️</span>' : ''}${entry.medals ? `<span class="ranking-medals" title="${entry.medals} temporada${entry.medals === 1 ? '' : 's'} ganada${entry.medals === 1 ? '' : 's'}">🥇×${entry.medals}</span>` : ''}`;
+    // Fase 11.4 + Mi afición: junto al nombre se muestran las insignias de
+    // temporada, el pin equipado y el banner oficial o de campeón vigente.
+    const badgesFor = entry => {
+      const passportObj = entry.passportBadge || entry.passportTitle
+        ? { equipped: { badge: entry.passportBadge || null, title: entry.passportTitle || null } }
+        : null;
+      return `${entry.championBanner ? '<span class="ranking-champion-flag" title="Banner dorado de por vida: fue líder de una temporada">🎖️</span>' : ''}${entry.medals ? `<span class="ranking-medals" title="${entry.medals} temporada${entry.medals === 1 ? '' : 's'} ganada${entry.medals === 1 ? '' : 's'}">🥇×${entry.medals}</span>` : ''}${passportBadgeMarkup(passportObj)}${fanPinMarkup(entry.fanPin)}${fanBannerRankingPillMarkup(entry.fanBanner)}`;
+    };
     const leader = season.ranking[0];
     const feature = $('#ranking-feature');
+    const leaderBanner = leader ? validFanBanner(leader.fanBanner) : null;
+    feature.classList.toggle('has-fan-banner', Boolean(leaderBanner));
+    feature.classList.toggle('is-champion-fan-banner', Boolean(leaderBanner?.isChamp));
     feature.innerHTML = leader ? `
+      ${leaderBanner ? fanBannerBackdropMarkup(leader.fanBanner) : ''}
       <div class="ranking-feature-top"><span>LÍDER DE TEMPORADA</span><i>♛</i></div>
       <div class="ranking-feature-player"><span class="ranking-feature-avatar">${avatarEmoji(leader.avatar)}</span><div><small>PRIMER LUGAR</small><b>${escapeHtml(leader.name)}${badgesFor(leader)}</b></div></div>
       <div class="ranking-feature-balance"><b>◆ ${formatChips(leader.chips)}</b><small>FICHAS EN TEMPORADA</small></div>
       <div class="ranking-feature-footer"><span>Victorias</span><b>${formatChips(leader.wins || 0)}</b></div>` : '';
-    $('#ranking-list').innerHTML = season.ranking.map((entry, index) => `
-      <div class="ranking-row ${index === 0 ? 'leader' : ''}" role="row">
+    $('#ranking-list').innerHTML = season.ranking.map((entry, index) => {
+      const rowBanner = validFanBanner(entry.fanBanner);
+      const rowStyle = rowBanner ? ` style="--row-banner-primary:${escapeHtml(rowBanner.primary)};--row-banner-secondary:${escapeHtml(rowBanner.secondary)}"` : '';
+      return `
+      <div class="ranking-row ${index === 0 ? 'leader' : ''} ${rowBanner ? 'has-fan-banner' : ''} ${rowBanner?.isChamp ? 'is-champion-row' : ''}" role="row"${rowStyle}>
         <span class="ranking-pos" role="cell">${posIcons[index] || `#${index + 1}`}</span>
         <span class="ranking-player" role="cell"><span class="ranking-avatar">${avatarEmoji(entry.avatar)}</span><span class="ranking-name">${escapeHtml(entry.name)}${badgesFor(entry)}</span></span>
         <span class="ranking-wins" role="cell"><b>${formatChips(entry.wins || 0)}</b><small>${entry.wins === 1 ? 'victoria' : 'victorias'}</small></span>
         <span class="ranking-chips" role="cell"><b>◆ ${formatChips(entry.chips)}</b><small>fichas</small></span>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     const previousBox = $('#ranking-previous');
     if (season.previous?.podium?.length) {
       const previousMonth = escapeHtml(season.previous.month || 'la temporada anterior');
@@ -1823,7 +2240,9 @@
     const chips = Number(viewer.chips) || 0;
     const previous = ui.lastMeChips;
     const delta = previous == null ? 0 : chips - previous;
-    els.profileCard.innerHTML = `${equippedAvatarMarkup(ui.me, 'profile-avatar')}
+    const activeBanner = viewer.fanBanner || ui.me.fanBanner || null;
+    els.profileCard.classList.toggle('has-fan-banner', Boolean(validFanBanner(activeBanner)));
+    els.profileCard.innerHTML = `${activeBanner ? fanBannerBackdropMarkup(activeBanner, { compact: true }) : ''}${equippedAvatarMarkup(ui.me, 'profile-avatar')}
       <div class="profile-info"><small>TU PERFIL · ${formatChips(stats.wins || 0)} VICTORIAS</small><b>${escapeHtml(ui.me.name)}${passportBadgeMarkup(ui.me.passport)}${fanPinMarkup(ui.me.fanPin)}</b>${passportTitleMarkup(ui.me.passport)}<span><strong>◆</strong> ${formatChips(chips)} fichas ${delta > 0 ? `<em class="chip-delta">+${formatChips(delta)}</em>` : ''}</span></div>`;
     if (delta > 0) {
       els.profileCard.classList.remove('chips-received');
@@ -2479,10 +2898,10 @@
       const toCall = Math.max(0, room.currentBet - me.roundBet);
       const minRaise = Math.max(1, room.minRaise || 20);
       els.actionPanel.innerHTML = `<div class="action-bar"><div class="action-info"><small>DECISIÓN ACTUAL</small><b>${toCall ? `IGUALAR <span>${formatChips(toCall)}</span>` : 'PUEDES PASAR'}</b></div><div class="action-buttons">
-        <button class="game-btn danger" data-poker-action="fold">Retirarse</button>
-        <button class="game-btn green" data-poker-action="${toCall ? 'call' : 'check'}">${toCall ? `Igualar ${formatChips(toCall)}` : 'Pasar'}</button>
-        <div class="raise-box"><input id="raise-amount" type="number" min="${minRaise}" step="${minRaise}" value="${minRaise}" aria-label="Cantidad para subir"/><button class="game-btn primary" data-poker-action="raise">Subir</button></div>
-        <button class="game-btn" data-poker-action="allin">All-in</button></div></div>`;
+        <button class="game-btn danger" data-poker-action="fold">Retirarse <kbd class="btn-key-hint" aria-hidden="true">${keyHint('pokerFold')}</kbd></button>
+        <button class="game-btn green" data-poker-action="${toCall ? 'call' : 'check'}">${toCall ? `Igualar ${formatChips(toCall)}` : 'Pasar'} <kbd class="btn-key-hint" aria-hidden="true">${keyHint('pokerCheckCall')}</kbd></button>
+        <div class="raise-box"><button type="button" class="game-btn bet-focus-btn" data-focus-bet-input title="Escribir cantidad con los números">⌨ <kbd class="btn-key-hint" aria-hidden="true">${keyHint('pokerRaiseFocus')}</kbd></button><input id="raise-amount" type="number" min="${minRaise}" step="${minRaise}" value="${minRaise}" aria-label="Cantidad para subir"/><button class="game-btn primary" data-poker-action="raise">Subir <kbd class="btn-key-hint" aria-hidden="true">${keyHint('pokerSubmitRaise')}</kbd></button></div>
+        <button class="game-btn" data-poker-action="allin">All-in <kbd class="btn-key-hint" aria-hidden="true">${keyHint('pokerAllIn')}</kbd></button></div></div>`;
       return;
     }
     const canStart = me.isHost && !active && lobbyMatch?.status !== 'completed';
@@ -2496,7 +2915,7 @@
         : active ? `Esperando a ${escapeHtml(room.players.find(p => p.id === room.turnId)?.name || 'la siguiente jugada')}…`
           : me.isHost ? 'Tú controlas el inicio de la próxima mano.' : 'El anfitrión iniciará cuando todos estén listos.';
     els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>${active ? 'La acción está en la mesa' : room.phase === 'showdown' ? 'La mano terminó' : 'La mesa está lista'}</b><span>${waitingCopy}</span></div><div class="action-buttons">
-      ${canStart ? `<button class="game-btn primary" data-event="poker_start">${startCopy}</button>` : ''}
+      ${canStart ? `<button class="game-btn primary" data-event="poker_start">${startCopy} <kbd class="btn-key-hint" aria-hidden="true">${keyHint('startGame')}</kbd></button>` : ''}
       ${canStart && !lobbyMatch && !room.tournament?.active && room.players.filter(p => p.connected).length >= 2 ? '<button class="game-btn tournament-btn" data-event="tournament_start" title="Sit & Go de mesa: entrada 200 fichas y premio para el ganador">🏆 Iniciar Sit & Go</button>' : ''}
       ${!active && !lobbyMatch ? '<button class="game-btn" type="button" data-invite-open-friends aria-label="Invitar amigos" title="Invita a tus amistades a esta mesa">✉ Invitar amigos</button>' : ''}
       ${room.results?.length ? `<div class="result-strip">${room.results.map(result => `<span class="result-item ${result.amount > 0 ? 'win' : ''}">${escapeHtml(result.name)} <b>${result.amount > 0 ? '+' : ''}${formatDelta(result.amount)}</b></span>`).join('')}</div>` : ''}
@@ -2505,10 +2924,20 @@
   function renderBlackjackActions(room, me) {
     if (room.phase === 'betting') {
       if (me.bet > 0) {
-        els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>Apuesta confirmada: <span>${formatChips(me.bet)}</span></b><span>Esperando a que el anfitrión reparta.</span></div><div class="action-buttons">${me.isHost ? '<button class="game-btn primary" data-event="blackjack_start">Repartir cartas</button>' : ''}<button class="game-btn" type="button" data-invite-open-friends aria-label="Invitar amigos" title="Invita a tus amistades a esta mesa">✉ Invitar amigos</button></div></div>`;
+        els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>Apuesta confirmada: <span>${formatChips(me.bet)}</span></b><span>Esperando a que el anfitrión reparta.</span></div><div class="action-buttons">${me.isHost ? `<button class="game-btn primary" data-event="blackjack_start">Repartir cartas <kbd class="btn-key-hint" aria-hidden="true">${keyHint('startGame')}</kbd></button>` : ''}<button class="game-btn" type="button" data-invite-open-friends aria-label="Invitar amigos" title="Invita a tus amistades a esta mesa">✉ Invitar amigos</button></div></div>`;
       } else {
         const bets = [10, 25, 50, 100].filter(amount => amount <= me.chips);
-        els.actionPanel.innerHTML = `<div class="action-bar"><div class="action-info"><small>ELIGE TU APUESTA</small><b>◆ <span>${formatChips(me.chips)}</span> DISPONIBLES</b></div><div class="bet-options">${bets.map(amount => `<button class="chip-button" data-blackjack-bet="${amount}">${amount}</button>`).join('')}</div><div class="action-buttons">${me.isHost ? '<button class="game-btn" data-event="blackjack_start">Repartir</button>' : ''}<button class="game-btn" type="button" data-invite-open-friends aria-label="Invitar amigos" title="Invita a tus amistades a esta mesa">✉ Invitar amigos</button></div></div>`;
+        const baseSuggest = Math.min(me.chips, Math.max(10, Number(ui.lastBetByGame.blackjack) || 25));
+        const customBox = me.chips >= 10
+          ? `<div class="quick-bet-controls bj-custom-bet-controls">
+              <button class="game-btn bet-focus-btn" type="button" data-focus-bet-input title="Pulsa o usa tu tecla para escribir la apuesta con los números 0–9">⌨ Cantidad <kbd class="btn-key-hint" aria-hidden="true">${keyHint('focusBetInput')}</kbd></button>
+              <input id="blackjack-bet-amount" type="number" min="10" max="${me.chips}" value="${baseSuggest}" aria-label="Apuesta personalizada de Blackjack" />
+              <button class="game-btn" type="button" data-bet-double-only title="Duplicar monto escrito">×2 <kbd class="btn-key-hint" aria-hidden="true">${keyHint('doubleBetOnly')}</kbd></button>
+              <button class="game-btn green" type="button" data-blackjack-custom-bet>Confirmar <kbd class="btn-key-hint" aria-hidden="true">${keyHint('confirmBet')}</kbd></button>
+              <button class="game-btn primary" type="button" data-double-confirm-bet data-bet-game="blackjack" title="Duplica tu apuesta y la confirma al instante">⚡ ×2 y confirmar <kbd class="btn-key-hint" aria-hidden="true">${keyHint('doubleAndConfirm')}</kbd></button>
+            </div>`
+          : '';
+        els.actionPanel.innerHTML = `<div class="action-bar"><div class="action-info"><small>ELIGE TU APUESTA</small><b>◆ <span>${formatChips(me.chips)}</span> DISPONIBLES</b></div><div class="bet-options">${bets.map(amount => `<button class="chip-button" data-blackjack-bet="${amount}">${amount}</button>`).join('')}</div>${customBox}<div class="action-buttons">${me.isHost ? `<button class="game-btn" data-event="blackjack_start">Repartir <kbd class="btn-key-hint" aria-hidden="true">${keyHint('startGame')}</kbd></button>` : ''}<button class="game-btn" type="button" data-invite-open-friends aria-label="Invitar amigos" title="Invita a tus amistades a esta mesa">✉ Invitar amigos</button></div></div>`;
       }
       return;
     }
@@ -2520,11 +2949,11 @@
       const canDouble = activeHand.length === 2 && me.chips >= activeBet;
       const canSplit = !me.split && me.hand.length === 2 && bjCardValue(me.hand[0]) === bjCardValue(me.hand[1]) && me.chips >= me.bet;
       const handLabel = me.split ? (onSplitHand ? 'MANO 2 DE 2' : 'MANO 1 DE 2') : 'TU MANO';
-      els.actionPanel.innerHTML = `<div class="action-bar"><div class="action-info"><small>${handLabel}</small><b>VALOR <span>${blackjackValue(activeHand)}</span></b></div><div class="action-buttons"><button class="game-btn primary" data-event="blackjack_hit">Pedir carta</button><button class="game-btn green" data-event="blackjack_stand">Plantarse</button><button class="game-btn" data-event="blackjack_double" ${canDouble ? '' : 'disabled'}>Doblar</button>${canSplit ? '<button class="game-btn" data-event="blackjack_split" title="Divide tu par en dos manos con apuestas iguales">Dividir</button>' : ''}${insuranceButton(room, me)}</div></div>`;
+      els.actionPanel.innerHTML = `<div class="action-bar"><div class="action-info"><small>${handLabel}</small><b>VALOR <span>${blackjackValue(activeHand)}</span></b></div><div class="action-buttons"><button class="game-btn primary" data-event="blackjack_hit">Pedir carta <kbd class="btn-key-hint" aria-hidden="true">${keyHint('bjHit')}</kbd></button><button class="game-btn green" data-event="blackjack_stand">Plantarse <kbd class="btn-key-hint" aria-hidden="true">${keyHint('bjStand')}</kbd></button><button class="game-btn" data-event="blackjack_double" ${canDouble ? '' : 'disabled'}>Doblar <kbd class="btn-key-hint" aria-hidden="true">${keyHint('bjDouble')}</kbd></button>${canSplit ? `<button class="game-btn" data-event="blackjack_split" title="Divide tu par en dos manos con apuestas iguales">Dividir <kbd class="btn-key-hint" aria-hidden="true">${keyHint('bjSplit')}</kbd></button>` : ''}${insuranceButton(room, me)}</div></div>`;
       return;
     }
     if (room.phase === 'results') {
-      els.actionPanel.innerHTML = `<div class="action-bar"><div class="result-strip">${room.results.map(result => `<span class="result-item ${result.amount > 0 ? 'win' : ''}">${escapeHtml(result.name)} <b>${result.amount > 0 ? '+' : ''}${formatDelta(result.amount)}</b></span>`).join('')}</div><div class="action-buttons">${me.isHost ? '<button class="game-btn primary" data-event="blackjack_new">Nueva ronda</button>' : '<span class="waiting-copy"><span>Esperando al anfitrión…</span></span>'}</div></div>`;
+      els.actionPanel.innerHTML = `<div class="action-bar"><div class="result-strip">${room.results.map(result => `<span class="result-item ${result.amount > 0 ? 'win' : ''}">${escapeHtml(result.name)} <b>${result.amount > 0 ? '+' : ''}${formatDelta(result.amount)}</b></span>`).join('')}</div><div class="action-buttons">${me.isHost ? `<button class="game-btn primary" data-event="blackjack_new">Nueva ronda <kbd class="btn-key-hint" aria-hidden="true">${keyHint('startGame')}</kbd></button>` : '<span class="waiting-copy"><span>Esperando al anfitrión…</span></span>'}</div></div>`;
       return;
     }
     const current = room.players.find(player => player.id === room.turnId);
@@ -2541,7 +2970,7 @@
     const upcard = String(room.dealerHand?.[0] || '');
     const eligible = room.phase === 'playing' && upcard.slice(0, -1) === 'A' && me.bet > 0 && !me.insurance
       && me.hand?.length === 2 && !me.split && me.chips >= Math.ceil(me.bet / 2);
-    return eligible ? `<button class="game-btn insurance-btn" data-event="blackjack_insurance" title="Cuesta la mitad de tu apuesta y paga 2:1 si la casa tiene blackjack">🛡 Seguro (${formatChips(Math.ceil(me.bet / 2))})</button>` : '';
+    return eligible ? `<button class="game-btn insurance-btn" data-event="blackjack_insurance" title="Cuesta la mitad de tu apuesta y paga 2:1 si la casa tiene blackjack">🛡 Seguro (${formatChips(Math.ceil(me.bet / 2))}) <kbd class="btn-key-hint" aria-hidden="true">${keyHint('bjInsurance')}</kbd></button>` : '';
   }
   function quickChoiceButtons(game) {
     if (game === 'fortune') {
@@ -2565,22 +2994,22 @@
       ui.quickChoice = room.game === 'coinflip' ? 'heads' : room.game === 'slots' ? 'spin' : room.game === 'fortune' ? '1' : 'low';
     }
     if (room.phase === 'betting') {
-      const hostLaunch = me.isHost ? '<button class="game-btn primary" data-event="quick_resolve">Lanzar ronda</button>' : '';
+      const hostLaunch = me.isHost ? `<button class="game-btn primary" data-event="quick_resolve">Lanzar ronda <kbd class="btn-key-hint" aria-hidden="true">${keyHint('startGame')}</kbd></button>` : '';
       if (me.bet > 0) {
         const myChipFelt = room.game === 'roulette' && me.quickChoice ? `<div class="felt-wrap">${rouletteFeltHtml({ chips: { [me.quickChoice]: [me] } })}</div>` : '';
         els.actionPanel.innerHTML = `<div class="action-bar ${myChipFelt ? 'roulette-bar' : ''}"><div class="waiting-copy"><b>Apuesta confirmada: <span>${formatChips(me.bet)}</span> · ${escapeHtml(quickChoiceLabel(room.game, me.quickChoice))}</b><span>La elección queda bloqueada hasta el resultado.</span></div>${myChipFelt}<div class="action-buttons">${hostLaunch || '<span class="waiting-copy"><span>Esperando al anfitrión…</span></span>'}</div></div>`;
       } else if (me.chips < 10) {
         els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>Necesitas al menos 10 fichas</b><span>Prueba otro juego o espera una recompensa.</span></div><div class="action-buttons">${hostLaunch}</div></div>`;
       } else {
-        const suggested = Math.min(50, me.chips);
+        const suggested = Math.min(me.chips, Math.max(10, Number(ui.lastBetByGame[room.game]) || 50));
         const chooser = room.game === 'roulette'
           ? `<div class="felt-wrap">${rouletteFeltHtml({ interactive: true })}</div>`
           : room.game === 'slots'
             ? '<div class="waiting-copy"><b>🎰 Un giro por ronda</b><span>Confirma tu apuesta virtual y tira de la palanca: la tabla de pagos está en la máquina.</span></div>'
             : `<div><div class="quick-choice-grid">${quickChoiceButtons(room.game)}</div></div>`;
-        const canDouble = room.game === 'roulette' || room.game === 'dice';
-        const doubleBtn = canDouble ? '<button class="game-btn" type="button" data-quick-double title="Duplica la apuesta (hasta tu saldo)">×2</button>' : '';
-        els.actionPanel.innerHTML = `<div class="action-bar ${room.game === 'roulette' ? 'roulette-bar' : ''}">${chooser}<div class="quick-bet-controls"><input id="quick-bet-amount" type="number" min="10" max="${me.chips}" value="${suggested}" aria-label="Apuesta virtual">${doubleBtn}<button class="game-btn green" data-quick-bet>Confirmar apuesta</button>${hostLaunch}<button class="game-btn" type="button" data-invite-open-friends aria-label="Invitar amigos" title="Invita a tus amistades a esta mesa">✉</button></div></div>`;
+        const doubleBtn = `<button class="game-btn" type="button" data-quick-double title="Duplica la apuesta (hasta tu saldo)">×2 <kbd class="btn-key-hint" aria-hidden="true">${keyHint('doubleBetOnly')}</kbd></button>`;
+        const doubleConfirmBtn = `<button class="game-btn primary" type="button" data-double-confirm-bet data-bet-game="quick" title="Duplica tu apuesta y la confirma de inmediato">⚡ ×2 y confirmar <kbd class="btn-key-hint" aria-hidden="true">${keyHint('doubleAndConfirm')}</kbd></button>`;
+        els.actionPanel.innerHTML = `<div class="action-bar ${room.game === 'roulette' ? 'roulette-bar' : ''}">${chooser}<div class="quick-bet-controls"><button class="game-btn bet-focus-btn" type="button" data-focus-bet-input title="Pulsa o usa tu tecla para escribir la apuesta con números 0–9">⌨ Cantidad <kbd class="btn-key-hint" aria-hidden="true">${keyHint('focusBetInput')}</kbd></button><input id="quick-bet-amount" type="number" min="10" max="${me.chips}" value="${suggested}" aria-label="Apuesta virtual">${doubleBtn}<button class="game-btn green" data-quick-bet>Confirmar apuesta <kbd class="btn-key-hint" aria-hidden="true">${keyHint('confirmBet')}</kbd></button>${doubleConfirmBtn}${hostLaunch}<button class="game-btn" type="button" data-invite-open-friends aria-label="Invitar amigos" title="Invita a tus amistades a esta mesa">✉</button></div></div>`;
       }
       return;
     }
@@ -2589,15 +3018,15 @@
       return;
     }
     if (room.game === 'roulette' && ui.rouletteSpin) {
-      els.actionPanel.innerHTML = '<div class="action-bar"><div class="waiting-copy"><b>La pelota está girando</b><span>El resultado se revelará cuando caiga en su casilla.</span></div><div class="action-buttons"><button type="button" class="game-btn" data-roulette-skip>Saltar animación</button></div></div>';
+      els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>La pelota está girando</b><span>El resultado se revelará cuando caiga en su casilla.</span></div><div class="action-buttons"><button type="button" class="game-btn" data-roulette-skip>Saltar animación <kbd class="btn-key-hint" aria-hidden="true">${keyHint('skipAnimation')}</kbd></button></div></div>`;
       return;
     }
     if (room.game === 'fortune' && ui.fortuneSpin) {
-      els.actionPanel.innerHTML = '<div class="action-bar"><div class="waiting-copy"><b>La rueda está frenando</b><span>La flecha dorada marcará el sector donde se detuvo.</span></div><div class="action-buttons"><button type="button" class="game-btn" data-fortune-skip>Ver el resultado ya</button></div></div>';
+      els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>La rueda está frenando</b><span>La flecha dorada marcará el sector donde se detuvo.</span></div><div class="action-buttons"><button type="button" class="game-btn" data-fortune-skip>Ver el resultado ya <kbd class="btn-key-hint" aria-hidden="true">${keyHint('skipAnimation')}</kbd></button></div></div>`;
       return;
     }
     if (room.game === 'slots' && ui.slotsSpin) {
-      els.actionPanel.innerHTML = '<div class="action-bar"><div class="waiting-copy"><b>Los rodillos giran</b><span>Se detendrán uno a uno con los símbolos que decidió el servidor.</span></div><div class="action-buttons"><button type="button" class="game-btn" data-slots-skip>Saltar animación</button></div></div>';
+      els.actionPanel.innerHTML = `<div class="action-bar"><div class="waiting-copy"><b>Los rodillos giran</b><span>Se detendrán uno a uno con los símbolos que decidió el servidor.</span></div><div class="action-buttons"><button type="button" class="game-btn" data-slots-skip>Saltar animación <kbd class="btn-key-hint" aria-hidden="true">${keyHint('skipAnimation')}</kbd></button></div></div>`;
       return;
     }
     const resultCopy = room.results?.length ? room.results.map(result => `<span class="result-item ${result.amount > 0 ? 'win' : ''}">${escapeHtml(result.name)} <b>${result.amount > 0 ? '+' : ''}${formatDelta(result.amount)}</b></span>`).join('') : '<span class="result-item">Sin apuestas en esta ronda</span>';
@@ -2609,7 +3038,7 @@
       });
       resultsFelt = `<div class="felt-wrap">${rouletteFeltHtml({ chips, highlight: winningCells(room.quickResult) })}</div>`;
     }
-    els.actionPanel.innerHTML = `<div class="action-bar ${resultsFelt ? 'roulette-bar' : ''}"><div class="result-strip">${resultCopy}</div>${resultsFelt}<div class="action-buttons">${me.isHost ? '<button class="game-btn primary" data-event="quick_new">Abrir nueva ronda</button>' : '<span class="waiting-copy"><span>Esperando al anfitrión…</span></span>'}</div></div>`;
+    els.actionPanel.innerHTML = `<div class="action-bar ${resultsFelt ? 'roulette-bar' : ''}"><div class="result-strip">${resultCopy}</div>${resultsFelt}<div class="action-buttons">${me.isHost ? `<button class="game-btn primary" data-event="quick_new">Abrir nueva ronda <kbd class="btn-key-hint" aria-hidden="true">${keyHint('startGame')}</kbd></button>` : '<span class="waiting-copy"><span>Esperando al anfitrión…</span></span>'}</div></div>`;
   }
   function bindActionButtons() {
     $$('[data-invite-open-friends]').forEach(button => button.addEventListener('click', openInviteModal));
@@ -2618,8 +3047,43 @@
       if (!response.ok) showToast('Jugada no disponible', response.error, 'error');
     }));
     $$('[data-blackjack-bet]').forEach(button => button.addEventListener('click', async () => {
-      const response = await emitAck('blackjack_bet', { amount: Number(button.dataset.blackjackBet) }, button);
-      if (!response.ok) showToast('Apuesta no válida', response.error, 'error'); else playTone('notice');
+      const amount = Number(button.dataset.blackjackBet);
+      const response = await emitAck('blackjack_bet', { amount }, button);
+      if (!response.ok) showToast('Apuesta no válida', response.error, 'error');
+      else { ui.lastBetByGame.blackjack = amount; playTone('notice'); }
+    }));
+    $('[data-focus-bet-input]')?.addEventListener('click', () => {
+      focusActiveBetInput();
+    });
+    $('[data-bet-double-only]')?.addEventListener('click', () => {
+      const input = $('#blackjack-bet-amount');
+      if (!input) return;
+      const max = Number(input.max) || 0;
+      const current = Math.floor(Number(input.value) || 0);
+      const doubled = Math.min(max > 0 ? max : current * 2, Math.max(10, current * 2));
+      input.value = String(doubled);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      playTone('notice');
+    });
+    $('[data-blackjack-custom-bet]')?.addEventListener('click', async event => {
+      const amount = Math.floor(Number($('#blackjack-bet-amount')?.value));
+      const button = event.currentTarget;
+      const response = await emitAck('blackjack_bet', { amount }, button);
+      if (!response.ok) showToast('Apuesta no válida', response.error, 'error');
+      else { ui.lastBetByGame.blackjack = amount; playTone('notice'); }
+    });
+    $$('[data-double-confirm-bet]').forEach(button => button.addEventListener('click', async () => {
+      const gameKey = button.dataset.betGame === 'blackjack' ? 'blackjack' : (ui.room?.game || 'quick');
+      const input = button.dataset.betGame === 'blackjack' ? $('#blackjack-bet-amount') : $('#quick-bet-amount');
+      const max = Number(input?.max) || Number(ui.me?.chips) || 0;
+      const base = Math.max(10, Math.floor(Number(input?.value) || Number(ui.lastBetByGame[gameKey]) || 10));
+      const amount = Math.min(max > 0 ? max : base * 2, Math.max(10, base * 2));
+      if (input) input.value = String(amount);
+      const response = button.dataset.betGame === 'blackjack'
+        ? await emitAck('blackjack_bet', { amount }, button)
+        : await emitAck('quick_bet', { amount, choice: ui.quickChoice }, button);
+      if (!response.ok) showToast('Apuesta no válida', response.error, 'error');
+      else { ui.lastBetByGame[gameKey] = amount; playTone('notice'); }
     }));
     $$('[data-poker-action]').forEach(button => button.addEventListener('click', async () => {
       const action = button.dataset.pokerAction;
@@ -2652,7 +3116,8 @@
       const amount = Number($('#quick-bet-amount')?.value);
       const button = event.currentTarget;
       const response = await emitAck('quick_bet', { amount, choice: ui.quickChoice }, button);
-      if (!response.ok) showToast('Apuesta no válida', response.error, 'error'); else playTone('notice');
+      if (!response.ok) showToast('Apuesta no válida', response.error, 'error');
+      else { if (ui.room?.game) ui.lastBetByGame[ui.room.game] = amount; playTone('notice'); }
     });
     // ×2: duplica la apuesta escrita (tope = saldo disponible, mínimo 10).
     $('[data-quick-double]')?.addEventListener('click', () => {
@@ -3126,10 +3591,88 @@
       : `${card.name} · ${rarityName}`;
     showToast(card.duplicate ? 'Carta repetida' : 'Carta nueva', toastBody, 'reward', 4200, card.symbol);
   }
+  async function equipProfileFanBanner(button, bannerId) {
+    const profile = currentViewerProfile();
+    if (!profile) return;
+    const currentEquipped = profile.fanBanner?.banner || profile.fanBanners?.equippedBanner || null;
+    const nextBanner = currentEquipped === bannerId ? null : bannerId;
+    const payload = { banner: nextBanner };
+    if (!inTable()) payload.accountId = ui.accountSession?.accountId;
+    const response = await emitAck('fan_banner_equip', payload, button);
+    if (!response.ok) {
+      return showToast('No se pudo equipar el banner', response.error || 'Inténtalo de nuevo.', 'error');
+    }
+    if (response.profile) applyProfileSnapshot(response.profile);
+    renderAfterProfileChange();
+    showToast(
+      nextBanner ? 'Banner equipado' : 'Banner retirado',
+      nextBanner ? 'Ya luce en tu perfil, mesas y en el Ranking del mes.' : 'Se retiró el banner de tu perfil.',
+      'notice',
+      3400,
+      '⚑'
+    );
+  }
+  function renderProfileFanBanners(profile) {
+    const headerEl = document.getElementById('profile-identity-header');
+    const backdropEl = document.getElementById('profile-banner-backdrop');
+    const activeBanner = validFanBanner(profile.fanBanner);
+    if (headerEl && backdropEl) {
+      headerEl.classList.toggle('has-fan-banner', Boolean(activeBanner));
+      headerEl.classList.toggle('is-champion-fan-banner', Boolean(activeBanner?.isChamp));
+      backdropEl.classList.toggle('hidden', !activeBanner);
+      backdropEl.innerHTML = activeBanner ? fanBannerBackdropMarkup(profile.fanBanner) : '';
+    }
+    const container = document.getElementById('profile-fan-banners');
+    const noteEl = document.getElementById('profile-fan-banners-note');
+    if (!container) return;
+    const inv = profile.fanBanners;
+    if (!inv || !inv.clubId || !Array.isArray(inv.items) || !inv.items.length) {
+      if (noteEl) noteEl.textContent = 'Disponible al elegir club en el Estadio';
+      container.innerHTML = '<small class="featured-empty">Elige tu club en <b>Estadio → Mi afición</b> para desbloquear tu estandarte oficial con escudo y competir por el banner temporal de Campeón Vigente.</small>';
+      return;
+    }
+    if (noteEl) {
+      noteEl.textContent = inv.reigningClubName
+        ? `Campeón vigente (${inv.reigningSeasonMonth}): ${inv.reigningClubName}`
+        : `Club activo: ${inv.clubName}`;
+    }
+    container.innerHTML = inv.items.map(item => {
+      const isChamp = item.kind === 'reigning_champion';
+      const primary = sanitizeHexColor(item.primary, '#1d5240');
+      const secondary = sanitizeHexColor(item.secondary, '#0c181c');
+      const art = VALID_BANNER_ART.has(item.art) ? item.art : '/assets/banners/club-banner-bg.jpg';
+      const crest = VALID_FAN_CLUB_ABBRS.test(item.abbr || '') ? `/assets/escudos/${item.abbr}.svg` : '';
+      const ribbon = isChamp
+        ? `<span class="fan-banner-card-tag is-champ">♛ CAMPEÓN VIGENTE${item.seasonMonth ? ` · ${escapeHtml(item.seasonMonth)}` : ''} · TEMPORAL</span>`
+        : `<span class="fan-banner-card-tag">ESTANDARTE · ${escapeHtml(item.abbr || '')}</span>`;
+      const lockText = inv.reigningClubId === inv.clubId
+        ? 'Solo hinchas adheridos antes del título'
+        : 'Exclusivo del club campeón vigente';
+      const btn = item.unlocked
+        ? `<button type="button" class="btn ${item.equipped ? 'btn-secondary' : 'btn-primary'} btn-small" data-equip-fan-banner="${escapeHtml(item.id)}">${item.equipped ? 'En uso · Quitar' : 'Equipar en perfil'}</button>`
+        : `<span class="fan-banner-card-lock">🔒 ${escapeHtml(lockText)}</span>`;
+      return `<article class="profile-fan-banner-card ${isChamp ? 'is-champion' : ''} ${item.unlocked ? 'is-unlocked' : 'is-locked'} ${item.equipped ? 'is-equipped' : ''}" style="--fan-banner-primary:${escapeHtml(primary)};--fan-banner-secondary:${escapeHtml(secondary)}">
+        <div class="profile-fan-banner-art">
+          <img class="profile-fan-banner-bg" src="${escapeHtml(art)}" alt="" loading="lazy" decoding="async" />
+          <div class="profile-fan-banner-shade"></div>
+          <div class="profile-fan-banner-overlay">
+            ${crest ? `<img class="profile-fan-banner-crest" src="${escapeHtml(crest)}" alt="" decoding="async" />` : ''}
+            <div>${ribbon}<b>${escapeHtml(item.clubName)}</b><small>${escapeHtml(item.title)}</small></div>
+          </div>
+        </div>
+        <div class="profile-fan-banner-footer"><small>${escapeHtml(item.subtitle)}</small>${btn}</div>
+      </article>`;
+    }).join('');
+    $$('#profile-fan-banners [data-equip-fan-banner]').forEach(btn => {
+      btn.addEventListener('click', () => equipProfileFanBanner(btn, btn.dataset.equipFanBanner));
+    });
+  }
   function renderProfileModal() {
     const profile = currentViewerProfile();
     if (!profile) return;
     renderPreferences();
+    renderKeybindingsConfig();
+    renderProfileFanBanners(profile);
     const stats = profile.stats || {};
     // Un refresco en segundo plano (refreshAccountProfile o un profile_event
     // de la mesa) puede llegar mientras la persona ya escribió un nombre
@@ -3178,6 +3721,11 @@
       if (profile.fanPin) chips.push(fanPinMarkup(profile.fanPin));
       if (profile.championBanner) chips.push('<span class="profile-badge badge-champion" title="Banner dorado de por vida: fue líder de una temporada">🎖️ Banner dorado</span>');
       if (profile.medals) chips.push(`<span class="profile-badge badge-medals" title="${profile.medals} temporada${profile.medals === 1 ? '' : 's'} ganada${profile.medals === 1 ? '' : 's'}">🥇 ×${profile.medals}</span>`);
+      if (Array.isArray(profile.clubSeasonBadges) && profile.clubSeasonBadges.length) {
+        const latestClubBadge = profile.clubSeasonBadges[profile.clubSeasonBadges.length - 1];
+        const clubMedalIcon = latestClubBadge.place === 1 ? '🥇' : latestClubBadge.place === 2 ? '🥈' : '🥉';
+        chips.push(`<span class="profile-badge badge-club-season" title="Podios de club social (${profile.clubSeasonBadges.length}) · Último: ${escapeHtml(latestClubBadge.clubName)} (${escapeHtml(latestClubBadge.seasonKey)})">${clubMedalIcon} Podio de club ×${profile.clubSeasonBadges.length}</span>`);
+      }
       els.profileBadges.innerHTML = chips.join('');
       els.profileBadges.classList.toggle('hidden', !chips.length);
     }
@@ -3604,6 +4152,66 @@
     outgoing.innerHTML = data.outgoingRequests.map(request => `<article class="community-person-row">${communityAccountMarkup(request.profile)}<button type="button" class="social-action is-muted" data-social-action="cancel-friend" data-request-id="${escapeHtml(request.id)}">Retirar</button></article>`).join('')
       || '<p class="community-empty">No hay solicitudes pendientes.</p>';
   }
+  function clubTrophiesBadgesMarkup(trophies) {
+    if (!trophies || !(Number(trophies.total) > 0)) return '';
+    const pills = [];
+    if (trophies.gold > 0) pills.push(`<span class="club-trophy-pill is-gold" title="${trophies.gold} ${trophies.gold === 1 ? 'temporada campeón' : 'temporadas campeón'}">🥇 ${trophies.gold}</span>`);
+    if (trophies.silver > 0) pills.push(`<span class="club-trophy-pill is-silver" title="${trophies.silver} ${trophies.silver === 1 ? 'subcampeonato' : 'subcampeonatos'}">🥈 ${trophies.silver}</span>`);
+    if (trophies.bronze > 0) pills.push(`<span class="club-trophy-pill is-bronze" title="${trophies.bronze} ${trophies.bronze === 1 ? 'tercer lugar' : 'terceros lugares'}">🥉 ${trophies.bronze}</span>`);
+    return pills.length ? `<div class="club-trophy-strip" aria-label="Trofeos permanentes del club">${pills.join('')}</div>` : '';
+  }
+
+  function clubMissionsMarkup(club) {
+    const missions = club.missions;
+    if (!missions || !Array.isArray(missions.items) || !missions.items.length) return '';
+    const inTable = Boolean(ui.room);
+    const summary = missions.summary || {};
+    const rows = missions.items.map(item => {
+      const pct = item.target > 0 ? Math.min(100, Math.round((item.progress / item.target) * 100)) : 0;
+      const extraMeta = item.requiredMembers > 1
+        ? ` · ${item.activeMembers}/${item.requiredMembers} integrantes activos`
+        : '';
+      let actionHtml = '';
+      if (item.claimedByViewer) {
+        actionHtml = '<span class="club-mission-status is-claimed">Reclamada ✓</span>';
+      } else if (item.canClaim) {
+        actionHtml = `<button type="button" class="social-action club-mission-claim" data-social-action="claim-club-mission" data-club-id="${escapeHtml(club.id)}" data-mission-id="${escapeHtml(item.id)}" ${inTable ? 'disabled title="Sal de la mesa para reclamar fichas"' : ''}>Reclamar +${formatChips(item.personalReward)}</button>`;
+      } else if (item.completed && !item.viewerContributed) {
+        actionHtml = '<span class="club-mission-status is-pending">Juega 1 ronda en el club</span>';
+      } else {
+        actionHtml = `<span class="club-mission-status">${item.progress}/${item.target}</span>`;
+      }
+      const treasuryTag = item.treasuryCredited
+        ? `<span class="club-mission-treasury is-done">+${formatChips(item.treasuryReward)} acreditadas al fondo ✓</span>`
+        : `<span class="club-mission-treasury">+${formatChips(item.treasuryReward)} al fondo del club</span>`;
+      return `<article class="club-mission-card ${item.completed ? 'is-completed' : ''}">
+        <div class="club-mission-top">
+          <span class="club-mission-icon" aria-hidden="true">${escapeHtml(item.icon || '🎲')}</span>
+          <div class="club-mission-copy">
+            <b>${escapeHtml(item.title)}</b>
+            <small>${escapeHtml(item.description)}${escapeHtml(extraMeta)}</small>
+          </div>
+          ${actionHtml}
+        </div>
+        <div class="club-mission-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${item.target}" aria-valuenow="${item.progress}"><span style="width:${pct}%"></span></div>
+        <div class="club-mission-rewards">
+          <span>Premio personal: <b>◆ +${formatChips(item.personalReward)}</b></span>
+          ${treasuryTag}
+        </div>
+      </article>`;
+    }).join('');
+    return `<section class="club-missions-panel" aria-label="Misiones cooperativas semanales de ${escapeHtml(club.name)}">
+      <header class="club-missions-head">
+        <div>
+          <small>MISIONES COOPERATIVAS · ${escapeHtml(missions.weekKey || 'SEMANA ACTUAL')}</small>
+          <b>Jueguen juntos y sumen al fondo</b>
+        </div>
+        <span class="club-missions-summary">${Number(summary.rounds) || 0} rondas · ${Number(summary.wins) || 0} victorias · ${Number(summary.distinctGames) || 0} juegos</span>
+      </header>
+      <div class="club-missions-grid">${rows}</div>
+    </section>`;
+  }
+
   function clubTreasuryMarkup(club, ownId) {
     const treasury = club.treasury;
     if (!treasury) return '';
@@ -3612,20 +4220,35 @@
     const isOwner = club.ownerId === ownId;
     const inTable = Boolean(ui.room);
     const members = club.members || [];
+    const memberCount = Math.max(1, members.length);
     const payoutOptions = members.map(member => `<option value="${escapeHtml(member.id)}">${escapeHtml(member.name || member.username)} · @${escapeHtml(member.username)}</option>`).join('');
+    const seasonClose = treasury.seasonClose || ui.communityData.seasonClose || null;
+    const closeBanner = seasonClose && seasonClose.closingSoon && balance > 0
+      ? `<div class="club-season-close-banner" role="note"><span>⏳</span><div><b>Cierre mensual en ${seasonClose.daysRemaining === 0 ? 'horas' : `${seasonClose.daysRemaining} ${seasonClose.daysRemaining === 1 ? 'día' : 'días'}`}</b><small>Al cerrar el mes, los 3 clubes públicos con mayor tesorería ganan trofeos permanentes (🥇🥈🥉) y el saldo se reinicia a 0.</small></div></div>`
+      : '';
     const movements = (treasury.movements || []).length
       ? treasury.movements.map(movement => {
         const actor = movement.actor?.name || movement.actor?.username || 'Una persona integrante';
         const target = movement.target?.name || movement.target?.username || 'miembro';
-        const isDeposit = movement.type === 'deposit';
-        const description = isDeposit ? `${escapeHtml(actor)} aportó` : `${escapeHtml(actor)} distribuyó a ${escapeHtml(target)}`;
+        const isPositive = movement.type === 'deposit' || movement.type === 'reward';
+        let description = '';
+        if (movement.type === 'deposit') description = `${escapeHtml(actor)} aportó`;
+        else if (movement.type === 'reward') description = 'Bono cooperativo acreditado';
+        else if (movement.type === 'distribute') {
+          const count = movement.recipientCount || memberCount;
+          description = `${escapeHtml(actor)} repartió equitativamente (${count} cuentas)`;
+        } else {
+          description = `${escapeHtml(actor)} distribuyó a ${escapeHtml(target)}`;
+        }
+        const mark = movement.type === 'reward' ? '★' : movement.type === 'distribute' ? '⚖' : isPositive ? '＋' : '↗';
         const note = movement.note ? `<small>${escapeHtml(movement.note)}</small>` : '';
-        return `<li class="club-ledger-row ${isDeposit ? 'is-deposit' : 'is-transfer'}"><span class="club-ledger-mark">${isDeposit ? '＋' : '↗'}</span><span class="club-ledger-copy"><b>${description}</b><small>${new Date(movement.time).toLocaleString()}</small>${note}</span><strong>${isDeposit ? '+' : '−'}${formatChips(movement.amount)}</strong></li>`;
+        return `<li class="club-ledger-row ${isPositive ? 'is-deposit' : 'is-transfer'}"><span class="club-ledger-mark">${mark}</span><span class="club-ledger-copy"><b>${description}</b><small>${new Date(movement.time).toLocaleString()}</small>${note}</span><strong>${isPositive ? '+' : '−'}${formatChips(movement.amount)}</strong></li>`;
       }).join('')
-      : '<li class="club-ledger-empty">Los movimientos aparecerán aquí cuando alguien aporte o el liderazgo distribuya fichas.</li>';
+      : '<li class="club-ledger-empty">Los movimientos aparecerán aquí cuando completen misiones, aporten o el liderazgo distribuya fichas.</li>';
     return `<section class="club-treasury-panel" aria-label="Tesorería de ${escapeHtml(club.name)}">
       <header class="club-treasury-heading"><div><small>TESORERÍA · ${escapeHtml(treasury.seasonKey || ui.communityData.seasonKey || 'TEMPORADA ACTUAL')}</small><b>◆ ${formatChips(balance)} <span>fichas del club</span></b></div><span class="club-treasury-lock">♜</span></header>
-      <p class="club-treasury-rule">Las aportaciones pasan a la tesorería común. Solo el liderazgo puede distribuirlas. El saldo se reinicia junto con las fichas al cambiar la temporada.</p>
+      ${closeBanner}
+      <p class="club-treasury-rule">Las aportaciones y misiones cooperativas nutren la tesorería común. Al cerrar el mes, el Top 3 público conquista trofeos permanentes y la tesorería se reinicia a 0.</p>
       <div class="club-treasury-forms">
         <form class="club-money-form" data-club-money="deposit" data-club-id="${escapeHtml(club.id)}">
           <div class="club-money-form-title"><span>＋</span><div><b>Aportar fichas</b><small>Tu saldo disponible: ◆ ${formatChips(available)}</small></div></div>
@@ -3634,12 +4257,19 @@
           ${inTable ? '<small class="club-money-hint">Sal de la mesa para mover fichas.</small>' : '<small class="club-money-hint">Máximo 100.000 por movimiento. Aportar no es una apuesta.</small>'}
         </form>
         ${isOwner ? `<form class="club-money-form club-distribute-form" data-club-money="transfer" data-club-id="${escapeHtml(club.id)}">
-          <div class="club-money-form-title"><span>↗</span><div><b>Distribuir saldo</b><small>Solo para integrantes actuales</small></div></div>
+          <div class="club-money-form-title"><span>↗</span><div><b>Distribuir saldo</b><small>Envío directo a un integrante</small></div></div>
           <label>Destinatario<select name="targetProfileId" required ${balance < 1 || inTable ? 'disabled' : ''}><option value="">Elige a un integrante</option>${payoutOptions}</select></label>
           <label>Fichas<input name="amount" type="number" min="1" max="${Math.min(100000, balance)}" step="1" required inputmode="numeric" aria-label="Cantidad de fichas a distribuir desde ${escapeHtml(club.name)}" ${balance < 1 || inTable ? 'disabled' : ''} /></label>
           <label>Nota <span class="club-optional-label">Opcional</span><input name="note" type="text" maxlength="80" placeholder="Motivo del movimiento" ${balance < 1 || inTable ? 'disabled' : ''} /></label>
           <button class="social-action" type="submit" ${balance < 1 || inTable ? 'disabled' : ''}>Enviar fichas</button>
           ${inTable ? '<small class="club-money-hint">Sal de la mesa para mover fichas.</small>' : '<small class="club-money-hint">El pago se descuenta por completo de la tesorería.</small>'}
+        </form>
+        <form class="club-money-form club-equal-split-form" data-club-money="distribute-equal" data-club-id="${escapeHtml(club.id)}">
+          <div class="club-money-form-title"><span>⚖</span><div><b>Reparto equitativo</b><small>Divide en partes iguales (${members.length} integrantes)</small></div></div>
+          <label>Monto total a repartir<input name="amount" type="number" min="${memberCount}" max="${Math.min(100000, balance)}" value="${balance >= memberCount ? Math.min(100000, balance) : ''}" step="1" required inputmode="numeric" aria-label="Monto total a repartir equitativamente en ${escapeHtml(club.name)}" ${balance < memberCount || inTable ? 'disabled' : ''} /></label>
+          <label>Nota <span class="club-optional-label">Opcional</span><input name="note" type="text" maxlength="80" placeholder="Ej. Premio semanal del club" ${balance < memberCount || inTable ? 'disabled' : ''} /></label>
+          <button class="social-action" type="submit" ${balance < memberCount || inTable ? 'disabled' : ''}>Repartir en partes iguales</button>
+          ${inTable ? '<small class="club-money-hint">Sal de la mesa para repartir fichas.</small>' : `<small class="club-money-hint">El sobrante entero queda en la tesorería; quienes estén en mesa se omiten sin bloquear al resto.</small>`}
         </form>` : ''}
       </div>
       <details class="club-ledger-details"><summary>Actividad de la tesorería <span>${treasury.movements?.length || 0} recientes</span></summary><ol class="club-ledger-list">${movements}</ol></details>
@@ -3675,9 +4305,26 @@
         ? `<div class="club-requests"><small>SOLICITUDES PARA ENTRAR · ${club.requests.length}</small>${club.requests.map(request => `<div class="club-request-row">${communityAccountMarkup(request.profile)}<button type="button" class="social-action" data-social-action="accept-club-request" data-club-id="${escapeHtml(club.id)}" data-request-id="${escapeHtml(request.id)}">Aceptar</button><button type="button" class="social-action is-muted" data-social-action="reject-club-request" data-club-id="${escapeHtml(club.id)}" data-request-id="${escapeHtml(request.id)}">Rechazar</button></div>`).join('')}</div>` : '';
       const canManageMembers = isOwner && club.members?.length > 1;
       const memberActions = canManageMembers ? `<details class="club-member-management"><summary>Gestionar miembros</summary>${club.members.filter(member => member.id !== ownId).map(member => `<div>${communityAccountMarkup(member)}<button type="button" class="social-action is-muted" data-social-action="remove-club-member" data-club-id="${escapeHtml(club.id)}" data-profile-id="${escapeHtml(member.id)}">Quitar</button></div>`).join('')}</details>` : '';
+      const trophies = clubTrophiesBadgesMarkup(club.trophies);
+      const missions = isMember ? clubMissionsMarkup(club) : '';
       const treasury = isMember ? clubTreasuryMarkup(club, ownId) : '';
-      return `<article class="community-club-card" data-club-color="${escapeHtml(club.color)}"><div class="community-club-head"><div class="community-club-emblem">${escapeHtml(club.emblemGlyph)}</div><div class="community-club-title"><h3>${escapeHtml(club.name)}</h3><small>${club.visibility === 'private' ? '◉ PRIVADO' : '✦ PÚBLICO'} · ${club.memberCount}/${club.memberLimit} MIEMBROS</small></div>${action}</div><p class="community-club-description">${escapeHtml(club.description || 'Un círculo para compartir mesa y partidas.')}</p><div class="community-club-foot"><span>Fundado por ${escapeHtml(club.owner?.name || club.owner?.username || 'MonteCristo')}</span>${members}</div>${treasury}${requests}${memberActions}</article>`;
+      return `<article class="community-club-card" data-club-color="${escapeHtml(club.color)}"><div class="community-club-head"><div class="community-club-emblem">${escapeHtml(club.emblemGlyph)}</div><div class="community-club-title"><h3>${escapeHtml(club.name)}</h3><small>${club.visibility === 'private' ? '◉ PRIVADO' : '✦ PÚBLICO'} · ${club.memberCount}/${club.memberLimit} MIEMBROS</small>${trophies}</div>${action}</div><p class="community-club-description">${escapeHtml(club.description || 'Un círculo para compartir mesa y partidas.')}</p><div class="community-club-foot"><span>Fundado por ${escapeHtml(club.owner?.name || club.owner?.username || 'MonteCristo')}</span>${members}</div>${missions}${treasury}${requests}${memberActions}</article>`;
     }).join('');
+  }
+
+  function renderCommunityClubHallOfFame(hallOfFame = ui.communityData?.clubHallOfFame || []) {
+    const container = document.getElementById('community-club-hall-of-fame');
+    if (!container) return;
+    if (!Array.isArray(hallOfFame) || !hallOfFame.length) {
+      container.innerHTML = '';
+      return;
+    }
+    const medals = { 1: '🥇', 2: '🥈', 3: '🥉' };
+    container.innerHTML = `<div class="club-hof-header"><span class="kicker">PALMARÉS HISTÓRICO</span><h4>Salón de la Fama de Clubes</h4><p>Podios mensuales cerrados de clubes públicos. Los trofeos quedan grabados de forma permanente.</p></div>
+      <div class="club-hof-seasons">${hallOfFame.slice(0, 6).map(season => `<article class="club-hof-season">
+        <header><b>Temporada ${escapeHtml(season.seasonKey)}</b><small>${season.closedAt ? new Date(season.closedAt).toLocaleDateString('es-MX') : ''}</small></header>
+        <ol class="club-hof-podium">${(season.podium || []).map(entry => `<li class="place-${entry.place}" data-club-color="${escapeHtml(entry.color || 'emerald')}"><span>${medals[entry.place] || `#${entry.place}`}</span><span class="club-hof-glyph">${escapeHtml(entry.emblemGlyph || '♠')}</span><b>${escapeHtml(entry.name)}</b><strong>◆ ${formatChips(entry.balance)}</strong></li>`).join('')}</ol>
+      </article>`).join('')}</div>`;
   }
 
   function renderCommunityClubRanking(ranking = ui.communityData?.clubRanking || []) {
@@ -3686,13 +4333,15 @@
     if (!podium || !list || !ui.communityData) return;
     const season = document.getElementById('community-club-ranking-season');
     if (season) season.textContent = ui.communityData.seasonKey ? `Temporada ${ui.communityData.seasonKey}` : 'Temporada actual';
+    renderCommunityClubHallOfFame(ui.communityData.clubHallOfFame || []);
     if (!ranking.length) {
-      podium.innerHTML = '<div class="community-empty-card club-ranking-empty"><span>♜</span><b>La tesorería todavía está por estrenarse</b><small>Cuando los clubes públicos aporten fichas, su saldo aparecerá aquí. Los saldos privados solo los ve cada club.</small></div>';
+      podium.innerHTML = '<div class="community-empty-card club-ranking-empty"><span>♜</span><b>La tesorería todavía está por estrenarse</b><small>Cuando los clubes públicos aporten fichas o completen misiones cooperativas, su saldo aparecerá aquí. Al cerrar el mes, el Top 3 recibe trofeos permanentes.</small></div>';
       list.replaceChildren();
       return;
     }
-    podium.innerHTML = ranking.slice(0, 3).map(club => `<article class="club-podium-card rank-${club.rank}" data-club-color="${escapeHtml(club.color)}"><span class="club-podium-rank">${club.rank === 1 ? '♛' : `#${club.rank}`}</span><span class="club-podium-emblem">${escapeHtml(club.emblemGlyph)}</span><b>${escapeHtml(club.name)}</b><small>${club.memberCount} ${club.memberCount === 1 ? 'integrante' : 'integrantes'}</small><strong>◆ ${formatChips(club.balance)}</strong><span class="club-podium-caption">TESORERÍA</span></article>`).join('');
-    list.innerHTML = ranking.slice(3).map(club => `<article class="club-ranking-row" data-club-color="${escapeHtml(club.color)}"><span class="club-ranking-position">${club.rank}</span><span class="club-ranking-emblem">${escapeHtml(club.emblemGlyph)}</span><span class="club-ranking-copy"><b>${escapeHtml(club.name)}</b><small>${club.memberCount} integrantes · liderazgo de ${escapeHtml(club.owner?.name || club.owner?.username || 'club')}</small></span><strong>◆ ${formatChips(club.balance)}</strong></article>`).join('');
+    const rankIcon = rank => rank === 1 ? '🥇 ♛' : rank === 2 ? '🥈 #2' : rank === 3 ? '🥉 #3' : `#${rank}`;
+    podium.innerHTML = ranking.slice(0, 3).map(club => `<article class="club-podium-card rank-${club.rank}" data-club-color="${escapeHtml(club.color)}"><span class="club-podium-rank">${rankIcon(club.rank)}</span><span class="club-podium-emblem">${escapeHtml(club.emblemGlyph)}</span><b>${escapeHtml(club.name)}</b><small>${club.memberCount} ${club.memberCount === 1 ? 'integrante' : 'integrantes'}</small>${clubTrophiesBadgesMarkup(club.trophies)}<strong>◆ ${formatChips(club.balance)}</strong><span class="club-podium-caption">RUMBO A TROFEO DE TEMPORADA</span></article>`).join('');
+    list.innerHTML = ranking.slice(3).map(club => `<article class="club-ranking-row" data-club-color="${escapeHtml(club.color)}"><span class="club-ranking-position">${club.rank}</span><span class="club-ranking-emblem">${escapeHtml(club.emblemGlyph)}</span><span class="club-ranking-copy"><b>${escapeHtml(club.name)}</b><small>${club.memberCount} integrantes · liderazgo de ${escapeHtml(club.owner?.name || club.owner?.username || 'club')}</small>${clubTrophiesBadgesMarkup(club.trophies)}</span><strong>◆ ${formatChips(club.balance)}</strong></article>`).join('');
   }
   async function communityRequest(path, options = {}) {
     const method = String(options.method || 'GET').toUpperCase();
@@ -3706,7 +4355,7 @@
         }
       }
       if (ui.csrfToken) headers['X-CSRF-Token'] = ui.csrfToken;
-      if (/\/api\/social\/v1\/clubs\/[^/]+\/(?:deposits|transfers)$/.test(path)) {
+      if (/\/api\/social\/v1\/clubs\/[^/]+\/(?:deposits|transfers|distribute-equal|missions\/[^/]+\/claim)$/.test(path)) {
         headers['Idempotency-Key'] = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       }
     }
@@ -3724,7 +4373,7 @@
       }
       return false;
     }
-    ui.communityData = { ...response, memberships: response.clubs || [], clubs: [], clubRanking: [] };
+    ui.communityData = { ...response, memberships: response.clubs || [], clubs: [], clubRanking: [], clubHallOfFame: [] };
     renderCommunityFriends();
     // La presencia llega por socket (solo para amistades) y repinta la lista.
     requestFriendPresence(true);
@@ -3734,6 +4383,8 @@
     const ranking = await communityRequest('/api/social/v1/clubs/ranking');
     if (ranking.ok) {
       ui.communityData.clubRanking = ranking.ranking || [];
+      ui.communityData.clubHallOfFame = ranking.hallOfFame || [];
+      ui.communityData.seasonClose = ranking.seasonClose || ui.communityData.seasonClose || null;
       ui.communityData.seasonKey = ranking.seasonKey || ui.communityData.seasonKey;
     }
     renderCommunityClubRanking();
@@ -4020,6 +4671,8 @@
     if (profile.seat?.isSpectator) badges.push('<span class="table-profile-badge">👁 Tribuna</span>');
     if (profile.championBanner) badges.push('<span class="table-profile-badge is-gold">🎖️ Ganó una temporada</span>');
     if (profile.medals > 0) badges.push(`<span class="table-profile-badge is-gold">🥇 ×${formatChips(profile.medals)}</span>`);
+    if (profile.fanPin) badges.push(fanPinMarkup(profile.fanPin));
+    if (profile.fanBanner) badges.push(fanBannerRankingPillMarkup(profile.fanBanner));
     if (profile.mutualFriends > 0) badges.push(`<span class="table-profile-badge is-account">♧ ${profile.mutualFriends} ${profile.mutualFriends === 1 ? 'amistad' : 'amistades'} en común</span>`);
     return badges.join('');
   }
@@ -4028,6 +4681,14 @@
     if (!profile) return;
     els.tableProfileLoading?.classList.add('hidden');
     els.tableProfileBody?.classList.remove('hidden');
+    const tpHead = document.getElementById('table-profile-head');
+    const tpBanner = document.getElementById('table-profile-banner');
+    const validTpBanner = validFanBanner(profile.fanBanner);
+    if (tpHead && tpBanner) {
+      tpHead.classList.toggle('has-fan-banner', Boolean(validTpBanner));
+      tpBanner.classList.toggle('hidden', !validTpBanner);
+      tpBanner.innerHTML = validTpBanner ? fanBannerBackdropMarkup(profile.fanBanner, { compact: true }) : '';
+    }
     if (els.tableProfileAvatar) {
       els.tableProfileAvatar.innerHTML = cosmeticAvatarContents(profile);
       els.tableProfileAvatar.style.background = profile.collection?.equipped?.avatar?.art ? 'transparent' : avatarColor(profile.id);
@@ -4166,6 +4827,7 @@
       passport: seat.passport || null,
       collection: seat.collection || null,
       fanPin: seat.fanPin || null,
+      fanBanner: seat.fanBanner || null,
       medals: Number(seat.medals) || 0,
       championBanner: Boolean(seat.championBanner),
       relationship: player?.isBot ? 'bot' : 'unknown',
@@ -4582,11 +5244,18 @@
     const button = form.querySelector('button[type="submit"]');
     const path = action === 'deposit'
       ? `/api/social/v1/clubs/${encodeURIComponent(clubId)}/deposits`
-      : `/api/social/v1/clubs/${encodeURIComponent(clubId)}/transfers`;
+      : action === 'distribute-equal'
+        ? `/api/social/v1/clubs/${encodeURIComponent(clubId)}/distribute-equal`
+        : `/api/social/v1/clubs/${encodeURIComponent(clubId)}/transfers`;
     button.disabled = true;
+    const payload = action === 'transfer'
+      ? { amount, targetProfileId, note }
+      : action === 'distribute-equal'
+        ? { amount, note }
+        : { amount };
     const response = await communityRequest(path, {
       method: 'POST',
-      body: JSON.stringify({ amount, ...(action === 'transfer' ? { targetProfileId, note } : {}) })
+      body: JSON.stringify(payload)
     });
     button.disabled = false;
     form.dataset.busy = 'false';
@@ -4602,7 +5271,7 @@
   document.getElementById('community-modal')?.addEventListener('click', async event => {
     const button = event.target.closest('[data-social-action]');
     if (!button) return;
-    const { socialAction: action, username, requestId, profileId, clubId, roomCode } = button.dataset;
+    const { socialAction: action, username, requestId, profileId, clubId, missionId, roomCode } = button.dataset;
     if (action === 'open-requests') return setCommunityTab('requests');
     // Invitar a mi mesa o entrar a la mesa de una amistad, sin códigos.
     if (action === 'invite-friend') return sendFriendInvite(profileId, button);
@@ -4618,7 +5287,8 @@
       'disband-club': { path: `/api/social/v1/clubs/${encodeURIComponent(clubId)}`, method: 'DELETE' },
       'accept-club-request': { path: `/api/social/v1/clubs/${encodeURIComponent(clubId)}/requests/${encodeURIComponent(requestId)}/accept`, method: 'POST' },
       'reject-club-request': { path: `/api/social/v1/clubs/${encodeURIComponent(clubId)}/requests/${encodeURIComponent(requestId)}`, method: 'DELETE' },
-      'remove-club-member': { path: `/api/social/v1/clubs/${encodeURIComponent(clubId)}/members/${encodeURIComponent(profileId)}`, method: 'DELETE' }
+      'remove-club-member': { path: `/api/social/v1/clubs/${encodeURIComponent(clubId)}/members/${encodeURIComponent(profileId)}`, method: 'DELETE' },
+      'claim-club-mission': { path: `/api/social/v1/clubs/${encodeURIComponent(clubId)}/missions/${encodeURIComponent(missionId)}/claim`, method: 'POST' }
     };
     const operation = routes[action];
     if (!operation) return;
@@ -4630,6 +5300,11 @@
     });
     button.disabled = false;
     if (!response.ok) return setCommunityStatus(response.error || 'No se pudo completar la acción.', 'error');
+    if (response.profileChips != null) {
+      if (ui.communityData?.profile) ui.communityData.profile.chips = response.profileChips;
+      applyAccountChips(ui.communityData?.profile?.id, response.profileChips);
+      renderAfterProfileChange();
+    }
     setCommunityStatus(response.message || 'Cambios guardados.', 'success');
     await loadCommunityOverview();
     if (action.includes('club')) setCommunityTab('clubs');
@@ -4940,6 +5615,27 @@
   $$('[data-close-betting-space]').forEach(element => element.addEventListener('click', closeBettingSpaceModal));
   $$('[data-open-collection]').forEach(element => element.addEventListener('click', () => openCollectionModal(element.dataset.openCollection)));
   $$('[data-close-collection]').forEach(element => element.addEventListener('click', closeCollectionModal));
+  $$('[data-open-preferences]').forEach(element => element.addEventListener('click', () => openPreferencesModal(element.dataset.openPreferences || 'automation')));
+  $$('[data-close-preferences]').forEach(element => element.addEventListener('click', closePreferencesModal));
+  $$('[data-preferences-jump]').forEach(button => button.addEventListener('click', () => scrollToPreferencesSection(button.dataset.preferencesJump)));
+  document.getElementById('keybindings-grid')?.addEventListener('click', event => {
+    const btn = event.target.closest?.('[data-rebind-action]');
+    if (!btn) return;
+    const actionId = btn.dataset.rebindAction;
+    ui.capturingKeyAction = ui.capturingKeyAction === actionId ? null : actionId;
+    renderKeybindingsConfig();
+    if (ui.capturingKeyAction) {
+      setKeybindingsStatus('Pulsa la nueva tecla para esta acción (Esc para cancelar)…');
+    } else {
+      setKeybindingsStatus('');
+    }
+  });
+  document.getElementById('keybindings-reset')?.addEventListener('click', () => {
+    ui.capturingKeyAction = null;
+    saveKeybindingChange({ reset: true });
+  });
+  renderKeybindingsConfig();
+  renderShortcutHelp();
   els.dailyBonusClaim?.addEventListener('click', event => claimDailyBonus(event.currentTarget));
   // Marca la edición en curso del nombre para que los refrescos en segundo
   // plano no sobrescriban lo que la persona está escribiendo; el encabezado

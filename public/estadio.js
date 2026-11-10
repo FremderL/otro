@@ -3984,8 +3984,11 @@
     select.value = selected || '';
     select.disabled = S.fanBusy;
   }
-  function refreshFan() {
+  var VALID_CROWD_ABBRS = /^(FAR|RMD|ATC|MUN|LVP|ARS|BAY|BDO|JUV|PSG|RSU|RDB|WHM|NAB|CDC|BEN)$/;
+  function refreshFan(options) {
     if (!$('est-fan-club') || !S.socket || !S.socket.connected || S.fanBusy) return;
+    var celebrate = Boolean(options && options.celebrate);
+    var prev = S.fan ? { clubId: S.fan.clubId, wins: Number(S.fan.wins) || 0, level: Number(S.fan.level) || 0, championships: Number(S.fan.championships) || 0 } : null;
     var seq = ++S.fanSeq;
     S.socket.emit('football:fan_get', {}, function (res) {
       if (seq !== S.fanSeq) return;
@@ -3995,6 +3998,18 @@
         $('est-fan-summary').textContent = 'Puedes explorar los clubes. Inicia sesión para guardar tu afición.'; return;
       }
       S.fan = res.fan; renderFan();
+      if (celebrate && prev && prev.clubId && res.fan.clubId === prev.clubId) {
+        var nextChamps = Number(res.fan.championships) || 0;
+        var nextLevel = Number(res.fan.level) || 0;
+        var nextWins = Number(res.fan.wins) || 0;
+        if (nextChamps > prev.championships) {
+          toast('🏆 ¡' + teamName(res.fan.clubId) + ' es campeón de liga! Desbloqueaste la Estrella de campeón.', 'win');
+        } else if (nextLevel > prev.level) {
+          toast('⚑ ¡Victoria de ' + teamName(res.fan.clubId) + '! Subiste a Nivel ' + nextLevel + ' en Mi afición.', 'win');
+        } else if (nextWins > prev.wins) {
+          toast('⚑ ¡Victoria de ' + teamName(res.fan.clubId) + '! Ya sumas ' + nextWins + ' en Mi afición.', 'win');
+        }
+      }
     });
   }
   function renderFan() {
@@ -4005,19 +4020,85 @@
     loadClubProfile(select.value);
     if ($('est-fan-selected-club')) { if (select.value) setClubLabel($('est-fan-selected-club'), select.value, teamName(select.value)); else $('est-fan-selected-club').textContent = ''; }
     $('est-fan-choose').textContent = data.clubId ? 'Cambiar club →' : 'Elegir club →';
-    $('est-fan-summary').textContent = data.clubId ? data.wins + ' victorias desde tu adhesión · Nivel ' + data.level + '.' : 'Elige un club para comenzar.';
+    var champSummary = Number(data.championships) > 0 ? ' · 🏆 ' + Number(data.championships) + (Number(data.championships) === 1 ? ' liga celebrada' : ' ligas celebradas') : '';
+    $('est-fan-summary').textContent = data.clubId ? data.wins + ' victorias desde tu adhesión · Nivel ' + data.level + champSummary + '.' : 'Elige un club para comenzar.';
     var current = $('est-fan-current');
     if (data.clubId) setClubLabel(current, data.clubId, teamName(data.clubId)); else current.textContent = 'Aún no has elegido un club.';
     $('est-fan-rewards').innerHTML = (data.rewards || []).map(function (reward) {
-      var progress = reward.target ? ' · ' + Number(reward.progress) + '/' + Number(reward.target) + ' victorias' : '';
-      var button = reward.unlocked ? '<button type="button" data-fan-pin="' + esc(reward.id) + '" ' + (S.fanBusy ? 'disabled' : '') + '>' + (reward.equipped ? 'Quitar' : 'Equipar') + '</button>' : '';
-      return '<li>' + (reward.unlocked ? '✦ ' : '○ ') + esc(reward.title) + progress + (reward.equipped ? ' · En uso ' : ' ') + button + '</li>';
+      var unit = reward.kind === 'championship' ? ' títulos' : ' victorias';
+      var progress = reward.target ? ' · ' + Number(reward.progress) + '/' + Number(reward.target) + unit : '';
+      var badge = reward.badge ? '<span class="est-fan-tier-badge est-fan-tier-' + esc(reward.id || 'base') + '">' + esc(reward.badge) + '</span> ' : '';
+      var button = reward.unlocked && reward.id ? '<button type="button" data-fan-pin="' + esc(reward.id) + '" ' + (S.fanBusy ? 'disabled' : '') + '>' + (reward.equipped ? 'Quitar' : 'Equipar') + '</button>' : '';
+      return '<li class="est-fan-reward-row ' + (reward.unlocked ? 'is-unlocked' : 'is-locked') + (reward.equipped ? ' is-equipped' : '') + '"><span>' + (reward.unlocked ? '✦ ' : '○ ') + badge + esc(reward.title) + progress + (reward.equipped ? ' · En uso' : '') + '</span> ' + button + '</li>';
     }).join('') || '<li>Elige un club para comenzar.</li>';
     Array.prototype.forEach.call($('est-fan-rewards').querySelectorAll('[data-fan-pin]'), function (button) {
       button.addEventListener('click', function () { equipFanPin(button.getAttribute('data-fan-pin')); });
     });
+    var titlesEl = $('est-fan-titles');
+    if (titlesEl) {
+      titlesEl.innerHTML = (data.titles || []).map(function (item) {
+        var unit = item.kind === 'championship' ? ' títulos' : ' victorias';
+        var progress = item.target ? ' · ' + Number(item.progress) + '/' + Number(item.target) + unit : '';
+        var button = item.unlocked && item.id ? '<button type="button" data-fan-title="' + esc(item.id) + '" ' + (S.fanBusy ? 'disabled' : '') + '>' + (item.equipped ? 'Quitar' : 'Equipar') + '</button>' : '';
+        return '<li class="est-fan-reward-row ' + (item.unlocked ? 'is-unlocked' : 'is-locked') + (item.equipped ? ' is-equipped' : '') + '"><span>' + (item.unlocked ? '⚑ ' : '○ ') + '«' + esc(item.label || item.title) + '»' + progress + (item.equipped ? ' · En uso' : '') + '</span> ' + button + '</li>';
+      }).join('') || '<li>Elige un club para desbloquear títulos.</li>';
+      Array.prototype.forEach.call(titlesEl.querySelectorAll('[data-fan-title]'), function (button) {
+        button.addEventListener('click', function () { equipFanTitle(button.getAttribute('data-fan-title')); });
+      });
+    }
+    var reigningNote = $('est-fan-reigning-note');
+    if (reigningNote) {
+      if (data.reigningChampion && data.reigningChampion.clubName) {
+        reigningNote.textContent = 'Campeón vigente (' + data.reigningChampion.seasonMonth + '): ' + data.reigningChampion.clubName + ' · Dura hasta coronarse el próximo campeón.';
+      } else {
+        reigningNote.textContent = 'El banner especial de campeón vigente se activa al coronarse un campeón oficial de liga.';
+      }
+    }
+    var bannersEl = $('est-fan-banners');
+    if (bannersEl) {
+      if (!data.clubId || !Array.isArray(data.banners) || !data.banners.length) {
+        bannersEl.innerHTML = '<p class="est-fan-banner-empty">Elige un club para desbloquear su banner oficial.</p>';
+      } else {
+        bannersEl.innerHTML = data.banners.map(function (item) {
+          var isChamp = item.kind === 'reigning_champion';
+          var styleVars = '--est-banner-primary:' + esc(item.primary || '#1e463a') + ';--est-banner-secondary:' + esc(item.secondary || '#0b161a') + ';';
+          var ribbon = isChamp
+            ? '<span class="est-fan-banner-ribbon is-champ">♛ CAMPEÓN VIGENTE' + (item.seasonMonth ? ' · ' + esc(item.seasonMonth) : '') + ' · TEMPORAL</span>'
+            : '<span class="est-fan-banner-ribbon">ESTANDARTE OFICIAL · ' + esc(item.abbr || '') + '</span>';
+          var actionBtn = item.unlocked
+            ? '<button type="button" class="est-fan-banner-btn" data-fan-banner="' + esc(item.id) + '" ' + (S.fanBusy ? 'disabled' : '') + '>' + (item.equipped ? 'Quitar banner' : 'Equipar en perfil') + '</button>'
+            : '<span class="est-fan-banner-lock">🔒 ' + (data.reigningChampion && data.reigningChampion.clubId === data.clubId ? 'Solo hinchas previos al título' : 'Exclusivo del club campeón vigente') + '</span>';
+          return '<article class="est-fan-banner-card ' + (isChamp ? 'is-champion ' : '') + (item.unlocked ? 'is-unlocked' : 'is-locked') + (item.equipped ? ' is-equipped' : '') + '" style="' + styleVars + '">'
+            + '<div class="est-fan-banner-preview">'
+            + '<img class="est-fan-banner-bg" src="' + esc(item.art) + '" alt="" loading="lazy" decoding="async">'
+            + '<div class="est-fan-banner-shade"></div>'
+            + '<div class="est-fan-banner-content">'
+            + '<img class="est-fan-banner-crest" src="' + esc(item.crest) + '" alt="' + esc(item.clubName) + '" decoding="async">'
+            + '<div class="est-fan-banner-copy">' + ribbon + '<b>' + esc(item.clubName) + '</b><small>' + esc(item.title) + '</small></div>'
+            + '</div>'
+            + '</div>'
+            + '<div class="est-fan-banner-foot"><span>' + esc(item.subtitle) + '</span>' + actionBtn + '</div>'
+            + '</article>';
+        }).join('');
+        Array.prototype.forEach.call(bannersEl.querySelectorAll('[data-fan-banner]'), function (button) {
+          button.addEventListener('click', function () { equipFanBanner(button.getAttribute('data-fan-banner')); });
+        });
+      }
+    }
     var pin = $('est-active-fan-pin');
-    if (pin) { pin.hidden = !data.clubId || !data.equippedPin; pin.innerHTML = pin.hidden ? '' : clubCrestMarkup(data.clubId, 'est-inline-crest') + esc(teamName(data.clubId)); }
+    if (pin) {
+      var showActive = Boolean(data.clubId && (data.equippedPin || data.equippedTitle));
+      pin.hidden = !showActive;
+      pin.className = 'est-active-fan-pin' + (data.equippedPin ? ' is-pin-' + String(data.equippedPin).replace(/[^a-z0-9-]/gi, '') : '');
+      if (!showActive) {
+        pin.innerHTML = '';
+      } else {
+        var activeReward = (data.rewards || []).find(function (r) { return r.id === data.equippedPin; });
+        var badgeMark = activeReward && activeReward.badge ? ' <span class="est-active-fan-badge">' + esc(activeReward.badge) + '</span>' : '';
+        var titleTag = data.equippedTitleLabel ? ' <span class="est-active-fan-title">· ' + esc(data.equippedTitleLabel) + '</span>' : '';
+        pin.innerHTML = clubCrestMarkup(data.clubId, 'est-inline-crest') + esc(teamName(data.clubId)) + badgeMark + titleTag;
+      }
+    }
     $('est-fan-opt').disabled = S.fanBusy || !data.clubId;
     $('est-fan-opt').checked = Boolean(data.rankingOptIn);
     $('est-fan-ranking').innerHTML = (data.ranking || []).map(function (row) {
@@ -4033,6 +4114,28 @@
       S.fanBusy = false;
       if (res && res.ok && res.fan) { S.fan = res.fan; renderFan(); $('est-fan-feedback').textContent = 'Tu pin quedó actualizado.'; }
       else { renderFan(); $('est-fan-feedback').textContent = res && res.error || 'No se pudo guardar el pin.'; }
+    });
+  }
+  function equipFanTitle(titleId) {
+    if (!S.fan || S.fanBusy || !S.socket || !S.socket.connected) return;
+    S.fanBusy = true; var seq = ++S.fanSeq; renderFan();
+    $('est-fan-feedback').textContent = 'Guardando título…';
+    S.socket.emit('football:fan_equip', { currentClubId:S.fan.clubId, title:S.fan.equippedTitle === titleId ? null : titleId }, function (res) {
+      if (seq !== S.fanSeq) return;
+      S.fanBusy = false;
+      if (res && res.ok && res.fan) { S.fan = res.fan; renderFan(); $('est-fan-feedback').textContent = 'Tu título de hincha quedó actualizado.'; }
+      else { renderFan(); $('est-fan-feedback').textContent = res && res.error || 'No se pudo guardar el título.'; }
+    });
+  }
+  function equipFanBanner(bannerId) {
+    if (!S.fan || S.fanBusy || !S.socket || !S.socket.connected) return;
+    S.fanBusy = true; var seq = ++S.fanSeq; renderFan();
+    $('est-fan-feedback').textContent = 'Guardando banner de perfil…';
+    S.socket.emit('football:fan_equip', { currentClubId:S.fan.clubId, banner:S.fan.equippedBanner === bannerId ? null : bannerId }, function (res) {
+      if (seq !== S.fanSeq) return;
+      S.fanBusy = false;
+      if (res && res.ok && res.fan) { S.fan = res.fan; renderFan(); $('est-fan-feedback').textContent = 'Tu banner de perfil quedó actualizado.'; }
+      else { renderFan(); $('est-fan-feedback').textContent = res && res.error || 'No se pudo guardar el banner.'; }
     });
   }
   function selectFanClub(confirmed) {
@@ -5736,7 +5839,7 @@
     feed.appendChild(empty);
   }
 
-  function pushCrowdLine(kind, who, what) {
+  function pushCrowdLine(kind, who, what, fanPin) {
     var feed = el['est-crowd-feed'];
     if (!feed) return;
     var placeholder = feed.querySelector('.est-crowd-empty');
@@ -5745,7 +5848,15 @@
     line.className = 'est-crowd-line' + (kind === 'reaction' ? ' is-react' : '');
     var tag = document.createElement('span');
     tag.className = 'est-crowd-who';
-    tag.textContent = String(who || '').slice(0, 40);
+    if (fanPin && VALID_CROWD_ABBRS.test(fanPin.abbr || '') && (fanPin.pin || fanPin.titleLabel)) {
+      var crest = document.createElement('img');
+      crest.className = 'est-crowd-pin';
+      crest.src = '/assets/escudos/' + fanPin.abbr + '.svg';
+      crest.alt = '';
+      if (fanPin.clubName) crest.title = 'Afición de ' + String(fanPin.clubName).slice(0, 40);
+      tag.appendChild(crest);
+    }
+    tag.appendChild(document.createTextNode(String(who || '').slice(0, 40)));
     var body = document.createElement('span');
     body.className = 'est-crowd-what';
     body.textContent = String(what || '').slice(0, 240);
@@ -5828,7 +5939,7 @@
     if (!data || data.matchId !== S.currentMatchId) return;
     var who = data.name || 'Aficionado';
     var mine = Boolean(S.profile && data.name && data.name === S.profile.name);
-    pushCrowdLine('chat', mine ? 'Tú' : who, data.text);
+    pushCrowdLine('chat', mine ? 'Tú' : who, data.text, data.fanPin || null);
     // El mismo mensaje cruza el campo como comentario bala (§ producto).
     pushDanmaku(mine ? 'Tú' : who, data.text, { soft: Boolean(data.soft) });
     if (mine && el['est-crowd-message'] && el['est-crowd-message'].textContent === 'Enviando…') setCrowdMessage('', '');
@@ -5836,7 +5947,7 @@
 
   function onCrowdReaction(data) {
     if (!data || data.matchId !== S.currentMatchId) return;
-    pushCrowdLine('reaction', data.from || 'Aficionado', data.emoji);
+    pushCrowdLine('reaction', data.from || 'Aficionado', data.emoji, data.fanPin || null);
   }
 
   // ===== Comentarios bala sobre la cancha =====
@@ -6157,6 +6268,7 @@
       S.ballCarrierId = null;
       if (data.result) { S.match.result = data.result; S.score = {home:Number(data.result.home) || 0, away:Number(data.result.away) || 0}; }
       renderHighlights(data.highlights || null);
+      refreshFan({ celebrate: true });
     } else if (code === 'rescheduled') {
       if (data.scheduledKickoffAt != null && Number.isFinite(Number(data.scheduledKickoffAt))) {
         S.match.scheduledKickoffAt = Number(data.scheduledKickoffAt);

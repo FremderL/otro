@@ -61,6 +61,7 @@
         <span id="seasonal-theme-pill" class="seasonal-theme-pill" hidden></span>
         <button class="btn btn-ghost btn-small" id="community-open-btn" type="button"><span class="btn-icon">♧</span> Comunidad</button>
         <span id="nav-connection" class="connection-badge connected"><i></i><span>Conectado</span></span>
+        <button class="icon-btn" id="nav-preferences-open" type="button" data-open-preferences="automation" aria-label="Abrir preferencias y controles" title="Preferencias y controles">⚙</button>
         <button class="icon-btn notification-toggle" id="notifications-toggle" type="button" aria-label="Silenciar notificaciones" aria-pressed="false">🔔</button>
         <button class="btn btn-ghost btn-small" id="report-open-btn">⚑ Reportar</button>
         <button class="btn btn-ghost btn-small" id="account-open-btn"><span class="btn-icon">🔑</span> Iniciar sesión</button>
@@ -433,7 +434,8 @@
     <div class="modal-backdrop" data-close-profile></div>
     <div class="modal-card profile-modal-card" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
       <button class="modal-close" data-close-profile aria-label="Cerrar">×</button>
-      <header class="profile-identity-header">
+      <header id="profile-identity-header" class="profile-identity-header">
+        <div id="profile-banner-backdrop" class="profile-banner-backdrop hidden" aria-hidden="true"></div>
         <div id="profile-big-avatar" class="profile-big-avatar">🦊</div>
         <div class="profile-identity-copy">
           <span class="kicker">PERFIL DEL JUGADOR</span>
@@ -453,7 +455,7 @@
         <button id="profile-tab-activity" class="profile-tab" type="button" aria-controls="profile-section-activity" data-profile-jump="activity">Actividad</button>
         <button id="profile-tab-betting" class="profile-tab" type="button" aria-haspopup="dialog" aria-controls="betting-space-modal" data-open-betting-space>Mi espacio ↗</button>
         <button id="profile-tab-goals" class="profile-tab" type="button" aria-controls="profile-section-goals" data-profile-jump="goals">Retos y logros</button>
-        <button id="profile-tab-preferences" class="profile-tab" type="button" aria-controls="profile-section-preferences" data-profile-jump="preferences">Preferencias</button>
+        <button id="profile-tab-preferences" class="profile-tab" type="button" aria-haspopup="dialog" aria-controls="preferences-modal" data-open-preferences="automation">Preferencias ↗</button>
         <span class="profile-scroll-hint" aria-hidden="true">Desliza para ver más <b>↓</b></span>
       </nav>
       <div id="profile-content-scroll" class="profile-content-scroll">
@@ -486,26 +488,11 @@
             <p id="profile-sync-note" class="profile-sync-note hidden" role="status">Sin conexión: estos datos son los guardados en este dispositivo. Se actualizarán al reconectar.</p>
             <div class="profile-main-heading"><div><span class="kicker">RESUMEN DEL PERFIL</span><h3 id="profile-section-overview-title" tabindex="-1">Tu progreso</h3></div><span>◆ Saldo solo virtual</span></div>
             <div id="profile-stats" class="profile-stats"></div>
+            <section id="profile-fan-banners-box" class="featured-achievements-box profile-fan-banners-box">
+              <div class="progress-title"><span>ESTANDARTE DE PERFIL · MI AFICIÓN</span><small id="profile-fan-banners-note">Equipa el banner de tu club o del campeón vigente</small></div>
+              <div id="profile-fan-banners" class="profile-fan-banners"></div>
+            </section>
             <section class="featured-achievements-box"><div class="progress-title"><span>VITRINA DE LOGROS</span><small>Elige hasta 3 para destacar</small></div><div id="featured-achievements" class="featured-achievements"></div></section>
-          </section>
-          <section id="profile-section-preferences" class="profile-content-section" data-profile-section="preferences" aria-labelledby="profile-section-preferences-title" tabindex="-1">
-            <div class="profile-main-heading"><div><span class="kicker">PREFERENCIAS</span><h3 id="profile-section-preferences-title" tabindex="-1">Automatismos del casino</h3></div><span>Se guardan en tu perfil</span></div>
-            <p class="preferences-intro">Estos interruptores los aplica el servidor, no solo esta pantalla: si apagas el autocompletado, tus mesas nuevas dejan de llenarse con bots.</p>
-            <div id="profile-preferences" class="preferences-list" role="group" aria-label="Preferencias del jugador">
-              <label class="preference-row" data-preference-row="autoBots">
-                <input type="checkbox" id="preference-auto-bots" data-preference="autoBots" />
-                <span class="preference-copy"><b>Completar mis mesas con bots</b><small>Al crear una mesa, los asientos libres se llenan con bots mientras haya personas sentadas. Desactívalo para jugar solo con personas.</small></span>
-              </label>
-              <label class="preference-row" data-preference-row="botsStay">
-                <input type="checkbox" id="preference-bots-stay" data-preference="botsStay" />
-                <span class="preference-copy"><b>Mantener a los bots en su asiento entre rondas</b><small>Si está desactivado, los bots dejan libre su asiento al terminar cada ronda para que entren personas reales.</small></span>
-              </label>
-              <label class="preference-row" data-preference-row="tableInvites">
-                <input type="checkbox" id="preference-table-invites" data-preference="tableInvites" />
-                <span class="preference-copy"><b>Recibir invitaciones a mesas</b><small>Tus amistades pueden invitarte a su mesa desde la comunidad del casino.</small></span>
-              </label>
-            </div>
-            <p id="preferences-status" class="preferences-status hidden" role="status"></p>
           </section>
           <section id="profile-section-passport" class="profile-content-section hidden" data-profile-section="passport" aria-labelledby="passport-heading" tabindex="-1">
             <section id="passport-panel" class="passport-panel hidden" aria-labelledby="passport-heading">
@@ -607,6 +594,7 @@
           <div class="club-ranking-privacy"><span>◉</span><span>Para cuidar la privacidad, solo aparecen clubes públicos. Los saldos de clubes privados solo los ven sus integrantes.</span></div>
           <div id="community-club-ranking-podium" class="club-ranking-podium" aria-label="Podio de clubes"></div>
           <div id="community-club-ranking-list" class="club-ranking-list" aria-label="Posiciones restantes"></div>
+          <div id="community-club-hall-of-fame" class="club-hall-of-fame" aria-label="Salón de la Fama de clubes"></div>
         </section>
       </div>
     </div>
@@ -654,7 +642,8 @@
       <button class="modal-close" data-close-table-profile aria-label="Cerrar la ficha">×</button>
       <div id="table-profile-loading" class="table-profile-loading" role="status" aria-live="polite">Cargando la ficha…</div>
       <div id="table-profile-body" class="table-profile-body hidden">
-        <header class="table-profile-head">
+        <header id="table-profile-head" class="table-profile-head">
+          <div id="table-profile-banner" class="profile-banner-backdrop is-compact hidden" aria-hidden="true"></div>
           <div id="table-profile-avatar" class="table-profile-avatar">🦊</div>
           <div class="table-profile-copy">
             <span class="kicker">EN TU MESA · FICHA DEL JUGADOR</span>
@@ -703,6 +692,7 @@
       <div class="side-top">
         <a class="brand brand-small" href="#" id="room-logo"><span class="brand-mark"><span>♠</span></span><span class="brand-copy"><b>MONTECRISTO</b><em>EN VIVO</em></span></a>
         <div class="side-audio-controls">
+          <button class="icon-btn" id="room-preferences-open" type="button" data-open-preferences="controls" aria-label="Abrir preferencias y controles de teclado" title="Preferencias y controles de teclado">⚙</button>
           <button class="icon-btn" id="sound-toggle" aria-label="Activar o desactivar sonido">♪</button>
           <button class="icon-btn notification-toggle" id="room-notifications-toggle" type="button" aria-label="Silenciar notificaciones" aria-pressed="false">🔔</button>
         </div>
@@ -828,20 +818,73 @@
 
   <!-- Leyenda de atajos de teclado (fase 4) -->
   <div id="shortcut-help" class="shortcut-help hidden" role="dialog" aria-label="Atajos de teclado">
-    <b>ATAJOS DE TECLADO</b>
-    <ul>
-      <li><kbd>F</kbd> Retirarse (póker)</li>
-      <li><kbd>C</kbd> Pasar / Igualar (póker)</li>
-      <li><kbd>R</kbd> Escribir cantidad de subida</li>
-      <li><kbd>A</kbd> All-in (póker)</li>
-      <li><kbd>H</kbd> Pedir carta (blackjack)</li>
-      <li><kbd>S</kbd> Plantarse (blackjack)</li>
-      <li><kbd>D</kbd> Doblar (blackjack)</li>
-      <li><kbd>Enter</kbd> Confirmar apuesta rápida</li>
-      <li><kbd>T</kbd> Escribir en el chat</li>
-      <li><kbd>Esc</kbd> Cerrar paneles</li>
+    <div class="shortcut-help-head">
+      <b>ATAJOS DE TECLADO</b>
+      <button type="button" class="shortcut-customize-btn" data-open-preferences="controls">⚙ Personalizar ↗</button>
+    </div>
+    <ul id="shortcut-help-list">
+      <li><kbd>Espacio</kbd> Empezar juego / Nueva ronda</li>
+      <li><kbd>B</kbd> Ingresar cantidad de apuesta (0–9)</li>
+      <li><kbd>Enter</kbd> Confirmar apuesta</li>
+      <li><kbd>X</kbd> Duplicar apuesta y confirmar al instante</li>
+      <li><kbd>H</kbd> Pedir carta · <kbd>S</kbd> Plantarse · <kbd>D</kbd> Doblar · <kbd>P</kbd> Dividir</li>
+      <li><kbd>F</kbd> Retirarse · <kbd>C</kbd> Pasar/Igualar · <kbd>R</kbd> Subida · <kbd>A</kbd> All-in</li>
+      <li><kbd>T</kbd> Escribir en el chat · <kbd>Esc</kbd> Cerrar paneles</li>
     </ul>
     <small>Pulsa <kbd>?</kbd> para mostrar u ocultar esta guía</small>
+  </div>
+
+  <!-- Ventana independiente de Preferencias y Controles de Juego -->
+  <div id="preferences-modal" class="modal preferences-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-preferences></div>
+    <div class="modal-card profile-modal-card preferences-modal-card" role="dialog" aria-modal="true" aria-labelledby="preferences-modal-title">
+      <button class="modal-close" type="button" data-close-preferences aria-label="Cerrar preferencias">×</button>
+      <header class="preferences-window-head">
+        <div>
+          <span class="kicker">PREFERENCIAS Y CONTROLES</span>
+          <h2 id="preferences-modal-title">Configuración del jugador</h2>
+          <p>Ajusta los automatismos de tus mesas y personaliza cada botón y tecla de acción para jugar 100% desde teclado.</p>
+        </div>
+        <nav class="preferences-window-tabs" aria-label="Secciones de preferencias">
+          <button type="button" class="profile-tab active" data-preferences-jump="automation" aria-controls="profile-section-preferences">Automatismos</button>
+          <button type="button" class="profile-tab" data-preferences-jump="controls" aria-controls="preferences-section-controls">Botones y teclado</button>
+        </nav>
+      </header>
+      <div id="preferences-modal-scroll" class="collection-modal-scroll preferences-modal-scroll">
+        <section id="profile-section-preferences" class="collection-window-section profile-content-section" data-profile-section="preferences" aria-labelledby="profile-section-preferences-title" tabindex="-1">
+          <div class="profile-main-heading"><div><span class="kicker">PREFERENCIAS</span><h3 id="profile-section-preferences-title" tabindex="-1">Automatismos del casino</h3></div><span>Se guardan en tu perfil</span></div>
+          <p class="preferences-intro">Estos interruptores los aplica el servidor, no solo esta pantalla: si apagas el autocompletado, tus mesas nuevas dejan de llenarse con bots.</p>
+          <div id="profile-preferences" class="preferences-list" role="group" aria-label="Preferencias del jugador">
+            <label class="preference-row" data-preference-row="autoBots">
+              <input type="checkbox" id="preference-auto-bots" data-preference="autoBots" />
+              <span class="preference-copy"><b>Completar mis mesas con bots</b><small>Al crear una mesa, los asientos libres se llenan con bots mientras haya personas sentadas. Desactívalo para jugar solo con personas.</small></span>
+            </label>
+            <label class="preference-row" data-preference-row="botsStay">
+              <input type="checkbox" id="preference-bots-stay" data-preference="botsStay" />
+              <span class="preference-copy"><b>Mantener a los bots en su asiento entre rondas</b><small>Si está desactivado, los bots dejan libre su asiento al terminar cada ronda para que entren personas reales.</small></span>
+            </label>
+            <label class="preference-row" data-preference-row="tableInvites">
+              <input type="checkbox" id="preference-table-invites" data-preference="tableInvites" />
+              <span class="preference-copy"><b>Recibir invitaciones a mesas</b><small>Tus amistades pueden invitarte a su mesa desde la comunidad del casino.</small></span>
+            </label>
+          </div>
+          <p id="preferences-status" class="preferences-status hidden" role="status"></p>
+        </section>
+
+        <section id="preferences-section-controls" class="collection-window-section preferences-controls-section" aria-labelledby="preferences-controls-heading" tabindex="-1">
+          <div class="profile-main-heading">
+            <div>
+              <span class="kicker">CONTROLES DE JUEGO</span>
+              <h3 id="preferences-controls-heading" tabindex="-1">Configuración de botones y teclado</h3>
+            </div>
+            <button id="keybindings-reset" class="btn btn-ghost btn-small" type="button">↺ Restablecer teclas</button>
+          </div>
+          <p class="preferences-intro">Pulsa sobre cualquier tecla asignada y presiona la nueva tecla en tu teclado. Durante la fase de apuesta puedes pulsar el botón de cantidad o escribir directamente números (<b>0–9</b>) y confirmar con <b>Enter</b>, o duplicar la apuesta y confirmarla al instante.</p>
+          <div id="keybindings-grid" class="keybindings-grid" role="list" aria-label="Asignación de teclas para los juegos"></div>
+          <p id="keybindings-status" class="preferences-status hidden" role="status"></p>
+        </section>
+      </div>
+    </div>
   </div>
 
   <dialog id="lobby-tournament-name-dialog" class="tournament-prizes-dialog tournament-name-dialog" aria-labelledby="lobby-tournament-name-title">

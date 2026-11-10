@@ -43,9 +43,10 @@ test('interfaz social carga amigos, acepta solicitudes, busca cuentas y funda cl
     });
     if (route.pathname === '/api/social/v1/clubs/ranking') {
       const ranking = clubData?.visibility === 'public' && clubData.treasury.balance > 0
-        ? [{ rank: 1, id: clubData.id, name: clubData.name, emblemGlyph: clubData.emblemGlyph, color: clubData.color, owner: account, memberCount: clubData.memberCount, balance: clubData.treasury.balance }]
+        ? [{ rank: 1, id: clubData.id, name: clubData.name, emblemGlyph: clubData.emblemGlyph, color: clubData.color, owner: account, memberCount: clubData.memberCount, balance: clubData.treasury.balance, trophies: clubData.trophies }]
         : [];
-      return response({ ok: true, seasonKey: '2026-10', ranking });
+      const hallOfFame = [{ seasonKey: '2026-09', closedAt: 1759276800000, podium: [{ place: 1, clubId: 'hof-1', name: 'Pioneros del Sur', emblemGlyph: '♛', color: 'gold', balance: 980 }] }];
+      return response({ ok: true, seasonKey: '2026-10', ranking, hallOfFame });
     }
     if (route.pathname === '/api/social/v1/clubs' && options.method !== 'POST') {
       const q = (route.searchParams.get('q') || '').toLowerCase();
@@ -66,6 +67,21 @@ test('interfaz social carga amigos, acepta solicitudes, busca cuentas y funda cl
       clubData.treasury.movements.push({ id: `movement-${++movementCounter}`, type: 'transfer', amount, actor: account, target: account, note, time: Date.now() });
       return response({ ok: true, code: 'transfer_complete', profileChips: account.chips, targetChips: account.chips, balance: clubData.treasury.balance, seasonKey: '2026-10', movement: clubData.treasury.movements.at(-1) });
     }
+    if (route.pathname.endsWith('/distribute-equal') && options.method === 'POST') {
+      const { amount, note } = JSON.parse(options.body);
+      account.chips += amount;
+      clubData.treasury.balance -= amount;
+      clubData.treasury.movements.push({ id: `movement-${++movementCounter}`, type: 'distribute', amount, recipientCount: 1, perMember: amount, actor: account, target: null, note, time: Date.now() });
+      return response({ ok: true, code: 'distribute_complete', profileChips: account.chips, distributedTotal: amount, perMember: amount, recipientCount: 1, skippedCount: 0, remainderKept: 0, balance: clubData.treasury.balance, seasonKey: '2026-10', movement: clubData.treasury.movements.at(-1) });
+    }
+    if (route.pathname.endsWith('/missions/coop_rounds/claim') && options.method === 'POST') {
+      account.chips += 150;
+      clubData.treasury.balance += 200;
+      clubData.missions.items[0].claimedByViewer = true;
+      clubData.missions.items[0].canClaim = false;
+      clubData.missions.items[0].treasuryCredited = true;
+      return response({ ok: true, code: 'mission_claimed', missionId: 'coop_rounds', personalReward: 150, treasuryReward: 200, treasuryCreditedNow: true, profileChips: account.chips, balance: clubData.treasury.balance, club: clubData });
+    }
     if (route.pathname === '/api/social/v1/users') return response({ ok: true, users: [carla].map(profile => ({ ...profile, relationship: 'none' })) });
     if (route.pathname === '/api/social/v1/friends/requests/friend-request-1/accept' && options.method === 'POST') {
       friends = [bob];
@@ -79,7 +95,13 @@ test('interfaz social carga amigos, acepta solicitudes, busca cuentas y funda cl
         colorHex: '#67d9a5', visibility: input.visibility, ownerId: account.id, owner: account,
         memberCount: 1, memberLimit: 30, membershipStatus: 'member',
         members: [{ ...account, role: 'owner' }], requests: [],
-        treasury: { balance: 0, seasonKey: '2026-10', movements: [] }
+        trophies: { gold: 2, silver: 1, bronze: 0, total: 3, honors: [] },
+        missions: {
+          weekKey: '2026-W41',
+          summary: { rounds: 15, wins: 6, distinctGames: 3, activeMembers: 1, viewerRounds: 15 },
+          items: [{ id: 'coop_rounds', icon: '🎲', title: 'Mesa compartida', description: 'Sumen 15 rondas válidas.', progress: 15, target: 15, activeMembers: 1, requiredMembers: 1, completed: true, personalReward: 150, treasuryReward: 200, treasuryCredited: false, claimedByViewer: false, viewerContributed: true, canClaim: true }]
+        },
+        treasury: { balance: 0, seasonKey: '2026-10', seasonClose: { daysRemaining: 2, closingSoon: true }, movements: [] }
       };
       clubData = club;
       clubs = [club];
@@ -169,6 +191,29 @@ test('interfaz social carga amigos, acepta solicitudes, busca cuentas y funda cl
   assert.match(document.getElementById('community-club-ranking-podium').textContent, /La Mesa del Río/);
   assert.match(document.getElementById('community-club-ranking-podium').textContent, /150/);
   assert.match(document.getElementById('community-club-ranking-season').textContent, /2026-10/);
+  assert.match(document.getElementById('community-club-hall-of-fame').textContent, /Salón de la Fama de Clubes/);
+  assert.match(document.getElementById('community-club-hall-of-fame').textContent, /Pioneros del Sur/);
+
+  // Reclamo de misión cooperativa semanal y reparto equitativo desde la interfaz
+  document.querySelector('[data-community-tab="clubs"]').click();
+  assert.match(document.getElementById('community-clubs-list').textContent, /Mesa compartida/);
+  assert.match(document.getElementById('community-clubs-list').textContent, /🥇 2/);
+  document.querySelector('[data-social-action="claim-club-mission"]').click();
+  await new Promise(resolve => setTimeout(resolve, 35));
+  assert.equal(account.chips, 1000, 'suma +150 fichas personales');
+  assert.equal(clubData.treasury.balance, 350, 'suma +200 fichas al fondo del club');
+  const claimCall = apiCalls.find(call => call.path.endsWith('/missions/coop_rounds/claim'));
+  assert.ok(claimCall?.headers['Idempotency-Key']);
+
+  const splitForm = document.querySelector('[data-club-money="distribute-equal"]');
+  splitForm.elements.namedItem('amount').value = '50';
+  splitForm.elements.namedItem('note').value = 'Reparto general';
+  splitForm.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  await new Promise(resolve => setTimeout(resolve, 35));
+  assert.equal(account.chips, 1050);
+  assert.equal(clubData.treasury.balance, 300);
+  const splitCall = apiCalls.find(call => call.path.endsWith('/distribute-equal'));
+  assert.ok(splitCall?.headers['Idempotency-Key']);
 });
 
 test('HTML publica una entrada a Comunidad y controles de solicitudes y clubes accesibles', () => {

@@ -4,19 +4,20 @@ Una adhesión privada de club se guarda en el perfil; no acepta ni publica
 identificadores de otras personas. Cuenta victorias de liga asentadas desde la
 adhesión, con los resultados conservados de las temporadas. Excluye empates,
 partidos sin resultado asentado y desempates. Los niveles se alcanzan con 0,
-1, 3 y 5 victorias. La clasificación por clubes es opcional y revocable y
-solo publica club, suma de victorias y número de participantes.
+1, 3, 5, 10 y 20 victorias, además de la insignia conmemorativa de campeón
+cuando el club apoyado gana una liga liquidada tras la adhesión. La clasificación por clubes es opcional y revocable y
+solo publica club, suma de victorias, número de participantes e hitos agregados para *MonteCristo News*.
 
 El cambio de club requiere confirmación explícita y compara el club actual con
 el esperado para evitar un cambio con una pantalla desactualizada. La adhesión,
-sus victorias, nivel y pines quedan reemplazados, incluso si se vuelve al club;
+sus victorias, nivel, títulos y pines quedan reemplazados, incluso si se vuelve al club;
 el ranking se desactiva hasta que se active de nuevo. No modifica Mi Once,
-saldo ni la colección independiente. Los tres retos son obtener 1, 3 y 5
-victorias oficiales desde la adhesión. Cada reto desbloquea un pin, además del
-pin básico del club. Los pines se equipan en Mi afición y se muestran en mesas
-del Casino, el perfil y la cabecera del Estadio; no tienen valor en fichas.
-Las victorias procesadas se guardan en el perfil para conservar el progreso
-cuando se archivan temporadas. Cambiar de club borra el progreso y retira el pin.
+saldo ni la colección independiente. Los retos de lealtad (1, 3, 5, 10 y 20
+victorias oficiales desde la adhesión, más el título oficial de liga) desbloquean pines con marco progresivo y títulos equipables de hincha, además del
+pin básico del club y dos estandartes de perfil: el **Estandarte oficial del club** (`club-banner`, con el escudo SVG y colores del club sobre arte de seda) y el **Estandarte de Campeón Vigente** (`champion-banner`, temporal con laureles dorados, disponible únicamente mientras el club sea el campeón de la última liga liquidada y solo para hinchas cuya adhesión sea previa o igual al cierre de ese título). Los pines, títulos y banners se equipan en Mi afición (y los banners también desde el Perfil del Casino) y se muestran en mesas
+del Casino, el perfil, el **Ranking del mes**, la Lotería, la cabecera y la grada del Estadio; no tienen valor en fichas (ver `docs/recompensas-clubes.md`).
+Las victorias y temporadas campeonas procesadas se guardan en el perfil para conservar el progreso
+cuando se archivan temporadas. Cambiar de club borra el progreso y retira el pin, el título y el banner.
 
 La versión JSON usa `persistProfile` con reemplazo de archivo, y PostgreSQL usa
 el UPSERT confirmado existente del perfil. Los tests cubren perfil JSON, handlers de Socket.IO e interfaz, y también

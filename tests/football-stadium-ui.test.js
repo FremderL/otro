@@ -2832,6 +2832,37 @@ test('Mi afición permite equipar un pin desbloqueado y muestra el escudo', asyn
  } finally {h.window.close();}
 });
 
+test('Mi afición renderiza los estandartes de club y de campeón vigente y permite equiparlos', async () => {
+ let fan={
+  clubId:'united_vanguard',wins:4,level:2,ranking:[],rankingOptIn:false,equippedPin:null,equippedBanner:null,
+  reigningChampion:{clubId:'united_vanguard',clubName:'Farselona FC',abbr:'FAR',seasonMonth:'2026-09'},
+  rewards:[{id:'club-pin',title:'Escudo del club',target:0,progress:4,unlocked:true,equipped:false}],
+  banners:[
+   {id:'club-banner',kind:'club',art:'/assets/banners/club-banner-bg.jpg',crest:'/assets/escudos/FAR.svg',clubName:'Farselona FC',abbr:'FAR',primary:'#d32f2f',secondary:'#111111',title:'Estandarte del club',subtitle:'Seda oficial',unlocked:true,equipped:false},
+   {id:'champion-banner',kind:'reigning_champion',art:'/assets/banners/champion-banner-bg.jpg',crest:'/assets/escudos/FAR.svg',clubName:'Farselona FC',abbr:'FAR',primary:'#d32f2f',secondary:'#111111',title:'Estandarte de Campeón Vigente',subtitle:'Vigente hasta nuevo campeón',seasonMonth:'2026-09',unlocked:true,equipped:false}
+  ]
+ };
+ let sent;
+ const h=createHarness({
+  extraTeams:{united_vanguard:team('united_vanguard','Farselona FC','FAR','#d32f2f','#111111')},
+  onFanGet:()=>({ok:true,fan}),
+  onFanEquip:payload=>{sent=payload;fan={...fan,equippedBanner:payload.banner,banners:fan.banners.map(b=>({...b,equipped:b.id===payload.banner}))};return {ok:true,fan};}
+ });
+ try {
+  await h.connectToMatch();
+  const doc=h.window.document;
+  doc.getElementById('est-hub-open').click();
+  doc.querySelector('[data-hub-view="aficion"]').click();
+  assert.match(doc.getElementById('est-fan-reigning-note').textContent,/Campeón vigente \(2026-09\): Farselona FC/);
+  const champBtn=doc.querySelector('[data-fan-banner="champion-banner"]');
+  assert.ok(champBtn);
+  champBtn.click();
+  assert.equal(sent.banner,'champion-banner');
+  assert.equal(sent.currentClubId,'united_vanguard');
+  assert.match(doc.querySelector('[data-fan-banner="champion-banner"]').textContent,/Quitar banner/);
+ } finally {h.window.close();}
+});
+
 
 test('Quiniela muestra jornada real sin simular venta de boletos', async () => {
  const h=createHarness({extraTeams:{united_vanguard:team('united_vanguard','Farselona FC','FAR','#d32f2f','#111111'),sporting_almar:team('sporting_almar','Liverpulpo FC','LVP','#388e3c','#ffffff')},onQuinielaGet:()=>({ok:true,quiniela:{available:false,jornada:7,matches:[{id:'m',homeId:'united_vanguard',awayId:'sporting_almar'}]}})});
@@ -4029,4 +4060,65 @@ test('noticiero diario no bloquea el Estadio si falla y no interrumpe un partido
   h.window.document.getElementById('est-daily-news-close').click();
   h.advanceTime(15000); await h.flush();
   assert.equal(h.window.document.getElementById('est-daily-news').hidden, true);
+});
+
+test('Mi afición equipa títulos de hincha, muestra pin en la grada sin etiquetas HTML y celebra al terminar el partido', async t => {
+  let fan = {
+    clubId: 'united_vanguard',
+    wins: 2,
+    level: 1,
+    championships: 0,
+    championSeasons: [],
+    ranking: [],
+    rankingOptIn: false,
+    equippedPin: 'fan-1',
+    equippedTitle: null,
+    equippedTitleLabel: null,
+    rewards: [{ id: 'fan-1', badge: 'I', title: 'Primera victoria', target: 1, progress: 1, unlocked: true, equipped: true }],
+    titles: [{ id: 'title-hincha', kind: 'wins', title: 'Voz de grada', label: 'Grada de Farselona FC', target: 1, progress: 1, unlocked: true, equipped: false }]
+  };
+  let equippedPayload = null;
+  const h = createHarness({
+    extraTeams: { united_vanguard: team('united_vanguard', 'Farselona FC', 'FAR', '#d32f2f', '#111111') },
+    onFanGet: () => ({ ok: true, fan }),
+    onFanEquip: payload => {
+      equippedPayload = payload;
+      fan = {
+        ...fan,
+        equippedTitle: payload.title,
+        equippedTitleLabel: payload.title ? 'Grada de Farselona FC' : null,
+        titles: fan.titles.map(item => ({ ...item, equipped: item.id === payload.title }))
+      };
+      return { ok: true, fan };
+    }
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  const doc = h.window.document;
+  doc.getElementById('est-hub-open').click();
+  doc.querySelector('[data-hub-view="aficion"]').click();
+  const titleBtn = doc.querySelector('[data-fan-title="title-hincha"]');
+  assert.ok(titleBtn, 'renderiza el botón para equipar título de hincha');
+  titleBtn.click();
+  assert.equal(equippedPayload?.title, 'title-hincha');
+  assert.match(doc.getElementById('est-active-fan-pin').textContent, /Grada de Farselona FC/);
+
+  // Pin de afición en la grada sin inyección HTML
+  h.handlers['football:chat']({
+    matchId: h.match.id,
+    text: '<b>¡Vamos!</b>',
+    name: 'Beti',
+    at: 10,
+    fanPin: { abbr: 'FAR', clubName: 'Farselona FC', pin: 'fan-2' }
+  });
+  await h.flush();
+  const feed = doc.getElementById('est-crowd-feed');
+  assert.ok(feed.querySelector('img.est-crowd-pin[src="/assets/escudos/FAR.svg"]'));
+  assert.equal(feed.querySelector('b'), null);
+
+  // Al pitar el final del partido se refresca Mi afición y celebra subida de nivel
+  fan = { ...fan, wins: 3, level: 2 };
+  h.handlers['football:status']({ matchId: h.match.id, code: 'full_time', result: { home: 2, away: 0 } });
+  await h.flush();
+  assert.match(doc.getElementById('est-fan-summary').textContent, /3 victorias.*Nivel 2/);
 });
