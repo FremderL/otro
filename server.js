@@ -4126,7 +4126,10 @@ async function initFootball() {
     officialV2, ballonDorService: footballBallonDorMarket, quinielaService: footballQuiniela, dailyNewsService: footballDailyNews, logEvent: footballLog,
     // Previa de la cabina: la conversación de los comentaristas antes del saque
     // inicial sale por el mismo canal del relato (football:commentary).
-    pregameService: footballSockets?.pregame || null
+    pregameService: footballSockets?.pregame || null,
+    // Cuotas pre-partido: lleva a las salas abiertas lo que mueven los
+    // apostadores simulados (solo cuando el precio cambia de verdad).
+    oddsService: footballSockets ? { tick: at => footballSockets.tickOdds(at) } : null
   });
   if (!writerPending) await footballScheduler.runAutoRescheduleSweep(Date.now());
   footballScheduler.start();

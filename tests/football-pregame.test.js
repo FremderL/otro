@@ -238,6 +238,34 @@ test('el scheduler impulsa la previa y aísla sus fallos del resto de barridos',
   assert.deepEqual(new FootballScheduler(engine).runPregameSweep(1), { skipped: true });
 });
 
+test('el scheduler impulsa el barrido de cuotas pre-partido y aísla sus fallos', () => {
+  const engine = { store: {} };
+  const seen = [];
+  const scheduler = new FootballScheduler(engine, {
+    oddsService: { tick: at => { seen.push(at); return { rooms: 1, checked: 2, emitted: 1 }; } }
+  });
+  assert.deepEqual(scheduler.runOddsSweep(1234), { rooms: 1, checked: 2, emitted: 1 });
+  assert.deepEqual(seen, [1234], 'el barrido recibe la hora, no consulta un reloj propio');
+
+  const logged = [];
+  const broken = new FootballScheduler(engine, {
+    logEvent: (code, data) => logged.push({ code, data }),
+    oddsService: { tick: () => { throw new Error('socket cerrado'); } }
+  });
+  assert.deepEqual(broken.runOddsSweep(1), { ok: false });
+  assert.equal(logged[0].code, 'football_odds_sweep_error');
+
+  assert.deepEqual(new FootballScheduler(engine).runOddsSweep(1), { skipped: true });
+  // Se arma junto a los demás barridos y se detiene con ellos.
+  scheduler.start();
+  try {
+    assert.ok(scheduler.timers.odds, 'start() arma el barrido de cuotas');
+  } finally {
+    scheduler.stop();
+  }
+  assert.deepEqual(scheduler.timers, {});
+});
+
 // Guardas de exportación: el módulo expone lo que usan el scheduler y las pruebas.
 test('el módulo publica la ventana, el runner y los helpers del guion', () => {
   for (const key of ['PREGAME_LEAD_MS', 'PREGAME_STEP_MS', 'buildPregameScript', 'createPregameRunner', 'contextFor', 'formText']) {

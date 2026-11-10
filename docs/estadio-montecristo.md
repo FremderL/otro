@@ -1293,6 +1293,11 @@ siempre al mismo.
 vivo, el volumen baja a ~20 %. Todo se genera con el seed del partido (`seed + '|flow'`), así que es
 **reproducible en auditoría**: se puede regenerar exactamente qué flujo movió una cuota.
 
+> **Estado (noviembre de 2026).** La cadencia está implementada: los aportes llegan durante las doce
+> horas previas al saque inicial y la cuota va de la apertura al cierre (calendario, cifras y ajustes
+> en §9 de `docs/estadio-cuotas-realistas.md`). Hasta entonces el reparto se calculaba una vez y la
+> cuota previa no se movía sola. El registro es uno por partido y mercado, no uno por aporte.
+
 **Transparencia.** Cada aporte se registra con `logEvent('football_simulated_flow', { match, market,
 selection, stake, reason })` y se agrega un total por partido en `/healthz`. Los T&C (decisión B1)
 deben declararlo: *«Los movimientos de las cuotas pueden incorporar un flujo de referencia simulado,
@@ -2950,6 +2955,8 @@ FOOTBALL_FUTURES_SIMS=2000
 FOOTBALL_SIM_FLOW_ENABLED=on
 FOOTBALL_SIM_WEIGHT=0.6                # influencia máxima cuando no hay fichas reales
 FOOTBALL_SIM_SOFTENER=2000             # fichas reales a partir de las cuales la influencia cae a la mitad
+FOOTBALL_SIM_WINDOW_MS=43200000        # ventana previa al saque inicial en la que llegan los aportes (12 h); 0 = libro fijo
+FOOTBALL_ODDS_SWEEP_MS=2000            # cada cuánto se difunden a las salas las cuotas que movieron los simulados
 FOOTBALL_SIM_PUBLIC_BIAS=0.15          # sobreapuesta al favorito y al «altas»
 FOOTBALL_SIM_VOLUME_PREMATCH=5000      # techo de fichas sintéticas por partido antes del kickoff
 FOOTBALL_SIM_INTERVAL_MS=45000

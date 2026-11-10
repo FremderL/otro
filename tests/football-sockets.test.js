@@ -408,6 +408,97 @@ test('tick en vivo difunde cuotas con el estado de suspensión actualizado', (t)
   assert.equal(ctx.io.lastTo(room, 'football:odds').suspended, false);
 });
 
+test('cuotas pre-partido: el barrido difunde a la sala solo los mercados que movieron los simulados', (t) => {
+  const { SimulatedFlow } = require('../lib/football/simulated-flow');
+  const HOUR = 60 * 60 * 1000;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fsock-odds-'));
+  const store = new FootballStore(path.join(dir, 'football.json'));
+  const month = monthKey();
+  store.generateSeason(month);
+  const profiles = new ProfileStore(path.join(dir, 'profiles.json'));
+  const clock = { t: 0 };
+  const flow = new SimulatedFlow({ log: () => {} });
+  const betting = createBettingService({ store, profiles, simulatedFlow: flow, now: () => clock.t, log: () => {} });
+  const io = makeIo();
+  const sockets = registerFootballSockets(io.io, {
+    betting, engine: makeEngine(), store, profiles, config: { matchCapacity: 40, lobbyCapacity: 200 },
+    log: () => {}, now: () => clock.t, verifyTosAcceptance: (profile, tos) => String(tos) === TOS
+  });
+  t.after(() => { try { sockets.stop(); } catch (_) {} try { store.close(); } catch (_) {} try { profiles.saveNow(); } catch (_) {} fs.rmSync(dir, { recursive: true, force: true }); });
+
+  const [match, other] = store.getMatches(month).filter(m => m.status === 'scheduled');
+  const kickoff = match.scheduledKickoffAt;
+  const room = matchRoom(match.id);
+  const oddsSent = () => io.emittedTo(room, 'football:odds');
+
+  // Sin nadie en la sala no hay a quién avisar: el barrido no calcula nada.
+  clock.t = kickoff - 6 * HOUR;
+  assert.deepEqual(sockets.tickOdds(clock.t), { rooms: 0, checked: 0, emitted: 0 });
+
+  const viewer = io.connect();
+  const sub = subscribe({}, viewer, { scope: 'match', matchId: match.id, name: 'Mirona' });
+  assert.equal(sub.ok, true);
+  const seen = {};
+  for (const [key, selections] of Object.entries(sub.matchState.markets)) seen[key] = selections.map(sel => sel.price).join('/');
+  assert.ok(Object.keys(seen).length > 5, 'la sala recibió el catálogo pre-partido');
+
+  // Mismo instante: nada llegó, nada se recalcula ni se emite.
+  assert.deepEqual(sockets.tickOdds(clock.t), { rooms: 1, checked: 0, emitted: 0 });
+  assert.equal(oddsSent().length, 0);
+
+  // Avanza el reloj en barridos de 5 s… comprimidos: de 10 en 10 minutos hasta el saque inicial.
+  let checked = 0, emitted = 0, cursor = 0;
+  for (let at = clock.t + 10 * 60 * 1000; at < kickoff; at += 10 * 60 * 1000) {
+    clock.t = at;
+    const result = sockets.tickOdds(at);
+    assert.equal(result.rooms, 1);
+    checked += result.checked; emitted += result.emitted;
+    const fresh = oddsSent().slice(cursor);
+    cursor += fresh.length;
+    assert.equal(fresh.length, result.emitted, 'el barrido cuenta lo que emite');
+    for (const { payload } of fresh) {
+      assert.equal(payload.matchId, match.id);
+      const now = payload.selections.map(sel => sel.price).join('/');
+      assert.notEqual(now, seen[payload.market], `se difundió ${payload.market} sin que cambiara ningún precio`);
+      seen[payload.market] = now;
+      // T19: lo único que viaja es lo de siempre; nada delata al flujo simulado.
+      assert.deepEqual(Object.keys(payload).sort(), ['betDelay', 'market', 'matchId', 'selections', 'suspended']);
+      for (const sel of payload.selections) {
+        assert.deepEqual(Object.keys(sel).filter(k => k !== 'label').sort(), ['implied', 'key', 'price']);
+      }
+      assert.ok(!/sim|flow|stake|aporte|peso/i.test(JSON.stringify(payload)), 'el payload filtra datos del flujo');
+    }
+  }
+  assert.ok(emitted >= 10, `los simulados apenas movieron la sala: ${emitted} difusiones en seis horas`);
+  assert.ok(checked >= emitted, 'solo se recalculan los mercados a los que llegó un aporte');
+  assert.ok(emitted < checked || checked > 0);
+  // Lo que la sala tiene al final es exactamente el precio vigente.
+  for (const [key, selections] of Object.entries(sockets.buildMatchState(match.id, null).markets)) {
+    assert.equal(seen[key], selections.map(sel => sel.price).join('/'), `la sala quedó con un precio viejo en ${key}`);
+  }
+  // Otro partido, sin espectadores, nunca recibió nada.
+  assert.equal(io.emittedTo(matchRoom(other.id), 'football:odds').length, 0);
+
+  // Una apuesta real se difunde al instante y el barrido no la repite.
+  const before = oddsSent().length;
+  sockets.broadcastOdds(match.id, '1x2');
+  assert.equal(oddsSent().length, before + 1);
+  assert.equal(sockets.tickOdds(clock.t).emitted, 0);
+
+  // Al quedar vacía la sala el barrido deja de trabajar para ella.
+  viewer._fire('football:unsubscribe', { scope: 'match', matchId: match.id });
+  clock.t += 5 * 60 * 1000;
+  assert.deepEqual(sockets.tickOdds(clock.t), { rooms: 0, checked: 0, emitted: 0 });
+  assert.equal(oddsSent().length, before + 1);
+
+  // En juego manda el motor (publishLiveOdds): el barrido pre-partido no interviene.
+  const late = io.connect();
+  subscribe({}, late, { scope: 'match', matchId: match.id, name: 'Tardona' });
+  match.status = 'live';
+  clock.t = kickoff + 60 * 1000;
+  assert.deepEqual(sockets.tickOdds(clock.t), { rooms: 0, checked: 0, emitted: 0 });
+});
+
 test('bet suscrito: debita, guarda y devuelve publicBet sin fugas', async (t) => {
   const ctx = setup();
   t.after(ctx.cleanup);

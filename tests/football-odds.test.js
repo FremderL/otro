@@ -70,6 +70,61 @@ test('T3: el peso del dinero baja la cuota de lo muy apostado y respeta el tope 
   assert.ok(moved.capped.includes('home'), 'el local debió tocar el tope con esa responsabilidad');
 });
 
+test('el peso del dinero es continuo y monótono: más dinero en una selección solo baja SU cuota', () => {
+  // Regresión: al volver a publicar el mercado con el ajuste por rejilla, una
+  // apuesta mínima podía mover una cuota un 9 % o SUBIR la de lo recién apostado.
+  // Con los apostadores simulados colocando aportes a cada rato, se veía.
+  for (const [lh, la] of [[1.5, 1.1], [1.2, 1.2], [2.1, 0.8], [0.9, 1.6]]) {
+    const probs = O.prob1x2(M(lh, la));
+    const open = O.publishMarket(probs, O.MARGINS['1x2']);
+    const openPrices = {};
+    open.selections.forEach(s => { openPrices[s.key] = s.price; });
+    const base = 4000;
+    const neutral = { home: base * probs.home, draw: base * probs.draw, away: base * probs.away };
+    // Un libro repartido como las probabilidades no mueve nada.
+    assert.deepStrictEqual(O.applyMoneyWeight(probs, openPrices, neutral, O.MARGINS['1x2']).prices, openPrices,
+      'un libro neutro debe dejar la apertura intacta');
+    for (const pick of ['home', 'draw', 'away']) {
+      let previous = { ...openPrices };
+      for (let extra = 25; extra <= 4000; extra += 25) {
+        const stakes = { ...neutral, [pick]: neutral[pick] + extra };
+        const moved = O.applyMoneyWeight(probs, openPrices, stakes, O.MARGINS['1x2']);
+        assert.ok(moved.prices[pick] <= previous[pick], `la cuota de ${pick} subió al recibir dinero (${previous[pick]} → ${moved.prices[pick]})`);
+        for (const other of ['home', 'draw', 'away']) {
+          if (other === pick) continue;
+          assert.ok(moved.prices[other] >= previous[other], `la cuota de ${other} bajó sin recibir dinero`);
+        }
+        // Un aporte pequeño mueve poco: nunca más de un par de pasos de rejilla.
+        const jump = Math.abs(moved.prices[pick] - previous[pick]) / previous[pick];
+        assert.ok(jump <= 0.03, `salto de ${(jump * 100).toFixed(1)} % en ${pick} con 25 fichas más`);
+        // Y el precio sigue a la probabilidad ajustada (salvo tope y rejilla).
+        if (!moved.capped.includes(pick)) {
+          const exact = openPrices[pick] * probs[pick] / moved.adjustedProbs[pick];
+          assert.ok(Math.abs(moved.prices[pick] - exact) <= 0.051, `precio ${moved.prices[pick]} lejos del proporcional ${exact.toFixed(3)}`);
+        }
+        assert.ok(O.overround(Object.values(moved.prices)) >= 1 + O.MIN_MARGIN - 1e-9);
+        previous = moved.prices;
+      }
+    }
+  }
+});
+
+test('el peso del dinero no toca una selección de probabilidad nula si nadie apuesta a ella', () => {
+  // Caso límite (un resultado ya imposible en vivo): sin dinero en esa selección
+  // su precio se queda donde estaba y no se marca como «en el tope».
+  const probs = { home: 0.62, draw: 0.38, away: 0 };
+  const open = { home: 1.5, draw: 2.45, away: 51 };
+  const neutral = O.applyMoneyWeight(probs, open, { home: 620, draw: 380, away: 0 }, O.MARGINS['1x2']);
+  assert.deepStrictEqual(neutral.prices, open);
+  assert.deepStrictEqual(neutral.capped, []);
+  // Con dinero en las otras dos, solo se mueven esas dos.
+  const loaded = O.applyMoneyWeight(probs, open, { home: 900, draw: 100, away: 0 }, O.MARGINS['1x2']);
+  assert.strictEqual(loaded.prices.away, open.away);
+  assert.ok(loaded.prices.home < open.home && loaded.prices.draw > open.draw);
+  assert.ok(!loaded.capped.includes('away'));
+  for (const price of Object.values(loaded.prices)) assert.ok(Number.isFinite(price) && price > 1);
+});
+
 test('T22: la ventaja real medida coincide con el margen declarado', () => {
   // EV de apostar 1 al local = P_home · cuota_home; agregado sobre muchos λ da la
   // ventaja real. Con margen m, EV → 1/(1+m) y la ventaja → m/(1+m). Se deriva

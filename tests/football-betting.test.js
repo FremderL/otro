@@ -757,6 +757,81 @@ test('T18: el flujo simulado mueve cuotas pero no altera exposición ni toca nin
   h.cleanup(); plain.cleanup();
 });
 
+test('los simulados apuestan poco a poco: la cuota abre en el modelo, se mueve y cierra en el libro completo', () => {
+  const SFlow = require('../lib/football/simulated-flow');
+  const HOUR = 60 * 60 * 1000;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fbet-ritmo-'));
+  const store = new FootballStore(path.join(dir, 'football.json'));
+  const month = monthKey();
+  store.generateSeason(month);
+  const profiles = new ProfileStore(path.join(dir, 'profiles.json'));
+  const clock = { t: 0 };
+  const service = flow => createBettingService({ store, profiles, now: () => clock.t, simulatedFlow: flow, log: () => {} });
+  const live = service(new SimulatedFlow({ log: () => {} }));
+  const restarted = service(new SimulatedFlow({ log: () => {} }));               // otro proceso, sin memoria común
+  const fixed = service(new SimulatedFlow({ log: () => {}, config: { windowMs: 0 } })); // libro completo desde el principio
+  const plain = service(null);
+  const prices = (betting, match, key) => betting.getMarket(match, key, {}).selections.map(sel => sel.price);
+  try {
+    const matches = store.getMatches(month).filter(m => m.status === 'scheduled').slice(0, 6);
+    let moving = 0, steps = 0;
+    const jumps = [];
+    for (const match of matches) {
+      const kickoff = match.scheduledKickoffAt;
+      // Antes de que abra la ventana: precio del modelo, igual que sin simulados.
+      clock.t = kickoff - 13 * HOUR;
+      assert.deepStrictEqual(prices(live, match, '1x2'), prices(plain, match, '1x2'), 'la cuota abre en el precio del modelo');
+      // En el saque inicial: el libro completo de siempre.
+      clock.t = kickoff;
+      assert.deepStrictEqual(prices(live, match, '1x2'), prices(fixed, match, '1x2'), 'la cuota cierra donde cerraba');
+      assert.strictEqual(live.marketMovedBetween(match, '1x2', kickoff, kickoff + HOUR), false, 'tras el saque inicial ya no se mueve sola');
+      // Por el camino se mueve aporte a aporte, y solo por la hora.
+      clock.t = kickoff - 13 * HOUR;
+      const open = plain.getMarket(match, '1x2', {});
+      const probs = Object.fromEntries(open.selections.map(sel => [sel.key, sel.prob]));
+      const plan = SFlow.schedule(match, '1x2', probs);
+      assert.ok(plan.bets.length > 30, 'el 1X2 recibe decenas de aportes');
+      let previous = open.selections.map(sel => sel.price);
+      let previousAt = plan.opensAt;
+      const seen = new Set([previous.join('/')]);
+      for (const bet of plan.bets) {
+        if (bet.at - previousAt > 1) {
+          // Entre dos aportes no pasa nada: el barrido de cuotas confía en esto.
+          clock.t = bet.at - 1;
+          assert.deepStrictEqual(prices(live, match, '1x2'), previous, 'la cuota cambió sin que llegara un aporte');
+          assert.strictEqual(live.marketMovedBetween(match, '1x2', previousAt, bet.at - 1), false);
+        }
+        clock.t = bet.at;
+        const now = prices(live, match, '1x2');
+        assert.strictEqual(live.marketMovedBetween(match, '1x2', bet.at - 1, bet.at), true);
+        assert.deepStrictEqual(prices(restarted, match, '1x2'), now, 'mismo precio tras un reinicio');
+        now.forEach((price, i) => {
+          const jump = Math.abs(price - previous[i]) / previous[i];
+          jumps.push(jump);
+          // Cota dura: MAX_APORTE_MOVE (4 %, hasta 5,7 % si la selección venía
+          // muy poco apostada) más un paso de rejilla (≤ 2,5 %).
+          assert.ok(jump <= 0.085, `un solo aporte movió la cuota un ${(jump * 100).toFixed(1)} %`);
+        });
+        if (now.join('/') !== previous.join('/')) steps += 1;
+        seen.add(now.join('/'));
+        previous = now;
+        previousAt = bet.at;
+      }
+      if (seen.size > 1) moving += 1;
+    }
+    assert.strictEqual(moving, matches.length, 'en todos los partidos la cuota se movió durante la ventana');
+    assert.ok(steps >= matches.length * 3, `muy poco movimiento: ${steps} cambios en ${matches.length} partidos`);
+    const calm = jumps.filter(jump => jump <= 0.03).length / jumps.length;
+    assert.ok(calm >= 0.95, `demasiados saltos: solo el ${(calm * 100).toFixed(1)} % de los aportes mueve la cuota ≤ 3 %`);
+    assert.strictEqual(store.sumOpenStake(matches[0].id), 0, 'nada de esto es exposición real');
+    assert.strictEqual(plain.marketMovedBetween(matches[0], '1x2', 0, clock.t), false, 'sin simulados no hay movimiento propio');
+  } finally {
+    try { store.close(); } catch (_) {}
+    try { profiles.saveNow(); } catch (_) {}
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('T18/T20: con dinero real el flujo simulado pierde influencia por debajo del 5 %', () => {
   const SF = require('../lib/football/simulated-flow');
   assert.strictEqual(SF.decay(0), 1, 'sin reales, 100 % de influencia');
