@@ -17,7 +17,8 @@ const { buildBettingLeaderboard, createBettingLeaderboard } = require('./lib/bet
 const { seatIdentity, lobbyChatIdentity } = require('./lib/seat-identity');
 const { equipPassportCosmetic, publicPassportIdentity } = require('./lib/passport');
 const { equipCosmetic, publicCollectionIdentity } = require('./lib/cosmetics');
-const { publicFanPin } = require('./lib/football/fan-club-profile');
+const { cleanFanClub, publicFanPin, publicFanBanner, publicFanBannersInventory, setReigningChampionResolver } = require('./lib/football/fan-club-profile');
+const { reigningLeagueChampion } = require('./lib/football/fan-club');
 const { LobbyTournamentManager, placementLabel } = require('./lib/lobby-tournaments');
 const { createLobbyTournamentStore } = require('./lib/lobby-tournament-store');
 const { QUICK_GAMES, isQuickGame, normalizeChoice, roll, totalPayoutMultiplier, choiceLabel, resultLabel } = require('./lib/quick-games');
@@ -812,6 +813,7 @@ function publicRoom(room, viewerId) {
         : { equipped: { frame: null, title: null, badge: null } },
       collection: p._profile ? publicCollectionIdentity(p._profile) : { equipped: { avatar: null, frame: null, chips: null, felt: null, cards: null } },
       fanPin: p._profile ? publicFanPin(p._profile) : null,
+      fanBanner: p._profile ? publicFanBanner(p._profile) : null,
       chips: p.chips,
       stats: p._profile ? publicProgress(p._profile).stats : null,
       connected: p.connected,
@@ -939,8 +941,14 @@ function publicSeasonRecord(record) {
     players: record.players,
     closedAt: record.closedAt || null,
     timeZone: record.timeZone || CASINO_TIME_ZONE,
-    podium: (record.podium || []).map(({ name, avatar, chips, medals, championBanner }) => ({
-      name, avatar, chips, medals: medals || 0, championBanner: Boolean(championBanner)
+    podium: (record.podium || []).map(({ name, avatar, chips, medals, championBanner, fanPin, fanBanner }) => ({
+      name,
+      avatar,
+      chips,
+      medals: medals || 0,
+      championBanner: Boolean(championBanner),
+      fanPin: fanPin || null,
+      fanBanner: fanBanner || null
     }))
   };
 }
@@ -3262,6 +3270,61 @@ io.on('connection', socket => {
     logEvent('preferences_updated', { profile: targetProfile.id, ...saved });
   });
 
+  socket.on('keybindings_update', ({ keybindings, accountId } = {}, ack) => {
+    if (!keybindings || typeof keybindings !== 'object' || Array.isArray(keybindings)) {
+      return ackError(ack, 'Configuración de controles no válida.');
+    }
+    const { player } = playerForSocket(socket);
+    let targetProfile = player ? player._profile : null;
+    if (!targetProfile) {
+      const id = adminConfig.accountSessionsEnabled
+        ? socket.data.accountProfileId
+        : String(accountId || '').slice(0, 80);
+      const candidate = id ? profiles.profiles.get(id) : null;
+      if (candidate?.username) targetProfile = candidate;
+    }
+    if (!targetProfile) return ackError(ack, 'Perfil no disponible.');
+    profiles.update(targetProfile, { keybindings });
+    const saved = { ...targetProfile.keybindings };
+    ackOk(ack, { keybindings: saved, profile: publicProgress(targetProfile, true) });
+    logEvent('keybindings_updated', { profile: targetProfile.id });
+  });
+
+  socket.on('fan_banner_equip', async (payload = {}, ack) => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !Object.prototype.hasOwnProperty.call(payload, 'banner')) {
+      return ackError(ack, 'Solicitud de banner no válida.');
+    }
+    const { room, player } = playerForSocket(socket);
+    let targetProfile = player ? player._profile : null;
+    if (!targetProfile) {
+      const id = adminConfig.accountSessionsEnabled
+        ? socket.data.accountProfileId
+        : String(payload.accountId || '').slice(0, 80);
+      const candidate = id ? profiles.profiles.get(id) : null;
+      if (candidate?.username) targetProfile = candidate;
+    }
+    if (!targetProfile) return ackError(ack, 'Inicia sesión o entra a una mesa para equipar un banner.');
+    const fan = cleanFanClub(targetProfile.footballFanClub);
+    if (!fan) return ackError(ack, 'Primero elige un club en Mi afición del Estadio.');
+    const inventory = publicFanBannersInventory(targetProfile);
+    const banner = payload.banner == null ? null : String(payload.banner);
+    if (banner !== null && !inventory.items.some(item => item.id === banner && item.unlocked)) {
+      return ackError(ack, 'Ese banner no está desbloqueado o su reinado ya concluyó.');
+    }
+    targetProfile.footballFanClub = { ...fan, equippedBanner: banner };
+    profiles.touch(targetProfile);
+    if (typeof profiles.persistProfile === 'function') {
+      const ok = await profiles.persistProfile(targetProfile);
+      if (!ok) return ackError(ack, 'No se pudo confirmar el cambio de banner.');
+    }
+    if (room) broadcast(room);
+    for (const r of rooms.values()) if (r !== room && r.players.some(p => p._profile === targetProfile)) broadcast(r);
+    if (loteria?.state?.game?.players?.some(p => p.profileId === targetProfile.id)) broadcastLoteriaState();
+    broadcastLobby();
+    io.to(`account:${targetProfile.id}`).emit('profile_event', { events: [], profile: publicProgress(targetProfile, true) });
+    ackOk(ack, { profile: publicProgress(targetProfile, true), fanBanner: publicFanBanner(targetProfile) });
+  });
+
   // Refresca el perfil público de una cuenta ya vinculada (username presente).
   // Pensado para que el cliente renueve su caché local de sesión de cuenta
   // (p. ej. tras reconectar o si el perfil cacheado quedó incompleto/obsoleto)
@@ -4014,11 +4077,14 @@ async function initFootball() {
   //    independiente del handler de mesas del casino. Helpers del casino inyectados:
   //    ackOk/ackError (con code), cleanMessage, nameIssue (unicidad global de
   //    nombres) y verifyTosAcceptance. La identidad se resuelve SOLO en subscribe.
+  setReigningChampionResolver(() => footballStore ? reigningLeagueChampion(footballStore.leagues, Date.now()) : null);
   footballSockets = registerFootballSockets(io, {
     betting: footballBetting, engine: footballEngine, store: footballStore, profiles,
     quiniela: footballQuiniela, dailyNews: footballDailyNews,
     onFanChanged: profile => {
       for (const room of rooms.values()) if (room.players.some(player => player._profile === profile)) broadcast(room);
+      if (loteria?.state?.game?.players?.some(player => player.profileId === profile.id)) broadcastLoteriaState();
+      broadcastLobby();
       io.to(`account:${profile.id}`).emit('profile_event', { events:[], profile:publicProgress(profile, true) });
     },
     ballonDorMarket: footballBallonDorMarket, accountSessionsEnabled: adminConfig.accountSessionsEnabled,
@@ -4111,6 +4177,44 @@ async function bootstrap() {
   idempotencyStore = createIdempotencyStore(adminConfig);
   communityStore = createCommunityStore(process.env.COMMUNITY_STORE_PATH, process.env.DATABASE_URL);
   if (communityStore.ready) await communityStore.ready;
+  profiles.isEligibleForClubPodium = clubId => {
+    const clubs = communityStore?.getState?.()?.clubs;
+    if (!Array.isArray(clubs)) return true;
+    return clubs.some(club => club.id === clubId && club.visibility === 'public');
+  };
+  const awardClubSeasonBadges = ({ fromMonth }) => {
+    try {
+      const clubs = communityStore?.getState?.()?.clubs;
+      if (!Array.isArray(clubs)) return;
+      const publicById = new Map(clubs.filter(c => c.visibility === 'public').map(c => [c.id, c]));
+      const latestClubClose = (profiles.seasons?.clubTreasury?.history || [])
+        .find(entry => entry.seasonKey === String(fromMonth));
+      if (!latestClubClose) return;
+      const winners = (latestClubClose.top || [])
+        .filter(item => publicById.has(item.clubId) && item.balance > 0)
+        .slice(0, 3);
+      winners.forEach((winner, index) => {
+        const club = publicById.get(winner.clubId);
+        const place = index + 1;
+        for (const member of club.members || []) {
+          const profile = profiles.getProfile(member.profileId);
+          if (!profile) continue;
+          const current = Array.isArray(profile.clubSeasonBadges) ? profile.clubSeasonBadges : [];
+          if (current.some(b => b.seasonKey === String(fromMonth) && b.clubId === club.id)) continue;
+          profile.clubSeasonBadges = [...current, {
+            seasonKey: String(fromMonth),
+            clubId: club.id,
+            clubName: club.name.slice(0, 60),
+            place
+          }].slice(-48);
+          profiles.touch(profile);
+        }
+      });
+    } catch (error) {
+      console.warn('No se pudieron acreditar insignias de temporada de clubes:', error.message);
+    }
+  };
+  profiles.onAfterSeasonReset = payload => awardClubSeasonBadges(payload || {});
   // NOTA (Fase F, A12): el aviso de lastSeasonRepair se emite más abajo, después de
   // profiles.ensureSeason(), que es quien de verdad puede disparar la reparación.
   // Fase 11.1: con Postgres, guardar más historial no infla un archivo local
@@ -4151,7 +4255,9 @@ async function bootstrap() {
         return { type: 'deferred', reason: 'escrow_de_futbol_no_disponible', requireSettlement: true };
       }
     };
-    profiles.onAfterSeasonReset = ({ fromMonth, toMonth }) => {
+    profiles.onAfterSeasonReset = payload => {
+      awardClubSeasonBadges(payload || {});
+      const { fromMonth, toMonth } = payload || {};
       if (!footballBallonDorMarket) return;
       Promise.resolve(footballBallonDorMarket.sweep(Date.now()))
         .then(summary => {

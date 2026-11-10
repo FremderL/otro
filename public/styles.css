@@ -2115,10 +2115,78 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
   .fortune-legend-item small { display:none; }
 }
 .quick-game-card .btn-card:disabled { opacity:.65; cursor:not-allowed; }
-.fan-pin { display:inline-block; width:20px; height:23px; object-fit:contain; margin-left:5px; vertical-align:middle; }
+.fan-pin-wrap { position:relative; display:inline-flex; align-items:center; justify-content:center; margin-left:5px; vertical-align:middle; line-height:1; }
+.fan-pin { display:inline-block; width:20px; height:23px; object-fit:contain; vertical-align:middle; }
+.fan-pin-wrap .fan-pin { margin-left:0; }
+.fan-pin-emblem { position:absolute; right:-5px; bottom:-3px; min-width:12px; height:12px; display:grid; place-items:center; padding:0 2px; border:1px solid rgba(255,255,255,.35); border-radius:999px; background:#14211c; color:#f4dfb0; font:900 7px/1 var(--sans); font-style:normal; box-shadow:0 2px 6px rgba(0,0,0,.45); }
 .fan-pin-fan-1 { filter:drop-shadow(0 0 2px #d5a782); }
-.fan-pin-fan-2 { filter:drop-shadow(0 0 3px #c6d6d2); }
-.fan-pin-fan-3 { filter:drop-shadow(0 0 4px #f2cc67); }
+.fan-pin-wrap-fan-1 .fan-pin-emblem { border-color:rgba(213,167,130,.6); color:#f2c9a6; }
+.fan-pin-fan-2 { filter:drop-shadow(0 0 3px #e4c06d); }
+.fan-pin-wrap-fan-2 .fan-pin-emblem { border-color:rgba(228,192,109,.7); background:#231b0d; color:#f8da8b; }
+.fan-pin-fan-3 { filter:drop-shadow(0 0 5px #f2cc67); }
+.fan-pin-wrap-fan-3 .fan-pin-emblem { border-color:#f2cc67; background:linear-gradient(145deg,#3a2a0b,#1b1407); color:#ffe498; }
+.fan-pin-fan-4 { filter:drop-shadow(0 0 5px #52e0ae); }
+.fan-pin-wrap-fan-4 .fan-pin-emblem { border-color:#52e0ae; background:linear-gradient(145deg,#0f3328,#091d17); color:#8bf5ce; }
+.fan-pin-fan-5 { filter:drop-shadow(0 0 6px #d6b4ff) drop-shadow(0 0 2px #f2cc67); }
+.fan-pin-wrap-fan-5 .fan-pin-emblem { border-color:#e2c4ff; background:linear-gradient(145deg,#2e1b46,#160d24); color:#f3e3ff; }
+.fan-pin-fan-champ { filter:drop-shadow(0 0 6px #ffd86b) drop-shadow(0 0 3px #52e0ae); }
+.fan-pin-wrap-fan-champ .fan-pin-emblem { border-color:#ffd86b; background:linear-gradient(145deg,#4b3609,#1d2e22); color:#fff2b8; }
+.fan-title-pill { display:inline-flex; align-items:center; margin-left:5px; padding:1px 6px; border:1px solid rgba(229,189,114,.34); border-radius:999px; background:rgba(229,189,114,.09); color:#efd79f; font-size:8px; font-weight:800; letter-spacing:.04em; vertical-align:middle; white-space:nowrap; }
+
+/* Trofeos permanentes, misiones cooperativas semanales, reparto equitativo y Salón de la Fama de clubes. */
+.club-trophy-strip { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:4px; }
+.club-podium-card .club-trophy-strip { justify-content:center; margin-top:2px; }
+.club-trophy-pill { display:inline-flex; align-items:center; gap:2px; padding:1px 6px; border-radius:999px; border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.04); font-size:8px; font-weight:850; color:#eef3f0; }
+.club-trophy-pill.is-gold { border-color:rgba(240,204,115,.48); background:rgba(240,204,115,.12); color:#f8df9c; }
+.club-trophy-pill.is-silver { border-color:rgba(202,216,226,.42); background:rgba(202,216,226,.1); color:#dfebf2; }
+.club-trophy-pill.is-bronze { border-color:rgba(214,158,118,.44); background:rgba(214,158,118,.11); color:#f0c7a8; }
+.club-missions-panel { --club-accent:var(--mint); display:grid; gap:9px; margin-top:12px; padding:12px; border:1px solid color-mix(in srgb,var(--club-accent) 24%,rgba(255,255,255,.08)); border-radius:13px; background:linear-gradient(155deg,color-mix(in srgb,var(--club-accent) 7%,rgba(10,20,22,.88)),rgba(7,13,15,.78)); }
+.community-club-card[data-club-color="gold"] .club-missions-panel { --club-accent:#dfbc70; }
+.community-club-card[data-club-color="violet"] .club-missions-panel { --club-accent:#b39af2; }
+.community-club-card[data-club-color="ocean"] .club-missions-panel { --club-accent:#77c9df; }
+.club-missions-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding-bottom:7px; border-bottom:1px solid rgba(255,255,255,.07); }
+.club-missions-head small { display:block; color:var(--club-accent); font-size:8px; font-weight:900; letter-spacing:.11em; }
+.club-missions-head b { color:#f3f1e7; font-size:11px; }
+.club-missions-summary { padding:3px 8px; border:1px solid rgba(255,255,255,.09); border-radius:999px; background:rgba(255,255,255,.03); color:var(--muted-light); font-size:8px; font-weight:750; }
+.club-missions-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.club-mission-card { display:grid; gap:6px; padding:9px 10px; border:1px solid rgba(255,255,255,.07); border-radius:10px; background:rgba(255,255,255,.02); }
+.club-mission-card.is-completed { border-color:color-mix(in srgb,var(--club-accent) 42%,rgba(255,255,255,.12)); background:color-mix(in srgb,var(--club-accent) 6%,rgba(255,255,255,.02)); }
+.club-mission-top { display:grid; grid-template-columns:24px minmax(0,1fr) auto; align-items:center; gap:7px; }
+.club-mission-icon { width:24px; height:24px; display:grid; place-items:center; border-radius:7px; background:rgba(255,255,255,.05); font-size:13px; }
+.club-mission-copy { min-width:0; display:grid; gap:2px; }
+.club-mission-copy b { color:#edf4f0; font-size:9.5px; }
+.club-mission-copy small { color:var(--muted-2); font-size:7.8px; line-height:1.35; }
+.club-mission-status { padding:3px 7px; border-radius:999px; background:rgba(255,255,255,.04); color:var(--muted-light); font-size:8px; font-weight:800; white-space:nowrap; }
+.club-mission-status.is-claimed { color:var(--mint-2); background:rgba(82,224,174,.12); }
+.club-mission-status.is-pending { color:#efd79f; background:rgba(229,189,114,.12); }
+.club-mission-claim { min-height:28px; padding:0 9px; font-size:8.5px; white-space:nowrap; }
+.club-mission-bar { height:5px; overflow:hidden; border-radius:999px; background:rgba(255,255,255,.07); }
+.club-mission-bar>span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--club-accent),#f0d397); transition:width .25s ease; }
+.club-mission-rewards { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 8px; color:var(--muted-2); font-size:7.8px; }
+.club-mission-rewards b { color:#f3e2b3; }
+.club-mission-treasury.is-done { color:var(--mint-2); font-weight:750; }
+.club-equal-split-form { grid-column:1/-1; }
+.club-season-close-banner { display:grid; grid-template-columns:22px minmax(0,1fr); align-items:start; gap:8px; padding:9px 10px; border:1px solid rgba(229,189,114,.38); border-radius:10px; background:rgba(229,189,114,.09); }
+.club-season-close-banner>span { font-size:14px; line-height:1.2; }
+.club-season-close-banner b { display:block; color:#f7e4b2; font-size:9.5px; }
+.club-season-close-banner small { display:block; margin-top:2px; color:#d7ccb0; font-size:8px; line-height:1.4; }
+.club-hall-of-fame:empty { display:none; }
+.club-hall-of-fame { display:grid; gap:10px; margin-top:16px; padding-top:14px; border-top:1px solid rgba(255,255,255,.08); }
+.club-hof-header h4 { margin:2px 0 3px; color:#f4f0e4; font:800 15px var(--display); }
+.club-hof-header p { margin:0; color:var(--muted-2); font-size:8.5px; }
+.club-hof-seasons { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+.club-hof-season { display:grid; gap:7px; padding:10px 11px; border:1px solid rgba(229,189,114,.22); border-radius:11px; background:linear-gradient(150deg,rgba(229,189,114,.05),rgba(9,16,18,.75)); }
+.club-hof-season>header { display:flex; align-items:center; justify-content:space-between; gap:6px; border-bottom:1px solid rgba(255,255,255,.06); padding-bottom:5px; }
+.club-hof-season>header b { color:#f4e3b5; font-size:9.5px; }
+.club-hof-season>header small { color:var(--muted-2); font-size:7.8px; }
+.club-hof-podium { list-style:none; margin:0; padding:0; display:grid; gap:5px; }
+.club-hof-podium li { display:grid; grid-template-columns:18px 22px minmax(0,1fr) auto; align-items:center; gap:6px; padding:4px 6px; border-radius:7px; background:rgba(255,255,255,.025); font-size:8.8px; }
+.club-hof-glyph { width:20px; height:20px; display:grid; place-items:center; border-radius:6px; background:rgba(255,255,255,.05); color:#efd79f; font-size:11px; }
+.club-hof-podium li b { overflow:hidden; color:#edf3ef; text-overflow:ellipsis; white-space:nowrap; }
+.club-hof-podium li strong { color:#efd79f; font-size:8.5px; white-space:nowrap; }
+@media (max-width:620px) {
+  .club-missions-grid,.club-hof-seasons { grid-template-columns:1fr; }
+}
 
 /* ---------- Invitaciones de amistad a mesas privadas ---------- */
 .btn-invite-copy { min-height:37px; width:37px; display:grid; place-items:center; padding:0; border-radius:8px; font-size:15px; }
@@ -2282,6 +2350,150 @@ body { color: var(--text); font-size: 16px; line-height: 1.5; }
 .identity-banner.hidden { display: none; }
 .identity-banner-action { border: 0; background: #5d4300; color: #fff; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
 @media (prefers-color-scheme: dark) { .identity-banner { background: #2a2100; color: #ffe9a8; } }
+
+/* ==========================================================================
+   Banners de Club y Campeón Vigente (Perfil, Mesa y Ranking del Mes)
+   ========================================================================== */
+.profile-identity-header,
+.table-profile-head,
+.profile-card { position: relative; overflow: hidden; }
+.profile-identity-header.has-fan-banner { border: 1px solid rgba(255,255,255,.16); border-radius: 16px; padding: 18px 20px; }
+.profile-identity-header.is-champion-fan-banner { border-color: rgba(244,209,123,.58); box-shadow: 0 10px 28px rgba(244,209,123,.14); }
+.table-profile-head.has-fan-banner { border-radius: 14px; padding: 14px 16px; border: 1px solid rgba(255,255,255,.14); }
+.profile-card.has-fan-banner { border-color: rgba(229,189,114,.34); }
+.profile-identity-header > :not(.profile-banner-backdrop),
+.table-profile-head > :not(.profile-banner-backdrop),
+.profile-card > :not(.fan-banner-surface) { position: relative; z-index: 1; }
+
+.profile-banner-backdrop { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.fan-banner-surface { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.fan-banner-bg-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .9; }
+.fan-banner-tint {
+  position: absolute; inset: 0;
+  background: linear-gradient(108deg, rgba(6,11,13,.88) 12%, color-mix(in srgb, var(--fan-banner-primary, #1f5442) 55%, rgba(8,14,16,.78)) 64%, color-mix(in srgb, var(--fan-banner-secondary, #0d1b20) 62%, rgba(8,14,16,.84)));
+}
+.fan-banner-surface.is-champion .fan-banner-tint {
+  background: radial-gradient(circle at 82% 50%, rgba(255,214,102,.22), transparent 55%), linear-gradient(108deg, rgba(10,8,5,.86) 18%, color-mix(in srgb, var(--fan-banner-primary, #caa042) 34%, rgba(16,12,7,.74)) 65%, rgba(20,14,6,.72));
+}
+.fan-banner-emblem-wrap {
+  position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; gap: 10px;
+}
+.fan-banner-surface.is-compact .fan-banner-emblem-wrap { right: 10px; gap: 6px; }
+.fan-banner-crest { width: 54px; height: 58px; object-fit: contain; filter: drop-shadow(0 4px 12px rgba(0,0,0,.65)); opacity: .95; }
+.fan-banner-surface.is-compact .fan-banner-crest { width: 32px; height: 36px; opacity: .88; }
+.fan-banner-surface.is-champion .fan-banner-crest { filter: drop-shadow(0 0 12px rgba(255,216,107,.75)); }
+.fan-banner-ribbon {
+  padding: 3px 9px; border-radius: 999px;
+  background: rgba(8,14,16,.68); border: 1px solid rgba(255,255,255,.22);
+  color: #edf5f0; font-size: 8.5px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap;
+}
+.fan-banner-surface.is-compact .fan-banner-ribbon { display: none; }
+.fan-banner-ribbon.is-champ {
+  background: linear-gradient(135deg, rgba(42,30,8,.88), rgba(92,66,14,.82));
+  border-color: rgba(255,216,107,.78); color: #fff1b8; box-shadow: 0 2px 10px rgba(255,216,107,.2);
+}
+
+.profile-fan-banners-box { margin-bottom: 14px; }
+.profile-fan-banners { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; }
+.profile-fan-banner-card { border-radius: 13px; overflow: hidden; border: 1px solid rgba(255,255,255,.11); background: rgba(9,16,18,.92); display: flex; flex-direction: column; }
+.profile-fan-banner-card.is-champion { border-color: rgba(244,209,123,.48); }
+.profile-fan-banner-card.is-equipped { border-color: var(--mint-2); box-shadow: 0 0 0 1px rgba(103,217,165,.35); }
+.profile-fan-banner-card.is-locked .profile-fan-banner-art { filter: grayscale(.6) brightness(.72); }
+.profile-fan-banner-art { position: relative; min-height: 82px; padding: 12px 14px; display: flex; align-items: center; overflow: hidden; }
+.profile-fan-banner-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.profile-fan-banner-shade {
+  position: absolute; inset: 0;
+  background: linear-gradient(115deg, color-mix(in srgb, var(--fan-banner-primary, #1f5442) 64%, rgba(7,13,15,.86)), rgba(8,14,16,.7) 60%, color-mix(in srgb, var(--fan-banner-secondary, #0d1b20) 58%, rgba(7,13,15,.88)));
+}
+.profile-fan-banner-card.is-champion .profile-fan-banner-shade {
+  background: radial-gradient(circle at 50% 0%, rgba(255,216,107,.24), transparent 62%), linear-gradient(115deg, rgba(14,10,5,.68), color-mix(in srgb, var(--fan-banner-primary, #caa042) 32%, rgba(12,9,6,.78)) 55%, rgba(14,10,5,.68));
+}
+.profile-fan-banner-overlay { position: relative; z-index: 1; display: flex; align-items: center; gap: 11px; }
+.profile-fan-banner-crest { width: 42px; height: 46px; flex: none; object-fit: contain; filter: drop-shadow(0 3px 8px rgba(0,0,0,.65)); }
+.profile-fan-banner-overlay b { display: block; color: #fff; font-size: 12.5px; margin-top: 2px; }
+.profile-fan-banner-overlay small { display: block; color: rgba(232,241,236,.84); font-size: 9.5px; }
+.fan-banner-card-tag { display: inline-block; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.24); color: #f2f7f4; font-size: 8px; font-weight: 850; letter-spacing: .09em; }
+.fan-banner-card-tag.is-champ { background: rgba(255,216,107,.24); border-color: rgba(255,216,107,.75); color: #fff2be; }
+.profile-fan-banner-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; background: rgba(6,11,13,.94); margin-top: auto; }
+.profile-fan-banner-footer small { color: var(--muted); font-size: 9px; line-height: 1.35; }
+.fan-banner-card-lock { flex: none; color: var(--muted-2); font-size: 9px; font-weight: 750; }
+
+/* Ranking del mes con cosméticos equipados */
+.ranking-feature.has-fan-banner { border-color: rgba(255,255,255,.22); }
+.ranking-feature.is-champion-fan-banner { border-color: rgba(255,216,107,.65); box-shadow: 0 12px 30px rgba(255,216,107,.16); }
+.ranking-feature > .fan-banner-surface .fan-banner-emblem-wrap { top: 14px; right: 14px; transform: none; }
+.ranking-feature > .fan-banner-surface .fan-banner-crest { width: 38px; height: 42px; }
+.ranking-feature > :not(.fan-banner-surface) { position: relative; z-index: 1; }
+.ranking-row.has-fan-banner {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--row-banner-primary, #1f5442) 24%, rgba(14,24,26,.9)), rgba(12,20,22,.86) 65%);
+  border-left: 2px solid var(--row-banner-primary, var(--mint));
+}
+.ranking-row.is-champion-row {
+  background: linear-gradient(90deg, rgba(84,62,16,.38), color-mix(in srgb, var(--row-banner-primary, #caa042) 18%, rgba(14,20,22,.9)) 65%);
+  border-left: 2px solid #ffd86b;
+}
+.ranking-fan-banner-pill {
+  position: relative; display: inline-flex; align-items: center; gap: 4px; overflow: hidden;
+  margin-left: 5px; padding: 2px 7px 2px 5px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.24); vertical-align: middle;
+}
+.ranking-fan-banner-pill.is-champion { border-color: rgba(255,216,107,.78); box-shadow: 0 0 8px rgba(255,216,107,.24); }
+.ranking-fan-banner-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .75; }
+.ranking-fan-banner-shade { position: absolute; inset: 0; background: linear-gradient(110deg, color-mix(in srgb, var(--fan-banner-primary, #1f5442) 62%, rgba(8,14,16,.78)), rgba(8,14,16,.78)); }
+.ranking-fan-banner-pill.is-champion .ranking-fan-banner-shade { background: linear-gradient(110deg, rgba(64,46,10,.82), rgba(24,18,6,.82)); }
+.ranking-fan-banner-crest { position: relative; z-index: 1; width: 13px; height: 14px; object-fit: contain; }
+.ranking-fan-banner-pill b { position: relative; z-index: 1; color: #fff6dc; font-size: 8.5px; font-weight: 850; letter-spacing: .06em; }
+
+/* ==========================================================================
+   Ventana de Preferencias y Configuración de Controles / Teclado
+   ========================================================================== */
+.preferences-modal-card { max-width: 880px; }
+.preferences-window-head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding: 22px 26px 14px; border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.preferences-window-head h2 { margin: 3px 0 4px; color: #f5faf7; font: 800 22px var(--display); }
+.preferences-window-head p { margin: 0; color: var(--muted); font-size: 11px; max-width: 520px; line-height: 1.45; }
+.preferences-window-tabs { display: flex; gap: 6px; }
+.preferences-modal-scroll { max-height: min(72vh, 660px); overflow-y: auto; padding: 18px 26px 24px; }
+.preferences-controls-section { margin-top: 22px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,.08); }
+
+.keybindings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; margin-top: 12px; }
+.keybind-group { padding: 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); background: rgba(10,18,20,.72); }
+.keybind-list { display: grid; gap: 7px; margin-top: 8px; }
+.keybind-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.06); background: rgba(255,255,255,.025);
+}
+.keybind-row.is-capturing { border-color: var(--gold); background: rgba(229,189,114,.1); }
+.keybind-copy { min-width: 0; }
+.keybind-copy b { display: block; color: #eef5f1; font-size: 11px; }
+.keybind-copy small { display: block; color: var(--muted); font-size: 9.5px; line-height: 1.35; margin-top: 1px; }
+.keybind-btn {
+  flex: none; min-width: 72px; padding: 6px 10px; border-radius: 9px;
+  border: 1px solid rgba(229,189,114,.35); background: rgba(229,189,114,.1);
+  color: #fff2ce; font-size: 10px; font-weight: 800; cursor: pointer; transition: border-color .15s, background .15s;
+}
+.keybind-btn:hover { border-color: var(--gold-2); background: rgba(229,189,114,.18); }
+.keybind-btn.is-capturing { border-color: var(--mint-2); background: rgba(82,224,174,.18); color: #bff8e2; }
+.keybind-btn kbd { font-family: inherit; font-weight: 900; letter-spacing: .04em; }
+
+.btn-key-hint {
+  display: inline-block; margin-left: 4px; padding: 1px 5px; border-radius: 5px;
+  border: 1px solid rgba(255,255,255,.22); background: rgba(0,0,0,.28);
+  color: rgba(255,255,255,.88); font: 800 8.5px var(--sans, system-ui); letter-spacing: .04em; vertical-align: 1px;
+}
+.bj-custom-bet-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.bj-custom-bet-controls input { width: 82px; padding: 7px 9px; border-radius: 9px; border: 1px solid rgba(229,189,114,.34); background: rgba(7,13,15,.88); color: #fff4d6; font-size: 12px; font-weight: 800; text-align: center; }
+.bet-focus-btn { padding-inline: 10px; }
+.shortcut-help-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.shortcut-customize-btn { padding: 3px 8px; border-radius: 7px; border: 1px solid rgba(229,189,114,.4); background: rgba(229,189,114,.12); color: var(--gold-2); font-size: 9.5px; font-weight: 800; cursor: pointer; }
+@media (max-width: 720px) {
+  .preferences-window-head { padding: 18px 16px 12px; }
+  .preferences-modal-scroll { padding: 14px 16px 18px; }
+  .keybindings-grid { grid-template-columns: 1fr; }
+}
 
 /* ==========================================================================
    SEPARACIÓN ESCRITORIO / MÓVIL

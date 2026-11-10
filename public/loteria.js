@@ -286,6 +286,9 @@
     });
   }
 
+  var VALID_LOTERIA_FAN_ABBRS = /^(FAR|RMD|ATC|MUN|LVP|ARS|BAY|BDO|JUV|PSG|RSU|RDB|WHM|NAB|CDC|BEN)$/;
+  var VALID_LOTERIA_FAN_PINS = ['club-pin', 'fan-1', 'fan-2', 'fan-3', 'fan-4', 'fan-5', 'fan-champ'];
+
   function renderPlayers(view) {
     var players = view ? view.players : [];
     els.playersCount.textContent = String(players.length);
@@ -307,6 +310,26 @@
       var name = document.createElement('span');
       name.textContent = player.name + (mine && player.name === mine ? ' · tú' : '');
       item.append(avatar, name);
+      var pin = player.fanPin;
+      if (pin && VALID_LOTERIA_FAN_ABBRS.test(pin.abbr || '') && VALID_LOTERIA_FAN_PINS.includes(pin.pin)) {
+        var wrap = document.createElement('span');
+        wrap.className = 'fan-pin-wrap fan-pin-wrap-' + pin.pin;
+        var tip = 'Pin de ' + String(pin.clubName || 'afición') + (pin.pinTitle ? ' · ' + String(pin.pinTitle) : '');
+        wrap.title = tip;
+        var img = document.createElement('img');
+        img.className = 'fan-pin fan-pin-' + pin.pin;
+        img.src = '/assets/escudos/' + pin.abbr + '.svg';
+        img.alt = '';
+        wrap.appendChild(img);
+        if (pin.pinBadge) {
+          var badge = document.createElement('i');
+          badge.className = 'fan-pin-emblem';
+          badge.setAttribute('aria-hidden', 'true');
+          badge.textContent = String(pin.pinBadge).slice(0, 3);
+          wrap.appendChild(badge);
+        }
+        item.appendChild(wrap);
+      }
       els.players.appendChild(item);
     });
     if (players.length > 20) {

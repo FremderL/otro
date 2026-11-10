@@ -2680,6 +2680,47 @@ body.est-daily-news-open { overflow:hidden; }
 .identity-banner.hidden { display: none; }
 .identity-banner a { color: inherit; font-weight: 700; }
 
+/* Mi afición: escalera de pines, títulos equipables, estrella de campeón y presencia en grada / MonteCristo News. */
+.est-fan-titles-wrap { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(216,221,199,.12); }
+.est-fan-subhead { margin: 0 0 8px; color: #e4c989; font: 800 13px var(--display); letter-spacing: .04em; }
+.est-fan-reward-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.est-fan-reward-row.is-equipped { border-color: rgba(228,199,128,.45); }
+.est-fan-tier-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px; border: 1px solid rgba(228,199,128,.4); background: rgba(228,199,128,.12); color: #f6e3ad; font-size: 9px; font-weight: 900; vertical-align: middle; }
+.est-fan-tier-fan-4 { border-color: rgba(82,224,174,.55); background: rgba(82,224,174,.14); color: #9af4d4; }
+.est-fan-tier-fan-5 { border-color: rgba(214,180,255,.55); background: rgba(214,180,255,.14); color: #efe0ff; }
+.est-fan-tier-fan-champ { border-color: rgba(255,216,107,.7); background: linear-gradient(145deg, rgba(255,216,107,.22), rgba(82,224,174,.14)); color: #fff1b8; }
+.est-active-fan-badge { display: inline-block; margin-left: 3px; padding: 1px 5px; border-radius: 999px; background: rgba(228,199,128,.18); color: #ffe7a3; font-size: 9px; font-weight: 800; }
+.est-active-fan-title { color: #d8c796; font-size: 10px; font-weight: 700; }
+.est-active-fan-pin.is-pin-fan-3 .est-inline-crest,
+.est-active-fan-pin.is-pin-fan-4 .est-inline-crest,
+.est-active-fan-pin.is-pin-fan-5 .est-inline-crest,
+.est-active-fan-pin.is-pin-fan-champ .est-inline-crest { filter: drop-shadow(0 0 5px rgba(244,209,123,.75)); }
+.est-crowd-pin { display: inline-block; width: 14px; height: 16px; margin-right: 4px; object-fit: contain; vertical-align: -3px; }
+.est-club-news-card[data-news-type="fan_milestone"] { border-color: rgba(244,209,123,.48); background: radial-gradient(circle at top right, rgba(244,209,123,.14), transparent 55%), linear-gradient(145deg, #20382d, #101d19); }
+.est-fan-banners-wrap { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(228,199,128,.16); }
+.est-fan-reigning-note { margin: 0 0 8px; color: #c8d7cf; font-size: 11px; line-height: 1.45; }
+.est-fan-banner-empty { margin: 0; color: #9db0a7; font-size: 11px; }
+.est-fan-banners-grid { display: grid; gap: 10px; }
+.est-fan-banner-card { border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,.12); background: rgba(11,19,20,.88); }
+.est-fan-banner-card.is-champion { border-color: rgba(244,209,123,.52); box-shadow: 0 8px 24px rgba(244,209,123,.12); }
+.est-fan-banner-card.is-equipped { border-color: rgba(103,217,165,.72); box-shadow: 0 0 0 1px rgba(103,217,165,.32); }
+.est-fan-banner-card.is-locked .est-fan-banner-preview { filter: grayscale(.55) brightness(.75); }
+.est-fan-banner-preview { position: relative; min-height: 78px; display: flex; align-items: center; padding: 10px 14px; overflow: hidden; }
+.est-fan-banner-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .88; }
+.est-fan-banner-shade { position: absolute; inset: 0; background: linear-gradient(115deg, color-mix(in srgb, var(--est-banner-primary, #1f4d3d) 68%, rgba(8,14,16,.88)), rgba(9,15,18,.68) 62%, color-mix(in srgb, var(--est-banner-secondary, #0d191e) 58%, rgba(8,14,16,.86))); }
+.est-fan-banner-card.is-champion .est-fan-banner-shade { background: radial-gradient(circle at 50% 0%, rgba(255,216,107,.24), transparent 62%), linear-gradient(115deg, rgba(16,12,6,.62), color-mix(in srgb, var(--est-banner-primary, #caa042) 34%, rgba(12,10,8,.78)) 52%, rgba(16,12,6,.62)); }
+.est-fan-banner-content { position: relative; z-index: 1; display: flex; align-items: center; gap: 11px; width: 100%; }
+.est-fan-banner-crest { width: 40px; height: 44px; flex: none; object-fit: contain; filter: drop-shadow(0 3px 10px rgba(0,0,0,.65)); }
+.est-fan-banner-card.is-champion .est-fan-banner-crest { filter: drop-shadow(0 0 10px rgba(255,214,102,.7)); }
+.est-fan-banner-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.est-fan-banner-ribbon { display: inline-block; width: fit-content; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,.13); border: 1px solid rgba(255,255,255,.22); color: #eef5f1; font-size: 9px; font-weight: 800; letter-spacing: .09em; }
+.est-fan-banner-ribbon.is-champ { background: linear-gradient(135deg, rgba(255,216,107,.28), rgba(196,142,38,.3)); border-color: rgba(255,216,107,.75); color: #fff2be; }
+.est-fan-banner-copy b { color: #fff; font-size: 13px; text-shadow: 0 1px 6px rgba(0,0,0,.7); }
+.est-fan-banner-copy small { color: rgba(235,244,239,.84); font-size: 10px; }
+.est-fan-banner-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; font-size: 10px; color: #b7c9c0; background: rgba(7,13,15,.92); }
+.est-fan-banner-btn { flex: none; padding: 5px 10px; border-radius: 8px; border: 1px solid rgba(228,199,128,.45); background: rgba(228,199,128,.14); color: #ffeab0; font-size: 10px; font-weight: 800; cursor: pointer; }
+.est-fan-banner-lock { flex: none; color: #9db0a7; font-size: 10px; font-weight: 700; }
+
 /* ==========================================================================
    SEPARACIÓN ESCRITORIO / MÓVIL
    La barra inferior, el carrusel de partidos y las vistas propias del Estadio
