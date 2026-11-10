@@ -134,6 +134,10 @@ test('los modelos preparados con la fórmula anterior siguen validándose (compa
 });
 
 test('v2-mc-1 usa el prior Monte Carlo de v2-causal-4 y publica probabilidades y margen correctos', () => {
+  // La fórmula v2-mc-1 está congelada en estimated-quotes-v2.js: estos modelos
+  // solo se crean ya para reconstruir/validar compromisos antiguos, nunca para
+  // cotizar partidos nuevos (eso lo hace v2-mc-2).
+  const FROZEN = require('../lib/football/v2/estimated-quotes-v2');
   const { data } = input();
   const oneX2 = matrix => {
     let h = 0, x = 0, a = 0;
@@ -147,7 +151,7 @@ test('v2-mc-1 usa el prior Monte Carlo de v2-causal-4 y publica probabilidades y
   twin.away.id = 'clone_de_local';
   twin.away.lineup.teamId = 'clone_de_local';
   twin.away.lineup.players.forEach(p => { p.id = 'clone_' + p.id; });
-  const base = oneX2(Q.scoreMatrix(Q.createEstimatedModel(twin)));
+  const base = oneX2(Q.scoreMatrix(FROZEN.createModel(twin)));
   assert.ok(Math.abs(base.h - 0.364) < 0.01 && Math.abs(base.x - 0.290) < 0.01 && Math.abs(base.a - 0.345) < 0.01,
     `baseline ${JSON.stringify(base)}`);
   // Los cambios espejo de ataque/defensa inclinan el resultado al local.
@@ -158,24 +162,87 @@ test('v2-mc-1 usa el prior Monte Carlo de v2-causal-4 y publica probabilidades y
   mirror.home.ratings.def = Math.max(0.70, mirror.home.ratings.def - 0.18);
   mirror.away.ratings.att = Math.max(0.70, attBase - 0.18);
   mirror.away.ratings.def = Math.min(1.35, mirror.away.ratings.def + 0.18);
-  const shifted = oneX2(Q.scoreMatrix(Q.createEstimatedModel(mirror)));
+  const shifted = oneX2(Q.scoreMatrix(FROZEN.createModel(mirror)));
   assert.ok(shifted.h - base.h > 0.08, `pendiente att/def ${JSON.stringify({ base, shifted })}`);
   // Clima de goles más alto reduce la proporción de empates en el pronóstico.
   const wet = JSON.parse(JSON.stringify(twin));
   wet.context.leagueAvg = 1.6;
-  const wetProbs = oneX2(Q.scoreMatrix(Q.createEstimatedModel(wet)));
+  const wetProbs = oneX2(Q.scoreMatrix(FROZEN.createModel(wet)));
   assert.ok(wetProbs.x < base.x - 0.03, `clima ${JSON.stringify({ base, wetProbs })}`);
   // El modelo nuevo lleva etiqueta de fórmula; el prior no se toca.
-  const model = Q.createEstimatedModel(data);
+  const model = FROZEN.createModel(data);
   assert.equal(model.version, 'v2-estimated-2');
   assert.equal(model.formula, 'v2-mc-1');
   assert.equal(model.simulatorVersion, 'v2-causal-4');
   assert.equal(model.priorVersion, require('../lib/football/v2/score-prior-causal-4.json').version);
   assert.equal(model.monteCarloSamples, 2048);
   assert.equal(model.holdoutSamples, 2048);
+  // La validación por versión congelada sigue funcionando a través del despacho.
+  assert.ok(Q.validModel(model, data), 'despacho por versión: v2-mc-1 se valida con su fórmula');
   const market = Q.preMatchMarket(model, '1x2');
   assert.ok(Math.abs(market.overround - 1.06) < 0.002);
   assert.ok(Math.abs(market.margin - 0.06) < 0.002);
   assert.ok(Math.abs(market.hold - market.margin / (1 + market.margin)) < 1e-5);
+  assert.ok(Math.abs(market.selections.reduce((sum, selection) => sum + selection.prob, 0) - 1) < 1e-5);
+});
+
+test('v2-mc-2 cotiza la fuerza que el simulador causal-4 realmente produce', () => {
+  const { data } = input();
+  const oneX2 = matrix => {
+    let h = 0, x = 0, a = 0;
+    for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++)
+      if (i > j) h += matrix[i][j]; else if (i === j) x += matrix[i][j]; else a += matrix[i][j];
+    return { h, x, a };
+  };
+  const model = Q.createEstimatedModel(data);
+  assert.equal(model.version, 'v2-estimated-3');
+  assert.equal(model.formula, 'v2-mc-2');
+  assert.equal(model.simulatorVersion, 'v2-causal-4');
+  assert.equal(model.priorVersion, require('../lib/football/v2/score-prior-causal-4.json').version);
+  // Baseline de gemelos calibrado contra el simulador (medido: H .348 / X .259 / A .394).
+  const twin = JSON.parse(JSON.stringify(data));
+  twin.away = JSON.parse(JSON.stringify(twin.home));
+  twin.away.id = 'clone_de_local';
+  twin.away.lineup.teamId = 'clone_de_local';
+  twin.away.lineup.players.forEach(p => { p.id = 'clone_' + p.id; });
+  const base = oneX2(Q.scoreMatrix(Q.createEstimatedModel(twin)));
+  assert.ok(Math.abs(base.h - 0.337) < 0.015 && Math.abs(base.x - 0.270) < 0.015 && Math.abs(base.a - 0.393) < 0.015,
+    `baseline ${JSON.stringify(base)}`);
+  // Pendiente att/def medida del simulador (+8 pp con ±0.18 espejo).
+  const mirror = JSON.parse(JSON.stringify(twin));
+  const attBase = mirror.home.ratings.att;
+  mirror.home.ratings.att = Math.min(1.35, attBase + 0.18);
+  mirror.home.ratings.def = Math.max(0.70, mirror.home.ratings.def - 0.18);
+  mirror.away.ratings.att = Math.max(0.70, attBase - 0.18);
+  mirror.away.ratings.def = Math.min(1.35, mirror.away.ratings.def + 0.18);
+  const shifted = oneX2(Q.scoreMatrix(Q.createEstimatedModel(mirror)));
+  assert.ok(shifted.h - base.h > 0.07, `pendiente att/def ${JSON.stringify({ base, shifted })}`);
+  // Los atributos del once también pesan: la velocidad media (pac) es la señal
+  // más fuerte del motor y antes no cotizaba nada.
+  const fast = JSON.parse(JSON.stringify(twin));
+  const slow = JSON.parse(JSON.stringify(twin));
+  const shiftPac = (input, delta) => {
+    for (const p of input.home.lineup.players) {
+      if (p.initialStatus === 'active' && p.pos !== 'GK') {
+        p.attrs.pac = Math.max(1, Math.min(99, p.attrs.pac + delta));
+        p.id = p.id + (delta > 0 ? '_f' : '_s');
+      }
+    }
+  };
+  shiftPac(fast, 12); shiftPac(slow, -12);
+  fast.away = JSON.parse(JSON.stringify(slow.home));
+  fast.away.id = 'rival_lento';
+  fast.away.lineup.teamId = 'rival_lento';
+  const pacGap = oneX2(Q.scoreMatrix(Q.createEstimatedModel(fast)));
+  assert.ok(pacGap.h - base.h > 0.08, `pendiente pac ${JSON.stringify({ base, pacGap })}`);
+  // Clima de goles: el generador responde suave (sin hundir los empates).
+  const wet = JSON.parse(JSON.stringify(twin));
+  wet.context.leagueAvg = 1.6;
+  const wetProbs = oneX2(Q.scoreMatrix(Q.createEstimatedModel(wet)));
+  assert.ok(wetProbs.x < base.x && wetProbs.x > base.x - 0.05, `clima ${JSON.stringify({ base, wetProbs })}`);
+  // Mercados publicados con margen y piso correctos.
+  const market = Q.preMatchMarket(model, '1x2');
+  assert.ok(Math.abs(market.overround - 1.06) < 0.002);
+  assert.ok(Math.abs(market.margin - 0.06) < 0.002);
   assert.ok(Math.abs(market.selections.reduce((sum, selection) => sum + selection.prob, 0) - 1) < 1e-5);
 });
