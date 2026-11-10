@@ -180,8 +180,8 @@ test('v2-mc-1 usa el prior Monte Carlo de v2-causal-4 y publica probabilidades y
   // La validación por versión congelada sigue funcionando a través del despacho.
   assert.ok(Q.validModel(model, data), 'despacho por versión: v2-mc-1 se valida con su fórmula');
   const market = Q.preMatchMarket(model, '1x2');
-  assert.ok(Math.abs(market.overround - 1.06) < 0.002);
-  assert.ok(Math.abs(market.margin - 0.06) < 0.002);
+  assert.ok(Math.abs(market.overround - (1 + O.MARGINS['1x2'])) < 0.002);
+  assert.ok(Math.abs(market.margin - O.MARGINS['1x2']) < 0.002);
   assert.ok(Math.abs(market.hold - market.margin / (1 + market.margin)) < 1e-5);
   assert.ok(Math.abs(market.selections.reduce((sum, selection) => sum + selection.prob, 0) - 1) < 1e-5);
 });
@@ -242,7 +242,7 @@ test('v2-mc-2 cotiza la fuerza que el simulador causal-4 realmente produce', () 
   assert.ok(wetProbs.x < base.x && wetProbs.x > base.x - 0.05, `clima ${JSON.stringify({ base, wetProbs })}`);
   // Mercados publicados con margen y piso correctos.
   const market = Q.preMatchMarket(model, '1x2');
-  assert.ok(Math.abs(market.overround - 1.06) < 0.002);
-  assert.ok(Math.abs(market.margin - 0.06) < 0.002);
+  assert.ok(Math.abs(market.overround - (1 + O.MARGINS['1x2'])) < 0.002);
+  assert.ok(Math.abs(market.margin - O.MARGINS['1x2']) < 0.002);
   assert.ok(Math.abs(market.selections.reduce((sum, selection) => sum + selection.prob, 0) - 1) < 1e-5);
 });

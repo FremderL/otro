@@ -21,11 +21,11 @@ Este documento mide las tres con un instrumento que ya está en el repo (`npm ru
 
 El prior del motor v4 se generó con **2.048 partidos sintéticos completos** y se contrastó con **2.048 semillas independientes**: 16 espejos de plantillas más 16 cruces de equipos, con 64 réplicas de entrenamiento y 64 de control por cruce. El control difirió como máximo 1,90 puntos porcentuales en 1X2; los goles medios visitantes difirieron 0,047. Son chequeos de estabilidad del simulador, **no una calibración con resultados reales ni con precios de casas**. La proyección sigue ponderando ratings, Elo, atributos y promedio goleador disponibles en el producto.
 
-Para 1X2 el sistema publica el **6 % de overround**: si las probabilidades justas son `pᵢ`, los precios parten de `1 / pᵢ` y se acortan para que `Σ(1 / cuotaᵢ) ≈ 1,06`. La probabilidad justa se conserva separada del porcentaje implícito de la cuota; la interfaz/API devuelve ambos, junto al overround y el hold teórico. El hold proporcional es `(overround − 1) / overround`: con 1,06 equivale a `0,06 / 1,06 ≈ 5,66 %`, no a 6 %.
+Para 1X2 el sistema publica el **15 % de overround** (era 6 % hasta noviembre de 2026; ver [§8](#8-noviembre-de-2026-el-1x2-pasa-al-15--decisión-de-producto)): si las probabilidades justas son `pᵢ`, los precios parten de `1 / pᵢ` y se acortan para que `Σ(1 / cuotaᵢ) ≈ 1,15`. La probabilidad justa se conserva separada del porcentaje implícito de la cuota; la interfaz/API devuelve ambos, junto al overround y el hold teórico. El hold proporcional es `(overround − 1) / overround`: con 1,15 equivale a `0,15 / 1,15 ≈ 13,04 %`, no a 15 %.
 
 **¿Todos los partidos deberían tener Local 2.00 / Empate 4.00 / Visitante 2.00? No.** Esos precios implican 50 % + 25 % + 50 % = **125 %** (25 % de overround, hold proporcional de 20 %). Al quitar el margen representan un partido con probabilidades 40/20/40. Además, no reflejan la fuerza de cada equipo; un favorito claro no debe cotizar igual que un duelo parejo.
 
-Como referencia de metodología, Pinnacle explica la conversión `1/cuota`, la incorporación de margen y el uso de información de equipo y mercado para ajustar precios ([guía de cuotas](https://pinnacle.com/en/betting-articles/betting-strategy/betting-odds-explained/qen2dcqrvncnv4jf), [cómo operan los bookmakers](https://pinnacle.com/en/betting-articles/Betting-Strategy/how-bookmakers-make-money/MFT2YXK5C98V4HT5)). Pinnacle publica márgenes estrechos en mercados líquidos (su tabla histórica anuncia 1,5 % para 1X2 de Premier League), mientras que esta simulación usa 6 % como objetivo recreativo del producto ([tabla de márgenes de Pinnacle](https://pinnacle.com/en/betting-articles/Soccer/new-soccer-season/L5K2F8FLQU43428L)). No se copian cuotas en vivo ni se afirma que el simulador tenga sus datos: no tenemos feed de lesiones, árbitros, apuestas o movimiento de mercado. También Betfair Exchange es distinto: sus precios los emparejan participantes y cobra comisión, no es el mismo esquema de overround fijo ([ayuda de Betfair Exchange](https://content.betfair.com/xgHelp/?product=games&sWhichKey=cdr.general)).
+Como referencia de metodología, Pinnacle explica la conversión `1/cuota`, la incorporación de margen y el uso de información de equipo y mercado para ajustar precios ([guía de cuotas](https://pinnacle.com/en/betting-articles/betting-strategy/betting-odds-explained/qen2dcqrvncnv4jf), [cómo operan los bookmakers](https://pinnacle.com/en/betting-articles/Betting-Strategy/how-bookmakers-make-money/MFT2YXK5C98V4HT5)). Pinnacle publica márgenes estrechos en mercados líquidos (su tabla histórica anuncia 1,5 % para 1X2 de Premier League), mientras que esta simulación usa 15 % en el 1X2 por decisión de producto (el 6 % anterior sí caía en la banda recreativa) ([tabla de márgenes de Pinnacle](https://pinnacle.com/en/betting-articles/Soccer/new-soccer-season/L5K2F8FLQU43428L)). No se copian cuotas en vivo ni se afirma que el simulador tenga sus datos: no tenemos feed de lesiones, árbitros, apuestas o movimiento de mercado. También Betfair Exchange es distinto: sus precios los emparejan participantes y cobra comisión, no es el mismo esquema de overround fijo ([ayuda de Betfair Exchange](https://content.betfair.com/xgHelp/?product=games&sWhichKey=cdr.general)).
 
 ---
 
@@ -253,6 +253,8 @@ npm run football:odds-audit -- --margins          # solo márgenes
 El piso anti-arbitraje sigue siendo un invariante **por mercado**: 4 % general y 2 % en el hándicap asiático
 (`ASIAN_MIN_MARGIN`). En ambos casos el libro tiene margen positivo — nunca es arbitrable.
 
+> El 6 % del 1X2 de esta tabla es el de la fase A. Desde noviembre de 2026 el 1X2 cotiza al 15 % ([§8](#8-noviembre-de-2026-el-1x2-pasa-al-15--decisión-de-producto)); los demás mercados siguen como aquí.
+
 ### Fase B — ventaja de local normalizada (`lib/football/ratings.js`)
 
 `λ_local = leagueAvg · att · def · √homeAdv` y `λ_visita = leagueAvg · att · def / √homeAdv`.
@@ -301,3 +303,87 @@ fuente autoritativa de liquidación (§15.4); `cleanMatch` los preserva al recar
 
 **Pendiente de la palanca C (no incluido):** tarjetas y córners por línea (necesitan su propio modelo de
 λ por equipo y su archivo en el asentado) y precio en vivo de los mercados nuevos (hoy en vivo solo 1X2).
+
+---
+
+## 8. Noviembre de 2026: el 1X2 pasa al 15 % (decisión de producto)
+
+**Qué se pidió.** Las cuotas del resultado se seguían viendo demasiado altas (capturas con 2.65 / 3.35 / 2.40 y
+2.25 / 3.60 / 2.65). Se eligió que **todas las selecciones del 1X2 paguen menos**, con un margen del **15 %**, y
+**solo en ese mercado**.
+
+**Qué cambió.** Un número: `MARGINS['1x2']` en `lib/football/odds.js` pasa de `0.06` a `0.15`. El 1X2 en vivo sigue
+siendo «base + 1 %», así que queda en 16 %. No cambian las probabilidades, el motor del partido ni la fórmula de
+precios: es el mismo partido, cobrado más caro. Los boletos ya vendidos conservan la cuota con la que se compraron.
+
+**Medido** (`2026-11`, 240 partidos, pipeline real `v2-estimated-3`). Hay dos fotos porque el precio que ve el
+jugador no es el de apertura: el flujo simulado de apuestas (§11.6) carga al favorito y la regla
+`min(modelo, movido)` solo deja bajar precios, así que en pantalla el margen efectivo es unos 2,5 puntos mayor que
+el configurado. Eso ya pasaba con el 6 % (las capturas sumaban 109–110 %) y no cambió.
+
+*Precio de apertura* (lo que mide `npm run football:odds-audit`):
+
+| | Antes (6 %) | Ahora (15 %) |
+| --- | --- | --- |
+| Favorito, mediana | 2.20 | **2.05** |
+| Favorito, mitad central de los partidos | 1.97–2.45 | 1.81–2.15 |
+| Favorito, mínimo–máximo | 1.52–2.50 | 1.42–2.40 |
+| Partidos con favorito por debajo de 2.00 | 65 de 240 (27 %) | **110 de 240 (46 %)** |
+| No favorito, mediana | 3.05 | 2.75 |
+| Empate, mediana | 3.60 | 3.35 |
+| Margen medido | 6,0 % | 15,0 % |
+| Parte de lo apostado que retiene la casa (hold) | 5,7 % | 13,0 % |
+
+*Precio en pantalla* (servicio de apuestas con el flujo simulado, sin apuestas reales):
+
+| | Antes (6 %) | Ahora (15 %) |
+| --- | --- | --- |
+| Favorito, mediana | 2.15 | **1.95** |
+| Favorito, mitad central de los partidos | 1.85–2.30 | 1.72–2.10 |
+| Favorito, mínimo–máximo | 1.42–2.50 | 1.30–2.40 |
+| Partidos con favorito por debajo de 2.00 | 96 de 240 (40 %) | **145 de 240 (60 %)** |
+| No favorito, mediana | 3.05 | 2.75 |
+| Empate, mediana | 3.60 | 3.35 |
+| Margen publicado, media | 8,6 % | 17,7 % |
+| Parte de lo apostado que retiene la casa (hold) | 8,0 % | 15,1 % |
+
+**Lo que este cambio no hace.** No convierte a los favoritos en favoritos de 1.50: el motor sigue viendo la liga muy
+pareja (la probabilidad justa del favorito va de 37 % a 62 %, con mediana 42 %). Para eso hay que separar más a los
+equipos fuertes de los débiles en el generador, que es otro trabajo (ver `docs/estadio-cuotas-favoritos.md`).
+
+**Efectos que conviene tener presentes.**
+
+- El 15 % queda **por encima** de la banda de las casas reales (2–8 %) a propósito. La banda no se movió: el
+  auditor muestra el 1X2 como `decisión de producto` y deja de proponer bajarlo, pero solo mientras lo publicado
+  coincida con lo decidido (`PRODUCT_MARGIN_DECISIONS` en `lib/football/odds-audit.js`, ±0,5 puntos). Si alguien
+  cambia el margen sin actualizar esa tabla, vuelve a salir como desviación.
+- Los mercados vecinos **no** cambiaron (comprobado sobre las 19.920 selecciones del resto del catálogo: ninguna
+  movió su precio), y uno de ellos vende **la misma apuesta**: en los 240 partidos hay una línea ±0.5 de hándicap
+  asiático que equivale a «gana el local» (local −0.5) o a «gana la visita» (visita −0.5), y sigue al 2,5 %. Medido
+  en pantalla, paga una mediana de **+14,6 %** más que el 1X2 por el mismo resultado (de +4 % a +20 %; antes del
+  cambio ya pagaba +6,1 %): por ejemplo 1.81 en el 1X2 y 2.15 en el asiático. La doble oportunidad (6 %) y la
+  línea 0 del asiático («gana o se devuelve») tampoco se encarecieron. Quien conozca esos mercados esquiva el
+  margen nuevo; cerrarlo es subir `MARGINS.asian_handicap` (y, si se quiere, `double_chance`), que quedó fuera de
+  esta decisión.
+- El cambio solo baja precios —de las 720 selecciones de 1X2, 712 bajan, 8 se quedan igual por el redondeo de la
+  rejilla y ninguna sube—, así que no puede abrir un arbitraje que no existiera antes.
+- En vivo el favorito toca el precio mínimo (1.05) antes: cuando su probabilidad pasa de ~82 % (con el 7 %
+  anterior era ~89 %). De ahí en adelante el margen efectivo va bajando hacia el piso del 4 %, igual que antes;
+  el mercado no se cierra ni queda arbitrable.
+- El cash-out no usa el margen del mercado (paga `apuesta × cuota comprada × probabilidad actual × 0,90`), pero
+  como la cuota comprada es más baja, retirarse nada más apostar devuelve cerca del 78 % de lo apostado en vez del
+  85 %.
+- Los partidos ya comprometidos **también** cambian de precio al desplegar: el compromiso congela la matriz de
+  probabilidades, no el margen, que se aplica al publicar.
+
+**Cómo volver a ajustarlo.** Cambiar el número en `MARGINS['1x2']` y el mismo valor en `PRODUCT_MARGIN_DECISIONS`
+(la prueba `tests/football-odds-realism.test.js` exige que coincidan). Referencia medida sobre la misma temporada,
+con precios de apertura (en pantalla el favorito queda unas 5–10 centésimas por debajo):
+
+| Margen | Favorito, mediana | Favorito bajo 2.00 | Hold |
+| --- | --- | --- | --- |
+| 6 % | 2.20 | 27 % | 5,7 % |
+| 15 % (vigente) | 2.05 | 46 % | 13,0 % |
+| 20 % | 1.96 | 58 % | 16,7 % |
+| 25 % | 1.90 | 71 % | 20,0 % |
+| 30 % | 1.82 | 93 % | 23,1 % |

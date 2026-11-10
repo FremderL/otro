@@ -14,6 +14,7 @@ const { makeCommitment, verifyCommitment, commitmentId } = require('../lib/footb
 const { prepareMatchInputs } = require('../lib/football/v2/inputs');
 const Policy = require('../lib/football/v2/season-policy');
 const Q = require('../lib/football/v2/quotes');
+const O = require('../lib/football/odds');
 const P = require('../lib/progression');
 
 function setup() {
@@ -58,7 +59,7 @@ test('noviembre selecciona automáticamente V2, usa octubre y congela solo el pa
     assert.ok(Policy.verifyPolicy(h.league.simulationPolicy, '2026-11'));
     assert.equal(match.simulation.privateSeed, Policy.matchKey(h.league.simulationPolicy, match));
     const frozen = JSON.stringify(match.simulation.inputs), firstPrice = h.betting.getMarket(match, '1x2');
-    assert.ok(Math.abs(firstPrice.overround - 1.06) < 0.002);
+    assert.ok(Math.abs(firstPrice.overround - (1 + O.MARGINS['1x2'])) < 0.002);
     assert.ok(Math.abs(firstPrice.margin - (firstPrice.overround - 1)) < 1e-8);
     assert.ok(Math.abs(firstPrice.hold - firstPrice.margin / firstPrice.overround) < 1e-5);
     assert.ok(Math.abs(firstPrice.selections.reduce((sum, item) => sum + item.prob, 0) - 1) < 1e-5);

@@ -19,7 +19,7 @@ const { createBettingService } = require('../lib/football/betting');
 const { matchContextFor } = require('../lib/football/match-context');
 const {
   auditSeason, marketMargin, distributionFor, verdictFor, formatMetric,
-  REAL_WORLD_MARGINS, REAL_WORLD_DISTRIBUTION
+  REAL_WORLD_MARGINS, REAL_WORLD_DISTRIBUTION, PRODUCT_MARGIN_DECISIONS
 } = require('../lib/football/odds-audit');
 const O = require('../lib/football/odds');
 
@@ -103,7 +103,7 @@ test('auditSeason mide todos los mercados publicados y devuelve veredicto y band
       assert.ok(row.matches === 240);
       assert.ok(Number.isFinite(row.meanMargin));
       assert.ok(Array.isArray(row.band) && row.band.length === 2);
-      assert.ok(['en_banda', 'alto', 'bajo', 'sin_banda'].includes(row.verdict));
+      assert.ok(['en_banda', 'alto', 'bajo', 'sin_banda', 'decision_producto'].includes(row.verdict));
       assert.ok(row.priceMax > row.priceMin, 'hay rango de precios');
     }
     // El margen configurado del 1X2 se mide tal cual (±0,2 pp).
@@ -122,19 +122,91 @@ test('auditSeason mide todos los mercados publicados y devuelve veredicto y band
 test('con bandas inyectadas la auditoría señala la desviación y propone la corrección', () => {
   const h = harness();
   try {
+    // La banda inyectada queda por encima del margen configurado, sea el que
+    // sea, y sin decisiones de producto: se prueba el mecanismo de bandas.
+    const configured = O.MARGINS['1x2'];
+    const ideal = configured + 0.05;
     const report = auditSeason(h.store, SEASON, {
-      marginBands: { '1x2': { min: 0.10, max: 0.12, ideal: 0.11, label: '1X2' } },
-      distributionBands: { goalsPerMatch: { min: 3.4, max: 3.8, ideal: 3.6, label: 'Goles por partido', unit: 'goals' } }
+      marginBands: { '1x2': { min: configured + 0.04, max: configured + 0.06, ideal, label: '1X2' } },
+      distributionBands: { goalsPerMatch: { min: 3.4, max: 3.8, ideal: 3.6, label: 'Goles por partido', unit: 'goals' } },
+      productDecisions: {}
     });
     assert.equal(report.margins['1x2'].verdict, 'bajo');
     const marginFinding = report.findings.find(f => f.kind === 'margen_bajo' && f.market === '1x2');
     assert.ok(marginFinding, 'se informa del margen por debajo de la banda');
-    assert.match(marginFinding.fix, /11\.0 %/);
+    assert.ok(marginFinding.fix.includes(`~${(ideal * 100).toFixed(1)} %`), marginFinding.fix);
     const calibration = report.findings.find(f => f.kind === 'calibracion' && f.metric === 'goalsPerMatch');
     assert.ok(calibration, 'se informa de la calibración de goles');
     assert.match(calibration.fix, /frente a 3\.60/);
     assert.equal(verdictFor(0.5, { min: 0.2, max: 0.4 }), 'alto');
     assert.equal(verdictFor(NaN, { min: 0.2, max: 0.4 }), 'sin_datos');
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('una decisión de producto declarada se informa como tal y deja de proponerse su corrección', () => {
+  // Mecanismo, con banda y decisión inyectadas: no depende de los márgenes de hoy.
+  const h = harness();
+  try {
+    const configured = O.MARGINS['1x2'];
+    const marginBands = { '1x2': { min: configured + 0.04, max: configured + 0.06, ideal: configured + 0.05, label: '1X2' } };
+    const declared = auditSeason(h.store, SEASON, {
+      marginBands, productDecisions: { '1x2': { margin: configured, note: 'decidido en la prueba' } }
+    });
+    const row = declared.margins['1x2'];
+    assert.equal(row.verdict, 'decision_producto');
+    assert.equal(row.bandVerdict, 'bajo', 'se conserva lo que dice la banda');
+    assert.equal(row.decision, 'decidido en la prueba');
+    assert.deepEqual(row.band, [marginBands['1x2'].min, marginBands['1x2'].max], 'la banda de referencia no se mueve');
+    assert.equal(declared.findings.some(f => f.market === '1x2'), false, 'no se propone revertir lo decidido');
+
+    // Una decisión que ya no coincide con lo que se publica no tapa la desviación.
+    const stale = auditSeason(h.store, SEASON, {
+      marginBands, productDecisions: { '1x2': { margin: configured + 0.10, note: 'obsoleta' } }
+    });
+    assert.equal(stale.margins['1x2'].verdict, 'bajo');
+    assert.equal(stale.margins['1x2'].decision, undefined);
+    assert.ok(stale.findings.some(f => f.kind === 'margen_bajo' && f.market === '1x2'));
+
+    // Y dentro de la banda no hay nada que declarar: manda el veredicto normal.
+    const inBand = auditSeason(h.store, SEASON, {
+      marginBands: { '1x2': { min: Math.max(0, configured - 0.01), max: configured + 0.01, ideal: configured, label: '1X2' } },
+      productDecisions: { '1x2': { margin: configured, note: 'innecesaria' } }
+    });
+    assert.equal(inBand.margins['1x2'].verdict, 'en_banda');
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('las decisiones de producto declaradas están vigentes y la banda real sigue siendo la referencia', () => {
+  // Liga la tabla del auditor con los márgenes de odds.js: si alguien cambia un
+  // margen decidido sin actualizar PRODUCT_MARGIN_DECISIONS (o al revés), el
+  // mercado vuelve a salir como desviación y esta prueba lo dice.
+  const h = harness();
+  try {
+    const report = auditSeason(h.store, SEASON);
+    for (const [key, decision] of Object.entries(PRODUCT_MARGIN_DECISIONS)) {
+      const row = report.margins[key];
+      assert.ok(row, `la decisión de ${key} no corresponde a ningún mercado publicado`);
+      assert.equal(row.verdict, 'decision_producto',
+        `${key}: lo declarado (${decision.margin}) ya no coincide con lo publicado (${row.meanMargin}) o volvió a su banda; `
+        + 'actualiza o borra la entrada de PRODUCT_MARGIN_DECISIONS');
+      assert.ok(['alto', 'bajo'].includes(row.bandVerdict));
+      assert.equal(row.decision, decision.note);
+      assert.equal(report.findings.some(f => f.market === key), false, `no se propone revertir ${key}`);
+    }
+    // Declarar una decisión no relaja la referencia: sin la tabla, el mismo
+    // informe vuelve a medir cada mercado contra la banda de las casas reales.
+    const undeclared = auditSeason(h.store, SEASON, { productDecisions: {} });
+    for (const key of Object.keys(PRODUCT_MARGIN_DECISIONS)) {
+      assert.equal(undeclared.margins[key].verdict, report.margins[key].bandVerdict);
+      assert.ok(undeclared.findings.some(f => f.market === key), `${key} sería una desviación sin la decisión`);
+    }
+    for (const [key, row] of Object.entries(report.margins)) {
+      if (!(key in PRODUCT_MARGIN_DECISIONS)) assert.equal(row.verdict, undeclared.margins[key].verdict, `${key} no cambia`);
+    }
   } finally {
     h.cleanup();
   }

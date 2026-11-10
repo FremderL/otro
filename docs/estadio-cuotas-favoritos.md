@@ -97,6 +97,14 @@ que ahora se publica. Para favoritos de 1,50 hace falta que el **generador**
 separe más a los fuertes de los débiles (una futura versión `v2-causal-5`), no
 que la fórmula mienta.
 
+> **Noviembre de 2026.** Las cuotas del resultado se seguían viendo altas y se
+> optó por la otra palanca: el **margen** del 1X2 pasó del 6 % al 15 %. Baja las
+> tres cuotas de cada partido (~8 % de media; el favorito típico queda en ~1,95
+> en pantalla) sin tocar las probabilidades ni esta fórmula. Lo que dice esta
+> sección sigue valiendo: los favoritos no se separan más de los débiles; solo
+> paga menos todo el mercado. Medición y efectos en
+> [`estadio-cuotas-realistas.md` §8](estadio-cuotas-realistas.md#8-noviembre-de-2026-el-1x2-pasa-al-15--decisión-de-producto).
+
 ## Hallazgo aparte: el realismo del generador, medido por la auditoría
 
 `npm run football:odds-audit` sobre el modelo recalibrado:
