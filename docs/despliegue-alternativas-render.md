@@ -139,18 +139,51 @@ Contra: el cómputo se cobra por segundo y una instancia siempre encendida de
 1 GB de RAM ya se come los $5 de crédito. Para este juego (que corre bots y
 torneos) el plan gratis de $1/mes **no alcanza**: presupuesta $5–10.
 
-### Opción F — Koyeb (gratis, con 100 GB de egreso)
+### Opción F — Koyeb (gratis, 100 GB de egreso) — **sí aplica, con dos condiciones**
 
-Instancia gratis: 512 MB, 0.1 vCPU, **100 GB de salida al mes** — veinte veces
-el límite de Render, y sin cobro por egreso. Se duerme tras **1 hora** sin
-tráfico (no 15 min).
+Instancia gratis: 512 MB de RAM, **0.1 vCPU**, 2 GB de disco, **100 GB de salida
+al mes** (veinte veces el límite de Render y sin cobro por egreso). Se duerme
+tras **1 hora** sin tráfico, no 15 min.
 
-**Peros importantes para este proyecto:** en el plan gratis **no hay volúmenes**,
-así que todo debe vivir en Postgres (`DATABASE_URL` con Neon) — los perfiles y
-el fútbol ya lo soportan, pero la **Lotería y la Rueda de la Fortuna siguen
-escribiendo a un archivo JSON** (`lib/loteria/pg-store.js` está marcado como
-experimental y no se usa desde `server.js`). Con 0.1 vCPU, además, los bots y la
-simulación del Estadio van a arrastrarse.
+Tienes razón en que la parte del disco se reduce a la Lotería y la Fortuna: los
+perfiles, la comunidad, los torneos del lobby, el fútbol, los device-links y las
+sesiones **ya** escriben en Postgres con `DATABASE_URL`. Lo que no se arregla
+con eso, medido sobre este repo (Node 22, `FOOTBALL_ENABLED=on`):
+
+| Medición | Valor | Qué implica |
+| --- | --- | --- |
+| RAM en reposo | **148–200 MB** | Cabe en 512 MB con ~2× de margen… si no hay más |
+| **Pico con una sala y un bot** | **211 MB** | Añade 1–2 salas simultáneas y roza el techo |
+| CPU en reposo | 0.52 % de 1 núcleo | Los `setInterval` no cuestan nada: no es problema |
+| Partido completo del Estadio | 4.73 ms de CPU | Los ~10 partidos/mes no son problema |
+| **Arranque en tibio** (store ya escrito) | **1.8 s de CPU** | A 0.1 vCPU ≈ **18 s**; aceptable |
+| **Arranque en frío** (store vacío) | **18.5 s de CPU** | A 0.1 vCPU ≈ **185 s ≈ 3 minutos** |
+
+El número que decide es el último. En el plan gratis **no hay volúmenes**: cada
+despliegue y cada instancia nueva nace sin `football.json`, así que el arranque
+siempre es en frío. Un build de 3 minutos contra el health check hace que el
+despliegue falle antes de estar sano, y el primer jugador que entre tras
+cualquier reinicio espera su minuto largo con la sala despertando.
+
+**Las dos condiciones para que Koyeb funcione:**
+
+1. **Persistir el bus de fútbol.** No basta con la Lotería y la Fortuna: el
+   `football.json` es hoy la **fuente autoritativa primaria** (`lib/football/`
+   lo lee al arrancar; Postgres es solo su espejo). Sin volumen se regenera en
+   cada arranque; con volúmenes ya no es vía gratuita (Koyeb no los ofrece en el
+   plan free). Si lo mueves a PG de verdad, el arranque en frío baja a los ~9 s
+   y el plan gratis pasa a ser defendible.
+2. **Subir a la instancia `Micro` (1 GB, ~$5.36/mes).** Con 512 MB y picos de
+   211 MB, dos o tres salas a la vez te dejan sin aire. Si el público será de
+   un puñado de personas, 512 MB sí aguanta.
+
+**Veredicto honesto:** para *probar* Koyeb sirve hoy, porque el plan gratis no
+tiene permanencia; para producción de un juego con bots, torneos y el Estadio,
+la RAM y el arranque en frío lo vuelven frágil. Y en cuanto empiezas a pagar, un
+Hetzner a €4.50 con 20 TB de egreso sale mejor que un Koyeb Micro a $5.36 con
+100 GB. Por eso lo puse después de Hetzner: no porque el egreso sea malo, sino
+porque el cómputo gratis está dimensionado para una API, no para un casino en
+tiempo real.
 
 ### Opción G — Northflank Developer Sandbox (gratis y sin dormir)
 
@@ -186,6 +219,14 @@ dependas.
 | **No volver a pensar en el ancho de banda** | **C** (Hetzner CX22) | ~$5/mes |
 | **Seguir en PaaS, migrando en una tarde** | **E** (Railway) o **D** (Fly.io) | $5–8/mes |
 | **Gratis y sin dormir** | **G** (Northflank) | $0 |
+| **Probar Koyeb sin pagar** | **F**, asumiendo arranques de ~3 min y pocas salas a la vez | $0 |
+
+Si lo que te atrae de Koyeb es el **egreso** (100 GB gratis), la opción B
+—assets en Cloudflare R2— te da egreso ilimitado a $0 sobre *cualquier* host, y
+la opción A te lo da también para el HTML. El egreso es la parte fácil de
+resolver; el cómputo es lo que Koyeb no regala. Y si vas a pagar de todas
+formas, Hetzner cuesta menos que un Koyeb Micro y no tiene ninguna de estas
+limitaciones.
 
 Mi orden concreto: **A + B ahora** (una tarde, $0, y descomprime Render lo
 suficiente para terminar el mes), y **C en cuanto el tráfico se estabilice**. Si
