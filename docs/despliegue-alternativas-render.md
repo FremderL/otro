@@ -211,6 +211,57 @@ dependas.
 
 ---
 
+---
+
+## 2 bis. La opción de $0 de verdad: Koyeb + Estadio apagado
+
+Si el requisito es **no gastar nada**, hay una combinación que sí aguanta con
+los números medidos sobre este repo, y no depende del ancho de banda (que ya
+resuelve Cloudflare):
+
+**Koyeb plan Free + `FOOTBALL_ENABLED=off` + `DATABASE_URL` (Neon free) +
+Cloudflare delante.** Coste total: **$0/mes**, y sin tarjeta en Koyeb ni en Neon.
+
+El Estadio es lo que hace inviable el plan gratis de 512 MB / 0.1 vCPU. Medido
+en frío (store vacío, que es como arranca siempre un host sin volúmenes):
+
+| | `FOOTBALL_ENABLED=on` | `FOOTBALL_ENABLED=off` | Mejora |
+| --- | --- | --- | --- |
+| CPU de arranque en frío | 22.2 s | **0.3 s** | 74× menos |
+| Arranque a 0.1 vCPU | ~222 s (falla el health check) | **~3 s** | viable |
+| RAM en reposo | 195 MB | **84 MB** | −57 % |
+| RAM con 1 sala + 1 bot | 211 MB | **95 MB** | cabe 5× en 512 MB |
+| Archivos en disco | 6 (6.1 MB de `football.json`) | 2 (531 bytes) | nada que perder |
+
+Con 95 MB de pico te entran **cuatro o cinco salas simultáneas** en 512 MB, y el
+arranque de 3 segundos pasa el health check sin drama. Y el disco deja de
+importar: lo que queda son `loteria.json` (480 B) y `fortune.json` (51 B), dos
+archivos que se regeneran solos y que el diario de la Fortuna reconcilia por
+diseño al arrancar sin costar fichas.
+
+**Qué conservas:** Póker, Blackjack, ruleta, dados, monedas, tragamonedas,
+Lotería, Rueda de la Fortuna, el lobby con amistades, clubes, torneos relámpago,
+cosméticos, gachapón y álbum de cartas, Pasaporte y cuentas.
+
+**Qué pierdes:** el Estadio completo — MonteCristo News, la quiniela, el Balón de
+Oro, los clubes y los partidos. La pestaña no se rompe: `server.js` la apaga de
+forma limpia (`{ enabled: false }` en `/healthz`) y el cliente no la ofrece.
+
+**Qué condiciones tiene:**
+
+1. `DATABASE_URL` con Neon free: sin él, los perfiles viven en un JSON y cada
+   reinicio de Koyeb (que no tiene volúmenes) los borra.
+2. El plan gratis de Koyeb duerme a la hora: la primera visita tras ese rato
+   tarda unos segundos en despertar (con el Estadio apagado, segundos, no
+   minutos).
+3. Cloudflare delante sigue siendo la pieza que evita el problema de egreso, y
+   de paso te da el HTTPS y la caché de assets.
+
+**Si algún día quieres el Estadio de vuelta**, el mismo código es el que corre en
+un Hetzner de ~$5 con 20 TB: ahí sí hay RAM y CPU para los 22 s de generación
+del calendario. No es un cambio de código, es cambiar `FOOTBALL_ENABLED` y el
+host.
+
 ## 3. Recomendación
 
 | Si tu prioridad es… | Elige | Coste |
@@ -218,7 +269,8 @@ dependas.
 | **Gastar $0 y resolverlo esta semana** | **A** (Cloudflare delante de Render) y luego **B** (assets a R2) | $0 |
 | **No volver a pensar en el ancho de banda** | **C** (Hetzner CX22) | ~$5/mes |
 | **Seguir en PaaS, migrando en una tarde** | **E** (Railway) o **D** (Fly.io) | $5–8/mes |
-| **Gratis y sin dormir** | **G** (Northflank) | $0 |
+| **$0 y sin dormir, pero sin Estadio** | **Koyeb free + `FOOTBALL_ENABLED=off`** (sección 2 bis) | $0 |
+| **$0 con el Estadio completo** | **A + B** (Cloudflare sobre Render): el plan de Render ya está pagado | $0 extra |
 | **Probar Koyeb sin pagar** | **F**, asumiendo arranques de ~3 min y pocas salas a la vez | $0 |
 
 Si lo que te atrae de Koyeb es el **egreso** (100 GB gratis), la opción B
