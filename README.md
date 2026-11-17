@@ -275,6 +275,14 @@ de audio— lo agota pronto. **Alternativas evaluadas con precios de noviembre d
 20 TB incluidos, Fly.io, Railway, Koyeb, Northflank y Oracle). El repo ya trae
 `Dockerfile`, `.dockerignore` y `fly.toml` para las rutas basadas en contenedor.
 
+La solución más rápida y gratuita al ancho de banda es **Cloudflare delante de
+Render**: guía paso a paso en
+[`docs/cloudflare-delante-de-render.md`](docs/cloudflare-delante-de-render.md)
+(DNS proxeado, dos Cache Rules, apagar Rocket Loader por la CSP y verificación
+automática). Los assets ya se sirven con `Cache-Control: public, max-age=1 año,
+immutable` y `/healthz` con `no-store` para que el CDN funcione sin romper
+despliegues. Comprobación: `npm run cdn:check -- https://tu-dominio.com`.
+
 ## Arquitectura
 
 ```text

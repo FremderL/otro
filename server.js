@@ -231,7 +231,20 @@ installSeasonalThemeRoutes(app, {
 // Fase 9: presupuesto de rendimiento — gzip para HTML/CSS/JS y caché larga para las
 // imágenes del lobby (tienen nombre estable; si se reemplazan, cambiar el nombre del archivo).
 app.use(compression());
-app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: '7d', immutable: false }));
+// Cache-Control de los assets: los nombres son estables (si se reemplaza una
+// imagen, cambia el nombre del archivo), así que se pueden cachear un año con
+// `immutable`. Esto es lo que permite que Cloudflare —y el propio navegador—
+// sirvan las cartas y los audios sin volver a Render. `public` es obligatorio
+// para que un CDN compartido guarde la respuesta: sin él, un proxy con
+// cookies de sesión no debe cachear nada.
+const ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), {
+  maxAge: '1y',
+  immutable: true,
+  setHeaders(res) {
+    res.setHeader('Cache-Control', ASSET_CACHE_CONTROL);
+  }
+}));
 // El laboratorio 2D del Estadio ya no es público: solo se sirve tras la guardia
 // de administración en /admin/estadio/laboratorio/* (lib/football/http.js). Aquí
 // se bloquean la ruta antigua y sus archivos estáticos para que un usuario sin
@@ -252,9 +265,15 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
   }
 }));
-app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size, botTasks: botController?.tasks.size || 0 }));
+app.get('/health', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, rooms: rooms.size, botTasks: botController?.tasks.size || 0 });
+});
 // Fase 7: health check para deploys sin caída en Render (configurado como healthCheckPath en render.yaml).
 app.get('/healthz', (_req, res) => {
+  // Nunca cachear: el health check decide reinicios y despliegues, y varios
+  // paneles (Cloudflare entre ellos) guardan respuestas sin `Cache-Control`.
+  res.setHeader('Cache-Control', 'no-store');
   res.json({
     status: 'ok',
     uptimeSeconds: Math.floor(process.uptime()),
