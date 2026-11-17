@@ -283,6 +283,12 @@ automática). Los assets ya se sirven con `Cache-Control: public, max-age=1 año
 immutable` y `/healthz` con `no-store` para que el CDN funcione sin romper
 despliegues. Comprobación: `npm run cdn:check -- https://tu-dominio.com`.
 
+El detalle de qué se optimizó, con mediciones antes/después, está en
+[`docs/optimizacion-consumo.md`](docs/optimizacion-consumo.md): audio WAV→MP3
+(−91 %), cartas JPG→WebP (−70 %), `<picture>` en el lobby (−78 %), polling del
+Estadio pausado con la pestaña oculta (−87 % de peticiones) y respeto a
+`Save-Data`. Regenerar assets: `npm run assets:audio` y `npm run assets:img`.
+
 ## Arquitectura
 
 ```text

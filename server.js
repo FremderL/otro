@@ -107,6 +107,25 @@ const footballConfig = loadFootballConfig();
 const app = express();
 app.disable('x-powered-by');
 app.use(securityHeaders);
+// Ahorro de datos anunciado por el navegador (Chrome en móvil con "Ahorro de
+// datos", o cualquier cliente que mande Save-Data: on). Estas reglas no cambian
+// nada para quien no lo activa y ahorran visitas completas a quien sí.
+app.use((req, res, next) => {
+  if (!/\bon\b/i.test(req.get('save-data') || '')) return next();
+  // Las creatividades de La Previa son imágenes subidas por la gente: pesan
+  // mucho y viven en disco. Con ahorro de datos se responde 204 en vez de la
+  // imagen, y el cliente ya tiene su fondo de respaldo por CSS.
+  if (/^\/api\/estadio\/promotions\/[^/]+\/media\//.test(req.path)) {
+    return res.status(204).end();
+  }
+  // El audio de ambiente del Estadio es opcional (música de fondo, ~890 KB):
+  // se sirve vacío y el cliente simplemente no reproduce nada.
+  if (/^\/assets\/(match-ambience\.mp3|ballon-dor-ceremony-theme\.mp3)$/.test(req.path)) {
+    return res.status(204).end();
+  }
+  next();
+});
+
 if (adminConfig.accountSessionsEnabled) app.set('trust proxy', adminConfig.trustProxyHops);
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: true, credentials: true } });

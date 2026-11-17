@@ -570,7 +570,7 @@
 
   // --- Campaña directa (administración) ---
   const adminStudioState = {
-    presetUrl: '/assets/casino-hero.jpg',
+    presetUrl: '/assets/casino-hero.webp',
     customDataUrl: null
   };
 
@@ -608,7 +608,7 @@
     btn.textContent = ctaText;
     btn.style.borderColor = themeColor;
 
-    img.src = adminStudioState.customDataUrl || adminStudioState.presetUrl || '/assets/casino-hero.jpg';
+    img.src = adminStudioState.customDataUrl || adminStudioState.presetUrl || '/assets/casino-hero.webp';
     updateAdminStudioPreviewSize();
   }
 

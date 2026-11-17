@@ -14,6 +14,10 @@
   var PRESHOW_WINDOW_MS = 30 * 60 * 1000;
   var PROMOTION_ROTATION_MS = 15 * 1000;
   var SHOWCASE_ROTATION_MS = PROMOTION_ROTATION_MS;
+  // Con la pestaña oculta nadie ve las creatividades, así que no tiene sentido
+  // pedirlas cada 15 s. Se estira a 2 minutos: si alguien vuelve, el
+  // visibilitychange dispara una carga inmediata.
+  var PROMOTION_HIDDEN_MS = 120 * 1000;
   // Inauguración del Balón de Oro. Antes duraba 45 s y cada candidato aparecía
   // 2 s: se sentía apurada. Ahora se reparte en actos y son ~1:48, con casi 5 s
   // por jugador. La narración (≈49,5 s) cubre el primer bloque; el tema instrumental
@@ -40,10 +44,10 @@
     } catch (_) { return null; }
   }
   var HOUSE_PROMOTIONS = [
-    { text: 'Póker, blackjack y más juegos: encuentra tu próxima mesa en MonteCristo.', href: '/', action: 'Explorar juegos', image: '/assets/poker-lounge.jpg' },
-    { text: '¿Faltan rivales? Completa tu mesa de póker o blackjack con bots del servidor.', href: '/', action: 'Ver mesas', image: '/assets/blackjack-lounge.jpg' },
-    { text: 'Reúne a tus amigos: crea una sala privada y comparte el código para jugar.', href: '/', action: 'Crear una sala', image: '/assets/coin-lounge.jpg' },
-    { text: 'Sigue la liga de Estadio MonteCristo, con relato en vivo y fichas virtuales.', href: '/estadio', action: 'Entrar al Estadio', image: '/assets/estadio-tunnel.jpg' }
+    { text: 'Póker, blackjack y más juegos: encuentra tu próxima mesa en MonteCristo.', href: '/', action: 'Explorar juegos', image: '/assets/poker-lounge.webp' },
+    { text: '¿Faltan rivales? Completa tu mesa de póker o blackjack con bots del servidor.', href: '/', action: 'Ver mesas', image: '/assets/blackjack-lounge.webp' },
+    { text: 'Reúne a tus amigos: crea una sala privada y comparte el código para jugar.', href: '/', action: 'Crear una sala', image: '/assets/coin-lounge.webp' },
+    { text: 'Sigue la liga de Estadio MonteCristo, con relato en vivo y fichas virtuales.', href: '/estadio', action: 'Entrar al Estadio', image: '/assets/estadio-tunnel.webp' }
   ];
   var W = 1050, H = 680, PAD = 18; // canvas 105×68 m a 10 px/m
   var FIELD_W = W - PAD * 2, FIELD_H = H - PAD * 2;
@@ -645,6 +649,9 @@
   // ===== Balón de Oro: lectura viva, fallback HTTP, predicción y recibo =====
   var BALLON_DOR_MARKET = 'balon_de_oro';
   var BALLON_DOR_POLL_MS = 15000;
+  // El mercado del Balón de Oro se refresca cada 15 s solo con la pestaña a la
+  // vista; oculta, cada 2 minutos (y al volver se refresca al instante).
+  var BALLON_DOR_HIDDEN_MS = 120 * 1000;
 
   function setBallonDorFeed(state, text) {
     if (!el['est-bdo-feed']) return;
@@ -659,10 +666,18 @@
     else delete el['est-bdo-message'].dataset.state;
   }
 
+  function ballonDorInterval() {
+    return document.hidden ? BALLON_DOR_HIDDEN_MS : BALLON_DOR_POLL_MS;
+  }
+  function restartBallonDorPolling() {
+    if (S.ballonDorPollingId == null) return;
+    window.clearInterval(S.ballonDorPollingId);
+    S.ballonDorPollingId = window.setInterval(loadBallonDorMarket, ballonDorInterval());
+  }
   function startBallonDorPolling() {
     setBallonDorFeed('http', 'Respaldo HTTP · actualización cada 15 s');
     if (S.ballonDorPollingId != null) return;
-    S.ballonDorPollingId = window.setInterval(loadBallonDorMarket, BALLON_DOR_POLL_MS);
+    S.ballonDorPollingId = window.setInterval(loadBallonDorMarket, ballonDorInterval());
   }
 
   function stopBallonDorPolling() {
@@ -1053,7 +1068,7 @@
   function ballonDorNameAudioUrl(candidate) {
     var playerId = String(candidate && candidate.playerId || '');
     if (!/^[a-zA-Z0-9_-]{1,40}$/.test(playerId)) return null;
-    return BALLON_DOR_CEREMONY_NAME_BASE + encodeURIComponent(playerId) + '.wav';
+    return BALLON_DOR_CEREMONY_NAME_BASE + encodeURIComponent(playerId) + '.mp3';
   }
 
   function formatBallonDorScheduleDate(timestamp, timeZone) {
@@ -1709,7 +1724,7 @@
       return;
     }
     var source = step.type === 'cue'
-      ? BALLON_DOR_CEREMONY_CUE_BASE + encodeURIComponent(step.key) + '.wav'
+      ? BALLON_DOR_CEREMONY_CUE_BASE + encodeURIComponent(step.key) + '.mp3'
       : ballonDorNameAudioUrl(S.ballonDorCeremonyRows[step.rank - 1].candidate);
     if (!source || !audio) {
       ceremonyAudioFailed(session, 'ceremony_narration', 'missing_clip');
@@ -3174,13 +3189,13 @@
       textSize: 'medium',
       href: '/estadio',
       action: 'Ver ficha y comparativa',
-      image: '/assets/estadio-tunnel.jpg'
+      image: '/assets/estadio-tunnel.webp'
     };
   }
 
   // Las creatividades comparten una sola cartelera con las fichas cara a cara.
   // El anuncio patrocinado se agrega al carrusel sin reemplazar las promociones propias.
-  var PROMO_FALLBACK_IMAGE = '/assets/casino-hero.jpg';
+  var PROMO_FALLBACK_IMAGE = '/assets/casino-hero.webp';
   function rerenderShowcase(preferredKey) {
     if (!S.match) return;
     renderShowcase(preshowTeamColor(S.match.homeId), preshowTeamColor(S.match.awayId), preferredKey);
@@ -3238,6 +3253,18 @@
     S.promoRequestSeq++;
     defaultPromotion();
   }
+  function promoInterval() {
+    return document.hidden ? PROMOTION_HIDDEN_MS : PROMOTION_ROTATION_MS;
+  }
+  // Cambiar de solapa no debe dejar el intervalo viejo corriendo: se reinicia
+  // con la cadencia que toca y, al volver a la vista, se refresca de inmediato.
+  function restartPromotionRotation() {
+    if (S.promoPollId) clearInterval(S.promoPollId);
+    S.promoPollId = null;
+    if (!S.promoMatchId) return;
+    loadPromotion(S.promoMatchId);
+    S.promoPollId = setInterval(function () { loadPromotion(S.promoMatchId); }, promoInterval());
+  }
   function loadPromotion(matchId) {
     if (!matchId) return;
     var requestSeq = ++S.promoRequestSeq;
@@ -3257,7 +3284,7 @@
     S.promoMatchId = matchId;
     loadPromotion(matchId);
     if (S.promoProfile) loadOwnPromotion(matchId);
-    S.promoPollId = setInterval(function () { loadPromotion(matchId); }, PROMOTION_ROTATION_MS);
+    S.promoPollId = setInterval(function () { loadPromotion(matchId); }, promoInterval());
   }
   function renderPreshow(nowMs) {
     var panel = el['est-preshow'];
@@ -7309,7 +7336,7 @@
 
   var studioState = {
     mode: 'full',
-    presetUrl: '/assets/casino-hero.jpg',
+    presetUrl: '/assets/casino-hero.webp',
     customDataUrl: null,
     fileName: null
   };
@@ -7348,7 +7375,7 @@
     btn.textContent = ctaText;
     btn.style.borderColor = themeColor;
 
-    img.src = studioState.customDataUrl || studioState.presetUrl || '/assets/casino-hero.jpg';
+    img.src = studioState.customDataUrl || studioState.presetUrl || '/assets/casino-hero.webp';
     updateStudioPreviewSize();
   }
 
@@ -7598,7 +7625,14 @@
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     });
-    document.addEventListener('visibilitychange', function () { if (document.hidden && activeNews) pauseNews(); });
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden && activeNews) pauseNews();
+      // Con la pestaña de fondo no se pinta nada: bajar la cadencia de las dos
+      // consultas periódicas ahorra ~6 de cada 7 peticiones del Estadio cuando
+      // alguien lo deja abierto en otra solapa.
+      restartBallonDorPolling();
+      restartPromotionRotation();
+    });
     if ($('est-hub')) {
       $('est-hub-open').addEventListener('click', function (event) { openHub(event.currentTarget); });
       $('est-hub-close').addEventListener('click', closeHub);

@@ -206,6 +206,11 @@
   box-shadow: 0 6px 22px rgba(0,0,0,.35);
 }
 .est-preshow-promo[hidden] { display: none !important; }
+/* <picture> llega para servir WebP con respaldo JPG; no debe alterar el layout
+   (los contenedores son position:relative y el <img> interno ya es absoluto). */
+.est-preshow-promo > picture,
+.est-studio-preview-card > picture,
+.est-promo-slot > picture { display: contents; }
 .est-promo-image {
   position: absolute;
   inset: 0;

@@ -13,7 +13,7 @@ test('una carta del álbum se puede equipar como dorso si el jugador la tiene', 
   const result = equipCosmetic(p, { slot: 'cards', itemId: 'album:card-a-spades' });
   assert.equal(result.ok, true);
   assert.equal(p.collection.equipped.cards, 'album:card-a-spades');
-  assert.equal(result.item.art, '/assets/cards/card-a-spades.jpg');
+  assert.match(result.item.art, /^\/assets\/cards\/card-a-spades\.(webp|jpg)$/);
 });
 
 test('no se puede equipar una carta que el jugador no tiene', () => {
@@ -33,7 +33,7 @@ test('la identidad pública publica el dorso con su ilustración solo si sigue s
   const p = profile({ 'card-q-hearts': 1 }, { unlocked: [], equipped: { ...blankCollection().equipped, cards: 'album:card-q-hearts' } });
   const back = publicCollectionIdentity(p).equipped.cards;
   assert.equal(back.style, 'album');
-  assert.equal(back.art, '/assets/cards/card-q-hearts.jpg');
+  assert.match(back.art, /^\/assets\/cards\/card-q-hearts\.(webp|jpg)$/);
   const lost = profile({}, { unlocked: [], equipped: { ...blankCollection().equipped, cards: 'album:card-q-hearts' } });
   assert.equal(publicCollectionIdentity(lost).equipped.cards, null);
 });

@@ -28,7 +28,9 @@
     "football:audit-bdo": "node scripts/audit-ballon-dor.js",
     "football:calendar": "node scripts/estadio-calendario.js",
     "football:demo-match": "node scripts/estadio-partido-demo.js",
-    "football:odds-audit": "node scripts/estadio-cuotas.js"
+    "football:odds-audit": "node scripts/estadio-cuotas.js",
+    "assets:audio": "node scripts/comprimir-audio.js",
+    "assets:img": "node scripts/optimizar-imagenes.js"
   },
   "engines": {
     "node": ">=18"

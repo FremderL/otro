@@ -619,23 +619,24 @@ test('avatares persistentes, cues y nombres grabados del Balón de Oro usan asse
   assert.ok(fs.existsSync(path.join(publicDir, opening.getAttribute('src').replace(/^\//, ''))));
   const music = document.getElementById('est-bdo-ceremony-music-audio');
   assert.equal(music.getAttribute('preload'), 'none');
-  assert.equal(music.getAttribute('src'), '/assets/ballon-dor-ceremony-theme.wav');
+  assert.equal(music.getAttribute('src'), '/assets/ballon-dor-ceremony-theme.mp3');
   assert.equal(music.hasAttribute('loop'), true, 'el fondo discreto acompaña clips de duración variable');
-  const scoreBytes = fs.statSync(path.join(publicDir, 'assets', 'ballon-dor-ceremony-theme.wav')).size;
-  assert.ok(scoreBytes > 0 && scoreBytes <= 2_100_000, 'el tema local sigue siendo una pista ligera');
+  const scoreBytes = fs.statSync(path.join(publicDir, 'assets', 'ballon-dor-ceremony-theme.mp3')).size;
+  // El tema pasó de WAV (1.9 MB) a MP3 48 kbps (~264 KB): mismo audio, 86 % menos.
+  assert.ok(scoreBytes > 0 && scoreBytes <= 400_000, 'el tema local sigue siendo una pista ligera');
   const narration = document.getElementById('est-bdo-ceremony-narration-audio');
   assert.equal(narration.getAttribute('preload'), 'none');
   assert.equal(narration.hasAttribute('src'), false, 'cada cue y cada nombre se seleccionan por ID estable');
 
   const cueIds = ['verification', 'third-place', 'second-place', 'finalists', 'winner-intro', 'winner-congratulations'];
   for (const cue of cueIds) {
-    const cuePath = path.join(publicDir, 'assets', 'ballon-dor-ceremony', 'cues', cue + '.wav');
+    const cuePath = path.join(publicDir, 'assets', 'ballon-dor-ceremony', 'cues', cue + '.mp3');
     assert.ok(fs.existsSync(cuePath), `${cue} tiene locución es-MX propia`);
   }
   const playerIds = ['frr_09', 'sol_17', 'vrd_09', 'klv_17', 'hlc_09', 'irn_09', 'nvl_09', 'est_17', 'prg_09', 'amb_17', 'crv_09', 'alm_17', 'tlb_17', 'vng_17', 'vtr_17', 'vlm_17'];
   assert.equal(playerIds.length, 16, 'se conserva el candidato ST existente de cada club');
   for (const playerId of playerIds) {
-    assert.ok(fs.existsSync(path.join(publicDir, 'assets', 'ballon-dor-ceremony', 'names', playerId + '.wav')),
+    assert.ok(fs.existsSync(path.join(publicDir, 'assets', 'ballon-dor-ceremony', 'names', playerId + '.mp3')),
       `${playerId} tiene clip de nombre`);
   }
   const { CLUBS } = require('../lib/football/teams');
@@ -726,9 +727,9 @@ test('el editor administrativo enseña el fondo elegido y lo guarda en la campa�
   window.eval(ADMIN_CLIENT);
   await new Promise(resolve => setTimeout(resolve, 25));
 
-  const selectedPreset = window.document.querySelector('.admin-preset-btn[data-preset="/assets/estadio-tunnel.jpg"]');
+  const selectedPreset = window.document.querySelector('.admin-preset-btn[data-preset="/assets/estadio-tunnel.webp"]');
   selectedPreset.click();
-  assert.equal(window.document.getElementById('admin-studio-preview-img').getAttribute('src'), '/assets/estadio-tunnel.jpg');
+  assert.equal(window.document.getElementById('admin-studio-preview-img').getAttribute('src'), '/assets/estadio-tunnel.webp');
   window.document.getElementById('promo-create-profile').value = 'montecristo_oficial';
   window.document.getElementById('promo-create-text').value = 'Una campaña de prueba';
   window.document.getElementById('promo-create-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
@@ -2042,7 +2043,7 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
   assert.equal(third.querySelector('.est-bdo-ceremony-avatar').hidden, false,
     'avatar y nombre aparecen al comenzar el clip de nombre correspondiente');
   assert.match(third.querySelector('.est-bdo-ceremony-avatar').getAttribute('src'), /vrd_09\.svg$/);
-  assert.match(h.ceremonyAudioSrcHistory.narration[2], /names\/vrd_09\.wav$/);
+  assert.match(h.ceremonyAudioSrcHistory.narration[2], /names\/vrd_09\.mp3$/);
   assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="2"]').textContent, /Por revelar/);
   assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="1"]').textContent, /Por revelar/);
   assert.doesNotMatch(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /Segundo lugar: Delantero 2|Balón de Oro MonteCristo: Delantero 1/);
@@ -2056,7 +2057,7 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
   assert.match(second.textContent, /Delantero 2/);
   assert.equal(second.querySelector('.est-bdo-ceremony-avatar').hidden, false);
   assert.match(second.querySelector('.est-bdo-ceremony-avatar').getAttribute('src'), /sol_17\.svg$/);
-  assert.match(h.ceremonyAudioSrcHistory.narration[4], /names\/sol_17\.wav$/);
+  assert.match(h.ceremonyAudioSrcHistory.narration[4], /names\/sol_17\.mp3$/);
   assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="1"]').textContent, /Por revelar/);
   assert.doesNotMatch(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /Balón de Oro MonteCristo: Delantero 1/);
 
@@ -2074,7 +2075,7 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
   assert.match(winner.textContent, /Delantero 1/);
   assert.equal(winner.querySelector('.est-bdo-ceremony-avatar').hidden, false);
   assert.match(winner.querySelector('.est-bdo-ceremony-avatar').getAttribute('src'), /frr_09\.svg$/);
-  assert.match(h.ceremonyAudioSrcHistory.narration[7], /names\/frr_09\.wav$/);
+  assert.match(h.ceremonyAudioSrcHistory.narration[7], /names\/frr_09\.mp3$/);
   assert.match(document.getElementById('est-bdo-ceremony-breakdown').textContent, /Desglose de puntos/);
   assert.match(document.getElementById('est-bdo-ceremony-payout').textContent, /250 fichas virtuales/);
   assert.match(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /Delantero 1/);
@@ -2100,7 +2101,7 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
   assert.equal(overlay.hidden, false, 'el replay vuelve a iniciar desde la misma instantánea oficial');
   assert.match(document.getElementById('est-bdo-ceremony-title').textContent, /Dieciséis aspirantes/);
   assert.equal(h.ceremonyAudioCounts.music, 2);
-  assert.equal(h.ceremonyAudioSrcHistory.narration.at(-1), '/assets/ballon-dor-ceremony/cues/verification.wav');
+  assert.equal(h.ceremonyAudioSrcHistory.narration.at(-1), '/assets/ballon-dor-ceremony/cues/verification.mp3');
   assert.equal(h.ballonDorSocketAttempts.length, 0);
   assert.equal(h.ballonDorHttpAttempts.length, 0);
   assert.equal(h.requests.some(request => request.url.includes('/ballon-dor/bet')), false);
@@ -2897,8 +2898,8 @@ test('Mi afición renderiza los estandartes de club y de campeón vigente y perm
   reigningChampion:{clubId:'united_vanguard',clubName:'Farselona FC',abbr:'FAR',seasonMonth:'2026-09'},
   rewards:[{id:'club-pin',title:'Escudo del club',target:0,progress:4,unlocked:true,equipped:false}],
   banners:[
-   {id:'club-banner',kind:'club',art:'/assets/banners/club-banner-bg.jpg',crest:'/assets/escudos/FAR.svg',clubName:'Farselona FC',abbr:'FAR',primary:'#d32f2f',secondary:'#111111',title:'Estandarte del club',subtitle:'Seda oficial',unlocked:true,equipped:false},
-   {id:'champion-banner',kind:'reigning_champion',art:'/assets/banners/champion-banner-bg.jpg',crest:'/assets/escudos/FAR.svg',clubName:'Farselona FC',abbr:'FAR',primary:'#d32f2f',secondary:'#111111',title:'Estandarte de Campeón Vigente',subtitle:'Vigente hasta nuevo campeón',seasonMonth:'2026-09',unlocked:true,equipped:false}
+   {id:'club-banner',kind:'club',art:'/assets/banners/club-banner-bg.webp',crest:'/assets/escudos/FAR.svg',clubName:'Farselona FC',abbr:'FAR',primary:'#d32f2f',secondary:'#111111',title:'Estandarte del club',subtitle:'Seda oficial',unlocked:true,equipped:false},
+   {id:'champion-banner',kind:'reigning_champion',art:'/assets/banners/champion-banner-bg.webp',crest:'/assets/escudos/FAR.svg',clubName:'Farselona FC',abbr:'FAR',primary:'#d32f2f',secondary:'#111111',title:'Estandarte de Campeón Vigente',subtitle:'Vigente hasta nuevo campeón',seasonMonth:'2026-09',unlocked:true,equipped:false}
   ]
  };
  let sent;

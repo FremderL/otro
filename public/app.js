@@ -1006,7 +1006,7 @@
     }
     return parts.join('');
   }
-  const VALID_BANNER_ART = new Set(['/assets/banners/club-banner-bg.jpg', '/assets/banners/champion-banner-bg.jpg']);
+  const VALID_BANNER_ART = new Set(['/assets/banners/club-banner-bg.webp', '/assets/banners/champion-banner-bg.webp']);
   function sanitizeHexColor(raw, fallback) {
     return typeof raw === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(raw.trim()) ? raw.trim() : fallback;
   }
@@ -1016,7 +1016,7 @@
     const isChamp = banner.banner === 'champion-banner' || Boolean(banner.isReigningChampion);
     const art = VALID_BANNER_ART.has(banner.art)
       ? banner.art
-      : (isChamp ? '/assets/banners/champion-banner-bg.jpg' : '/assets/banners/club-banner-bg.jpg');
+      : (isChamp ? '/assets/banners/champion-banner-bg.webp' : '/assets/banners/club-banner-bg.webp');
     return {
       abbr: banner.abbr,
       clubName: String(banner.clubName || banner.abbr).slice(0, 48),
@@ -3640,7 +3640,7 @@
       const isChamp = item.kind === 'reigning_champion';
       const primary = sanitizeHexColor(item.primary, '#1d5240');
       const secondary = sanitizeHexColor(item.secondary, '#0c181c');
-      const art = VALID_BANNER_ART.has(item.art) ? item.art : '/assets/banners/club-banner-bg.jpg';
+      const art = VALID_BANNER_ART.has(item.art) ? item.art : '/assets/banners/club-banner-bg.webp';
       const crest = VALID_FAN_CLUB_ABBRS.test(item.abbr || '') ? `/assets/escudos/${item.abbr}.svg` : '';
       const ribbon = isChamp
         ? `<span class="fan-banner-card-tag is-champ">♛ CAMPEÓN VIGENTE${item.seasonMonth ? ` · ${escapeHtml(item.seasonMonth)}` : ''} · TEMPORAL</span>`
