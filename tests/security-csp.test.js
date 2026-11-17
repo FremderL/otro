@@ -93,3 +93,14 @@ test('un archivo que no es PNG ni JPEG se rechaza aunque declare imagen', () => 
   assert.equal(result.ok, false);
   assert.equal(result.code, 'invalid_image');
 });
+
+test('frame-ancestors solo acepta orígenes literales y por defecto es estricto', () => {
+  const { parseFrameAncestors } = require('../lib/security-hardening');
+  assert.equal(parseFrameAncestors(undefined), "'self'");
+  assert.equal(parseFrameAncestors(''), "'self'");
+  assert.equal(parseFrameAncestors('https://*.e2b.app'), 'https://*.e2b.app');
+  assert.equal(parseFrameAncestors('https://a.e2b.app, https://b.e2b.app'), 'https://a.e2b.app https://b.e2b.app');
+  assert.equal(parseFrameAncestors('*'), "'self'", 'el comodín suelto no se acepta');
+  assert.equal(parseFrameAncestors('http://evil.com/; script-src *'), "'self'", 'no se inyectan directivas');
+  assert.equal(parseFrameAncestors("'none'"), "'none'");
+});

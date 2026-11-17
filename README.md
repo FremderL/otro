@@ -222,6 +222,7 @@ Variables útiles para pruebas y despliegue:
 - `CASINO_TIME_ZONE`: zona IANA del calendario mensual del ranking y de la rotación visual estacional. Por defecto `America/Mexico_City`; los cambios de temporada ocurren a medianoche local y no a las 00:00 UTC del servidor.
 - `SHUTDOWN_GRACE_MS`: milisegundos que espera el apagado ordenado a que termine el guardado final antes de forzar la salida (Fase 11.3). Por defecto 10000 con Postgres y 2500 con el archivo local; súbelo si tu plan de hosting da poco tiempo de gracia y Neon suele tardar más en responder.
 - `LOG_JSON=off`: desactiva los logs estructurados JSON por línea (activados por defecto).
+- `EMBED_FRAME_ANCESTORS`: orígenes (separados por comas o espacios) autorizados a embeber la app en un `<iframe>`, p. ej. `https://*.e2b.app`. Por defecto la CSP mantiene `frame-ancestors 'self'` y `X-Frame-Options: SAMEORIGIN`; al declarar orígenes solo se emite la CSP (X-Frame-Options no admite listas ni comodines) y se descarta cualquier valor que no sea un origen `http(s)` literal.
 
 ## Persistencia de perfiles (archivo o Postgres)
 
