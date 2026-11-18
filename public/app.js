@@ -3418,6 +3418,24 @@
     // perfil del lobby se quedaba con el nombre y los puntos de antes hasta
     // que la persona volvía a guardar.
     if (!inTable()) refreshAccountProfile();
+    else requestProfileDetail();
+  }
+  // En una mesa, room_state viaja con el perfil COMPACTO (se emite en cada
+  // acción y con el perfil completo pesaba 26 KB por mensaje). Al abrir el
+  // modal se pide el detalle: logros y retos completos, historial, y las 54
+  // cartas del álbum —incluidas las que aún no se tienen, que se pintan como
+  // siluetas—. Es una sola petición por apertura, no por acción.
+  function requestProfileDetail() {
+    if (!socket || !socket.connected) return;
+    socket.timeout(4000).emit('profile_detail_get', {}, (error, response) => {
+      if (error || !response || !response.ok || !response.profile) return;
+      const profile = response.profile;
+      if (ui.room && profile.id && ui.room.viewerProfile && profile.id === ui.room.viewerProfile.id) {
+        ui.room.viewerProfile = profile;
+        applyProfileSnapshot(profile, { ambient: true });
+        if (ui.profileOpen) renderProfileModal();
+      }
+    });
   }
   // Aviso dentro de la ventana cuando no hay perfil que pintar (lobby sin
   // cuenta y sin mesa): evita dejar una ventana vacía que parece averiada.

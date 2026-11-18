@@ -125,3 +125,53 @@ No está relacionada con assets, audio ni caché.
 
 Las pruebas que sí se actualizaron, porque comprobaban las rutas viejas:
 `card-gacha`, `card-book`, `banners-and-keybindings`, `football-stadium-ui`.
+
+---
+
+## 7. `room_state` compacto: el mayor ahorro de tráfico (medido después)
+
+Al medir una sesión de juego real apareció el verdadero consumidor: **no eran las
+imágenes, era el estado de la mesa**. `publicRoom()` incluye `viewerProfile` con
+`publicProgress(profile, true)`, es decir el perfil **completo** —álbum de 54
+cartas con textos, colecciones, 18 logros, 15 retos, historial— y se emitía en
+**cada acción** de la mesa.
+
+| | Antes | Ahora |
+| --- | --- | --- |
+| Un `room_state` | 34.3 KB | **12 KB** |
+| `viewerProfile` dentro | 25.9 KB | **4.3 KB** |
+| Sesión de 10 acciones (socket) | 391 KB | **143 KB** (−63 %) |
+
+Qué cambió:
+
+- `publicProgress(profile, true, { compact: true })` (nuevo parámetro opcional).
+  En compacto, el álbum viaja **solo con las cartas obtenidas** (sin textos ni
+  tasas), y se omiten `allAchievements`, `challenges`, `gameStats`,
+  `balanceHistory`, `collection` completa y `fanBanners`.
+- `room_state` usa el modo compacto; `publicProgress(profile, true)` **sin**
+  compacto no cambió, así que el modal, la API y las pruebas del perfil siguen
+  recibiendo todo.
+- Nuevo evento **`profile_detail_get`**: el cliente lo pide al abrir el modal
+  estando en una mesa. Devuelve el perfil completo (25.9 KB) **una vez por
+  apertura**, no una vez por acción. Con eso el álbum sigue mostrando las 54
+  cartas, incluidas las siluetas de las no obtenidas.
+
+Comprobado de extremo a extremo contra el servidor: `room_state` trae 4.3 KB sin
+`allAchievements` ni `rates`, y `profile_detail_get` devuelve 25.9 KB con las 54
+cartas, 18 logros y 6 tasas.
+
+## 8. ¿Cuánto duran los 5 GB de Render?
+
+Con las cifras medidas (primera visita 475 KB, revalidación 304 sin cuerpo,
+sesión de 10 acciones 143 KB):
+
+| Escenario | Tráfico/día | Duración de 5 GB | Con Cloudflare |
+| --- | --- | --- | --- |
+| 10 personas/día, 1 sesión | 6.0 MB | **~848 días** | ~2.203 días |
+| 50 personas/día, 2 sesiones | 44 MB | **~116 días** | ~200 días |
+| 200 personas/día, 2–3 sesiones | 232 MB | **~22 días** | ~34 días |
+| 1.000 personas/día | 1.163 MB | **~4 días** | ~7 días |
+
+Sin las optimizaciones de esta sesión, los mismos escenarios daban 309, 42 y
+**8 días**. El tráfico de juego (socket) es ahora el que manda: con 200 personas
+al día, las imágenes ya solo son una parte menor del consumo.

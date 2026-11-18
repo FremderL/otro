@@ -899,9 +899,14 @@ function publicRoom(room, viewerId) {
     recentWinners: room.recentWinners || [],
     specialEvent: room.specialEvent || null,
     gameMeta: QUICK_GAMES[room.game] || null,
+    // `compact`: room_state se emite en cada acción de la mesa, así que aquí
+    // solo viaja lo que la mesa necesita del perfil propio (saldo, identidad
+    // equipada y cartas obtenidas). Con el perfil completo esto pesaba 26 KB por
+    // mensaje; el detalle (logros, retos, historial, tasas del álbum) llega por
+    // GET /api/profile y profile_event, que es donde se abre el modal.
     viewerProfile: (() => {
       const viewer = room.players.find(player => player.id === viewerId);
-      return viewer?._profile ? publicProgress(viewer._profile, true) : null;
+      return viewer?._profile ? publicProgress(viewer._profile, true, { compact: true }) : null;
     })(),
     // Torneo relámpago originado en el lobby; separado del Sit & Go de mesa.
     lobbyTournamentMatch: room.lobbyTournamentMatch ? {
@@ -2913,6 +2918,19 @@ io.on('connection', socket => {
   // Solo se comparte lo que ya es público del asiento y, entre cuentas, el
   // @usuario que la comunidad permite buscar. La relación (amistad, solicitud
   // enviada o recibida) sale del store de comunidad, no del navegador.
+  // Perfil completo del propio jugador, a petición. room_state manda el perfil
+  // compacto (saldo, identidad equipada y cartas obtenidas) porque se emite en
+  // cada acción; los detalles grandes —logros, retos, historial, tasas del
+  // álbum y las cartas sin descubrir— se piden aquí al abrir el modal.
+  socket.on('profile_detail_get', (_payload, ack) => {
+    if (typeof ack !== 'function') return;
+    const viewer = accountProfileForSocket(socket);
+    const { player } = playerForSocket(socket);
+    const target = player?._profile || viewer;
+    if (!target) return ackResult(ack, actionError('Perfil no disponible.', 'profile_required'));
+    return ackResult(ack, { ok: true, profile: publicProgress(target, true) });
+  });
+
   socket.on('table_profile_get', ({ playerId } = {}, ack) => {
     const viewer = accountProfileForSocket(socket);
     const { room, player } = playerForSocket(socket);
