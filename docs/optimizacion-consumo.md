@@ -175,3 +175,50 @@ sesión de 10 acciones 143 KB):
 Sin las optimizaciones de esta sesión, los mismos escenarios daban 309, 42 y
 **8 días**. El tráfico de juego (socket) es ahora el que manda: con 200 personas
 al día, las imágenes ya solo son una parte menor del consumo.
+
+### 8 bis. Tu caso concreto: 50 personas
+
+**La cuota no "tarda" en recargarse: se reinicia el día 1 de cada mes.** Lo que
+importa es si llegas al tope antes del reinicio. Con 50 personas, no:
+
+| Escenario (50 personas) | Consumo/mes | % de 5 GB |
+| --- | --- | --- |
+| 50 registradas, 10 entran al día, 1 sesión | 0.05 GB | **1 %** |
+| 50 al día, 1 sesión de 10 acciones | 0.27 GB | **5 %** |
+| 50 al día, 2 sesiones de 20 acciones | 0.48 GB | **10 %** |
+| 50 al día, 3 sesiones de 30 acciones (intenso) | 0.68 GB | **14 %** |
+
+(Cifras con Cloudflare delante, que absorbe el 90 % de las imágenes.)
+
+**Cuántas personas cabrían de verdad en los 5 GB:**
+
+| Uso | Capacidad |
+| --- | --- |
+| 1 sesión de 10 acciones | **917 personas/día** |
+| 2 sesiones de 20 acciones | **524 personas/día** |
+| 3 sesiones de 30 acciones | **366 personas/día** |
+| 2 sesiones de 20 acciones, sin Cloudflare | 230 personas/día |
+| 2 sesiones de 20 acciones, **sin las mejoras de esta sesión** | **84 personas/día** |
+
+Es decir: antes de optimizar, con 50 personas intensas estabas al **60 % de la
+cuota**; ahora estás al **14 %**, y te sobra margen para multiplicar por 7 el
+tráfico antes de acercarte al límite.
+
+### 8 ter. El límite real no es el ancho de banda
+
+En el plan **free** de Render hay un tope que llega antes y que no se arregla
+optimizando: **750 horas de instancia al mes por workspace**. Un servicio
+encendido 24/7 consume ~744 horas, o sea que **casi todo el presupuesto se va en
+mantenerlo despierto**. Consecuencias:
+
+- Si tocas cualquier otro servicio free (otra web, un cron), te quedas sin horas
+  y **Render suspende todos los servicios free hasta el mes siguiente**.
+- El servicio **se duerme a los 15 minutos** sin tráfico y tarda ~1 minuto en
+  despertar (con el Estadio apagado, unos segundos).
+- Lo que **sí** protege el ancho de banda: desde febrero de 2026, un servicio
+  free **no se duerme mientras reciba mensajes de WebSocket**. Como este juego
+  mantiene el socket abierto, mientras alguien esté jugando el servicio sigue
+  despierto y no consume el minuto de despertar.
+
+**Si hay gente jugando, el ancho de banda ya no es el problema: las 750 horas y
+el sueño a los 15 minutos son la experiencia real.**
