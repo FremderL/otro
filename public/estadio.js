@@ -3646,7 +3646,8 @@
           var coachNote = move.managerName ? ' · Pedido DT ' + move.managerName : '';
           return '<li><div class="est-transfer-card-top"><div class="est-transfer-portrait-wrap">' + transferPortrait(move) + '<span class="est-transfer-number">' + String(index + 1).padStart(2, '0') + '</span></div>' +
             '<div class="est-transfer-player"><span class="est-transfer-tag">TRASPASO CONFIRMADO</span><b>' + esc(move.playerName || 'Jugador') + '</b><small>' + esc((move.position || 'JUGADOR') + coachNote) + '</small></div></div>' +
-            transferRoute(move) + '<div class="est-transfer-card-footer"><span class="est-transfer-value">Valoración ' + esc(transferValueLabel(move.playerValue)) + '</span><span>' + esc(move.tacticalNeed ? String(move.tacticalNeed).toUpperCase() : 'FICHAS · ESTIMADA') + '</span></div></li>';
+            transferRoute(move) + '<p class="est-transfer-reason">' + esc(move.signingReason || ('Pedido del DT ' + (move.managerName || 'del club'))) + '</p>' +
+            '<div class="est-transfer-card-footer"><span class="est-transfer-value">Valoración ' + esc(transferValueLabel(move.playerValue)) + '</span><span>' + esc(move.tacticalNeed ? String(move.tacticalNeed).toUpperCase() : 'FICHAS · ESTIMADA') + '</span></div></li>';
         }).join('') + '</ul><p class="est-market-footnote">✦ Retratos ilustrados · Compras solicitadas por cada DT · Valoraciones en millones de fichas virtuales</p>'
       : '';
     list.innerHTML = movesHtml + renderClubNewsBoard(clubNews, market.seasonMonth, !hasMoves);

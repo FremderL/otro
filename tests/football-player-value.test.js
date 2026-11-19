@@ -78,7 +78,10 @@ test('el mercado publica la valoración de cada traspaso, también tras aplicars
   withLeague(({ store, league }) => {
     const announced = publicTransfers(league, Date.parse('2026-10-15T07:00:00Z'));
     assert.equal(announced.status, 'announced');
-    assert.equal(announced.moves.length, 8);
+    // Ocho fichajes de campo; los porteros se mueven aparte, en trueques pareados.
+    assert.equal(announced.moves.filter(m => !m.kind).length, 8);
+    assert.equal(announced.moves.filter(m => m.kind === 'goalkeeper').length,
+      announced.moves.filter(m => m.kind === 'goalkeeper_return').length);
     for (const move of announced.moves) {
       const player = league.config.find(c => c.id === move.fromId).squad.find(p => p.id === move.playerId);
       assert.equal(move.playerValue, playerValue(player), 'el precio sale de los atributos del jugador');

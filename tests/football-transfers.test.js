@@ -10,13 +10,18 @@ test('traspasos se anuncian a mitad de mes, conservan identidad y aplican solo a
   const store=new FootballStore(file); t.after(()=>{clearTimeout(store.saveTimer);fs.rmSync(dir,{recursive:true,force:true});});
   const before=store.generateSeason('2026-10'); const old=JSON.stringify(before.config); const fixtures=JSON.stringify(before.calendar.matches);
   const plan=planTransfers(before);
-  assert.equal(plan.moves.length,8); assert.equal(new Set(plan.moves.map(m=>m.fromId)).size,8);
-  assert.equal(new Set(plan.moves.map(m=>m.playerId)).size,8,'cada jugador se mueve una sola vez');
+  // Ocho fichajes de campo y, aparte, intercambios pareados de porteros.
+  const fieldMoves=plan.moves.filter(m=>!m.kind);
+  assert.equal(fieldMoves.length,8); assert.equal(new Set(fieldMoves.map(m=>m.fromId)).size,8);
+  assert.equal(new Set(plan.moves.map(m=>m.playerId)).size,plan.moves.length,'cada jugador se mueve una sola vez');
   // Ciclos, no solo ida y vuelta: ningún par de clubes repite la misma pareja en ambos sentidos.
   const pairKey=m=>[m.fromId,m.toId].sort().join('|');
-  assert.equal(new Set(plan.moves.map(pairKey)).size,8,'sin parejas repetidas en sentido contrario');
+  assert.equal(new Set(fieldMoves.map(pairKey)).size,8,'sin parejas repetidas en sentido contrario');
+  // El trueque de porteros siempre viaja de dos en dos y cada club que cede uno conserva otro.
+  const keeperOut=plan.moves.filter(m=>m.kind==='goalkeeper').length;
+  assert.equal(plan.moves.filter(m=>m.kind==='goalkeeper_return').length,keeperOut);
   // Hay variedad de posiciones (no todos CM).
-  const oldPos=new Set(plan.moves.map(m=>before.config.find(c=>c.id===m.fromId).squad.find(p=>p.id===m.playerId).pos));
+  const oldPos=new Set(fieldMoves.map(m=>before.config.find(c=>c.id===m.fromId).squad.find(p=>p.id===m.playerId).pos));
   assert.ok(oldPos.size>=2,'el plan mezcla posiciones');
   assert.equal(publicTransfers(before,Date.parse('2026-10-15T05:59:59Z')).status,'scheduled');
   assert.equal(publicTransfers(before,Date.parse('2026-10-15T06:00:00Z')).status,'announced');

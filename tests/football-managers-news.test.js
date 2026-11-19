@@ -177,7 +177,19 @@ test('los DT compran jugadores en el mercado manteniendo plantillas válidas a l
   for (const month of months) {
     const league = store.generateSeason(month);
     const plan = planTransfers(league);
-    assert.ok(plan && plan.moves.length === 8, `plan válido en ${month}`);
+    assert.ok(plan, `plan válido en ${month}`);
+    // 8 fichajes de campo y, si el arco es la mayor carencia, intercambios
+    // pareados de porteros (siempre de dos en dos: nadie se queda sin suplente).
+    const fieldMoves = plan.moves.filter(move => !move.kind);
+    const keeperMoves = plan.moves.filter(move => move.kind === 'goalkeeper');
+    assert.equal(fieldMoves.length, 8, `ocho fichajes de campo en ${month}`);
+    assert.equal(plan.moves.length, 8 + keeperMoves.length * 2, `intercambios de porteros pareados en ${month}`);
+    // El portero solo se mueve si de verdad mejora el arco: ni una temporada
+    // tiene por qué haber trueque, pero si lo hay nunca deja a un club con uno.
+    for (const move of keeperMoves) {
+      const donor = league.config.find(c => c.id === move.fromId);
+      assert.ok(donor.squad.filter(p => p.pos === 'GK').length >= 2, 'el club que cede un portero conserva otro');
+    }
     for (const move of plan.moves) {
       const buyer = league.config.find(c => c.id === move.toId);
       assert.equal(move.managerName, buyer.manager.name, 'cada compra está firmada por el DT del club comprador');
