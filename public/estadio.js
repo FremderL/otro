@@ -177,6 +177,7 @@
     dailyNewsEdition: null, dailyNewsDay: null, dailyNewsBusy: false, dailyNewsPending: true, dailyNewsSeq: 0, dailyNewsShown: {},
     lobby: null, standings: [], standingsPending: null, countdownTo: null, lobbyServerNow: null, lobbyReceivedAt: null,
     preshowDataMatchId: null, preshowDataStandings: null, teamIndicators: [],
+    lineupData: null, lineupMatchId: null, lineupSource: null, lineupSeq: 0, lineupFetchedAt: 0,
     showcaseItems: [], showcaseIndex: 0, showcaseRotationId: null, sponsoredPromotions: [],
     promotionsEnabled: false, promoSessionChecked: false, promoProfile: null, promoCsrfToken: null,
     promoWindowOpen: false, promoMatchId: null, promoPollId: null, promoRequestSeq: 0,
@@ -2842,6 +2843,9 @@
       if (S.currentMatchId !== matchId) {
         if (S.slip) closeSlip();
         S.currentMatchId = matchId;
+        // El once es del partido, no del jugador: al cambiar de encuentro se
+        // descarta el anterior para no enseñar una alineación ajena.
+        S.lineupData = null; S.lineupMatchId = null; S.lineupSource = null; S.lineupSeq++;
         resetCrowdFeed();
         S.danmaku.queue = [];
         clearDanmaku();
@@ -2854,6 +2858,9 @@
         if (profileChanged) loadBetHistory({ force: true });
       }
       applyMatchState(res.matchState);
+      // La previa necesita el once con nombres: se pide una vez por partido (y se
+      // vuelve a pedir solo si sigue siendo una proyección).
+      refreshLineups(true);
       updateCrowdAvailability();
       if (ledgerOpen()) renderLedger();
       highlightActive();
@@ -2965,7 +2972,8 @@
     });
     var preferredKey = S.preshowDataMatchId === S.match.id
       ? null
-      : (S.sponsoredPromotions.length ? S.sponsoredPromotions[0].key : 'indicators');
+      : (lineupReady() ? 'lineup'
+        : (S.sponsoredPromotions.length ? S.sponsoredPromotions[0].key : 'indicators'));
     renderShowcase(homeColor, awayColor, preferredKey);
   }
 
@@ -3047,6 +3055,90 @@
     '</article>';
   }
 
+  // ===== Once titular =====
+  // El once lo decide el servidor (lib/football/lineups.js): el del compromiso
+  // del partido o, mientras no exista, la proyección que el DT alinearía hoy.
+  // El cliente NO lo calcula ni lo ordena: pinta lo que recibe.
+  function lineupReady() {
+    var data = S.lineupData;
+    return Boolean(data && data.matchId === S.currentMatchId
+      && data.home && data.away
+      && Array.isArray(data.home.starters) && data.home.starters.length
+      && Array.isArray(data.away.starters) && data.away.starters.length);
+  }
+  function refreshLineups(force) {
+    var match = S.match;
+    if (!match || !match.id || !S.socket || !S.socket.connected) return;
+    if (!force && lineupReady()) {
+      // Un once del compromiso ya no cambia: se consulta una sola vez. La
+      // proyección sí puede moverse con un fichaje o un ajuste del DT, así que
+      // se refresca mientras la previa está en pantalla (nunca en bucle).
+      var fresh = S.lineupSource === 'commitment' || (performance.now() - S.lineupFetchedAt) < 60000;
+      if (fresh) return;
+    }
+    var seq = ++S.lineupSeq;
+    var matchId = match.id;
+    S.socket.emit('football:lineups_get', { matchId: matchId }, function (res) {
+      if (seq !== S.lineupSeq || !S.match || S.match.id !== matchId) return;
+      S.lineupFetchedAt = performance.now();
+      if (!res || !res.ok || !res.lineups || res.lineups.matchId !== matchId) {
+        S.lineupData = null; S.lineupSource = null;
+        rerenderLineup();
+        return;
+      }
+      // Primera vez que hay once para este partido: el carrusel se abre ahí,
+      // porque es la respuesta a la pregunta con la que llega el aficionado.
+      var firstForMatch = S.lineupMatchId !== matchId;
+      S.lineupData = res.lineups;
+      S.lineupMatchId = matchId;
+      S.lineupSource = res.lineups.source || null;
+      rerenderLineup(firstForMatch);
+    });
+  }
+  // Repintar la cartelera con el once solo tiene sentido si la previa está en
+  // pantalla: fuera de ventana el próximo render la recoge y no se reconstruyen
+  // fichas que nadie está mirando.
+  function rerenderLineup(preferLineup) {
+    var panel = el['est-preshow'];
+    if (!panel || panel.hidden || !el['est-showcase'] || el['est-showcase'].hidden) return;
+    var home = preshowTeamColor(S.match.homeId), away = preshowTeamColor(S.match.awayId);
+    renderShowcase(home, away, preferLineup ? 'lineup' : null);
+  }
+  var POSITION_LABEL = { GK: 'Portero', DF: 'Defensa', MF: 'Medio', FW: 'Delantero' };
+  function starterRowMarkup(player) {
+    var number = player.number == null ? '' : '<span class="est-lineup-number">' + esc(player.number) + '</span>';
+    var role = player.role ? (POSITION_LABEL[player.role] || player.role) : '';
+    var natural = player.pos && player.pos !== player.role ? ' <small>' + esc(player.pos) + '</small>' : '';
+    return '<li class="est-lineup-row">' + number
+      + '<span class="est-lineup-name">' + esc(player.name) + '</span>'
+      + '<span class="est-lineup-role">' + esc(role) + natural + '</span></li>';
+  }
+  function lineupColumnMarkup(side, clubId, color) {
+    var team = S.lineupData[side] || {};
+    var starters = Array.isArray(team.starters) ? team.starters : [];
+    var manager = team.manager && team.manager.name ? team.manager.name : null;
+    return '<div class="est-lineup-column est-lineup-' + side + '" style="--club-color:' + esc(color) + '">'
+      + '<header class="est-lineup-club">' + clubCrestMarkup(clubId, 'est-compare-dot')
+      + '<span>' + esc(team.name || teamFull(clubId)) + '</span></header>'
+      + '<p class="est-lineup-meta">' + esc(team.formation || 'sin dibujo')
+      + (manager ? ' · DT ' + esc(manager) : '') + ' · ' + starters.length + ' titulares</p>'
+      + '<ol class="est-lineup-list">' + starters.map(starterRowMarkup).join('') + '</ol>'
+      + '</div>';
+  }
+  function lineupSlideMarkup(homeColor, awayColor) {
+    var confirmed = S.lineupData && S.lineupData.source === 'commitment';
+    var kind = confirmed
+      ? 'Once confirmado del partido'
+      : 'Proyección del DT · puede cambiar hasta el saque inicial';
+    return '<article class="est-showcase-slide est-showcase-stat est-showcase-lineup" data-showcase-key="lineup" aria-label="Onces titulares de ' + esc(teamFull(S.match.homeId)) + ' y ' + esc(teamFull(S.match.awayId)) + '">'
+      + '<div class="est-showcase-stat-head"><div><p class="est-compare-kicker">' + esc(kind) + '</p><h3>Onces titulares</h3></div><span class="est-showcase-kind">11 y 11 · con dorsal y puesto</span></div>'
+      + '<div class="est-lineup-body">'
+      + lineupColumnMarkup('home', S.match.homeId, homeColor || preshowTeamColor(S.match.homeId))
+      + lineupColumnMarkup('away', S.match.awayId, awayColor || preshowTeamColor(S.match.awayId))
+      + '</div>'
+      + '</article>';
+  }
+
   function renderShowcase(homeColor, awayColor, preferredKey) {
     var track = el['est-showcase-track'];
     if (!track) return;
@@ -3055,6 +3147,12 @@
     var promotions = showcasePromotionSlides();
     var indicators = S.teamIndicators || [];
     var items = [];
+    // El once va PRIMERO: es la pregunta que el aficionado trae a la previa
+    // («¿quiénes juegan?»). Solo aparece cuando el servidor lo resolvió; sin
+    // once no se inventa una ficha vacía.
+    if (lineupReady()) {
+      items.push({ type: 'lineup', key: 'lineup', label: 'Onces titulares' });
+    }
     if (indicators.length) {
       items.push({ type: 'indicator', key: 'indicators', label: 'Indicadores del partido', indicators: indicators });
     }
@@ -3066,11 +3164,12 @@
     var promotionIndex = 0;
     track.innerHTML = items.map(function (item) {
       if (item.type === 'promotion') return promotionSlideMarkup(item.creative, promotionIndex++);
+      if (item.type === 'lineup') return lineupSlideMarkup(homeColor, awayColor);
       return indicatorSlideMarkup(item.indicators, homeColor || preshowTeamColor(S.match.homeId), awayColor || preshowTeamColor(S.match.awayId));
     }).join('');
     if (el['est-showcase-dots']) {
       el['est-showcase-dots'].innerHTML = items.map(function (item, index) {
-        var itemType = item.type === 'indicator' ? 'todos los indicadores' : 'anuncio';
+        var itemType = item.type === 'indicator' ? 'todos los indicadores' : (item.type === 'lineup' ? 'el once titular' : 'anuncio');
         return '<button class="est-compare-dot-button" type="button" data-showcase-index="' + index + '" aria-label="Ver ' + itemType + ': ' + esc(item.label) + '" aria-pressed="false" title="' + itemType + ': ' + esc(item.label) + '"><span></span></button>';
       }).join('');
       el['est-showcase-dots'].querySelectorAll('[data-showcase-index]').forEach(function (button) {
@@ -3100,6 +3199,10 @@
     el['est-promo-link'] = $('est-promo-link');
     el['est-compare-home'] = $('est-compare-home');
     el['est-compare-away'] = $('est-compare-away');
+    // Volver a pintar la cartelera crea anuncios nuevos: si la previa está
+    // fuera de ventana (o en espera de kickoff), no pueden reaparecer visibles.
+    var viewport = el['est-showcase'];
+    if (viewport && viewport.hidden) setShowcaseVisible(false);
   }
 
   function setShowcaseIndex(index) {
@@ -3116,7 +3219,9 @@
       viewport.setAttribute('data-slide-type', item ? item.type : '');
       viewport.setAttribute('aria-label', item && item.type === 'indicator'
         ? 'Cara a cara: ' + item.label + ' entre ' + teamFull(S.match.homeId) + ' y ' + teamFull(S.match.awayId)
-        : 'Anuncio de La Previa');
+        : (item && item.type === 'lineup'
+          ? 'Onces titulares de ' + teamFull(S.match.homeId) + ' y ' + teamFull(S.match.awayId)
+          : 'Anuncio de La Previa'));
     }
     if (el['est-showcase-count']) el['est-showcase-count'].textContent = (current + 1) + ' / ' + total;
     if (track) {
@@ -3322,6 +3427,9 @@
       setShowcaseVisible(false);
     } else {
       startPromotionRotation(match.id);
+      // La ficha del once vive en el carrusel de la previa: se pide en cuanto
+      // hay algo que enseñar (y se mantiene al día si sigue siendo proyección).
+      refreshLineups(false);
     }
     // «En liquidación» es literal: si el partido no arranca, su resultado se
     // asienta solo y la tabla nunca se queda con un cruce de menos.
@@ -4122,6 +4230,11 @@
   function renderClubProfile(club, box) {
     var roster = club.roster || {}, players = roster.players || [], record = club.record || {}, manager = club.manager || {};
     var lineups = new Map((club.lineup || []).map(function (p) { return [p.id, p]; }));
+    // Los once titulares, con nombre y dorsal, salen tal cual del servidor
+    // (misma alineación que usa el motor). Si la ficha de un despliegue anterior
+    // no los trae, la sección no se pinta: no se rellena a mano.
+    var starters = (club.lineup || []).filter(function (p) { return p && p.initialStatus === 'active' && p.name; })
+      .sort(function (a, b) { return (a.slotIndex == null ? 99 : a.slotIndex) - (b.slotIndex == null ? 99 : b.slotIndex); });
     var color = /^#[0-9a-f]{6}$/i.test(club.colors && club.colors.primary || '') ? club.colors.primary : '#76d7a2';
     var styles = { possession:'Posesión', pressing:'Presión', direct:'Juego directo', balanced:'Equilibrado', counter:'Contraataque' };
     var bench = players.filter(function (p) { var slot = lineups.get(p.id); return slot && slot.initialStatus === 'bench' && p.position !== 'GK'; });
@@ -4155,7 +4268,11 @@
       + '<p>Registro del equipo: ' + Number(record.wins || 0) + ' ganados · ' + Number(record.draws || 0) + ' empatados · ' + Number(record.losses || 0) + ' perdidos · ' + Number(record.goalsFor || 0) + ' goles a favor / ' + Number(record.goalsAgainst || 0) + ' en contra.</p>'
       + '<p>Opciones del banquillo por atributo: tiro ' + esc(bestBench('sho')) + '; pase ' + esc(bestBench('pas')) + '; defensa ' + esc(bestBench('def')) + '.</p>'
       + '<p>El DT elige el once titular, cambia la formación según la racha o el partido, gestiona las sustituciones y solicita fichajes en el mercado. Esta vista es de consulta y no altera partidos ya comprometidos.</p></section>'
-      + '<section class="est-club-block"><p class="est-club-caption">Plantilla / ' + players.length + ' futbolistas</p><h4>Un equipo, muchas historias</h4><p>Once inicial orientativo calculado con la formación actual. Los partidos comprometidos pueden tener otra alineación.' + esc(partial) + '</p>'
+      + '<section class="est-club-block"><p class="est-club-caption">Plantilla / ' + players.length + ' futbolistas</p><h4>Un equipo, muchas historias</h4>'
+      + (starters.length ? '<p class="est-club-caption">Once titular · ' + esc(manager.formation || '') + '</p><ol class="est-club-lineup">'
+        + starters.map(function (p) { return '<li><b>#' + esc(p.number) + '</b> ' + esc(p.name) + ' <span>' + esc(p.role || '') + '</span></li>'; }).join('')
+        + '</ol>' : '')
+      + '<p>Once calculado con la formación vigente del DT, el mismo que usa el motor en el próximo partido.' + esc(partial) + '</p>'
       + '<details><summary>Ver plantilla y estadísticas</summary><div class="est-club-table-wrap"><table class="est-club-table"><thead><tr><th scope="col">Jugador</th><th scope="col">Puesto / rol</th><th scope="col">Estado</th><th scope="col">RIT</th><th scope="col">TIR</th><th scope="col">PAS</th><th scope="col">DEF</th><th scope="col">POR</th><th scope="col">AGR</th><th scope="col">PJ</th><th scope="col">G</th><th scope="col">A</th></tr></thead><tbody>'
       + players.map(function (p) { var a = p.attributes || {}, st = p.stats || {}, slot = lineups.get(p.id) || {}; return '<tr><td>#' + esc(p.number) + ' ' + esc(p.name) + '</td><td>' + esc(p.position) + ' / ' + esc(slot.role || '—') + '</td><td>' + (slot.initialStatus === 'active' ? 'Inicial' : 'Banquillo') + '</td><td>' + esc(a.pac) + '</td><td>' + esc(a.sho) + '</td><td>' + esc(a.pas) + '</td><td>' + esc(a.def) + '</td><td>' + esc(a.gk) + '</td><td>' + esc(a.agr) + '</td><td>' + esc(st.appearances) + '</td><td>' + esc(st.goals) + '</td><td>' + esc(st.assists) + '</td></tr>'; }).join('')
       + '</tbody></table></div><p>RIT ritmo · TIR tiro · PAS pase · DEF defensa · POR portería · AGR agresividad · PJ partidos · G goles · A asistencias. Estadísticas de partidos regulares asentados.</p></details></section>'

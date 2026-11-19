@@ -533,6 +533,59 @@
 .est-indicator-table .est-form-results { gap: 2px; white-space: nowrap; }
 .est-indicator-table .est-form-result { width: 18px; height: 18px; font-size: 9px; }
 
+/* Ficha del once titular: los 22 nombres con dorsal y puesto en dos columnas.
+   Es la única ficha del carrusel que necesita scroll propio en pantallas bajas;
+   las filas se mantienen legibles antes que el adorno. */
+.est-showcase-lineup .est-showcase-stat-head { padding-right: 118px; }
+.est-lineup-body {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  gap: 10px clamp(10px, 2vw, 26px);
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.est-lineup-column { min-width: 0; }
+.est-lineup-club {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--gold-2);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.est-lineup-meta {
+  margin: 2px 0 6px;
+  color: var(--muted-2);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+.est-lineup-list { margin: 0; padding: 0; list-style: none; }
+.est-lineup-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0,1fr) auto;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(194,223,216,.08);
+  font-size: 10.5px;
+  line-height: 1.2;
+}
+.est-lineup-row:last-child { border-bottom: 0; }
+.est-lineup-number {
+  color: var(--club-color, var(--mint));
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  text-align: right;
+}
+.est-lineup-name { color: var(--text); font-weight: 700; overflow-wrap: anywhere; }
+.est-lineup-role { color: var(--muted); font-size: 9px; font-weight: 700; white-space: nowrap; }
+.est-lineup-role small { color: var(--muted-2); font-size: 8px; }
+
 
 /* Navegación flotante compartida por anuncios e indicadores. */
 .est-showcase-controls {
@@ -1687,6 +1740,10 @@ body.est-ledger-open { overflow: hidden; }
   .est-indicator-table tbody td { font-size: 9px; }
   .est-indicator-table .est-form-results { gap: 1px; }
   .est-indicator-table .est-form-result { width: 13px; height: 13px; font-size: 7px; }
+  .est-lineup-body { gap: 6px 10px; }
+  .est-lineup-row { grid-template-columns: 18px minmax(0,1fr); gap: 4px; font-size: 9.5px; padding: 2px 0; }
+  .est-lineup-role { grid-column: 2; color: var(--muted-2); font-size: 8px; }
+  .est-lineup-meta { font-size: 8px; }
   .est-showcase-controls { top: 9px; right: 9px; gap: 3px; padding: 4px 5px; }
   .est-compare-control { width: 26px; height: 26px; font-size: 17px; }
   .est-compare-footer { right: 9px; bottom: 8px; left: 9px; }
@@ -2645,6 +2702,10 @@ body.est-hub-open { overflow:hidden; }
 .est-club-block .est-club-caption { color:#d8c48f; font-size:10px; text-transform:uppercase; letter-spacing:.1em; }
 .est-club-block details { margin-top:12px; }
 .est-club-block summary { cursor:pointer; color:#9ce9be; font-weight:800; font-size:12px; }
+.est-club-lineup { margin:4px 0 8px; padding:0; list-style:none; display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:4px 12px; }
+.est-club-lineup li { color:#d8e6da; font-size:12px; padding:2px 0; border-bottom:1px solid #223c31; }
+.est-club-lineup b { color:#9ce9be; font-variant-numeric:tabular-nums; }
+.est-club-lineup span { color:#8fa79a; font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
 .est-club-table-wrap { max-width:100%; overflow-x:auto; margin-top:10px; }
 .est-club-table { width:100%; border-collapse:collapse; min-width:550px; font-size:11px; text-align:left; }
 .est-club-table th,.est-club-table td { padding:8px 6px; border-bottom:1px solid #2c4939; white-space:nowrap; }

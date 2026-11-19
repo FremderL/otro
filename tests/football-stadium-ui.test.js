@@ -154,6 +154,8 @@ function createHarness(options = {}) {
       if (event === 'football:quiniela_enter' && options.onQuinielaEnter) { ack(options.onQuinielaEnter(payload)); return; }
       if (event === 'football:club_profile_get' && options.onClubProfileGet) { options.onClubProfileGet(payload, ack); return; }
       if (event === 'football:roster_get' && options.onRosterGet) { options.onRosterGet(payload, ack); return; }
+      if (event === 'football:lineups_get' && options.onLineupsGet) { options.onLineupsGet(payload, ack); return; }
+      if (event === 'football:lineups_get') { ack({ ok: false, code: 'unavailable' }); return; }
       if (event === 'football:daily_news_get' && options.onDailyNewsGet) { ack(options.onDailyNewsGet(payload)); return; }
       if (event === 'football:daily_news_reserve' && options.onDailyNewsReserve) { ack(options.onDailyNewsReserve(payload)); return; }
       if (event === 'football:daily_news_ack' && options.onDailyNewsAck) { ack(options.onDailyNewsAck(payload)); return; }
@@ -853,6 +855,76 @@ test('La Previa abre exactamente en T−30, muestra datos de liga y se oculta al
   assert.equal(window.document.getElementById('est-preshow-promo').hidden, true, 'la promoción se corta al llegar la hora programada');
   handlers['football:status']({ matchId: match.id, code: 'kickoff', minute: 0 });
   assert.equal(panel.hidden, true, 'al confirmarse el kickoff desaparece la previa');
+});
+
+// Una alineación de mentira pero con la MISMA forma que publica el servidor
+// (lib/football/lineups.js): 11 titulares con dorsal, puesto y slot.
+function fakeLineups(match, source) {
+  const side = (clubId, offset) => ({
+    clubId,
+    name: clubId === 'home' ? 'Home FC' : 'Away FC',
+    short: clubId.slice(0, 3).toUpperCase(),
+    formation: '4-4-2',
+    style: 'possession',
+    manager: { id: 'mgr_' + clubId, name: clubId === 'home' ? 'Camilo Valera' : 'Bruno Alcázar' },
+    starters: Array.from({ length: 11 }, (_, index) => ({
+      id: clubId + '-' + (index + 1),
+      name: (clubId === 'home' ? 'Local ' : 'Visita ') + (index + 1),
+      number: index + offset,
+      pos: index === 0 ? 'GK' : 'CM',
+      role: index === 0 ? 'GK' : 'MF',
+      slotIndex: index
+    })),
+    bench: []
+  });
+  return { matchId: match.id, seasonMonth: '2026-11', asOf: 0, source, home: side('home', 1), away: side('away', 21) };
+}
+
+test('La Previa muestra el once titular con nombres, dorsales y puestos en el carrusel', async t => {
+  const h = createHarness({
+    now: 1800000000000,
+    kickoffOffsetMs: 10 * 60 * 1000,
+    reducedMotion: false,
+    onLineupsGet(payload, ack) { ack({ ok: true, lineups: fakeLineups({ id: payload.matchId }, 'commitment') }); }
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window } = h;
+  await new Promise(resolve => setTimeout(resolve, 20));
+
+  const showcase = window.document.getElementById('est-showcase');
+  const track = window.document.getElementById('est-showcase-track');
+  const card = track.querySelector('[data-showcase-key="lineup"]');
+  assert.ok(card, 'la ficha del once existe en la cartelera');
+  const text = card.textContent;
+  for (const index of [1, 5, 11]) {
+    assert.ok(text.includes('Local ' + index), `el local ${index} aparece con su nombre`);
+    assert.ok(text.includes('Visita ' + index), `la visita ${index} aparece con su nombre`);
+  }
+  assert.equal(card.querySelectorAll('.est-lineup-home .est-lineup-row').length, 11, 'once local completo');
+  assert.equal(card.querySelectorAll('.est-lineup-away .est-lineup-row').length, 11, 'once visitante completo');
+  assert.ok(text.includes('Portero'), 'los puestos se leen en castellano');
+  assert.ok(text.includes('DT Camilo Valera'), 'la ficha dice quién firma el once');
+  assert.match(text, /Once confirmado del partido/, 'el once del compromiso se anuncia como confirmado');
+
+  // El once es la primera ficha del carrusel: es lo que el aficionado viene a ver.
+  assert.equal(showcase.dataset.slideType, 'lineup');
+  assert.equal(window.document.getElementById('est-showcase-count').textContent, '1 / 6');
+  assert.match(showcase.getAttribute('aria-label'), /Onces titulares/);
+  assert.equal(window.document.querySelectorAll('#est-showcase-dots [data-showcase-index]').length, 6);
+  const dot = window.document.querySelector('#est-showcase-dots [data-showcase-index="0"]');
+  assert.match(dot.getAttribute('aria-label'), /once titular/);
+});
+
+test('sin once disponible la cartelera no inventa una ficha vacía', async t => {
+  const h = createHarness({ now: 1800000000000, kickoffOffsetMs: 10 * 60 * 1000, reducedMotion: false });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window } = h;
+  await new Promise(resolve => setTimeout(resolve, 20));
+  const track = window.document.getElementById('est-showcase-track');
+  assert.equal(track.querySelector('[data-showcase-key="lineup"]'), null, 'sin datos no hay ficha de once');
+  assert.equal(window.document.getElementById('est-showcase-count').textContent, '1 / 5');
 });
 
 test('los indicadores permanecen juntos y cada anuncio ocupa su propia ficha a pantalla completa', async t => {
