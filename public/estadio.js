@@ -3559,6 +3559,165 @@
       });
     });
   }
+  // --- Casa Montecristo: acciones de clubes, lista de inactivos y carreras ---
+  // Una sola lectura por apertura del panel. El precio que se muestra es el mismo
+  // que usa el mercado para decidir cuánto puede ofrecer cada club.
+  function casaMoney(n) {
+    if (n == null || !isFinite(n)) return '—';
+    return Math.round(Number(n)).toLocaleString('es-MX') + ' fichas';
+  }
+  function casaSharesText(n) {
+    n = Number(n) || 0;
+    return n + (n === 1 ? ' acción' : ' acciones');
+  }
+  function renderCasaMarket(rows, portfolio) {
+    var box = $('est-casa-market');
+    if (!box) return;
+    if (!Array.isArray(rows) || !rows.length) { box.innerHTML = '<p>Sin datos de mercado.</p>'; return; }
+    var held = {};
+    ((portfolio && portfolio.rows) || []).forEach(function (row) { held[row.clubId] = row.shares; });
+    box.innerHTML = '<ul class="est-casa-list">' + rows.map(function (row) {
+      var trend = row.direction === 'up' ? '▲' : row.direction === 'down' ? '▼' : '·';
+      var trendClass = row.direction === 'up' ? ' up' : row.direction === 'down' ? ' down' : '';
+      var change = row.change ? (row.direction === 'up' ? '+' : '−') + Math.round(Math.abs(row.change) * 100) + ' %' : 'sin cambio';
+      return '<li class="est-casa-row"><div class="est-casa-row-head"><b>' + esc(row.clubName) + '</b>' +
+        '<span class="est-casa-price">' + esc(row.price) + ' <small>fichas</small></span></div>' +
+        '<p class="est-casa-meta"><span class="est-casa-trend' + trendClass + '">' + trend + ' ' + esc(change) + '</span>' +
+        ' · Presupuesto ' + esc(row.budget) + ' M · Tu posición: ' + esc(casaSharesText(held[row.clubId] || 0)) + '</p>' +
+        '<div class="est-casa-actions"><button type="button" data-casa-buy="' + esc(row.clubId) + '">Comprar</button>' +
+        '<button type="button" data-casa-sell="' + esc(row.clubId) + '">Vender</button></div></li>';
+    }).join('') + '</ul>';
+    Array.prototype.forEach.call(box.querySelectorAll('[data-casa-buy]'), function (button) {
+      button.addEventListener('click', function () { tradeCasa(button.getAttribute('data-casa-buy'), 'buy'); });
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-casa-sell]'), function (button) {
+      button.addEventListener('click', function () { tradeCasa(button.getAttribute('data-casa-sell'), 'sell'); });
+    });
+  }
+  function renderCasaPortfolio(portfolio) {
+    var box = $('est-casa-portfolio'), total = $('est-casa-total');
+    if (!box) return;
+    if (total) total.textContent = casaSharesText(portfolio ? portfolio.totalShares : 0);
+    var rows = (portfolio && portfolio.rows) || [];
+    if (!rows.length) { box.innerHTML = '<p>Aún no tienes acciones. Compra una y podrás seguir su precio cada temporada.</p>'; return; }
+    box.innerHTML = '<ul class="est-casa-list">' + rows.map(function (row) {
+      var sign = row.profit >= 0 ? '+' : '−';
+      return '<li class="est-casa-row"><div class="est-casa-row-head"><b>' + esc(row.clubName) + '</b>' +
+        '<span class="est-casa-price">' + esc(casaSharesText(row.shares)) + '</span></div>' +
+        '<p class="est-casa-meta">Precio medio ' + esc(casaMoney(row.averageCost)) + ' · Valor ' + esc(casaMoney(row.value)) +
+        ' · <span class="' + (row.profit >= 0 ? 'est-casa-trend up' : 'est-casa-trend down') + '">' + sign + esc(casaMoney(Math.abs(row.profit))) + '</span></p></li>';
+    }).join('') + '</ul>' +
+      '<p class="est-casa-meta">Invertido ' + esc(casaMoney(portfolio.invested)) + ' · Valor actual ' + esc(casaMoney(portfolio.value)) + '</p>';
+  }
+  function renderCasaFreeAgents(freeAgents) {
+    var box = $('est-casa-free-agents');
+    if (!box) return;
+    var players = (freeAgents && freeAgents.players) || [];
+    var coaches = (freeAgents && freeAgents.coaches) || [];
+    if (!players.length && !coaches.length) { box.innerHTML = '<p>La lista está vacía: no hay futbolistas ni DT sin club.</p>'; return; }
+    var html = '';
+    if (players.length) {
+      html += '<h4 class="est-casa-sub">Futbolistas libres <span>' + players.length + '</span></h4><ul class="est-casa-list">' +
+        players.map(function (player) {
+          return '<li class="est-casa-row"><div class="est-casa-row-head"><b>' + esc(player.name) + '</b><span>' + esc(player.pos) + '</span></div>' +
+            '<p class="est-casa-meta">' + (player.age ? esc(player.age) + ' años · ' : '') +
+            (player.wonderkid ? '⭐ Promesa de la temporada · ' : '') +
+            (player.releasedFrom ? 'liberado por ' + esc(player.releasedFrom) : 'sin club') + '</p></li>';
+        }).join('') + '</ul>';
+    }
+    if (coaches.length) {
+      html += '<h4 class="est-casa-sub">DT sin banquillo <span>' + coaches.length + '</span></h4><ul class="est-casa-list">' +
+        coaches.map(function (coach) {
+          return '<li class="est-casa-row"><div class="est-casa-row-head"><b>' + esc(coach.name) + '</b><span>' + esc(coach.preferredFormation) + '</span></div>' +
+            '<p class="est-casa-meta">' + esc(coach.style) + ' · ' + esc(coach.marketFocus) +
+            (coach.lastClubName ? ' · salió de ' + esc(coach.lastClubName) : '') +
+            (coach.cost ? ' · ' + esc(casaMoney(coach.cost)) : '') + '</p></li>';
+        }).join('') + '</ul>';
+    }
+    box.innerHTML = html;
+  }
+  function renderCasaCareers(data) {
+    var box = $('est-casa-careers'), season = $('est-casa-season');
+    if (!box) return;
+    if (season) season.textContent = data && data.seasonMonth ? data.seasonMonth : 'TEMPORADA';
+    if (!data) { box.innerHTML = '<p>Sin novedades de carrera esta temporada.</p>'; return; }
+    var parts = [];
+    if (data.wonderkid) {
+      parts.push('<div class="est-casa-highlight"><span>⭐</span><div><b>La promesa del año: ' + esc(data.wonderkid.name) + '</b>' +
+        '<p>' + esc(data.wonderkid.pos) + ' · ' + esc(data.wonderkid.age) + ' años · entra libre al mercado y los clubes pujan por él.</p></div></div>');
+    }
+    if ((data.retirements || []).length) {
+      parts.push('<h4 class="est-casa-sub">Se retiran</h4><ul class="est-casa-list">' + data.retirements.map(function (item) {
+        var legacy = item.legacy ? (item.legacy.appearances + ' PJ · ' + item.legacy.goals + ' goles') : '';
+        return '<li class="est-casa-row"><div class="est-casa-row-head"><b>' + esc(item.name) + '</b><span>' + esc(item.age) + ' años</span></div>' +
+          '<p class="est-casa-meta">' + esc(item.clubName) + (legacy ? ' · ' + esc(legacy) : '') + '</p></li>';
+      }).join('') + '</ul>');
+    }
+    if ((data.debuts || []).length) {
+      parts.push('<h4 class="est-casa-sub">Suben de la cantera</h4><ul class="est-casa-list">' + data.debuts.map(function (item) {
+        return '<li class="est-casa-row"><div class="est-casa-row-head"><b>' + esc(item.name) + '</b><span>#' + esc(item.number) + ' ' + esc(item.position) + '</span></div>' +
+          '<p class="est-casa-meta">' + esc(item.clubName) + (item.replaces ? ' · plaza de ' + esc(item.replaces) : '') + '</p></li>';
+      }).join('') + '</ul>');
+    }
+    box.innerHTML = parts.length ? parts.join('') : '<p>Sin novedades de carrera esta temporada.</p>';
+  }
+  function tradeCasa(clubId, side) {
+    var feedback = $('est-casa-feedback');
+    if (!S.socket || !S.socket.connected) { if (feedback) feedback.textContent = 'Conéctate para operar.'; return; }
+    var raw = window.prompt(side === 'buy' ? '¿Cuántas acciones compras?' : '¿Cuántas acciones vendes?', '1');
+    if (raw == null) return;
+    var shares = Math.floor(Number(raw));
+    if (!shares || shares < 1) { if (feedback) feedback.textContent = 'Cantidad no válida.'; return; }
+    if (feedback) feedback.textContent = 'Operando…';
+    S.socket.emit('football:club_shares_trade', { side: side, clubId: clubId, shares: shares }, function (res) {
+      if (!res || !res.ok) { if (feedback) feedback.textContent = (res && res.error) || 'No se pudo completar la operación.'; return; }
+      if (feedback) feedback.textContent = (side === 'buy' ? 'Compraste ' : 'Vendiste ') + shares +
+        (shares === 1 ? ' acción.' : ' acciones.') + ' Cartera: ' + casaSharesText(res.portfolio.totalShares) + '.';
+      renderCasaPortfolio(res.portfolio);
+      refreshCasa(true);
+    });
+  }
+  function refreshCasa(keepFeedback) {
+    var feedback = $('est-casa-feedback');
+    var market = $('est-casa-market');
+    var freeBox = $('est-casa-free-agents'), careersBox = $('est-casa-careers');
+    if (!market) return;
+    if (!S.socket || !S.socket.connected) {
+      ['est-casa-market', 'est-casa-portfolio', 'est-casa-free-agents', 'est-casa-careers'].forEach(function (id) {
+        var el = $(id); if (el) el.textContent = 'Conéctate para consultar la Casa Montecristo.';
+      });
+      return;
+    }
+    if (!keepFeedback && feedback) feedback.textContent = '';
+    if (market) market.textContent = 'Consultando precios…';
+    S.socket.emit('football:club_shares_get', {}, function (res) {
+      if (!res || !res.ok || !res.market) {
+        if (market) market.textContent = (res && res.error) || 'No se pudo consultar la Casa.';
+        return;
+      }
+      var summary = $('est-casa-summary');
+      if (summary) {
+        summary.textContent = 'Tienes ' + casaSharesText(res.portfolio ? res.portfolio.totalShares : 0) +
+          ' · Valor ' + casaMoney(res.portfolio ? res.portfolio.value : 0) +
+          ' · Saldo ' + casaMoney(res.chips) + '.';
+      }
+      renderCasaMarket(res.market.clubs, res.portfolio);
+      renderCasaPortfolio(res.portfolio);
+    });
+    if (freeBox) {
+      freeBox.textContent = 'Consultando la lista…';
+      S.socket.emit('football:free_agents_get', {}, function (res) {
+        renderCasaFreeAgents(res && res.ok ? res.freeAgents : null);
+      });
+    }
+    if (careersBox) {
+      careersBox.textContent = 'Consultando carreras…';
+      S.socket.emit('football:careers_get', {}, function (res) {
+        renderCasaCareers(res && res.ok ? res : null);
+      });
+    }
+  }
+
   function refreshQuiniela() {
     var list = $('est-quiniela-list');
     if (!list) return;
@@ -7639,7 +7798,7 @@
       $('est-hub-close').addEventListener('click', closeHub);
       $('est-hub').addEventListener('keydown', trapHubFocus);
       Array.prototype.forEach.call($('est-hub').querySelectorAll('[data-hub-view]'), function (button) {
-        button.addEventListener('click', function () { var view = button.getAttribute('data-hub-view'); setHubView(view); if (view === 'aficion') refreshFan(); if (view === 'mercado') refreshTransfers(); if (view === 'quiniela') refreshQuiniela(); });
+        button.addEventListener('click', function () { var view = button.getAttribute('data-hub-view'); setHubView(view); if (view === 'aficion') refreshFan(); if (view === 'mercado') refreshTransfers(); if (view === 'casa') refreshCasa(); if (view === 'quiniela') refreshQuiniela(); });
       });
     }
     if ($('est-fan-club')) {

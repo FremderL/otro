@@ -2741,3 +2741,24 @@ body.est-daily-news-open { overflow:hidden; }
     display: none !important;
   }
 }
+/* Casa Montecristo: bolsa de clubes. Filas compactas y legibles en móvil. */
+.est-casa-market,.est-casa-portfolio,#est-casa-portfolio,#est-casa-free-agents,#est-casa-careers{margin-top:12px}
+.est-casa-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.est-casa-row{padding:12px 14px;border:1px solid rgba(216,221,199,.12);border-radius:12px;background:rgba(255,255,255,.02)}
+.est-casa-row-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.est-casa-row-head b{font-size:13px;color:#e8ecdf}
+.est-casa-row-head span{color:#9fb3a4;font-size:11px}
+.est-casa-price{color:#e5c984;font-size:13px;font-weight:800}
+.est-casa-price small{font-size:9px;font-weight:600;letter-spacing:.06em;color:#92a99a}
+.est-casa-meta{margin:6px 0 0;color:#92a99a;font-size:11px;line-height:1.5}
+.est-casa-trend{font-weight:700}
+.est-casa-trend.up{color:#57d9a3}
+.est-casa-trend.down{color:#ff8a80}
+.est-casa-actions{display:flex;gap:8px;margin-top:10px}
+.est-casa-actions button{flex:1;padding:8px 10px;border-radius:9px;border:1px solid rgba(229,201,132,.35);background:transparent;color:#e5c984;font-size:11px;font-weight:700;letter-spacing:.05em;cursor:pointer}
+.est-casa-actions button:hover{background:rgba(229,201,132,.12)}
+.est-casa-sub{margin:16px 0 8px;font-size:11px;letter-spacing:.1em;color:#92a99a;text-transform:uppercase}
+.est-casa-sub span{color:#e5c984}
+.est-casa-highlight{display:flex;gap:12px;padding:14px;border-radius:12px;border:1px solid rgba(229,201,132,.3);background:rgba(229,201,132,.06)}
+.est-casa-highlight span{font-size:20px}
+.est-casa-highlight p{margin:4px 0 0;color:#b9c9ba;font-size:11px;line-height:1.5}

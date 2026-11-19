@@ -83,7 +83,12 @@ test('el mercado publica la valoración de cada traspaso, también tras aplicars
     assert.equal(announced.moves.filter(m => m.kind === 'goalkeeper').length,
       announced.moves.filter(m => m.kind === 'goalkeeper_return').length);
     for (const move of announced.moves) {
-      const player = league.config.find(c => c.id === move.fromId).squad.find(p => p.id === move.playerId);
+      // Un fichaje de la lista de inactivos no tiene club vendedor: el jugador
+      // se busca en el fondo, que es de donde sale.
+      const player = move.fromId == null
+        ? league.freeAgents.players.find(p => p.id === move.playerId)
+        : league.config.find(c => c.id === move.fromId).squad.find(p => p.id === move.playerId);
+      assert.ok(player, 'el jugador existe antes del fichaje');
       assert.equal(move.playerValue, playerValue(player), 'el precio sale de los atributos del jugador');
       assert.equal(move.position, player.pos);
       assert.equal(move.playerName, player.name);
@@ -101,7 +106,9 @@ test('los candidatos del Balón de Oro se leen después de aplicar los traspasos
   withLeague(({ store, league }) => {
     const plan = planTransfers(league);
     const next = store.generateSeason('2026-11');
-    for (const move of plan.moves) {
+    // Los fichajes desde la lista de inactivos no tienen club de origen.
+    const clubMoves = plan.moves.filter(move => move.fromId != null);
+    for (const move of clubMoves) {
       const origin = next.config.find(c => c.id === move.fromId);
       assert.ok(!origin.squad.some(p => p.id === move.playerId), 'el traspasado ya no figura en su club de origen');
       const asCandidate = next.ballonDor.candidates.find(c => c.playerId === move.playerId);

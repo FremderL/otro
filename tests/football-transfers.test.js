@@ -28,11 +28,20 @@ test('traspasos se anuncian a mitad de mes, conservan identidad y aplican solo a
   assert.equal(JSON.stringify(before.config),old); assert.equal(JSON.stringify(before.calendar.matches),fixtures);
   const after=store.generateSeason('2026-11'); assert.equal(JSON.stringify(before.config),old);
   for(const move of plan.moves){
-    const oldPlayer=before.config.find(c=>c.id===move.fromId).squad.find(p=>p.id===move.playerId);
     const club=after.config.find(c=>c.id===move.toId); const player=club.squad.find(p=>p.id===move.playerId);
-    assert.equal(player.name,oldPlayer.name); assert.deepEqual(player.attrs,oldPlayer.attrs); assert.equal(player.pos,oldPlayer.pos);
+    assert.ok(player, `el fichado ${move.playerName} llega a ${move.toId}`);
     // El fichado ocupa el dorsal del que salió de ese club.
     assert.ok(Number.isInteger(player.num));
+    if (move.fromId == null) {
+      // Fichaje desde la lista de inactivos: no hay club vendedor; el jugador
+      // conserva la identidad que tenía en el fondo.
+      const listed = before.freeAgents.players.find(p=>p.id===move.playerId);
+      assert.ok(listed, 'sale del fondo de inactivos');
+      assert.equal(player.name, listed.name); assert.deepEqual(player.attrs, listed.attrs);
+      continue;
+    }
+    const oldPlayer=before.config.find(c=>c.id===move.fromId).squad.find(p=>p.id===move.playerId);
+    assert.equal(player.name,oldPlayer.name); assert.deepEqual(player.attrs,oldPlayer.attrs); assert.equal(player.pos,oldPlayer.pos);
   }
   assert.equal(new Set(after.config.flatMap(c=>c.squad.map(p=>p.id))).size,288);
   for(const club of after.config){assert.equal(club.squad.length,18); assert.equal(new Set(club.squad.map(p=>p.num)).size,18); assert.ok(club.squad.filter(p=>p.pos==='CM').length>=1,'todo club conserva al menos un CM para que el plan siga siendo válido');}
@@ -58,7 +67,18 @@ test('las identidades y atributos de los 288 jugadores sobreviven traspasos y me
   assert.equal(new Set(first.config.flatMap(c => c.squad.map(p => p.name))).size, 288);
   const moves = planTransfers(first).moves;
   const second = store.generateSeason('2026-11');
+  // Los canteranos que cubren un retiro son personas NUEVAS y no estaban en la
+  // foto inicial: se identifican por el diario de carreras de la temporada.
+  const newcomers = new Set((second.careers?.debuts || []).map(d => d.player.id));
+  // Los fichados desde la lista de inactivos tampoco estaban en un club: su
+  // identidad es la que tenían en el fondo de la temporada anterior.
+  const fromPool = new Map((first.freeAgents?.players || []).map(p => [p.id, { name: p.name, attrs: p.attrs, pos: p.pos }]));
   for (const club of second.config) for (const p of club.squad) {
+    if (newcomers.has(p.id)) { assert.ok(!initial.has(p.id), 'el canterano no reutiliza un id'); continue; }
+    if (fromPool.has(p.id) && !initial.has(p.id)) {
+      assert.deepEqual({ name: p.name, attrs: p.attrs, pos: p.pos }, fromPool.get(p.id), 'el agente libre conserva su identidad');
+      continue;
+    }
     assert.deepEqual({ name: p.name, attrs: p.attrs, pos: p.pos }, initial.get(p.id));
     const transfer = moves.find(m => m.playerId === p.id);
     if (transfer) assert.equal(club.id, transfer.toId);
