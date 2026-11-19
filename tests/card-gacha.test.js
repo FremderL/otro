@@ -219,9 +219,15 @@ test('el álbum sobrevive al guardado (cleanProfile) y solo el dueño recibe el 
 test('cada carta indica su ilustración: las 54 tienen archivo y apuntan a su ruta', () => {
   const album = publicCardAlbum({});
   const spadesJ = album.cards.find(card => card.id === 'card-j-spades');
-  assert.equal(spadesJ.art, '/assets/cards/card-j-spades.jpg');
+  // El arte se sirve en WebP (464 px, ~80 KB) y cae al JPG original solo si el
+  // WebP no existe. Ambas rutas deben existir en disco.
+  assert.match(spadesJ.art, /^\/assets\/cards\/card-j-spades\.(webp|jpg)$/);
   for (const card of album.cards) {
-    assert.equal(card.art, `/assets/cards/${card.id}.jpg`, `falta la ilustración de ${card.id}`);
+    assert.match(card.art, new RegExp(`^/assets/cards/${card.id}\\.(webp|jpg)$`), `falta la ilustración de ${card.id}`);
+    assert.ok(
+      fs.existsSync(path.join(__dirname, '..', 'public', card.art)),
+      `el archivo de ${card.id} no existe: ${card.art}`
+    );
   }
 });
 

@@ -154,6 +154,8 @@ function createHarness(options = {}) {
       if (event === 'football:quiniela_enter' && options.onQuinielaEnter) { ack(options.onQuinielaEnter(payload)); return; }
       if (event === 'football:club_profile_get' && options.onClubProfileGet) { options.onClubProfileGet(payload, ack); return; }
       if (event === 'football:roster_get' && options.onRosterGet) { options.onRosterGet(payload, ack); return; }
+      if (event === 'football:lineups_get' && options.onLineupsGet) { options.onLineupsGet(payload, ack); return; }
+      if (event === 'football:lineups_get') { ack({ ok: false, code: 'unavailable' }); return; }
       if (event === 'football:daily_news_get' && options.onDailyNewsGet) { ack(options.onDailyNewsGet(payload)); return; }
       if (event === 'football:daily_news_reserve' && options.onDailyNewsReserve) { ack(options.onDailyNewsReserve(payload)); return; }
       if (event === 'football:daily_news_ack' && options.onDailyNewsAck) { ack(options.onDailyNewsAck(payload)); return; }
@@ -619,23 +621,24 @@ test('avatares persistentes, cues y nombres grabados del Balón de Oro usan asse
   assert.ok(fs.existsSync(path.join(publicDir, opening.getAttribute('src').replace(/^\//, ''))));
   const music = document.getElementById('est-bdo-ceremony-music-audio');
   assert.equal(music.getAttribute('preload'), 'none');
-  assert.equal(music.getAttribute('src'), '/assets/ballon-dor-ceremony-theme.wav');
+  assert.equal(music.getAttribute('src'), '/assets/ballon-dor-ceremony-theme.mp3');
   assert.equal(music.hasAttribute('loop'), true, 'el fondo discreto acompaña clips de duración variable');
-  const scoreBytes = fs.statSync(path.join(publicDir, 'assets', 'ballon-dor-ceremony-theme.wav')).size;
-  assert.ok(scoreBytes > 0 && scoreBytes <= 2_100_000, 'el tema local sigue siendo una pista ligera');
+  const scoreBytes = fs.statSync(path.join(publicDir, 'assets', 'ballon-dor-ceremony-theme.mp3')).size;
+  // El tema pasó de WAV (1.9 MB) a MP3 48 kbps (~264 KB): mismo audio, 86 % menos.
+  assert.ok(scoreBytes > 0 && scoreBytes <= 400_000, 'el tema local sigue siendo una pista ligera');
   const narration = document.getElementById('est-bdo-ceremony-narration-audio');
   assert.equal(narration.getAttribute('preload'), 'none');
   assert.equal(narration.hasAttribute('src'), false, 'cada cue y cada nombre se seleccionan por ID estable');
 
   const cueIds = ['verification', 'third-place', 'second-place', 'finalists', 'winner-intro', 'winner-congratulations'];
   for (const cue of cueIds) {
-    const cuePath = path.join(publicDir, 'assets', 'ballon-dor-ceremony', 'cues', cue + '.wav');
+    const cuePath = path.join(publicDir, 'assets', 'ballon-dor-ceremony', 'cues', cue + '.mp3');
     assert.ok(fs.existsSync(cuePath), `${cue} tiene locución es-MX propia`);
   }
   const playerIds = ['frr_09', 'sol_17', 'vrd_09', 'klv_17', 'hlc_09', 'irn_09', 'nvl_09', 'est_17', 'prg_09', 'amb_17', 'crv_09', 'alm_17', 'tlb_17', 'vng_17', 'vtr_17', 'vlm_17'];
   assert.equal(playerIds.length, 16, 'se conserva el candidato ST existente de cada club');
   for (const playerId of playerIds) {
-    assert.ok(fs.existsSync(path.join(publicDir, 'assets', 'ballon-dor-ceremony', 'names', playerId + '.wav')),
+    assert.ok(fs.existsSync(path.join(publicDir, 'assets', 'ballon-dor-ceremony', 'names', playerId + '.mp3')),
       `${playerId} tiene clip de nombre`);
   }
   const { CLUBS } = require('../lib/football/teams');
@@ -726,9 +729,9 @@ test('el editor administrativo enseña el fondo elegido y lo guarda en la campa�
   window.eval(ADMIN_CLIENT);
   await new Promise(resolve => setTimeout(resolve, 25));
 
-  const selectedPreset = window.document.querySelector('.admin-preset-btn[data-preset="/assets/estadio-tunnel.jpg"]');
+  const selectedPreset = window.document.querySelector('.admin-preset-btn[data-preset="/assets/estadio-tunnel.webp"]');
   selectedPreset.click();
-  assert.equal(window.document.getElementById('admin-studio-preview-img').getAttribute('src'), '/assets/estadio-tunnel.jpg');
+  assert.equal(window.document.getElementById('admin-studio-preview-img').getAttribute('src'), '/assets/estadio-tunnel.webp');
   window.document.getElementById('promo-create-profile').value = 'montecristo_oficial';
   window.document.getElementById('promo-create-text').value = 'Una campaña de prueba';
   window.document.getElementById('promo-create-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
@@ -852,6 +855,76 @@ test('La Previa abre exactamente en T−30, muestra datos de liga y se oculta al
   assert.equal(window.document.getElementById('est-preshow-promo').hidden, true, 'la promoción se corta al llegar la hora programada');
   handlers['football:status']({ matchId: match.id, code: 'kickoff', minute: 0 });
   assert.equal(panel.hidden, true, 'al confirmarse el kickoff desaparece la previa');
+});
+
+// Una alineación de mentira pero con la MISMA forma que publica el servidor
+// (lib/football/lineups.js): 11 titulares con dorsal, puesto y slot.
+function fakeLineups(match, source) {
+  const side = (clubId, offset) => ({
+    clubId,
+    name: clubId === 'home' ? 'Home FC' : 'Away FC',
+    short: clubId.slice(0, 3).toUpperCase(),
+    formation: '4-4-2',
+    style: 'possession',
+    manager: { id: 'mgr_' + clubId, name: clubId === 'home' ? 'Camilo Valera' : 'Bruno Alcázar' },
+    starters: Array.from({ length: 11 }, (_, index) => ({
+      id: clubId + '-' + (index + 1),
+      name: (clubId === 'home' ? 'Local ' : 'Visita ') + (index + 1),
+      number: index + offset,
+      pos: index === 0 ? 'GK' : 'CM',
+      role: index === 0 ? 'GK' : 'MF',
+      slotIndex: index
+    })),
+    bench: []
+  });
+  return { matchId: match.id, seasonMonth: '2026-11', asOf: 0, source, home: side('home', 1), away: side('away', 21) };
+}
+
+test('La Previa muestra el once titular con nombres, dorsales y puestos en el carrusel', async t => {
+  const h = createHarness({
+    now: 1800000000000,
+    kickoffOffsetMs: 10 * 60 * 1000,
+    reducedMotion: false,
+    onLineupsGet(payload, ack) { ack({ ok: true, lineups: fakeLineups({ id: payload.matchId }, 'commitment') }); }
+  });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window } = h;
+  await new Promise(resolve => setTimeout(resolve, 20));
+
+  const showcase = window.document.getElementById('est-showcase');
+  const track = window.document.getElementById('est-showcase-track');
+  const card = track.querySelector('[data-showcase-key="lineup"]');
+  assert.ok(card, 'la ficha del once existe en la cartelera');
+  const text = card.textContent;
+  for (const index of [1, 5, 11]) {
+    assert.ok(text.includes('Local ' + index), `el local ${index} aparece con su nombre`);
+    assert.ok(text.includes('Visita ' + index), `la visita ${index} aparece con su nombre`);
+  }
+  assert.equal(card.querySelectorAll('.est-lineup-home .est-lineup-row').length, 11, 'once local completo');
+  assert.equal(card.querySelectorAll('.est-lineup-away .est-lineup-row').length, 11, 'once visitante completo');
+  assert.ok(text.includes('Portero'), 'los puestos se leen en castellano');
+  assert.ok(text.includes('DT Camilo Valera'), 'la ficha dice quién firma el once');
+  assert.match(text, /Once confirmado del partido/, 'el once del compromiso se anuncia como confirmado');
+
+  // El once es la primera ficha del carrusel: es lo que el aficionado viene a ver.
+  assert.equal(showcase.dataset.slideType, 'lineup');
+  assert.equal(window.document.getElementById('est-showcase-count').textContent, '1 / 6');
+  assert.match(showcase.getAttribute('aria-label'), /Onces titulares/);
+  assert.equal(window.document.querySelectorAll('#est-showcase-dots [data-showcase-index]').length, 6);
+  const dot = window.document.querySelector('#est-showcase-dots [data-showcase-index="0"]');
+  assert.match(dot.getAttribute('aria-label'), /once titular/);
+});
+
+test('sin once disponible la cartelera no inventa una ficha vacía', async t => {
+  const h = createHarness({ now: 1800000000000, kickoffOffsetMs: 10 * 60 * 1000, reducedMotion: false });
+  t.after(h.close);
+  await h.connectToMatch();
+  const { window } = h;
+  await new Promise(resolve => setTimeout(resolve, 20));
+  const track = window.document.getElementById('est-showcase-track');
+  assert.equal(track.querySelector('[data-showcase-key="lineup"]'), null, 'sin datos no hay ficha de once');
+  assert.equal(window.document.getElementById('est-showcase-count').textContent, '1 / 5');
 });
 
 test('los indicadores permanecen juntos y cada anuncio ocupa su propia ficha a pantalla completa', async t => {
@@ -2042,7 +2115,7 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
   assert.equal(third.querySelector('.est-bdo-ceremony-avatar').hidden, false,
     'avatar y nombre aparecen al comenzar el clip de nombre correspondiente');
   assert.match(third.querySelector('.est-bdo-ceremony-avatar').getAttribute('src'), /vrd_09\.svg$/);
-  assert.match(h.ceremonyAudioSrcHistory.narration[2], /names\/vrd_09\.wav$/);
+  assert.match(h.ceremonyAudioSrcHistory.narration[2], /names\/vrd_09\.mp3$/);
   assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="2"]').textContent, /Por revelar/);
   assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="1"]').textContent, /Por revelar/);
   assert.doesNotMatch(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /Segundo lugar: Delantero 2|Balón de Oro MonteCristo: Delantero 1/);
@@ -2056,7 +2129,7 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
   assert.match(second.textContent, /Delantero 2/);
   assert.equal(second.querySelector('.est-bdo-ceremony-avatar').hidden, false);
   assert.match(second.querySelector('.est-bdo-ceremony-avatar').getAttribute('src'), /sol_17\.svg$/);
-  assert.match(h.ceremonyAudioSrcHistory.narration[4], /names\/sol_17\.wav$/);
+  assert.match(h.ceremonyAudioSrcHistory.narration[4], /names\/sol_17\.mp3$/);
   assert.match(document.querySelector('#est-bdo-ceremony-podium [data-place="1"]').textContent, /Por revelar/);
   assert.doesNotMatch(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /Balón de Oro MonteCristo: Delantero 1/);
 
@@ -2074,7 +2147,7 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
   assert.match(winner.textContent, /Delantero 1/);
   assert.equal(winner.querySelector('.est-bdo-ceremony-avatar').hidden, false);
   assert.match(winner.querySelector('.est-bdo-ceremony-avatar').getAttribute('src'), /frr_09\.svg$/);
-  assert.match(h.ceremonyAudioSrcHistory.narration[7], /names\/frr_09\.wav$/);
+  assert.match(h.ceremonyAudioSrcHistory.narration[7], /names\/frr_09\.mp3$/);
   assert.match(document.getElementById('est-bdo-ceremony-breakdown').textContent, /Desglose de puntos/);
   assert.match(document.getElementById('est-bdo-ceremony-payout').textContent, /250 fichas virtuales/);
   assert.match(document.getElementById('est-bdo-ceremony-transcript-copy').textContent, /Delantero 1/);
@@ -2100,7 +2173,7 @@ test('la ceremonia revela cada avatar cuando se pronuncia el nombre; replay y co
   assert.equal(overlay.hidden, false, 'el replay vuelve a iniciar desde la misma instantánea oficial');
   assert.match(document.getElementById('est-bdo-ceremony-title').textContent, /Dieciséis aspirantes/);
   assert.equal(h.ceremonyAudioCounts.music, 2);
-  assert.equal(h.ceremonyAudioSrcHistory.narration.at(-1), '/assets/ballon-dor-ceremony/cues/verification.wav');
+  assert.equal(h.ceremonyAudioSrcHistory.narration.at(-1), '/assets/ballon-dor-ceremony/cues/verification.mp3');
   assert.equal(h.ballonDorSocketAttempts.length, 0);
   assert.equal(h.ballonDorHttpAttempts.length, 0);
   assert.equal(h.requests.some(request => request.url.includes('/ballon-dor/bet')), false);
@@ -2897,8 +2970,8 @@ test('Mi afición renderiza los estandartes de club y de campeón vigente y perm
   reigningChampion:{clubId:'united_vanguard',clubName:'Farselona FC',abbr:'FAR',seasonMonth:'2026-09'},
   rewards:[{id:'club-pin',title:'Escudo del club',target:0,progress:4,unlocked:true,equipped:false}],
   banners:[
-   {id:'club-banner',kind:'club',art:'/assets/banners/club-banner-bg.jpg',crest:'/assets/escudos/FAR.svg',clubName:'Farselona FC',abbr:'FAR',primary:'#d32f2f',secondary:'#111111',title:'Estandarte del club',subtitle:'Seda oficial',unlocked:true,equipped:false},
-   {id:'champion-banner',kind:'reigning_champion',art:'/assets/banners/champion-banner-bg.jpg',crest:'/assets/escudos/FAR.svg',clubName:'Farselona FC',abbr:'FAR',primary:'#d32f2f',secondary:'#111111',title:'Estandarte de Campeón Vigente',subtitle:'Vigente hasta nuevo campeón',seasonMonth:'2026-09',unlocked:true,equipped:false}
+   {id:'club-banner',kind:'club',art:'/assets/banners/club-banner-bg.webp',crest:'/assets/escudos/FAR.svg',clubName:'Farselona FC',abbr:'FAR',primary:'#d32f2f',secondary:'#111111',title:'Estandarte del club',subtitle:'Seda oficial',unlocked:true,equipped:false},
+   {id:'champion-banner',kind:'reigning_champion',art:'/assets/banners/champion-banner-bg.webp',crest:'/assets/escudos/FAR.svg',clubName:'Farselona FC',abbr:'FAR',primary:'#d32f2f',secondary:'#111111',title:'Estandarte de Campeón Vigente',subtitle:'Vigente hasta nuevo campeón',seasonMonth:'2026-09',unlocked:true,equipped:false}
   ]
  };
  let sent;

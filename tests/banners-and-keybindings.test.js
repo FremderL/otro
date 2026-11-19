@@ -75,8 +75,8 @@ test('Banners de club y Campeón Vigente: lealtad previa al título, visibilidad
   });
 
   // Verificamos que los dos fondos generados existen en public/assets/banners/
-  assert.equal(fs.existsSync(path.join(__dirname, '..', 'public', 'assets', 'banners', 'club-banner-bg.jpg')), true);
-  assert.equal(fs.existsSync(path.join(__dirname, '..', 'public', 'assets', 'banners', 'champion-banner-bg.jpg')), true);
+  assert.equal(fs.existsSync(path.join(__dirname, '..', 'public', 'assets', 'banners', 'club-banner-bg.webp')), true);
+  assert.equal(fs.existsSync(path.join(__dirname, '..', 'public', 'assets', 'banners', 'champion-banner-bg.webp')), true);
 
   const store = new ProfileStore(path.join(dir, 'profiles.json'));
   const loyal = store.getOrCreate('loyal-fan', 'Leal', 'fox');
@@ -113,7 +113,7 @@ test('Banners de club y Campeón Vigente: lealtad previa al título, visibilidad
   assert.equal(loyalBanner?.banner, 'champion-banner');
   assert.equal(loyalBanner?.isReigningChampion, true);
   assert.equal(loyalBanner?.seasonMonth, '2026-09');
-  assert.equal(loyalBanner?.art, '/assets/banners/champion-banner-bg.jpg');
+  assert.equal(loyalBanner?.art, '/assets/banners/champion-banner-bg.webp');
 
   // El Ranking del Mes expone pin y banner equipados.
   const topDuringReign = store.top(10);
@@ -201,8 +201,8 @@ test('UI Casino: ventana independiente de Preferencias, banners en Perfil y Rank
       reigningClubId: 'united_vanguard',
       reigningClubName: 'Farselona FC',
       items: [
-        { id: 'club-banner', kind: 'club', limitedTime: false, art: '/assets/banners/club-banner-bg.jpg', crest: '/assets/escudos/FAR.svg', clubId: 'united_vanguard', clubName: 'Farselona FC', abbr: 'FAR', primary: '#a50044', secondary: '#004d98', title: 'Estandarte del club', subtitle: 'Seda oficial', seasonMonth: null, unlocked: true, equipped: false },
-        { id: 'champion-banner', kind: 'reigning_champion', limitedTime: true, art: '/assets/banners/champion-banner-bg.jpg', crest: '/assets/escudos/FAR.svg', clubId: 'united_vanguard', clubName: 'Farselona FC', abbr: 'FAR', primary: '#a50044', secondary: '#004d98', title: 'Estandarte de Campeón Vigente', subtitle: 'Laureles de gala', seasonMonth: '2026-09', unlocked: true, equipped: false }
+        { id: 'club-banner', kind: 'club', limitedTime: false, art: '/assets/banners/club-banner-bg.webp', crest: '/assets/escudos/FAR.svg', clubId: 'united_vanguard', clubName: 'Farselona FC', abbr: 'FAR', primary: '#a50044', secondary: '#004d98', title: 'Estandarte del club', subtitle: 'Seda oficial', seasonMonth: null, unlocked: true, equipped: false },
+        { id: 'champion-banner', kind: 'reigning_champion', limitedTime: true, art: '/assets/banners/champion-banner-bg.webp', crest: '/assets/escudos/FAR.svg', clubId: 'united_vanguard', clubName: 'Farselona FC', abbr: 'FAR', primary: '#a50044', secondary: '#004d98', title: 'Estandarte de Campeón Vigente', subtitle: 'Laureles de gala', seasonMonth: '2026-09', unlocked: true, equipped: false }
       ]
     }
   };
@@ -233,7 +233,7 @@ test('UI Casino: ventana independiente de Preferencias, banners en Perfil y Rank
       emitted.push({ ev, payload });
       if (ev === 'fan_banner_equip' && typeof ack === 'function') {
         viewerProfile.fanBanner = payload.banner === 'champion-banner'
-          ? { clubId: 'united_vanguard', clubName: 'Farselona FC', abbr: 'FAR', primary: '#a50044', secondary: '#004d98', banner: 'champion-banner', isReigningChampion: true, seasonMonth: '2026-09', art: '/assets/banners/champion-banner-bg.jpg', crest: '/assets/escudos/FAR.svg' }
+          ? { clubId: 'united_vanguard', clubName: 'Farselona FC', abbr: 'FAR', primary: '#a50044', secondary: '#004d98', banner: 'champion-banner', isReigningChampion: true, seasonMonth: '2026-09', art: '/assets/banners/champion-banner-bg.webp', crest: '/assets/escudos/FAR.svg' }
           : null;
         viewerProfile.fanBanners.equippedBanner = payload.banner;
         viewerProfile.fanBanners.items = viewerProfile.fanBanners.items.map(it => ({ ...it, equipped: it.id === payload.banner }));
@@ -284,7 +284,7 @@ test('UI Casino: ventana independiente de Preferencias, banners en Perfil y Rank
         medals: 2,
         championBanner: true,
         fanPin: { clubId: 'united_vanguard', clubName: 'Farselona FC', abbr: 'FAR', pin: 'fan-3', pinTitle: 'Afición de leyenda', pinBadge: '★', titleLabel: 'Leyenda de Farselona FC' },
-        fanBanner: { clubId: 'united_vanguard', clubName: 'Farselona FC', abbr: 'FAR', primary: '#a50044', secondary: '#004d98', banner: 'champion-banner', isReigningChampion: true, seasonMonth: '2026-09', art: '/assets/banners/champion-banner-bg.jpg', crest: '/assets/escudos/FAR.svg' }
+        fanBanner: { clubId: 'united_vanguard', clubName: 'Farselona FC', abbr: 'FAR', primary: '#a50044', secondary: '#004d98', banner: 'champion-banner', isReigningChampion: true, seasonMonth: '2026-09', art: '/assets/banners/champion-banner-bg.webp', crest: '/assets/escudos/FAR.svg' }
       }],
       previous: null
     }

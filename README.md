@@ -265,6 +265,30 @@ DATABASE_URL="postgres://usuario:clave@host/db?sslmode=require" node scripts/mig
 - **Guía de despliegue paso a paso:** [`DESPLIEGUE_RENDER.md`](DESPLIEGUE_RENDER.md) explica cómo aplicar el blueprint `render.yaml` (opción A), configurar el disco y las variables a mano en el dashboard (opción B), o desplegar **100% gratis sin tarjeta** con Render Free + Neon Free (opción C, Fase 10).
 - La prueba `npm run test:ops` verifica el criterio de la fase 7: dos arranques con el mismo disco no pierden perfiles y `SIGTERM` produce una salida ordenada. La prueba `npm run test:profile-store-pg` (fase 10) hace lo equivalente para el backend de Postgres, con una base simulada.
 
+### Ancho de banda y alternativas de hosting
+
+Render recortó en abril de 2026 el ancho de banda incluido (Hobby: 5 GB/mes,
+Pro: 25 GB/mes; excedente a $0.15/GB), y este juego —15 MB de cartas más 2.8 MB
+de audio— lo agota pronto. **Alternativas evaluadas con precios de noviembre de
+2026 y plan de migración: [`docs/despliegue-alternativas-render.md`](docs/despliegue-alternativas-render.md)**
+(Cloudflare delante de Render, Cloudflare R2 para los assets, Hetzner CX22 con
+20 TB incluidos, Fly.io, Railway, Koyeb, Northflank y Oracle). El repo ya trae
+`Dockerfile`, `.dockerignore` y `fly.toml` para las rutas basadas en contenedor.
+
+La solución más rápida y gratuita al ancho de banda es **Cloudflare delante de
+Render**: guía paso a paso en
+[`docs/cloudflare-delante-de-render.md`](docs/cloudflare-delante-de-render.md)
+(DNS proxeado, dos Cache Rules, apagar Rocket Loader por la CSP y verificación
+automática). Los assets ya se sirven con `Cache-Control: public, max-age=1 año,
+immutable` y `/healthz` con `no-store` para que el CDN funcione sin romper
+despliegues. Comprobación: `npm run cdn:check -- https://tu-dominio.com`.
+
+El detalle de qué se optimizó, con mediciones antes/después, está en
+[`docs/optimizacion-consumo.md`](docs/optimizacion-consumo.md): audio WAV→MP3
+(−91 %), cartas JPG→WebP (−70 %), `<picture>` en el lobby (−78 %), polling del
+Estadio pausado con la pestaña oculta (−87 % de peticiones) y respeto a
+`Save-Data`. Regenerar assets: `npm run assets:audio` y `npm run assets:img`.
+
 ## Arquitectura
 
 ```text

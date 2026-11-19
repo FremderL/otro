@@ -107,6 +107,25 @@ const footballConfig = loadFootballConfig();
 const app = express();
 app.disable('x-powered-by');
 app.use(securityHeaders);
+// Ahorro de datos anunciado por el navegador (Chrome en móvil con "Ahorro de
+// datos", o cualquier cliente que mande Save-Data: on). Estas reglas no cambian
+// nada para quien no lo activa y ahorran visitas completas a quien sí.
+app.use((req, res, next) => {
+  if (!/\bon\b/i.test(req.get('save-data') || '')) return next();
+  // Las creatividades de La Previa son imágenes subidas por la gente: pesan
+  // mucho y viven en disco. Con ahorro de datos se responde 204 en vez de la
+  // imagen, y el cliente ya tiene su fondo de respaldo por CSS.
+  if (/^\/api\/estadio\/promotions\/[^/]+\/media\//.test(req.path)) {
+    return res.status(204).end();
+  }
+  // El audio de ambiente del Estadio es opcional (música de fondo, ~890 KB):
+  // se sirve vacío y el cliente simplemente no reproduce nada.
+  if (/^\/assets\/(match-ambience\.mp3|ballon-dor-ceremony-theme\.mp3)$/.test(req.path)) {
+    return res.status(204).end();
+  }
+  next();
+});
+
 if (adminConfig.accountSessionsEnabled) app.set('trust proxy', adminConfig.trustProxyHops);
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: true, credentials: true } });
@@ -231,7 +250,20 @@ installSeasonalThemeRoutes(app, {
 // Fase 9: presupuesto de rendimiento — gzip para HTML/CSS/JS y caché larga para las
 // imágenes del lobby (tienen nombre estable; si se reemplazan, cambiar el nombre del archivo).
 app.use(compression());
-app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: '7d', immutable: false }));
+// Cache-Control de los assets: los nombres son estables (si se reemplaza una
+// imagen, cambia el nombre del archivo), así que se pueden cachear un año con
+// `immutable`. Esto es lo que permite que Cloudflare —y el propio navegador—
+// sirvan las cartas y los audios sin volver a Render. `public` es obligatorio
+// para que un CDN compartido guarde la respuesta: sin él, un proxy con
+// cookies de sesión no debe cachear nada.
+const ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), {
+  maxAge: '1y',
+  immutable: true,
+  setHeaders(res) {
+    res.setHeader('Cache-Control', ASSET_CACHE_CONTROL);
+  }
+}));
 // El laboratorio 2D del Estadio ya no es público: solo se sirve tras la guardia
 // de administración en /admin/estadio/laboratorio/* (lib/football/http.js). Aquí
 // se bloquean la ruta antigua y sus archivos estáticos para que un usuario sin
@@ -252,9 +284,15 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
   }
 }));
-app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size, botTasks: botController?.tasks.size || 0 }));
+app.get('/health', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, rooms: rooms.size, botTasks: botController?.tasks.size || 0 });
+});
 // Fase 7: health check para deploys sin caída en Render (configurado como healthCheckPath en render.yaml).
 app.get('/healthz', (_req, res) => {
+  // Nunca cachear: el health check decide reinicios y despliegues, y varios
+  // paneles (Cloudflare entre ellos) guardan respuestas sin `Cache-Control`.
+  res.setHeader('Cache-Control', 'no-store');
   res.json({
     status: 'ok',
     uptimeSeconds: Math.floor(process.uptime()),
@@ -861,9 +899,14 @@ function publicRoom(room, viewerId) {
     recentWinners: room.recentWinners || [],
     specialEvent: room.specialEvent || null,
     gameMeta: QUICK_GAMES[room.game] || null,
+    // `compact`: room_state se emite en cada acción de la mesa, así que aquí
+    // solo viaja lo que la mesa necesita del perfil propio (saldo, identidad
+    // equipada y cartas obtenidas). Con el perfil completo esto pesaba 26 KB por
+    // mensaje; el detalle (logros, retos, historial, tasas del álbum) llega por
+    // GET /api/profile y profile_event, que es donde se abre el modal.
     viewerProfile: (() => {
       const viewer = room.players.find(player => player.id === viewerId);
-      return viewer?._profile ? publicProgress(viewer._profile, true) : null;
+      return viewer?._profile ? publicProgress(viewer._profile, true, { compact: true }) : null;
     })(),
     // Torneo relámpago originado en el lobby; separado del Sit & Go de mesa.
     lobbyTournamentMatch: room.lobbyTournamentMatch ? {
@@ -2875,6 +2918,19 @@ io.on('connection', socket => {
   // Solo se comparte lo que ya es público del asiento y, entre cuentas, el
   // @usuario que la comunidad permite buscar. La relación (amistad, solicitud
   // enviada o recibida) sale del store de comunidad, no del navegador.
+  // Perfil completo del propio jugador, a petición. room_state manda el perfil
+  // compacto (saldo, identidad equipada y cartas obtenidas) porque se emite en
+  // cada acción; los detalles grandes —logros, retos, historial, tasas del
+  // álbum y las cartas sin descubrir— se piden aquí al abrir el modal.
+  socket.on('profile_detail_get', (_payload, ack) => {
+    if (typeof ack !== 'function') return;
+    const viewer = accountProfileForSocket(socket);
+    const { player } = playerForSocket(socket);
+    const target = player?._profile || viewer;
+    if (!target) return ackResult(ack, actionError('Perfil no disponible.', 'profile_required'));
+    return ackResult(ack, { ok: true, profile: publicProgress(target, true) });
+  });
+
   socket.on('table_profile_get', ({ playerId } = {}, ack) => {
     const viewer = accountProfileForSocket(socket);
     const { room, player } = playerForSocket(socket);

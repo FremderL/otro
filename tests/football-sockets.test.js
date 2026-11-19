@@ -1025,7 +1025,9 @@ test('la primera vista del mercado (MonteCristo News) se marca una vez por tempo
   const first=await fireAsync(s,'football:transfers_get',{});
   assert.equal(first.ok,true);
   assert.equal(first.transfers.status,'announced');
-  assert.equal(first.transfers.moves.length,8);
+  // Ocho fichajes entre clubes, más los trueques de porteros y, si toca, algún
+  // fichaje desde la lista de inactivos: nunca menos de ocho.
+  assert.ok(first.transfers.moves.filter(m=>m.fromId!=null).length >= 8, 'el intercambio entre clubes se mantiene');
   assert.equal(first.firstView,true,'la primera consulta tras anunciarse abre la transmisión');
   const second=await fireAsync(s,'football:transfers_get',{});
   assert.equal(second.firstView,false,'la segunda ya no repite el bumper');
@@ -1312,4 +1314,83 @@ test('noticiero diario: identidad del socket, reserva entre pestañas y confirma
   const market = await fireAsync(a, 'football:transfers_get');
   assert.equal(market.firstView, false); assert.equal(market.clubNewsFirstView, false);
   assert.doesNotMatch(JSON.stringify(first), /deviceToken|privateSeed|rootSeed|profileId/);
+});
+
+// ===================== CASA MONTECRISTO E INACTIVOS =====================
+
+test('football:club_shares_get entrega precios y cartera con el presupuesto de cada club', (t) => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const s = ctx.io.connect();
+  subscribe(ctx, s, { name: 'Inversora' });
+  const res = s._fire('football:club_shares_get', {});
+  assert.equal(res.ok, true);
+  assert.equal(res.market.clubs.length, 16);
+  for (const row of res.market.clubs) {
+    assert.ok(row.price > 0 && row.budget > 0, 'todo club cotiza y tiene presupuesto');
+    assert.equal(typeof row.clubName, 'string');
+  }
+  assert.equal(res.portfolio.totalShares, 0, 'cartera vacía al empezar');
+  assert.ok(Number.isFinite(res.chips), 'el saldo viaja para poder operar');
+});
+
+test('football:club_shares_trade compra, vende y respeta los topes sin tocar fichas ajenas', async (t) => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const s = ctx.io.connect();
+  const subscribed = subscribe(ctx, s, { name: 'Operadora' });
+  const profileId = subscribed.profile.id;
+  const before = ctx.profiles.getProfile(profileId).chips;
+  const market = s._fire('football:club_shares_get', {}).market;
+  const target = market.clubs[0];
+
+  const bought = await fireAsync(s, 'football:club_shares_trade', { side: 'buy', clubId: target.clubId, shares: 2 });
+  assert.equal(bought.ok, true);
+  assert.equal(bought.portfolio.totalShares, 2);
+  assert.equal(bought.chips, before - 2 * target.price, 'el débito es real');
+
+  const sold = await fireAsync(s, 'football:club_shares_trade', { side: 'sell', clubId: target.clubId, shares: 1 });
+  assert.equal(sold.ok, true);
+  assert.equal(sold.portfolio.totalShares, 1);
+  assert.ok(sold.chips > bought.chips, 'la venta abona fichas');
+
+  const tooMany = await fireAsync(s, 'football:club_shares_trade', { side: 'buy', clubId: target.clubId, shares: 5000 });
+  assert.equal(tooMany.ok, false);
+  assert.equal(tooMany.error && tooMany.error.includes('Máximo 200'), true);
+
+  const invalid = await fireAsync(s, 'football:club_shares_trade', { side: 'comprar', clubId: target.clubId, shares: 1 });
+  assert.equal(invalid.ok, false, 'un lado inválido no opera');
+});
+
+test('football:free_agents_get y football:careers_get son de solo lectura', (t) => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const s = ctx.io.connect();
+  subscribe(ctx, s, { name: 'Curiosa' });
+  const league = ctx.store.getLeague(ctx.month);
+  const before = JSON.stringify(league.config);
+
+  const listed = s._fire('football:free_agents_get', {});
+  assert.equal(listed.ok, true);
+  assert.ok(Array.isArray(listed.freeAgents.players));
+  assert.ok(Array.isArray(listed.freeAgents.coaches));
+  for (const coach of listed.freeAgents.coaches) assert.ok(coach.cost > 0, 'cada DT tiene precio');
+
+  const history = s._fire('football:careers_get', {});
+  assert.equal(history.ok, true);
+  assert.ok(Array.isArray(history.retirements) && Array.isArray(history.debuts));
+
+  assert.equal(JSON.stringify(ctx.store.getLeague(ctx.month).config), before, 'consultar no altera la liga');
+});
+
+test('sin suscripción los eventos de la Casa no filtran datos', (t) => {
+  const ctx = setup();
+  t.after(ctx.cleanup);
+  const s = ctx.io.connect();
+  for (const event of ['football:club_shares_get', 'football:free_agents_get', 'football:careers_get']) {
+    const res = s._fire(event, {});
+    assert.equal(res.ok, false, `${event} exige identidad`);
+  }
+  return fireAsync(s, 'football:club_shares_trade', { side: 'buy', clubId: 'vantora_fc', shares: 1 })
+    .then(res => assert.equal(res.ok, false, 'tampoco se opera sin identidad'));
 });

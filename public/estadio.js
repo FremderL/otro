@@ -14,6 +14,10 @@
   var PRESHOW_WINDOW_MS = 30 * 60 * 1000;
   var PROMOTION_ROTATION_MS = 15 * 1000;
   var SHOWCASE_ROTATION_MS = PROMOTION_ROTATION_MS;
+  // Con la pestaña oculta nadie ve las creatividades, así que no tiene sentido
+  // pedirlas cada 15 s. Se estira a 2 minutos: si alguien vuelve, el
+  // visibilitychange dispara una carga inmediata.
+  var PROMOTION_HIDDEN_MS = 120 * 1000;
   // Inauguración del Balón de Oro. Antes duraba 45 s y cada candidato aparecía
   // 2 s: se sentía apurada. Ahora se reparte en actos y son ~1:48, con casi 5 s
   // por jugador. La narración (≈49,5 s) cubre el primer bloque; el tema instrumental
@@ -40,10 +44,10 @@
     } catch (_) { return null; }
   }
   var HOUSE_PROMOTIONS = [
-    { text: 'Póker, blackjack y más juegos: encuentra tu próxima mesa en MonteCristo.', href: '/', action: 'Explorar juegos', image: '/assets/poker-lounge.jpg' },
-    { text: '¿Faltan rivales? Completa tu mesa de póker o blackjack con bots del servidor.', href: '/', action: 'Ver mesas', image: '/assets/blackjack-lounge.jpg' },
-    { text: 'Reúne a tus amigos: crea una sala privada y comparte el código para jugar.', href: '/', action: 'Crear una sala', image: '/assets/coin-lounge.jpg' },
-    { text: 'Sigue la liga de Estadio MonteCristo, con relato en vivo y fichas virtuales.', href: '/estadio', action: 'Entrar al Estadio', image: '/assets/estadio-tunnel.jpg' }
+    { text: 'Póker, blackjack y más juegos: encuentra tu próxima mesa en MonteCristo.', href: '/', action: 'Explorar juegos', image: '/assets/poker-lounge.webp' },
+    { text: '¿Faltan rivales? Completa tu mesa de póker o blackjack con bots del servidor.', href: '/', action: 'Ver mesas', image: '/assets/blackjack-lounge.webp' },
+    { text: 'Reúne a tus amigos: crea una sala privada y comparte el código para jugar.', href: '/', action: 'Crear una sala', image: '/assets/coin-lounge.webp' },
+    { text: 'Sigue la liga de Estadio MonteCristo, con relato en vivo y fichas virtuales.', href: '/estadio', action: 'Entrar al Estadio', image: '/assets/estadio-tunnel.webp' }
   ];
   var W = 1050, H = 680, PAD = 18; // canvas 105×68 m a 10 px/m
   var FIELD_W = W - PAD * 2, FIELD_H = H - PAD * 2;
@@ -173,6 +177,7 @@
     dailyNewsEdition: null, dailyNewsDay: null, dailyNewsBusy: false, dailyNewsPending: true, dailyNewsSeq: 0, dailyNewsShown: {},
     lobby: null, standings: [], standingsPending: null, countdownTo: null, lobbyServerNow: null, lobbyReceivedAt: null,
     preshowDataMatchId: null, preshowDataStandings: null, teamIndicators: [],
+    lineupData: null, lineupMatchId: null, lineupSource: null, lineupSeq: 0, lineupFetchedAt: 0,
     showcaseItems: [], showcaseIndex: 0, showcaseRotationId: null, sponsoredPromotions: [],
     promotionsEnabled: false, promoSessionChecked: false, promoProfile: null, promoCsrfToken: null,
     promoWindowOpen: false, promoMatchId: null, promoPollId: null, promoRequestSeq: 0,
@@ -645,6 +650,9 @@
   // ===== Balón de Oro: lectura viva, fallback HTTP, predicción y recibo =====
   var BALLON_DOR_MARKET = 'balon_de_oro';
   var BALLON_DOR_POLL_MS = 15000;
+  // El mercado del Balón de Oro se refresca cada 15 s solo con la pestaña a la
+  // vista; oculta, cada 2 minutos (y al volver se refresca al instante).
+  var BALLON_DOR_HIDDEN_MS = 120 * 1000;
 
   function setBallonDorFeed(state, text) {
     if (!el['est-bdo-feed']) return;
@@ -659,10 +667,18 @@
     else delete el['est-bdo-message'].dataset.state;
   }
 
+  function ballonDorInterval() {
+    return document.hidden ? BALLON_DOR_HIDDEN_MS : BALLON_DOR_POLL_MS;
+  }
+  function restartBallonDorPolling() {
+    if (S.ballonDorPollingId == null) return;
+    window.clearInterval(S.ballonDorPollingId);
+    S.ballonDorPollingId = window.setInterval(loadBallonDorMarket, ballonDorInterval());
+  }
   function startBallonDorPolling() {
     setBallonDorFeed('http', 'Respaldo HTTP · actualización cada 15 s');
     if (S.ballonDorPollingId != null) return;
-    S.ballonDorPollingId = window.setInterval(loadBallonDorMarket, BALLON_DOR_POLL_MS);
+    S.ballonDorPollingId = window.setInterval(loadBallonDorMarket, ballonDorInterval());
   }
 
   function stopBallonDorPolling() {
@@ -1053,7 +1069,7 @@
   function ballonDorNameAudioUrl(candidate) {
     var playerId = String(candidate && candidate.playerId || '');
     if (!/^[a-zA-Z0-9_-]{1,40}$/.test(playerId)) return null;
-    return BALLON_DOR_CEREMONY_NAME_BASE + encodeURIComponent(playerId) + '.wav';
+    return BALLON_DOR_CEREMONY_NAME_BASE + encodeURIComponent(playerId) + '.mp3';
   }
 
   function formatBallonDorScheduleDate(timestamp, timeZone) {
@@ -1709,7 +1725,7 @@
       return;
     }
     var source = step.type === 'cue'
-      ? BALLON_DOR_CEREMONY_CUE_BASE + encodeURIComponent(step.key) + '.wav'
+      ? BALLON_DOR_CEREMONY_CUE_BASE + encodeURIComponent(step.key) + '.mp3'
       : ballonDorNameAudioUrl(S.ballonDorCeremonyRows[step.rank - 1].candidate);
     if (!source || !audio) {
       ceremonyAudioFailed(session, 'ceremony_narration', 'missing_clip');
@@ -2827,6 +2843,9 @@
       if (S.currentMatchId !== matchId) {
         if (S.slip) closeSlip();
         S.currentMatchId = matchId;
+        // El once es del partido, no del jugador: al cambiar de encuentro se
+        // descarta el anterior para no enseñar una alineación ajena.
+        S.lineupData = null; S.lineupMatchId = null; S.lineupSource = null; S.lineupSeq++;
         resetCrowdFeed();
         S.danmaku.queue = [];
         clearDanmaku();
@@ -2839,6 +2858,9 @@
         if (profileChanged) loadBetHistory({ force: true });
       }
       applyMatchState(res.matchState);
+      // La previa necesita el once con nombres: se pide una vez por partido (y se
+      // vuelve a pedir solo si sigue siendo una proyección).
+      refreshLineups(true);
       updateCrowdAvailability();
       if (ledgerOpen()) renderLedger();
       highlightActive();
@@ -2950,7 +2972,8 @@
     });
     var preferredKey = S.preshowDataMatchId === S.match.id
       ? null
-      : (S.sponsoredPromotions.length ? S.sponsoredPromotions[0].key : 'indicators');
+      : (lineupReady() ? 'lineup'
+        : (S.sponsoredPromotions.length ? S.sponsoredPromotions[0].key : 'indicators'));
     renderShowcase(homeColor, awayColor, preferredKey);
   }
 
@@ -3032,6 +3055,90 @@
     '</article>';
   }
 
+  // ===== Once titular =====
+  // El once lo decide el servidor (lib/football/lineups.js): el del compromiso
+  // del partido o, mientras no exista, la proyección que el DT alinearía hoy.
+  // El cliente NO lo calcula ni lo ordena: pinta lo que recibe.
+  function lineupReady() {
+    var data = S.lineupData;
+    return Boolean(data && data.matchId === S.currentMatchId
+      && data.home && data.away
+      && Array.isArray(data.home.starters) && data.home.starters.length
+      && Array.isArray(data.away.starters) && data.away.starters.length);
+  }
+  function refreshLineups(force) {
+    var match = S.match;
+    if (!match || !match.id || !S.socket || !S.socket.connected) return;
+    if (!force && lineupReady()) {
+      // Un once del compromiso ya no cambia: se consulta una sola vez. La
+      // proyección sí puede moverse con un fichaje o un ajuste del DT, así que
+      // se refresca mientras la previa está en pantalla (nunca en bucle).
+      var fresh = S.lineupSource === 'commitment' || (performance.now() - S.lineupFetchedAt) < 60000;
+      if (fresh) return;
+    }
+    var seq = ++S.lineupSeq;
+    var matchId = match.id;
+    S.socket.emit('football:lineups_get', { matchId: matchId }, function (res) {
+      if (seq !== S.lineupSeq || !S.match || S.match.id !== matchId) return;
+      S.lineupFetchedAt = performance.now();
+      if (!res || !res.ok || !res.lineups || res.lineups.matchId !== matchId) {
+        S.lineupData = null; S.lineupSource = null;
+        rerenderLineup();
+        return;
+      }
+      // Primera vez que hay once para este partido: el carrusel se abre ahí,
+      // porque es la respuesta a la pregunta con la que llega el aficionado.
+      var firstForMatch = S.lineupMatchId !== matchId;
+      S.lineupData = res.lineups;
+      S.lineupMatchId = matchId;
+      S.lineupSource = res.lineups.source || null;
+      rerenderLineup(firstForMatch);
+    });
+  }
+  // Repintar la cartelera con el once solo tiene sentido si la previa está en
+  // pantalla: fuera de ventana el próximo render la recoge y no se reconstruyen
+  // fichas que nadie está mirando.
+  function rerenderLineup(preferLineup) {
+    var panel = el['est-preshow'];
+    if (!panel || panel.hidden || !el['est-showcase'] || el['est-showcase'].hidden) return;
+    var home = preshowTeamColor(S.match.homeId), away = preshowTeamColor(S.match.awayId);
+    renderShowcase(home, away, preferLineup ? 'lineup' : null);
+  }
+  var POSITION_LABEL = { GK: 'Portero', DF: 'Defensa', MF: 'Medio', FW: 'Delantero' };
+  function starterRowMarkup(player) {
+    var number = player.number == null ? '' : '<span class="est-lineup-number">' + esc(player.number) + '</span>';
+    var role = player.role ? (POSITION_LABEL[player.role] || player.role) : '';
+    var natural = player.pos && player.pos !== player.role ? ' <small>' + esc(player.pos) + '</small>' : '';
+    return '<li class="est-lineup-row">' + number
+      + '<span class="est-lineup-name">' + esc(player.name) + '</span>'
+      + '<span class="est-lineup-role">' + esc(role) + natural + '</span></li>';
+  }
+  function lineupColumnMarkup(side, clubId, color) {
+    var team = S.lineupData[side] || {};
+    var starters = Array.isArray(team.starters) ? team.starters : [];
+    var manager = team.manager && team.manager.name ? team.manager.name : null;
+    return '<div class="est-lineup-column est-lineup-' + side + '" style="--club-color:' + esc(color) + '">'
+      + '<header class="est-lineup-club">' + clubCrestMarkup(clubId, 'est-compare-dot')
+      + '<span>' + esc(team.name || teamFull(clubId)) + '</span></header>'
+      + '<p class="est-lineup-meta">' + esc(team.formation || 'sin dibujo')
+      + (manager ? ' · DT ' + esc(manager) : '') + ' · ' + starters.length + ' titulares</p>'
+      + '<ol class="est-lineup-list">' + starters.map(starterRowMarkup).join('') + '</ol>'
+      + '</div>';
+  }
+  function lineupSlideMarkup(homeColor, awayColor) {
+    var confirmed = S.lineupData && S.lineupData.source === 'commitment';
+    var kind = confirmed
+      ? 'Once confirmado del partido'
+      : 'Proyección del DT · puede cambiar hasta el saque inicial';
+    return '<article class="est-showcase-slide est-showcase-stat est-showcase-lineup" data-showcase-key="lineup" aria-label="Onces titulares de ' + esc(teamFull(S.match.homeId)) + ' y ' + esc(teamFull(S.match.awayId)) + '">'
+      + '<div class="est-showcase-stat-head"><div><p class="est-compare-kicker">' + esc(kind) + '</p><h3>Onces titulares</h3></div><span class="est-showcase-kind">11 y 11 · con dorsal y puesto</span></div>'
+      + '<div class="est-lineup-body">'
+      + lineupColumnMarkup('home', S.match.homeId, homeColor || preshowTeamColor(S.match.homeId))
+      + lineupColumnMarkup('away', S.match.awayId, awayColor || preshowTeamColor(S.match.awayId))
+      + '</div>'
+      + '</article>';
+  }
+
   function renderShowcase(homeColor, awayColor, preferredKey) {
     var track = el['est-showcase-track'];
     if (!track) return;
@@ -3040,6 +3147,12 @@
     var promotions = showcasePromotionSlides();
     var indicators = S.teamIndicators || [];
     var items = [];
+    // El once va PRIMERO: es la pregunta que el aficionado trae a la previa
+    // («¿quiénes juegan?»). Solo aparece cuando el servidor lo resolvió; sin
+    // once no se inventa una ficha vacía.
+    if (lineupReady()) {
+      items.push({ type: 'lineup', key: 'lineup', label: 'Onces titulares' });
+    }
     if (indicators.length) {
       items.push({ type: 'indicator', key: 'indicators', label: 'Indicadores del partido', indicators: indicators });
     }
@@ -3051,11 +3164,12 @@
     var promotionIndex = 0;
     track.innerHTML = items.map(function (item) {
       if (item.type === 'promotion') return promotionSlideMarkup(item.creative, promotionIndex++);
+      if (item.type === 'lineup') return lineupSlideMarkup(homeColor, awayColor);
       return indicatorSlideMarkup(item.indicators, homeColor || preshowTeamColor(S.match.homeId), awayColor || preshowTeamColor(S.match.awayId));
     }).join('');
     if (el['est-showcase-dots']) {
       el['est-showcase-dots'].innerHTML = items.map(function (item, index) {
-        var itemType = item.type === 'indicator' ? 'todos los indicadores' : 'anuncio';
+        var itemType = item.type === 'indicator' ? 'todos los indicadores' : (item.type === 'lineup' ? 'el once titular' : 'anuncio');
         return '<button class="est-compare-dot-button" type="button" data-showcase-index="' + index + '" aria-label="Ver ' + itemType + ': ' + esc(item.label) + '" aria-pressed="false" title="' + itemType + ': ' + esc(item.label) + '"><span></span></button>';
       }).join('');
       el['est-showcase-dots'].querySelectorAll('[data-showcase-index]').forEach(function (button) {
@@ -3085,6 +3199,10 @@
     el['est-promo-link'] = $('est-promo-link');
     el['est-compare-home'] = $('est-compare-home');
     el['est-compare-away'] = $('est-compare-away');
+    // Volver a pintar la cartelera crea anuncios nuevos: si la previa está
+    // fuera de ventana (o en espera de kickoff), no pueden reaparecer visibles.
+    var viewport = el['est-showcase'];
+    if (viewport && viewport.hidden) setShowcaseVisible(false);
   }
 
   function setShowcaseIndex(index) {
@@ -3101,7 +3219,9 @@
       viewport.setAttribute('data-slide-type', item ? item.type : '');
       viewport.setAttribute('aria-label', item && item.type === 'indicator'
         ? 'Cara a cara: ' + item.label + ' entre ' + teamFull(S.match.homeId) + ' y ' + teamFull(S.match.awayId)
-        : 'Anuncio de La Previa');
+        : (item && item.type === 'lineup'
+          ? 'Onces titulares de ' + teamFull(S.match.homeId) + ' y ' + teamFull(S.match.awayId)
+          : 'Anuncio de La Previa'));
     }
     if (el['est-showcase-count']) el['est-showcase-count'].textContent = (current + 1) + ' / ' + total;
     if (track) {
@@ -3174,13 +3294,13 @@
       textSize: 'medium',
       href: '/estadio',
       action: 'Ver ficha y comparativa',
-      image: '/assets/estadio-tunnel.jpg'
+      image: '/assets/estadio-tunnel.webp'
     };
   }
 
   // Las creatividades comparten una sola cartelera con las fichas cara a cara.
   // El anuncio patrocinado se agrega al carrusel sin reemplazar las promociones propias.
-  var PROMO_FALLBACK_IMAGE = '/assets/casino-hero.jpg';
+  var PROMO_FALLBACK_IMAGE = '/assets/casino-hero.webp';
   function rerenderShowcase(preferredKey) {
     if (!S.match) return;
     renderShowcase(preshowTeamColor(S.match.homeId), preshowTeamColor(S.match.awayId), preferredKey);
@@ -3238,6 +3358,18 @@
     S.promoRequestSeq++;
     defaultPromotion();
   }
+  function promoInterval() {
+    return document.hidden ? PROMOTION_HIDDEN_MS : PROMOTION_ROTATION_MS;
+  }
+  // Cambiar de solapa no debe dejar el intervalo viejo corriendo: se reinicia
+  // con la cadencia que toca y, al volver a la vista, se refresca de inmediato.
+  function restartPromotionRotation() {
+    if (S.promoPollId) clearInterval(S.promoPollId);
+    S.promoPollId = null;
+    if (!S.promoMatchId) return;
+    loadPromotion(S.promoMatchId);
+    S.promoPollId = setInterval(function () { loadPromotion(S.promoMatchId); }, promoInterval());
+  }
   function loadPromotion(matchId) {
     if (!matchId) return;
     var requestSeq = ++S.promoRequestSeq;
@@ -3257,7 +3389,7 @@
     S.promoMatchId = matchId;
     loadPromotion(matchId);
     if (S.promoProfile) loadOwnPromotion(matchId);
-    S.promoPollId = setInterval(function () { loadPromotion(matchId); }, PROMOTION_ROTATION_MS);
+    S.promoPollId = setInterval(function () { loadPromotion(matchId); }, promoInterval());
   }
   function renderPreshow(nowMs) {
     var panel = el['est-preshow'];
@@ -3295,6 +3427,9 @@
       setShowcaseVisible(false);
     } else {
       startPromotionRotation(match.id);
+      // La ficha del once vive en el carrusel de la previa: se pide en cuanto
+      // hay algo que enseñar (y se mantiene al día si sigue siendo proyección).
+      refreshLineups(false);
     }
     // «En liquidación» es literal: si el partido no arranca, su resultado se
     // asienta solo y la tabla nunca se queda con un cruce de menos.
@@ -3532,6 +3667,165 @@
       });
     });
   }
+  // --- Casa Montecristo: acciones de clubes, lista de inactivos y carreras ---
+  // Una sola lectura por apertura del panel. El precio que se muestra es el mismo
+  // que usa el mercado para decidir cuánto puede ofrecer cada club.
+  function casaMoney(n) {
+    if (n == null || !isFinite(n)) return '—';
+    return Math.round(Number(n)).toLocaleString('es-MX') + ' fichas';
+  }
+  function casaSharesText(n) {
+    n = Number(n) || 0;
+    return n + (n === 1 ? ' acción' : ' acciones');
+  }
+  function renderCasaMarket(rows, portfolio) {
+    var box = $('est-casa-market');
+    if (!box) return;
+    if (!Array.isArray(rows) || !rows.length) { box.innerHTML = '<p>Sin datos de mercado.</p>'; return; }
+    var held = {};
+    ((portfolio && portfolio.rows) || []).forEach(function (row) { held[row.clubId] = row.shares; });
+    box.innerHTML = '<ul class="est-casa-list">' + rows.map(function (row) {
+      var trend = row.direction === 'up' ? '▲' : row.direction === 'down' ? '▼' : '·';
+      var trendClass = row.direction === 'up' ? ' up' : row.direction === 'down' ? ' down' : '';
+      var change = row.change ? (row.direction === 'up' ? '+' : '−') + Math.round(Math.abs(row.change) * 100) + ' %' : 'sin cambio';
+      return '<li class="est-casa-row"><div class="est-casa-row-head"><b>' + esc(row.clubName) + '</b>' +
+        '<span class="est-casa-price">' + esc(row.price) + ' <small>fichas</small></span></div>' +
+        '<p class="est-casa-meta"><span class="est-casa-trend' + trendClass + '">' + trend + ' ' + esc(change) + '</span>' +
+        ' · Presupuesto ' + esc(row.budget) + ' M · Tu posición: ' + esc(casaSharesText(held[row.clubId] || 0)) + '</p>' +
+        '<div class="est-casa-actions"><button type="button" data-casa-buy="' + esc(row.clubId) + '">Comprar</button>' +
+        '<button type="button" data-casa-sell="' + esc(row.clubId) + '">Vender</button></div></li>';
+    }).join('') + '</ul>';
+    Array.prototype.forEach.call(box.querySelectorAll('[data-casa-buy]'), function (button) {
+      button.addEventListener('click', function () { tradeCasa(button.getAttribute('data-casa-buy'), 'buy'); });
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-casa-sell]'), function (button) {
+      button.addEventListener('click', function () { tradeCasa(button.getAttribute('data-casa-sell'), 'sell'); });
+    });
+  }
+  function renderCasaPortfolio(portfolio) {
+    var box = $('est-casa-portfolio'), total = $('est-casa-total');
+    if (!box) return;
+    if (total) total.textContent = casaSharesText(portfolio ? portfolio.totalShares : 0);
+    var rows = (portfolio && portfolio.rows) || [];
+    if (!rows.length) { box.innerHTML = '<p>Aún no tienes acciones. Compra una y podrás seguir su precio cada temporada.</p>'; return; }
+    box.innerHTML = '<ul class="est-casa-list">' + rows.map(function (row) {
+      var sign = row.profit >= 0 ? '+' : '−';
+      return '<li class="est-casa-row"><div class="est-casa-row-head"><b>' + esc(row.clubName) + '</b>' +
+        '<span class="est-casa-price">' + esc(casaSharesText(row.shares)) + '</span></div>' +
+        '<p class="est-casa-meta">Precio medio ' + esc(casaMoney(row.averageCost)) + ' · Valor ' + esc(casaMoney(row.value)) +
+        ' · <span class="' + (row.profit >= 0 ? 'est-casa-trend up' : 'est-casa-trend down') + '">' + sign + esc(casaMoney(Math.abs(row.profit))) + '</span></p></li>';
+    }).join('') + '</ul>' +
+      '<p class="est-casa-meta">Invertido ' + esc(casaMoney(portfolio.invested)) + ' · Valor actual ' + esc(casaMoney(portfolio.value)) + '</p>';
+  }
+  function renderCasaFreeAgents(freeAgents) {
+    var box = $('est-casa-free-agents');
+    if (!box) return;
+    var players = (freeAgents && freeAgents.players) || [];
+    var coaches = (freeAgents && freeAgents.coaches) || [];
+    if (!players.length && !coaches.length) { box.innerHTML = '<p>La lista está vacía: no hay futbolistas ni DT sin club.</p>'; return; }
+    var html = '';
+    if (players.length) {
+      html += '<h4 class="est-casa-sub">Futbolistas libres <span>' + players.length + '</span></h4><ul class="est-casa-list">' +
+        players.map(function (player) {
+          return '<li class="est-casa-row"><div class="est-casa-row-head"><b>' + esc(player.name) + '</b><span>' + esc(player.pos) + '</span></div>' +
+            '<p class="est-casa-meta">' + (player.age ? esc(player.age) + ' años · ' : '') +
+            (player.wonderkid ? '⭐ Promesa de la temporada · ' : '') +
+            (player.releasedFrom ? 'liberado por ' + esc(player.releasedFrom) : 'sin club') + '</p></li>';
+        }).join('') + '</ul>';
+    }
+    if (coaches.length) {
+      html += '<h4 class="est-casa-sub">DT sin banquillo <span>' + coaches.length + '</span></h4><ul class="est-casa-list">' +
+        coaches.map(function (coach) {
+          return '<li class="est-casa-row"><div class="est-casa-row-head"><b>' + esc(coach.name) + '</b><span>' + esc(coach.preferredFormation) + '</span></div>' +
+            '<p class="est-casa-meta">' + esc(coach.style) + ' · ' + esc(coach.marketFocus) +
+            (coach.lastClubName ? ' · salió de ' + esc(coach.lastClubName) : '') +
+            (coach.cost ? ' · ' + esc(casaMoney(coach.cost)) : '') + '</p></li>';
+        }).join('') + '</ul>';
+    }
+    box.innerHTML = html;
+  }
+  function renderCasaCareers(data) {
+    var box = $('est-casa-careers'), season = $('est-casa-season');
+    if (!box) return;
+    if (season) season.textContent = data && data.seasonMonth ? data.seasonMonth : 'TEMPORADA';
+    if (!data) { box.innerHTML = '<p>Sin novedades de carrera esta temporada.</p>'; return; }
+    var parts = [];
+    if (data.wonderkid) {
+      parts.push('<div class="est-casa-highlight"><span>⭐</span><div><b>La promesa del año: ' + esc(data.wonderkid.name) + '</b>' +
+        '<p>' + esc(data.wonderkid.pos) + ' · ' + esc(data.wonderkid.age) + ' años · entra libre al mercado y los clubes pujan por él.</p></div></div>');
+    }
+    if ((data.retirements || []).length) {
+      parts.push('<h4 class="est-casa-sub">Se retiran</h4><ul class="est-casa-list">' + data.retirements.map(function (item) {
+        var legacy = item.legacy ? (item.legacy.appearances + ' PJ · ' + item.legacy.goals + ' goles') : '';
+        return '<li class="est-casa-row"><div class="est-casa-row-head"><b>' + esc(item.name) + '</b><span>' + esc(item.age) + ' años</span></div>' +
+          '<p class="est-casa-meta">' + esc(item.clubName) + (legacy ? ' · ' + esc(legacy) : '') + '</p></li>';
+      }).join('') + '</ul>');
+    }
+    if ((data.debuts || []).length) {
+      parts.push('<h4 class="est-casa-sub">Suben de la cantera</h4><ul class="est-casa-list">' + data.debuts.map(function (item) {
+        return '<li class="est-casa-row"><div class="est-casa-row-head"><b>' + esc(item.name) + '</b><span>#' + esc(item.number) + ' ' + esc(item.position) + '</span></div>' +
+          '<p class="est-casa-meta">' + esc(item.clubName) + (item.replaces ? ' · plaza de ' + esc(item.replaces) : '') + '</p></li>';
+      }).join('') + '</ul>');
+    }
+    box.innerHTML = parts.length ? parts.join('') : '<p>Sin novedades de carrera esta temporada.</p>';
+  }
+  function tradeCasa(clubId, side) {
+    var feedback = $('est-casa-feedback');
+    if (!S.socket || !S.socket.connected) { if (feedback) feedback.textContent = 'Conéctate para operar.'; return; }
+    var raw = window.prompt(side === 'buy' ? '¿Cuántas acciones compras?' : '¿Cuántas acciones vendes?', '1');
+    if (raw == null) return;
+    var shares = Math.floor(Number(raw));
+    if (!shares || shares < 1) { if (feedback) feedback.textContent = 'Cantidad no válida.'; return; }
+    if (feedback) feedback.textContent = 'Operando…';
+    S.socket.emit('football:club_shares_trade', { side: side, clubId: clubId, shares: shares }, function (res) {
+      if (!res || !res.ok) { if (feedback) feedback.textContent = (res && res.error) || 'No se pudo completar la operación.'; return; }
+      if (feedback) feedback.textContent = (side === 'buy' ? 'Compraste ' : 'Vendiste ') + shares +
+        (shares === 1 ? ' acción.' : ' acciones.') + ' Cartera: ' + casaSharesText(res.portfolio.totalShares) + '.';
+      renderCasaPortfolio(res.portfolio);
+      refreshCasa(true);
+    });
+  }
+  function refreshCasa(keepFeedback) {
+    var feedback = $('est-casa-feedback');
+    var market = $('est-casa-market');
+    var freeBox = $('est-casa-free-agents'), careersBox = $('est-casa-careers');
+    if (!market) return;
+    if (!S.socket || !S.socket.connected) {
+      ['est-casa-market', 'est-casa-portfolio', 'est-casa-free-agents', 'est-casa-careers'].forEach(function (id) {
+        var el = $(id); if (el) el.textContent = 'Conéctate para consultar la Casa Montecristo.';
+      });
+      return;
+    }
+    if (!keepFeedback && feedback) feedback.textContent = '';
+    if (market) market.textContent = 'Consultando precios…';
+    S.socket.emit('football:club_shares_get', {}, function (res) {
+      if (!res || !res.ok || !res.market) {
+        if (market) market.textContent = (res && res.error) || 'No se pudo consultar la Casa.';
+        return;
+      }
+      var summary = $('est-casa-summary');
+      if (summary) {
+        summary.textContent = 'Tienes ' + casaSharesText(res.portfolio ? res.portfolio.totalShares : 0) +
+          ' · Valor ' + casaMoney(res.portfolio ? res.portfolio.value : 0) +
+          ' · Saldo ' + casaMoney(res.chips) + '.';
+      }
+      renderCasaMarket(res.market.clubs, res.portfolio);
+      renderCasaPortfolio(res.portfolio);
+    });
+    if (freeBox) {
+      freeBox.textContent = 'Consultando la lista…';
+      S.socket.emit('football:free_agents_get', {}, function (res) {
+        renderCasaFreeAgents(res && res.ok ? res.freeAgents : null);
+      });
+    }
+    if (careersBox) {
+      careersBox.textContent = 'Consultando carreras…';
+      S.socket.emit('football:careers_get', {}, function (res) {
+        renderCasaCareers(res && res.ok ? res : null);
+      });
+    }
+  }
+
   function refreshQuiniela() {
     var list = $('est-quiniela-list');
     if (!list) return;
@@ -3619,7 +3913,8 @@
           var coachNote = move.managerName ? ' · Pedido DT ' + move.managerName : '';
           return '<li><div class="est-transfer-card-top"><div class="est-transfer-portrait-wrap">' + transferPortrait(move) + '<span class="est-transfer-number">' + String(index + 1).padStart(2, '0') + '</span></div>' +
             '<div class="est-transfer-player"><span class="est-transfer-tag">TRASPASO CONFIRMADO</span><b>' + esc(move.playerName || 'Jugador') + '</b><small>' + esc((move.position || 'JUGADOR') + coachNote) + '</small></div></div>' +
-            transferRoute(move) + '<div class="est-transfer-card-footer"><span class="est-transfer-value">Valoración ' + esc(transferValueLabel(move.playerValue)) + '</span><span>' + esc(move.tacticalNeed ? String(move.tacticalNeed).toUpperCase() : 'FICHAS · ESTIMADA') + '</span></div></li>';
+            transferRoute(move) + '<p class="est-transfer-reason">' + esc(move.signingReason || ('Pedido del DT ' + (move.managerName || 'del club'))) + '</p>' +
+            '<div class="est-transfer-card-footer"><span class="est-transfer-value">Valoración ' + esc(transferValueLabel(move.playerValue)) + '</span><span>' + esc(move.tacticalNeed ? String(move.tacticalNeed).toUpperCase() : 'FICHAS · ESTIMADA') + '</span></div></li>';
         }).join('') + '</ul><p class="est-market-footnote">✦ Retratos ilustrados · Compras solicitadas por cada DT · Valoraciones en millones de fichas virtuales</p>'
       : '';
     list.innerHTML = movesHtml + renderClubNewsBoard(clubNews, market.seasonMonth, !hasMoves);
@@ -3935,6 +4230,11 @@
   function renderClubProfile(club, box) {
     var roster = club.roster || {}, players = roster.players || [], record = club.record || {}, manager = club.manager || {};
     var lineups = new Map((club.lineup || []).map(function (p) { return [p.id, p]; }));
+    // Los once titulares, con nombre y dorsal, salen tal cual del servidor
+    // (misma alineación que usa el motor). Si la ficha de un despliegue anterior
+    // no los trae, la sección no se pinta: no se rellena a mano.
+    var starters = (club.lineup || []).filter(function (p) { return p && p.initialStatus === 'active' && p.name; })
+      .sort(function (a, b) { return (a.slotIndex == null ? 99 : a.slotIndex) - (b.slotIndex == null ? 99 : b.slotIndex); });
     var color = /^#[0-9a-f]{6}$/i.test(club.colors && club.colors.primary || '') ? club.colors.primary : '#76d7a2';
     var styles = { possession:'Posesión', pressing:'Presión', direct:'Juego directo', balanced:'Equilibrado', counter:'Contraataque' };
     var bench = players.filter(function (p) { var slot = lineups.get(p.id); return slot && slot.initialStatus === 'bench' && p.position !== 'GK'; });
@@ -3968,7 +4268,11 @@
       + '<p>Registro del equipo: ' + Number(record.wins || 0) + ' ganados · ' + Number(record.draws || 0) + ' empatados · ' + Number(record.losses || 0) + ' perdidos · ' + Number(record.goalsFor || 0) + ' goles a favor / ' + Number(record.goalsAgainst || 0) + ' en contra.</p>'
       + '<p>Opciones del banquillo por atributo: tiro ' + esc(bestBench('sho')) + '; pase ' + esc(bestBench('pas')) + '; defensa ' + esc(bestBench('def')) + '.</p>'
       + '<p>El DT elige el once titular, cambia la formación según la racha o el partido, gestiona las sustituciones y solicita fichajes en el mercado. Esta vista es de consulta y no altera partidos ya comprometidos.</p></section>'
-      + '<section class="est-club-block"><p class="est-club-caption">Plantilla / ' + players.length + ' futbolistas</p><h4>Un equipo, muchas historias</h4><p>Once inicial orientativo calculado con la formación actual. Los partidos comprometidos pueden tener otra alineación.' + esc(partial) + '</p>'
+      + '<section class="est-club-block"><p class="est-club-caption">Plantilla / ' + players.length + ' futbolistas</p><h4>Un equipo, muchas historias</h4>'
+      + (starters.length ? '<p class="est-club-caption">Once titular · ' + esc(manager.formation || '') + '</p><ol class="est-club-lineup">'
+        + starters.map(function (p) { return '<li><b>#' + esc(p.number) + '</b> ' + esc(p.name) + ' <span>' + esc(p.role || '') + '</span></li>'; }).join('')
+        + '</ol>' : '')
+      + '<p>Once calculado con la formación vigente del DT, el mismo que usa el motor en el próximo partido.' + esc(partial) + '</p>'
       + '<details><summary>Ver plantilla y estadísticas</summary><div class="est-club-table-wrap"><table class="est-club-table"><thead><tr><th scope="col">Jugador</th><th scope="col">Puesto / rol</th><th scope="col">Estado</th><th scope="col">RIT</th><th scope="col">TIR</th><th scope="col">PAS</th><th scope="col">DEF</th><th scope="col">POR</th><th scope="col">AGR</th><th scope="col">PJ</th><th scope="col">G</th><th scope="col">A</th></tr></thead><tbody>'
       + players.map(function (p) { var a = p.attributes || {}, st = p.stats || {}, slot = lineups.get(p.id) || {}; return '<tr><td>#' + esc(p.number) + ' ' + esc(p.name) + '</td><td>' + esc(p.position) + ' / ' + esc(slot.role || '—') + '</td><td>' + (slot.initialStatus === 'active' ? 'Inicial' : 'Banquillo') + '</td><td>' + esc(a.pac) + '</td><td>' + esc(a.sho) + '</td><td>' + esc(a.pas) + '</td><td>' + esc(a.def) + '</td><td>' + esc(a.gk) + '</td><td>' + esc(a.agr) + '</td><td>' + esc(st.appearances) + '</td><td>' + esc(st.goals) + '</td><td>' + esc(st.assists) + '</td></tr>'; }).join('')
       + '</tbody></table></div><p>RIT ritmo · TIR tiro · PAS pase · DEF defensa · POR portería · AGR agresividad · PJ partidos · G goles · A asistencias. Estadísticas de partidos regulares asentados.</p></details></section>'
@@ -7309,7 +7613,7 @@
 
   var studioState = {
     mode: 'full',
-    presetUrl: '/assets/casino-hero.jpg',
+    presetUrl: '/assets/casino-hero.webp',
     customDataUrl: null,
     fileName: null
   };
@@ -7348,7 +7652,7 @@
     btn.textContent = ctaText;
     btn.style.borderColor = themeColor;
 
-    img.src = studioState.customDataUrl || studioState.presetUrl || '/assets/casino-hero.jpg';
+    img.src = studioState.customDataUrl || studioState.presetUrl || '/assets/casino-hero.webp';
     updateStudioPreviewSize();
   }
 
@@ -7598,13 +7902,20 @@
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     });
-    document.addEventListener('visibilitychange', function () { if (document.hidden && activeNews) pauseNews(); });
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden && activeNews) pauseNews();
+      // Con la pestaña de fondo no se pinta nada: bajar la cadencia de las dos
+      // consultas periódicas ahorra ~6 de cada 7 peticiones del Estadio cuando
+      // alguien lo deja abierto en otra solapa.
+      restartBallonDorPolling();
+      restartPromotionRotation();
+    });
     if ($('est-hub')) {
       $('est-hub-open').addEventListener('click', function (event) { openHub(event.currentTarget); });
       $('est-hub-close').addEventListener('click', closeHub);
       $('est-hub').addEventListener('keydown', trapHubFocus);
       Array.prototype.forEach.call($('est-hub').querySelectorAll('[data-hub-view]'), function (button) {
-        button.addEventListener('click', function () { var view = button.getAttribute('data-hub-view'); setHubView(view); if (view === 'aficion') refreshFan(); if (view === 'mercado') refreshTransfers(); if (view === 'quiniela') refreshQuiniela(); });
+        button.addEventListener('click', function () { var view = button.getAttribute('data-hub-view'); setHubView(view); if (view === 'aficion') refreshFan(); if (view === 'mercado') refreshTransfers(); if (view === 'casa') refreshCasa(); if (view === 'quiniela') refreshQuiniela(); });
       });
     }
     if ($('est-fan-club')) {

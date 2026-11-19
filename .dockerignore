@@ -1,0 +1,23 @@
+# Lo que no hace falta dentro de la imagen.
+.git
+.gitignore
+.github
+
+node_modules
+npm-debug.log*
+
+# Pruebas y herramientas de desarrollo: no se ejecutan en producción.
+tests
+preview
+scripts
+docs
+*.md
+
+# Estado local de corrida (en producción vive en el volumen /var/data).
+data/*.json
+data/promotion-media
+data/demo
+
+.env
+.env.*
+!.env.example
