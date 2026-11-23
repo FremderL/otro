@@ -68,12 +68,24 @@ function emitWithAck(socket, event, payload) {
   });
 }
 
+// El perfil privado se resuelve por dos vías: el `profile_detail_get`
+// explícito (que es lo que usa la interfaz al abrir el modal) y el
+// `room_state` que llega al crear/entrar en la mesa. Antes este test dependía
+// solo del segundo, así que fallaba si el estado de sala llegaba antes de
+// registrar el listener.
 function waitForProfile(socket, predicate, timeoutMs = 7000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       socket.off('room_state', onRoom);
       reject(new Error('No llegó el perfil esperado en el estado de sala.'));
     }, timeoutMs);
+    const finish = profile => {
+      if (!profile || !predicate(profile)) return false;
+      clearTimeout(timer);
+      socket.off('room_state', onRoom);
+      resolve({ profile });
+      return true;
+    };
     const onRoom = room => {
       if (!room.viewerProfile || !predicate(room.viewerProfile, room)) return;
       clearTimeout(timer);
@@ -81,7 +93,25 @@ function waitForProfile(socket, predicate, timeoutMs = 7000) {
       resolve({ profile: room.viewerProfile, room });
     };
     socket.on('room_state', onRoom);
+    // Petición explícita del perfil privado (la que usa la interfaz real).
+    socket.emit('profile_detail_get', {}, response => {
+      if (response?.ok) finish(response.profile);
+    });
   });
+}
+
+// El detalle de perfil (con el inventario y las tasas del álbum) no viaja en
+// cada room_state: `viewerProfile` es deliberadamente compacto. El cliente lo
+// pide con profile_detail_get al abrir el modal, y eso es lo que hace este
+// helper cuando el estado de sala no basta.
+async function loadFullProfile(socket, predicate, timeoutMs = 7000) {
+  const waiting = waitForProfile(socket, predicate, timeoutMs);
+  const detail = await new Promise(resolve => {
+    const timer = setTimeout(() => resolve(null), timeoutMs);
+    socket.emit('profile_detail_get', {}, response => { clearTimeout(timer); resolve(response); });
+  });
+  if (detail?.ok && detail.profile && predicate(detail.profile)) return { profile: detail.profile };
+  return waiting;
 }
 
 async function stopServer(child) {
@@ -140,7 +170,8 @@ test('cosméticos y torneos relámpago funcionan por socket, sin falsificar desb
     token, name: 'Coleccionista', roomName: 'Prueba cosméticos', game: 'poker', avatar: 'fox', tos: TOS_VERSION
   });
   assert.equal(created.ok, true, JSON.stringify(created));
-  const { profile: initialProfile } = await matchingRoom;
+  await matchingRoom;
+  const { profile: initialProfile } = await loadFullProfile(socket, profile => profile.id === token);
   assert.equal(initialProfile.collection.items.find(item => item.id === 'avatar-phoenix')?.unlocked, true);
   assert.equal(initialProfile.collection.equipped.avatar, null);
 

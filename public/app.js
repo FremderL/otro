@@ -3767,9 +3767,14 @@
     // Usa el id del perfil que se está mostrando (mesa o cuenta), no siempre el
     // token de este dispositivo: si se ve el perfil de una cuenta desde el
     // lobby, el historial descargable debe ser el de esa cuenta.
+    //
+    // El endpoint exige prueba de propiedad (sesión de la cuenta o el propio id
+    // de dispositivo en X-Device-Token), así que la descarga se hace por fetch
+    // y no con un enlace directo: un <a download> no puede mandar cabeceras.
     if (els.historyDownload) {
       const historyId = profile.id || profile.accountId || getDeviceToken();
       els.historyDownload.href = `/api/perfil/${encodeURIComponent(historyId)}/historial`;
+      els.historyDownload.onclick = event => downloadProfileHistory(event, historyId);
     }
     renderGameBreakdown(profile);
     const activeChallenges = [...(profile.dailyChallenges || []), ...(profile.weeklyChallenges || [])];
@@ -4360,6 +4365,33 @@
     const rankIcon = rank => rank === 1 ? '🥇 ♛' : rank === 2 ? '🥈 #2' : rank === 3 ? '🥉 #3' : `#${rank}`;
     podium.innerHTML = ranking.slice(0, 3).map(club => `<article class="club-podium-card rank-${club.rank}" data-club-color="${escapeHtml(club.color)}"><span class="club-podium-rank">${rankIcon(club.rank)}</span><span class="club-podium-emblem">${escapeHtml(club.emblemGlyph)}</span><b>${escapeHtml(club.name)}</b><small>${club.memberCount} ${club.memberCount === 1 ? 'integrante' : 'integrantes'}</small>${clubTrophiesBadgesMarkup(club.trophies)}<strong>◆ ${formatChips(club.balance)}</strong><span class="club-podium-caption">RUMBO A TROFEO DE TEMPORADA</span></article>`).join('');
     list.innerHTML = ranking.slice(3).map(club => `<article class="club-ranking-row" data-club-color="${escapeHtml(club.color)}"><span class="club-ranking-position">${club.rank}</span><span class="club-ranking-emblem">${escapeHtml(club.emblemGlyph)}</span><span class="club-ranking-copy"><b>${escapeHtml(club.name)}</b><small>${club.memberCount} integrantes · liderazgo de ${escapeHtml(club.owner?.name || club.owner?.username || 'club')}</small>${clubTrophiesBadgesMarkup(club.trophies)}</span><strong>◆ ${formatChips(club.balance)}</strong></article>`).join('');
+  }
+  // Descarga del historial propio. Manda el id de dispositivo en la cabecera
+  // (el servidor ya no confía solo en el id de la URL) y usa el nombre de
+  // archivo que proponga el servidor.
+  async function downloadProfileHistory(event, profileId) {
+    if (event) event.preventDefault();
+    try {
+      const response = await fetch(`/api/perfil/${encodeURIComponent(profileId)}/historial`, {
+        credentials: 'same-origin',
+        headers: { 'X-Device-Token': getDeviceToken() }
+      });
+      if (!response.ok) {
+        showToast('Historial no descargado', 'Inicia sesión de nuevo para descargar tu historial.');
+        return;
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `montecristo-historial-${profileId}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (_) {
+      showToast('Historial no descargado', 'Revisa tu conexión e inténtalo otra vez.');
+    }
   }
   async function communityRequest(path, options = {}) {
     const method = String(options.method || 'GET').toUpperCase();
@@ -5502,6 +5534,13 @@
     const username = els.accountUsername.value.trim();
     const password = els.accountPassword.value;
     els.accountError.classList.add('hidden');
+    // Misma política que el servidor (lib/password.js): 10-128 caracteres en
+    // alta, cambio y restablecimiento. El aviso evita un viaje al servidor.
+    if ((ui.accountMode === 'login' || password.length) && (password.length < 10 || password.length > 128)) {
+      els.accountError.textContent = 'La contraseña debe tener entre 10 y 128 caracteres.';
+      els.accountError.classList.remove('hidden');
+      return;
+    }
     if (ui.accountMode === 'login') {
       els.accountSubmit.disabled = true;
       await serverFlagsReady;

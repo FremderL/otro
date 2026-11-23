@@ -1,7 +1,7 @@
 const express = require('express');
 const compression = require('compression');
 const http = require('http');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, randomInt } = require('node:crypto');
 const path = require('path');
 const { Server } = require('socket.io');
 const { AVATARS } = require('./lib/profile-store');
@@ -52,6 +52,7 @@ const { installReportRoutes } = require('./lib/report-http');
 const { createPasswordResetStore } = require('./lib/password-reset-store-factory');
 const { installPasswordResetRoutes } = require('./lib/password-reset-http');
 const { sanitizeLogValue, securityHeaders } = require('./lib/security-hardening');
+const { resolveAllowedOrigins, originAllowed, socketCorsOptions } = require('./lib/socket-origin');
 const { createIdempotencyStore } = require('./lib/idempotency-store-factory');
 const { createCommunityStore } = require('./lib/community-store');
 const { installCommunityRoutes } = require('./lib/community-http');
@@ -79,6 +80,28 @@ const loteriaEnabled = process.env.LOTERIA_ENABLED !== 'off';
 // (lib/fortune/ledger.js) permite devolver lo no resuelto al reiniciar.
 // FORTUNE_ENABLED=off la apaga; FORTUNE_PREVIEW_UNSAFE ya no hace falta.
 const fortuneEnabled = process.env.FORTUNE_ENABLED !== 'off';
+
+// Mazos fijos para tests (TEST_BLACKJACK_DECK / TEST_POKER_DECK). Antes bastaba
+// con definir la variable en el panel del hosting para que cualquiera pudiera
+// forzar las cartas repartidas en producción. Ahora hace falta un flag
+// explícito y NUNCA funcionan con NODE_ENV=production.
+const testDeckHooksEnabled = /^(1|true|yes|on)$/i.test(String(process.env.ALLOW_TEST_DECK_HOOKS || ''))
+  && String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
+if (!testDeckHooksEnabled && (process.env.TEST_BLACKJACK_DECK || process.env.TEST_POKER_DECK)) {
+  console.warn('[SECURITY] TEST_*_DECK está definido pero los ganchos de mazo fijo están desactivados (requieren ALLOW_TEST_DECK_HOOKS=on y NODE_ENV≠production).');
+}
+function fixedTestDeck(variable) {
+  if (!testDeckHooksEnabled) return null;
+  const raw = process.env[variable];
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice().reverse() : null;
+  } catch (_) {
+    console.warn(`[SECURITY] ${variable} no contiene un JSON válido; se ignora.`);
+    return null;
+  }
+}
 
 // Estadio MonteCristo (Fase E4): feature flag fail-closed, apagado por defecto.
 // loadFootballConfig() se invoca aquí, junto a loadAdminConfig y ANTES de la red
@@ -128,7 +151,13 @@ app.use((req, res, next) => {
 
 if (adminConfig.accountSessionsEnabled) app.set('trust proxy', adminConfig.trustProxyHops);
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: true, credentials: true } });
+// CORS del handshake: solo orígenes conocidos (antes `origin: true` reflejaba
+// cualquier sitio con credenciales). Ver lib/socket-origin.js.
+const socketAllowedOrigins = resolveAllowedOrigins(process.env, adminConfig);
+if (String(process.env.NODE_ENV || '').toLowerCase() === 'production' && socketAllowedOrigins.size === 0) {
+  console.warn('[SECURITY] NODE_ENV=production sin APP_ORIGIN ni ALLOWED_ORIGINS: los navegadores no podrán abrir el socket (fail-closed). Define APP_ORIGIN.');
+}
+const io = new Server(server, { cors: socketCorsOptions(process.env, adminConfig) });
 const PORT = process.env.PORT || 3000;
 
 // Fase 7: logs estructurados (JSON por línea) para el visor de logs de Render. LOG_JSON=off los desactiva.
@@ -147,9 +176,23 @@ const footballAudioTelemetry = createBallonDorAudioTelemetry({ log: logEvent });
 // ReferenceError). Aquí el servidor se queda vivo, con el error registrado
 // con stack completo para revisarlo; perder una mesa rara es mejor que
 // perderlas todas.
+//
+// Política: los errores de operación (E/S, red, JSON inválido) se registran y
+// el proceso sigue. Un error de PROGRAMACIÓN (TypeError, ReferenceError,
+// RangeError…) deja el heap en un estado desconocido: se guarda el estado y se
+// sale para que el supervisor levante un proceso limpio. Antes se sobrevivía a
+// todo, así que un estado corrupto en memoria se servía indefinidamente.
+const FATAL_ERROR_TYPES = new Set(['TypeError', 'ReferenceError', 'RangeError', 'SyntaxError', 'EvalError', 'URIError']);
 process.on('uncaughtException', error => {
-  console.error('[CRITICO] Excepción no capturada (el servidor sigue vivo):', error);
-  logEvent('uncaught_exception', { message: String(error?.message || error) });
+  console.error('[CRITICO] Excepción no capturada:', error);
+  logEvent('uncaught_exception', { message: String(error?.message || error), name: String(error?.name || 'Error'), fatal: FATAL_ERROR_TYPES.has(error?.name) });
+  if (!FATAL_ERROR_TYPES.has(error?.name)) return;
+  logEvent('uncaught_exception_exit', { reason: 'programming_error' });
+  // Apagado ordenado con plazo duro: gracefulShutdown ya escribe el estado a
+  // disco/Postgres y cierra los stores.
+  gracefulShutdown('uncaught_exception');
+  const hardExit = setTimeout(() => process.exit(1), 15000);
+  hardExit.unref?.();
 });
 process.on('unhandledRejection', reason => {
   console.error('[CRITICO] Promesa rechazada sin capturar (el servidor sigue vivo):', reason);
@@ -333,22 +376,44 @@ app.get('/terminos', (_req, res) => res.sendFile(path.join(__dirname, 'public', 
 // catch-all para que no la atrape la shell del casino.
 app.get('/loteria', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'loteria.html')));
 // Fase 11.1: descarga del historial completo (saldo y transacciones) del propio
-// perfil. El token es el mismo identificador de dispositivo que ya usa el resto
-// de la app (mismo modelo de confianza ya documentado en REVISION_CALIDAD.md:
-// quien tiene el token, tiene acceso a ese perfil); no expone nada de otros.
-app.get('/api/perfil/:token/historial', (req, res) => {
-  const token = String(req.params.token || '').slice(0, 80);
-  const profile = profiles?.profiles?.get(token);
-  if (!profile) return res.status(404).json({ error: 'No se encontró un perfil con ese identificador.' });
-  res.setHeader('Content-Disposition', `attachment; filename="montecristo-historial-${token}.json"`);
-  res.json({
-    exportadoEl: new Date().toISOString(),
-    perfil: { id: profile.id, nombre: profile.name, avatar: profile.avatar, fichas: profile.chips, creadoEl: profile.createdAt },
-    estadisticas: profile.stats,
-    porJuego: profile.gameStats,
-    evolucionDeSaldo: profile.balanceHistory,
-    transacciones: profile.transactions
-  });
+// perfil.
+//
+// Autorización: el export contiene el historial completo de movimientos, así
+// que solo lo puede descargar su dueño. Antes bastaba con conocer el id de
+// dispositivo (que además es adivinable/social: ids numéricos, tokens cortos o
+// el id de otro perfil visto en una mesa) para descargar el historial ajeno.
+// Ahora se exige una de estas dos pruebas de propiedad:
+//   · sesión de cuenta válida cuyo perfil sea el solicitado, o
+//   · el propio id de dispositivo en la cabecera X-Device-Token (lo manda el
+//     botón de descarga del cliente desde su localStorage).
+// El parámetro de ruta se conserva para no romper enlaces, pero ya no es una
+// credencial.
+app.get('/api/perfil/:token/historial', async (req, res, next) => {
+  try {
+    const token = String(req.params.token || '').slice(0, 80);
+    const profile = profiles?.profiles?.get(token);
+    if (!profile) return res.status(404).json({ error: 'No se encontró un perfil con ese identificador.' });
+    let owner = false;
+    const deviceToken = String(req.get('x-device-token') || '').slice(0, 80);
+    if (deviceToken && deviceToken === token) owner = true;
+    if (!owner && accountAuth) {
+      const resolved = await accountAuth.resolveSession(req).catch(() => null);
+      if (resolved?.profile && resolved.profile.id === profile.id) owner = true;
+    }
+    if (!owner) return res.status(403).json({ error: 'No autorizado para descargar este historial.' });
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Disposition', `attachment; filename="montecristo-historial-${token}.json"`);
+    res.json({
+      exportadoEl: new Date().toISOString(),
+      perfil: { id: profile.id, nombre: profile.name, avatar: profile.avatar, fichas: profile.chips, creadoEl: profile.createdAt },
+      estadisticas: profile.stats,
+      porJuego: profile.gameStats,
+      evolucionDeSaldo: profile.balanceHistory,
+      transacciones: profile.transactions
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 // Estadio MonteCristo (Fase E4): rutas públicas de la sección. Se registran ANTES
 // del catch-all para que /estadio y /api/estadio/* no queden atrapados por él
@@ -652,11 +717,21 @@ function duplicateMessageWithinWindow(socket, channel, text) {
   return false;
 }
 
+// Antes de crear un perfil nuevo (id de dispositivo desconocido) se respeta el
+// tope de MAX_PROFILES (ver lib/profile-store-base.js): cada id presentado
+// creaba un perfil persistente, así que un script podía inflar el store sin
+// límite. Devuelve true si ya se respondió al cliente con el error.
+function rejectProfileOverflow(ack, id) {
+  const issue = profiles?.profileCreationIssue ? profiles.profileCreationIssue(id) : null;
+  if (!issue) return false;
+  if (typeof ack === 'function') ackError(ack, issue.error);
+  return true;
+}
 function makeCode() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code;
   do {
-    code = Array.from({ length: 5 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+    code = Array.from({ length: 5 }, () => alphabet[randomInt(alphabet.length)]).join('');
   } while (rooms.has(code));
   return code;
 }
@@ -666,7 +741,7 @@ function makeDeck(decks = 1) {
     for (const suit of SUITS) for (const rank of RANKS) deck.push(rank + suit);
   }
   for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = randomInt(i + 1);
     [deck[i], deck[j]] = [deck[j], deck[i]];
   }
   return deck;
@@ -905,7 +980,11 @@ function publicRoom(room, viewerId) {
     // mensaje; el detalle (logros, retos, historial, tasas del álbum) llega por
     // GET /api/profile y profile_event, que es donde se abre el modal.
     viewerProfile: (() => {
-      const viewer = room.players.find(player => player.id === viewerId);
+      // El espectador también recibe su propio perfil: sin esto el modal de
+      // perfil quedaba vacío al mirar una mesa sin asiento (y el test de
+      // cosméticos, que equipaba desde la grada, veía `collection` sin `items`).
+      const viewer = room.players.find(player => player.id === viewerId)
+        || (room.spectators || []).find(spectator => spectator.id === viewerId && spectator.connected);
       return viewer?._profile ? publicProgress(viewer._profile, true, { compact: true }) : null;
     })(),
     // Torneo relámpago originado en el lobby; separado del Sit & Go de mesa.
@@ -1407,9 +1486,8 @@ function startBlackjack(room) {
   if (!playing.length) return actionError('Al menos una persona debe apostar.');
   beginSpecialEvent(room);
   // Gancho de pruebas: un mazo fijo permite verificar seguro y split de forma determinista.
-  room.deck = process.env.TEST_BLACKJACK_DECK
-    ? JSON.parse(process.env.TEST_BLACKJACK_DECK).slice().reverse()
-    : (room.deck.length > 60 ? room.deck : makeDeck(4));
+  room.deck = fixedTestDeck('TEST_BLACKJACK_DECK')
+    || (room.deck.length > 60 ? room.deck : makeDeck(4));
   room.dealerHand = [draw(room), draw(room)];
   room.results = [];
   room.handNumber++;
@@ -1905,9 +1983,7 @@ function startPoker(room) {
   if (eligible.length < 2) return actionError(tourney ? 'El torneo necesita al menos 2 participantes con fichas.' : 'Se necesitan al menos 2 jugadores con 20 fichas.');
   beginSpecialEvent(room);
   // Mazo fijo opcional para pruebas de showdown; el cliente nunca controla cartas.
-  room.deck = process.env.TEST_POKER_DECK
-    ? JSON.parse(process.env.TEST_POKER_DECK).slice().reverse()
-    : makeDeck(1);
+  room.deck = fixedTestDeck('TEST_POKER_DECK') || makeDeck(1);
   room.community = [];
   room.pot = 0;
   room.currentBet = 0;
@@ -2609,6 +2685,15 @@ function emitLoteriaYou(profileId) {
 // tras elegir explícitamente el modo invitado desde la cuenta.
 io.use(async (socket, next) => {
   try {
+    // Un navegador de otro sitio no puede abrir un socket con las cookies de la
+    // víctima. Los clientes sin Origin (tests, scripts, apps nativas) pasan.
+    const handshakeOrigin = socket.handshake?.headers?.origin;
+    if (!originAllowed(handshakeOrigin, socketAllowedOrigins, process.env)) {
+      logEvent('socket_origin_denied', { origin: String(handshakeOrigin).slice(0, 120) });
+      const err = new Error('Origen no permitido.');
+      err.data = { code: 'origin_denied' };
+      return next(err);
+    }
     socket.data.accountProfileId = null;
     if (!adminConfig.accountSessionsEnabled || !accountSessionStore || !deviceLinks) return next();
     const token = parseCookies(socket.handshake.headers.cookie)[COOKIE_NAME];
@@ -2705,6 +2790,7 @@ io.on('connection', socket => {
       if (String(payload.tos || '') !== TOS_VERSION) return ackError(ack, TOS_REQUIRED_MESSAGE);
       const issue = nameIssue(name, { exceptId: token });
       if (issue) return ackError(ack, issue);
+      if (rejectProfileOverflow(ack, token)) return;
       profile = profiles.getOrCreate(token, name, payload.avatar);
     }
     if (!verifyTosAcceptance(profile, payload.tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
@@ -2802,6 +2888,7 @@ io.on('connection', socket => {
       if (String(payload.tos || '') !== TOS_VERSION) return ackError(ack, TOS_REQUIRED_MESSAGE);
       const issue = nameIssue(name, { exceptId: token });
       if (issue) return ackError(ack, issue);
+      if (rejectProfileOverflow(ack, token)) return;
       profile = profiles.getOrCreate(token, name, payload.avatar);
       profileId = profile.id;
     }
@@ -2922,6 +3009,15 @@ io.on('connection', socket => {
   // compacto (saldo, identidad equipada y cartas obtenidas) porque se emite en
   // cada acción; los detalles grandes —logros, retos, historial, tasas del
   // álbum y las cartas sin descubrir— se piden aquí al abrir el modal.
+  //
+  // Devuelve el perfil PRIVADO del propio jugador (transacciones, gameStats,
+  // balanceHistory, preferencias, álbum). Está declarado en READ_EVENTS del
+  // guardián igual que `account_profile`: antes solo `account_profile` figuraba
+  // como lectura, así que el guardián forzaba la revalidación de sesión y una
+  // sesión caducada recibía un error aquí pero no allí (clasificación
+  // inconsistente de dos lecturas privadas equivalentes). El objetivo se
+  // resuelve SIEMPRE desde la identidad del socket (asiento o cuenta), nunca
+  // desde un id que mande el navegador, así que sigue sin exponer datos ajenos.
   socket.on('profile_detail_get', (_payload, ack) => {
     if (typeof ack !== 'function') return;
     const viewer = accountProfileForSocket(socket);
@@ -3132,6 +3228,7 @@ io.on('connection', socket => {
     // ni el de ningún otro perfil del casino.
     const spectateNameIssue = nameIssue(name, { room, exceptId: id });
     if (spectateNameIssue) return ackError(ack, spectateNameIssue);
+    if (rejectProfileOverflow(ack, id)) return;
     const profile = profiles.getOrCreate(id, name, avatar);
     if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
     syncSocketLobbyIdentity(socket, profile);
@@ -3212,6 +3309,7 @@ io.on('connection', socket => {
     const chatProfile = profiles.profiles.get(id);
     const lobbyIssue = nameIssue(name, { room: roomOfProfile(chatProfile), exceptId: id });
     if (lobbyIssue) return ackError(ack, `${lobbyIssue} Si es tu nombre, inicia sesión con tu cuenta y vuelve a intentarlo.`);
+    if (rejectProfileOverflow(ack, id)) return;
     const profile = profiles.getOrCreate(id, name);
     if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
     profiles.update(profile, { name });
@@ -3556,9 +3654,10 @@ io.on('connection', socket => {
     }
     // Si el perfil ya existe (lo normal: ya jugó antes) no se le pisa el
     // nombre con un valor por defecto; getOrCreate solo lo usa si es nuevo.
+    if (rejectProfileOverflow(ack, id)) return;
     const profile = profiles.getOrCreate(id, candidateName || undefined, avatar);
     if (!verifyTosAcceptance(profile, tos)) return ackError(ack, TOS_REQUIRED_MESSAGE);
-    const result = profiles.registerAccount(profile, username, password);
+    const result = await profiles.registerAccountAsync(profile, username, password);
     if (!result.ok) return ackError(ack, result.error);
     if (adminConfig.accountSessionsEnabled && deviceLinks) await deviceLinks.set(id, profile.id, 'account');
     if (!adminConfig.accountSessionsEnabled) socket.data.legacyChatProfileId = profile.id;
@@ -3566,11 +3665,11 @@ io.on('connection', socket => {
     ackOk(ack, { profile: publicProgress(profile, true) });
   });
 
-  socket.on('account_login', ({ username, password } = {}, ack) => {
+  socket.on('account_login', async ({ username, password } = {}, ack) => {
     if (adminConfig.accountSessionsEnabled) {
       return ackError(ack, 'Actualiza la página para usar el inicio de sesión seguro.');
     }
-    const result = profiles.authenticate(username, password);
+    const result = await profiles.authenticateAsync(username, password);
     if (!result.ok) return ackError(ack, result.error);
     socket.data.legacyChatProfileId = result.profile.id;
     logEvent('account_login', { profileId: result.profile.id, username: result.profile.username });
