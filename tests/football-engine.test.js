@@ -581,9 +581,9 @@ test('el barrido de vencidos confirma en un solo volcado y se detiene al agotar 
   limitedMatches[0].day = 10;
   const limitedLogs = [];
   const limitedScheduler = new FootballScheduler(new FootballEngine(limited), {
-    overdueSettleBudgetMs: 0, logEvent: (event, data) => limitedLogs.push({ event, data })
+    logEvent: (event, data) => limitedLogs.push({ event, data })
   });
-  await limitedScheduler.runAutoRescheduleSweep(T0);
+  await limitedScheduler.runAutoRescheduleSweep(T0, { budgetMs: 0 });
   assert.equal(limitedMatches[0].status, 'scheduled', 'sin presupuesto no gasta CPU antes de escuchar');
   assert.ok(limitedLogs.some(item => item.event === 'football_overdue_settle_budget'));
   limited.close();

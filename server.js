@@ -4295,7 +4295,13 @@ async function initFootball() {
     // apostadores simulados (solo cuando el precio cambia de verdad).
     oddsService: footballSockets ? { tick: at => footballSockets.tickOdds(at) } : null
   });
-  if (!writerPending) await footballScheduler.runAutoRescheduleSweep(Date.now());
+  // Antes de escuchar, el barrido de vencidos va acotado (§15.6): un despertar
+  // con cientos de actas no puede retrasar el puerto. Lo que no quepa se retoma
+  // en la primera vuelta periódica del scheduler.
+  if (!writerPending) {
+    await footballScheduler.runAutoRescheduleSweep(Date.now(),
+      { budgetMs: footballScheduler.opts.overdueSettleBudgetMs });
+  }
   footballScheduler.start();
 
   logEvent('football_initialized', {
