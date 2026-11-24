@@ -37,7 +37,13 @@
             if (!listened) {
               child.kill('SIGUSR2');
               await wait(4000);
-              const sqls = text.split('\n').filter(l => /^SQL#/.test(l));
+              const linesAll = text.split('\n').filter(l => l.trim());
+            const retries = linesAll.filter(l => /reintentando|Reintent/i.test(l));
+            console.log('::error::REINTENTOS ' + retries.length + ' ' + retries.slice(0, 1).join(' ').slice(0, 200));
+            const stamps = linesAll.map(l => { const m = /"(\d{4}-\d\d-\d\dT[\d:.]+Z)"/.exec(l); return m ? m[1].slice(11, 23) + ' ' + (/"(event|type)":"([^"]+)"/.exec(l) || [])[2] : null; }).filter(Boolean);
+            console.log('::error::LINEA ' + stamps.slice(0, 30).join(' | ').slice(0, 900));
+            console.log('::error::LINEB ' + stamps.slice(-30).join(' | ').slice(0, 900));
+            const sqls = text.split('\n').filter(l => /^SQL#/.test(l));
             console.log('::error::SQLS ' + sqls.length);
             for (const line of sqls.slice(-9)) console.log('::error::SQL|' + line.slice(0, 200));
             const files = fs.readdirSync(reports).filter(f => f.endsWith('.json'));
