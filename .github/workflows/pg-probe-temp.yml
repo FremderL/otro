@@ -67,12 +67,15 @@ jobs:
             child.stdout.on('data', c => { text += c; });
             child.stderr.on('data', c => { text += c; });
             const deadline = Date.now() + 25000;
+            let last = 0;
+            const watcher = setInterval(() => { fs.writeFileSync('/tmp/boottrace.out', text); }, 250);
+            process.on('exit', () => clearInterval(watcher));
             while (Date.now() < deadline && !/MonteCristo lista/.test(text) && child.exitCode === null) {
               await new Promise(r => setTimeout(r, 200));
             }
             if (!/MonteCristo lista/.test(text)) {
               const lines = text.split('\n').map(l => l.replace(/::/g, ':·'));
-              for (const line of lines.filter(l => l.trim()).slice(-16)) console.log('::error::BOOT ' + line);
+              for (const line of lines.filter(l => l.trim()).slice(-40)) console.log('::error::BOOT ' + line);
               console.log('::error::BOOT salida=' + child.exitCode);
             } else console.log('::error::BOOT escuchó bien');
             child.kill('SIGKILL');
