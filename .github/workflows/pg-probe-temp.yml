@@ -55,7 +55,7 @@ jobs:
             await admin.query('CREATE SCHEMA ' + schema);
             const dbUrl = URL + (URL.includes('?') ? '&' : '?') + new URLSearchParams({ options: '-c search_path=' + schema });
             const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wtr-'));
-            const env = { ...process.env, DATABASE_URL: dbUrl, FOOTBALL_ENABLED: 'on', NODE_ENV: 'test',
+            const env = { ...process.env, NODE_OPTIONS: '--require=/tmp/boottrace.js', DATABASE_URL: dbUrl, FOOTBALL_ENABLED: 'on', NODE_ENV: 'test',
               FOOTBALL_WRITER_WAIT_MS: '3000', LOG_JSON: 'off', LOTERIA_ENABLED: 'off', FORTUNE_ENABLED: 'off',
               AUTO_BOTS: 'off', SHUTDOWN_GRACE_MS: '100', PROMOTION_MEDIA_DIR: dir,
               PROFILE_STORE_PATH: path.join(dir, 'p.json'), FOOTBALL_STORE_PATH: path.join(dir, 'f.json'),
@@ -71,7 +71,7 @@ jobs:
             }
             if (!/MonteCristo lista/.test(text)) {
               const lines = text.split('\n').map(l => l.replace(/::/g, ':·'));
-              for (const line of lines.slice(0, 12)) console.log('::error::BOOT ' + line);
+              for (const line of lines.filter(l => l.trim()).slice(-16)) console.log('::error::BOOT ' + line);
               console.log('::error::BOOT salida=' + child.exitCode);
             } else console.log('::error::BOOT escuchó bien');
             child.kill('SIGKILL');
