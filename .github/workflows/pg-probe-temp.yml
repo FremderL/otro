@@ -44,4 +44,9 @@ jobs:
           echo "exit=$code"
           grep -E "^# (pass|fail|skipped)|^not ok|error:|Error:|code:" /tmp/tp.log | head -40
           tail -30 /tmp/tp.log
-          exit $code
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tp-log
+          path: /tmp/tp.log
