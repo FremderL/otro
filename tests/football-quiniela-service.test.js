@@ -157,7 +157,8 @@ test('settle: 8/8 reparte el bote con enteros, acumula sobrante y es idempotente
   const out2 = await ctx.service.settleJornada(ctx.league(), j2);
   assert.equal(out2.status, 'settled'); assert.equal(out2.winners, 0); assert.equal(out2.carry, 50); // bote sin ganador pasa al acumulado
   assert.equal(d.chips, chipsD - 50);
-  assert.equal(ctx.league().quiniela.bank.carry, 50);
+  // El bote vive en el store, no en la liga: así sobrevive a la rotación de mes.
+  assert.equal(ctx.store.quinielaCarry, 50);
 });
 
 test('postergación sin resultado reembolsa la entrada y conserva el acumulado', async (t) => {
@@ -166,7 +167,7 @@ test('postergación sin resultado reembolsa la entrada y conserva el acumulado',
   const p = ctx.profiles.getOrCreate('p', 'P');
   const chips = p.chips;
   await ctx.service.enter({ league: ctx.league(), jornada, profile: p, picks: picksFor(ctx.league(), jornada) });
-  ctx.league().quiniela.bank.carry = 70;
+  ctx.store.quinielaCarry = 70;
   const ms = ctx.league().calendar.jornadas.find(j => j.jornada === jornada).matches;
   for (const m of ms) m.status = 'settled', m.result = { home: 1, away: 0, winner: 'home' };
   ms[2].status = 'postponed'; ms[2].result = null;
@@ -213,7 +214,7 @@ test('recover: un crash entre diario y cartera se repara sin pagar dos veces', a
   settleJornada({ league: () => league2 }, jornada, 'home');
   const round2 = league2.quiniela.rounds[jornada];
   round2.tickets.p.status = 'won'; round2.tickets.p.payout = 50;
-  league2.quiniela.bank.carry = 0;
+  store2.quinielaCarry = 0;
   round2.status = 'settled'; round2.result = { status: 'settled', pot: 50, winners: 1, carry: 0, entries: 1, settledAt: ctx.now() };
   await store2.saveStrict();
   fs.writeFileSync(ctx.profilePath, frozenProfiles); // perfil sin el premio
@@ -239,7 +240,7 @@ test('sweep: liquida la jornada completa y no repite; notifyMatch liquida al ase
   assert.equal(sweep.settled.length, 0);
   settleJornada(ctx, jornada, 'home');
   sweep = await ctx.service.sweep(ctx.now());
-  assert.deepEqual(sweep.settled, [{ jornada, status: 'settled' }]);
+  assert.deepEqual(sweep.settled, [{ season: ctx.month, jornada, status: 'settled' }]);
   assert.equal(p.chips, chips); // 50 entrada + 50 premio (único ganador se lleva el bote)
   const again = await ctx.service.sweep(ctx.now());
   assert.equal(again.settled.length, 0);
@@ -248,4 +249,155 @@ test('sweep: liquida la jornada completa y no repite; notifyMatch liquida al ase
   const m = ctx.league().calendar.jornadas.find(j => j.jornada === jornada).matches[0];
   await ctx.service.notifyMatch({ ...m, seasonMonth: ctx.month });
   assert.equal(p.chips, chips);
+});
+
+// --- Bote entre temporadas y liquidación al rotar el mes ---------------------
+
+// Igual que setup(), pero con reloj y mes controlados para cruzar de temporada.
+function setupIn(dir, month, at) {
+  const storePath = path.join(dir, 'football.json');
+  const profilePath = path.join(dir, 'profiles.json');
+  const store = new FootballStore(storePath);
+  store.generateSeason(month);
+  const profiles = new ProfileStore(profilePath);
+  let nowVal = at;
+  const service = new QuinielaService({ store, profiles, log: () => {}, now: () => nowVal, enabled: true });
+  return {
+    store, profiles, month, service,
+    league: () => store.getLeague(month),
+    setNow: v => { nowVal = v; },
+    now: () => nowVal
+  };
+}
+
+test('el bote sin acertantes pasa a la temporada siguiente y sobrevive a la rotación', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fquin-ycarry-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const NOV = '2026-11';
+  const DEC = '2026-12';
+  const nov = setupIn(dir, NOV, Date.UTC(2026, 10, 2, 6));
+  const profile = nov.profiles.getOrCreate('sin-aciertos', 'Sin aciertos');
+  const jornada = nov.service.snapshot(nov.league(), null, nov.now()).jornada;
+  const entry = await nov.service.enter({
+    league: nov.league(), jornada, profile,
+    picks: picksFor(nov.league(), jornada, 'home')
+  });
+  assert.equal(entry.ok, true);
+  // Los ocho partidos terminan en empate: nadie firma «home».
+  for (const m of nov.league().calendar.jornadas.find(j => j.jornada === jornada).matches) {
+    m.status = 'settled'; m.result = { home: 0, away: 0, winner: 'draw' };
+  }
+  assert.equal((await nov.service.settleJornada(nov.league(), jornada)).carry, ENTRY_COST);
+  assert.equal(nov.store.quinielaCarry, ENTRY_COST);
+
+  // El mes rota: la temporada nueva debe arrancar con ese bote, no en cero.
+  nov.store.generateSeason(DEC);
+  nov.setNow(Date.UTC(2026, 11, 2, 6));
+  const decLeague = nov.store.getLeague(DEC);
+  const decSnap = nov.service.snapshot(decLeague, null, nov.now());
+  assert.equal(decSnap.carry, ENTRY_COST, 'el acumulado de noviembre viaja a diciembre');
+
+  // Y el sobrante de una jornada con tres acertantes tampoco se inventa ni se pierde.
+  const j2 = decSnap.jornada;
+  const players = ['a1', 'a2', 'a3'].map(id => nov.profiles.getOrCreate(id, id));
+  const picks = picksFor(decLeague, j2, 'home');
+  for (const p of players) assert.equal((await nov.service.enter({ league: decLeague, jornada: j2, profile: p, picks })).ok, true);
+  for (const m of decLeague.calendar.jornadas.find(j => j.jornada === j2).matches) {
+    m.status = 'settled'; m.result = { home: 3, away: 0, winner: 'home' };
+  }
+  const out = await nov.service.settleJornada(decLeague, j2);
+  assert.equal(out.pot, ENTRY_COST + 3 * ENTRY_COST);
+  assert.equal(out.winners, 3);
+  assert.equal(out.carry, out.pot - 3 * Math.floor(out.pot / 3));
+  assert.equal(nov.store.quinielaCarry, out.carry);
+});
+
+test('una jornada que queda abierta cuando rota el mes se liquida igual (no se congela)', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fquin-rotate-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const JAN = '2027-01';
+  const FEB = '2027-02';
+  const ctx = setupIn(dir, JAN, Date.UTC(2027, 0, 2, 6));
+  const profile = ctx.profiles.getOrCreate('colgado', 'Colgado');
+  const chipsBefore = profile.chips;
+  const jornada = ctx.service.snapshot(ctx.league(), null, ctx.now()).jornada;
+  assert.equal((await ctx.service.enter({
+    league: ctx.league(), jornada, profile, picks: picksFor(ctx.league(), jornada, 'home')
+  })).ok, true);
+  for (const m of ctx.league().calendar.jornadas.find(j => j.jornada === jornada).matches) {
+    m.status = 'settled'; m.result = { home: 1, away: 0, winner: 'home' };
+  }
+  // La rotación llega antes de que el barrido alcance a liquidar la jornada.
+  ctx.store.generateSeason(FEB);
+  ctx.store.closeSeason(JAN);
+
+  const sweep = await ctx.service.sweep(Date.UTC(2027, 1, 2, 6));
+  assert.deepEqual(sweep.settled, [{ season: JAN, jornada, status: 'settled' }]);
+  const round = ctx.league().quiniela.rounds[jornada];
+  assert.equal(round.status, 'settled');
+  assert.equal(round.tickets[profile.id].status, 'won');
+  // Único acertante: recupera la entrada y se lleva el bote.
+  assert.equal(profile.chips, chipsBefore);
+  // Segunda vuelta: nada que repetir.
+  assert.deepEqual((await ctx.service.sweep(Date.UTC(2027, 1, 2, 7))).settled, []);
+});
+
+test('arranque: adopta el bote que versiones anteriores guardaban dentro de la liga', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fquin-adopt-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const month = '2026-12';
+  const ctx = setupIn(dir, month, Date.UTC(2026, 11, 2, 6));
+  // Diario con formato viejo: el bote viajaba dentro de la temporada.
+  const league = ctx.league();
+  league.quiniela = { bank: { carry: 120 }, rounds: {} };
+  ctx.store.quinielaCarry = 30;
+  await ctx.store.saveStrict();
+
+  const recovered = await ctx.service.recover();
+  assert.equal(recovered.adoptedCarry, 150, 'suma el bote del store y el heredado de la liga');
+  assert.equal(ctx.store.quinielaCarry, 150);
+  assert.equal(ctx.league().quiniela.bank.carry, 0, 'el diario deja de ser la fuente');
+  // Idempotente: un segundo arranque no vuelve a sumar.
+  assert.equal((await ctx.service.recover()).adoptedCarry, 0);
+  assert.equal(ctx.store.quinielaCarry, 150);
+});
+
+test('coste: el barrido no reescribe la liga cuando no hay nada que liquidar', async (t) => {
+  // Regresión de consumo: cada vuelta programaba un guardado aunque no hubiera
+  // cambios, y el store reescribe la liga completa (~650 KB en un mes con su
+  // calendario). Con el barrido cada minuto eso era disco y CPU tirados; en
+  // PostgreSQL, además, reescribir las 240 filas de partidos sin motivo.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fquin-coste-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const NOV = '2026-11';
+  const ctx = setupIn(dir, NOV, Date.UTC(2026, 10, 2, 6));
+
+  // Sin rondas abiertas: nada que hacer.
+  let writes = 0;
+  const serialize = ctx.store._serializeLeague.bind(ctx.store);
+  ctx.store._serializeLeague = league => { writes += 1; return serialize(league); };
+  for (let i = 0; i < 5; i += 1) await ctx.service.sweep(Date.UTC(2026, 10, 2, 7 + i));
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.equal(writes, 0, 'un barrido sin trabajo no toca el disco');
+
+  // Con una jornada pendiente en un mes ya cerrado: liquida y guarda una vez.
+  const profile = ctx.profiles.getOrCreate('pendiente', 'Pendiente');
+  const jornada = ctx.service.snapshot(ctx.league(), null, ctx.now()).jornada;
+  await ctx.service.enter({ league: ctx.league(), jornada, profile, picks: picksFor(ctx.league(), jornada) });
+  ctx.store.generateSeason('2026-12');
+  ctx.store.closeSeason(NOV);
+  for (const m of ctx.league().calendar.jornadas.find(j => j.jornada === jornada).matches) {
+    m.status = 'settled'; m.result = { home: 2, away: 0, winner: 'home' };
+  }
+  writes = 0;
+  const first = await ctx.service.sweep(Date.UTC(2026, 11, 2, 6));
+  assert.equal(first.settled.length, 1);
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const afterSettle = writes;
+  assert.ok(afterSettle >= 1, 'la liquidación sí se persiste');
+  // Y una vez liquidada, las vueltas siguientes vuelven a costar cero.
+  writes = 0;
+  for (let i = 0; i < 3; i += 1) await ctx.service.sweep(Date.UTC(2026, 11, 2, 7 + i));
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.equal(writes, 0, 'liquidada la deuda, el barrido deja de escribir');
 });

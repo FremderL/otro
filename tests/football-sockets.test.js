@@ -131,7 +131,7 @@ function setup(opts = {}) {
 
   const scheduled = store.getMatches(month).find(m => m.status === 'scheduled');
   const cleanup = () => { try { sockets.stop(); } catch (_) {} try { store.close(); } catch (_) {} try { profiles.saveNow(); } catch (_) {} fs.rmSync(dir, { recursive: true, force: true }); };
-  return { dir, store, profiles, betting, engine, io, sockets, spy, betPlacements, scheduled, month, nameIssue, cleanup };
+  return { dir, store, profiles, betting, engine, io, sockets, quinielaService, spy, betPlacements, scheduled, month, nameIssue, cleanup };
 }
 
 function subscribe(ctx, socket, payload = {}) {
@@ -1089,6 +1089,28 @@ test('Quiniela activa: inscripción con fichas reales, TOS y reintento idempoten
   const updates=ctx.io.emittedTo('football:lobby','football:quiniela_updated');
   assert.ok(updates.length>=1);
   assert.ok(!JSON.stringify(updates[0].payload).includes(profile.id));
+  // Y el aviso es una SEÑAL, no el snapshot: el estado completo se pide bajo
+  // demanda. Antes eran ~1055 bytes con los 8 partidos para todo el lobby.
+  const signal=updates[0].payload;
+  assert.deepEqual(Object.keys(signal).sort(),['carry','closesAt','jornada','season']);
+  assert.ok(!('matches' in signal) && !('myTicket' in signal));
+  assert.ok(JSON.stringify(signal).length<100,'la señal no crece con la jornada');
+});
+
+test('Quiniela vía socket: el bote acumulado se publica y no se borra al cambiar de temporada', async (t) => {
+  const ctx = setup({ withQuiniela: true }); t.after(ctx.cleanup); const s = ctx.io.connect();
+  const sub = subscribe(ctx, s, { name: 'Bote' }); assert.equal(sub.ok, true);
+  const { jornada, matches, season } = s._fire('football:quiniela_get', {}).quiniela;
+  const picks = matches.map(m => ({ matchId: m.id, pick: 'home' }));
+  assert.equal((await fireAsync(s, 'football:quiniela_enter', { season, jornada, picks, tos: TOS })).ok, true);
+  // Nadie acierta: los ocho partidos terminan en empate y el bote queda acumulado.
+  for (const m of ctx.store.getLeague(season).calendar.jornadas.find(j => j.jornada === jornada).matches) {
+    m.status = 'settled'; m.result = { home: 0, away: 0, winner: 'draw' };
+  }
+  await ctx.quinielaService.settleJornada(ctx.store.getLeague(season), jornada);
+  assert.equal(ctx.store.quinielaCarry, 50);
+  // La UI ve el bote en el snapshot (es de la liga, no de la temporada).
+  assert.equal(s._fire('football:quiniela_get', {}).quiniela.carry, 50);
 });
 
 test('destacados no se filtran antes del final y viajan con el resultado asentado', t=>{

@@ -172,6 +172,8 @@ Se sortean al abrir rondas. Solo entregan fichas cuando existe una ganancia posi
 
 MonteCristo News aparece automáticamente en la primera apertura segura del Estadio cada día: edición compartida, subtítulos por defecto, voces opcionales y repetición manual. Tras varios días de servidor apagado muestra una sola edición de regreso después de recuperar resultados. Contrato y operación en `docs/montecristo-news-noticiero-diario.md`.
 
+La **Quiniela · 8 de 8** se juega desde Estadio → Quiniela: se elige 1, X o 2 en los ocho partidos de la jornada, la entrada cuesta 50 fichas y la inscripción cierra al primer saque. Solo los boletos con ocho aciertos se reparten el bote; si nadie acierta, el bote se acumula **para la temporada siguiente** (vive en el store, no en la temporada, y se adopta al arrancar el acumulado que versiones anteriores dejaban dentro de la liga). Una jornada que queda abierta cuando rota el mes se liquida igual: el barrido recorre también las temporadas cerradas con rondas pendientes, así que ningún boleto se queda colgado ni la entrada se pierde (ver `docs/quiniela.md`).
+
 En Estadio → Mercado se consultan los acuerdos anunciados y sus valoraciones informativas. **Ver conferencia** permite repetir MonteCristo News. La transmisión empieza con subtítulos; pulsa **Escuchar conferencia** para iniciar las voces desde el principio. Usa la síntesis de voz del navegador (las voces disponibles pueden variar) y no requiere activar la narración del partido. Si el navegador bloquea o no admite voz, se mantienen los subtítulos. Los retratos reutilizan los avatares del Balón de Oro cuando existen; los demás son ilustraciones generadas de forma estable para cada jugador.
 
 ## Comunidad y ambientación estacional

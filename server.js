@@ -4110,7 +4110,18 @@ async function initFootball() {
     }
     if (event === 'football_quiniela_settled' && footballSockets && footballStore) {
       const league = footballStore.getLeague(data?.season);
-      if (league) io.to(footballSockets.LOBBY_ROOM).emit('football:quiniela_updated', footballQuiniela?.publicSnapshot(league, Date.now()));
+      // Señal mínima (temporada, jornada, cierre y bote): el panel abierto pide su
+      // estado con football:quiniela_get. Difundir el snapshot completo a todo el
+      // lobby por cada liquidación era el mayor coste en bytes de esta función.
+      if (league) {
+        const view = footballQuiniela?.publicSnapshot(league, Date.now());
+        io.to(footballSockets.LOBBY_ROOM).emit('football:quiniela_updated', {
+          season: league.seasonMonth,
+          jornada: view ? view.jornada : null,
+          closesAt: view ? view.closesAt : null,
+          carry: view ? view.carry : 0
+        });
+      }
     }
   };
 
