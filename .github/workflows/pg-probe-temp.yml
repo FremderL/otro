@@ -44,10 +44,10 @@ jobs:
         run: |
           node -e "
           const { Client } = require('pg');
-          const URL = process.env.FOOTBALL_TEST_DATABASE_URL;
+          const BASE = process.env.FOOTBALL_TEST_DATABASE_URL;
           (async () => {
-            for (const extra of ['', (URL.includes('?') ? '&' : '?') + new URLSearchParams({ options: '-c search_path=pg_catalog' })]) {
-              const c = new Client({ connectionString: URL + extra });
+            for (const extra of ['', (BASE.includes('?') ? '&' : '?') + new globalThis.URLSearchParams({ options: '-c search_path=pg_catalog' })]) {
+              const c = new Client({ connectionString: BASE + extra });
               try { await c.connect(); const r = await c.query('select current_setting(\'search_path\') as sp'); console.log('::error::OPT ok extra=' + JSON.stringify(extra) + ' sp=' + r.rows[0].sp); }
               catch (e) { console.log('::error::OPT FALLO extra=' + JSON.stringify(extra) + ' ' + e.message); }
               try { await c.end(); } catch (_) {}
