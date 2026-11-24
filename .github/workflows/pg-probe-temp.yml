@@ -38,12 +38,45 @@ jobs:
           FOOTBALL_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/montecristo_test?sslmode=disable
           NODE_ENV: test
         run: node scripts/tmp-pg-probe.js || true
-      - name: Test 19 aislado
+      - name: Arranque del primer servidor PG (traza)
         env:
           FOOTBALL_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/montecristo_test?sslmode=disable
           NODE_ENV: test
-          LOG_JSON: 'off'
         run: |
-          node --test --test-name-pattern="dos servidores con Estadio activo" tests/football-v2-pg-real.test.js > /tmp/t19.log 2>&1 || true
-          echo "exit19=$?"
-          grep -nE "not ok|Tiempo agotado|El servidor terminó|otra instancia|writer|Estadio" /tmp/t19.log | head -12 | while IFS= read -r l; do echo "::error::T19 $l"; done
+          node -e "
+          const { randomUUID } = require('node:crypto');
+          const { spawn } = require('node:child_process');
+          const { Pool } = require('pg');
+          const fs = require('fs'), os = require('os'), path = require('path');
+          (async () => {
+            const URL = process.env.FOOTBALL_TEST_DATABASE_URL;
+            const schema = 'w_' + randomUUID().replace(/-/g, '');
+            const admin = new Pool({ connectionString: URL });
+            await admin.query('CREATE SCHEMA ' + schema);
+            const dbUrl = URL + (URL.includes('?') ? '&' : '?') + new URLSearchParams({ options: '-c search_path=' + schema });
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wtr-'));
+            const env = { ...process.env, DATABASE_URL: dbUrl, FOOTBALL_ENABLED: 'on', NODE_ENV: 'test',
+              FOOTBALL_WRITER_WAIT_MS: '3000', LOG_JSON: 'off', LOTERIA_ENABLED: 'off', FORTUNE_ENABLED: 'off',
+              AUTO_BOTS: 'off', SHUTDOWN_GRACE_MS: '100', PROMOTION_MEDIA_DIR: dir,
+              PROFILE_STORE_PATH: path.join(dir, 'p.json'), FOOTBALL_STORE_PATH: path.join(dir, 'f.json'),
+              COMMUNITY_STORE_PATH: path.join(dir, 'c.json'), LOBBY_TOURNAMENT_STORE_PATH: path.join(dir, 't.json') };
+            delete env.PORT;
+            const child = spawn(process.execPath, ['server.js'], { cwd: process.cwd(), env, stdio: ['ignore', 'pipe', 'pipe'] });
+            let text = '';
+            child.stdout.on('data', c => { text += c; });
+            child.stderr.on('data', c => { text += c; });
+            const deadline = Date.now() + 25000;
+            while (Date.now() < deadline && !/MonteCristo lista/.test(text) && child.exitCode === null) {
+              await new Promise(r => setTimeout(r, 200));
+            }
+            if (!/MonteCristo lista/.test(text)) {
+              const lines = text.split('\n').map(l => l.replace(/::/g, ':·'));
+              for (const line of lines.slice(0, 12)) console.log('::error::BOOT ' + line);
+              console.log('::error::BOOT salida=' + child.exitCode);
+            } else console.log('::error::BOOT escuchó bien');
+            child.kill('SIGKILL');
+            await admin.query('DROP SCHEMA ' + schema + ' CASCADE');
+            await admin.end();
+            fs.rmSync(dir, { recursive: true, force: true });
+          })().catch(e => console.log('::error::BOOT FALLO ' + e.message));
+          "
