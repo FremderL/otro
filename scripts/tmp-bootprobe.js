@@ -44,11 +44,18 @@
             console.log('::error::LINEA ' + stamps.slice(0, 30).join(' | ').slice(0, 900));
             console.log('::error::LINEB ' + stamps.slice(-30).join(' | ').slice(0, 900));
             const sqls = text.split('\n').filter(l => /^SQL#/.test(l));
-            const slow = sqls.filter(l => / (\d+)ms /.test(l));
-            const total = slow.reduce((a, l) => a + Number(/(\d+)ms /.exec(l)[1]), 0);
-            console.log('::error::SQLS total=' + sqls.length + ' lentas=' + slow.length + ' msAcum=' + total);
-            for (const line of slow.sort((a, b) => Number(/(\d+)ms /.exec(b)[1]) - Number(/(\d+)ms /.exec(a)[1])).slice(0, 6)) console.log('::error::SQL|' + line.slice(0, 200));
-            for (const line of sqls.filter(l => /connect/.test(l)).slice(0, 4)) console.log('::error::CONN|' + line.slice(0, 200));
+            const groups = new Map();
+            for (const line of sqls) {
+              const m = /^SQL#\d+ (\d+)ms (\S+) (.*)$/.exec(line);
+              if (!m) continue;
+              const key = m[2] + ' ' + m[3].replace(/\$\d+/g, '?').slice(0, 55);
+              const g = groups.get(key) || { n: 0, ms: 0, max: 0 };
+              g.n += 1; g.ms += Number(m[1]); g.max = Math.max(g.max, Number(m[1]));
+              groups.set(key, g);
+            }
+            const top = [...groups.entries()].sort((a, b) => b[1].ms - a[1].ms).slice(0, 7);
+            console.log('::error::SQLS total=' + sqls.length);
+            for (const [k, g] of top) console.log('::error::SQLG n=' + g.n + ' ms=' + g.ms + ' max=' + g.max + ' ' + k);
             const files = fs.readdirSync(reports).filter(f => f.endsWith('.json'));
               if (!files.length) console.log('::error::BOOT sin informe');
               for (const f of files) {
