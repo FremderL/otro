@@ -74,9 +74,11 @@ jobs:
             while (Date.now() < deadline && !/MonteCristo lista/.test(text) && child.exitCode === null) {
               await new Promise(r => setTimeout(r, 200));
             }
+            fs.writeFileSync('/tmp/boottrace.out', text);
+            console.log('::error::BOOT len=' + text.length + ' exit=' + child.exitCode);
             if (!/MonteCristo lista/.test(text)) {
               const lines = text.split('\n').map(l => l.replace(/::/g, ':·'));
-              for (const line of lines.filter(l => l.trim()).slice(-40)) console.log('::error::BOOT ' + line);
+              for (const line of lines.filter(l => l.trim()).slice(-40)) console.log('::error::BOOT|' + line);
               console.log('::error::BOOT salida=' + child.exitCode);
             } else console.log('::error::BOOT escuchó bien');
             child.kill('SIGKILL');
