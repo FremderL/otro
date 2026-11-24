@@ -265,7 +265,7 @@ test('PostgreSQL: dos servidores con Estadio activo no arrancan como escritores 
     const url = new URLSearchParams({ options: `-c search_path=${schema}` });
     const dbUrl = `${URL}${URL.includes('?') ? '&' : '?'}${url}`;
     const children = [];
-    const withoutPort = ({ PORT, ...rest }) => rest;
+    const withoutPort = ({ PORT: _PORT, ...rest }) => rest;
     function launch() {
       const child = spawn(process.execPath, ['server.js'], { cwd: path.resolve(__dirname, '..'),
         // Sin PORT: `process.env.PORT || 3000` toma '' como falsy y caía en 3000,
