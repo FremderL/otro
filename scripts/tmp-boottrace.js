@@ -10,7 +10,7 @@ Module._load = function (request, parent, isMain) {
     const resolved = Module._resolveFilename(request, parent, isMain);
     if (!/node_modules/.test(resolved)) {
       count++;
-      if (count < 60) fs.writeSync(2, `TRACE load ${resolved.split('/').slice(-2).join('/')}\n`);
+      if (count < 5000) fs.writeSync(2, `TRACE load ${resolved.split('/').slice(-2).join('/')}\n`);
     }
   } catch (_) {}
   return out;
