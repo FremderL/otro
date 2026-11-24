@@ -6,7 +6,8 @@ qué se corrigió, cómo se comporta ahora el sistema y qué queda pendiente.
 
 Estado: los puntos **P0** (seguridad) y **P1** (arquitectura y experiencia de
 desarrollo) están implementados. Los **P2–P4** siguen abiertos y se listan al
-final como trabajo futuro.
+final como trabajo futuro. La sección 2.14 documenta el bloque de recuperación
+tras inactividad (arranque con presupuesto y catch-up por tandas).
 
 ---
 
@@ -197,6 +198,56 @@ De paso se corrigió un fallo real encontrado al probar el modal de perfil: el
 `room_state` compacto no incluía perfil para espectadores, así que quien miraba
 una mesa sin asiento veía el modal vacío. Ahora la tribuna también recibe su
 `viewerProfile`.
+
+### 2.14 Recuperación tras inactividad: arranque con presupuesto y catch-up por tandas
+
+Una ausencia larga (o un despliegue que coincide con partidos vencidos) dejaba el
+proceso simulando media temporada **antes** de escuchar. Cada acta de un partido
+vencido cuesta ~0,2 s de CPU de simulación V2, así que 240 cruces son ~40 s de
+event loop bloqueado: el health check de Render (`/healthz`) no responde, el
+despliegue se marca como fallido y, si el proceso llega vivo, no atiende a nadie
+mientras recupera. Dos fallos de producción salieron de ahí:
+
+- **El noticiero perdía su edición al guardar.** `buildClubNews` devolvía hasta
+  12 anuncios por edición, pero el saneado del archivo editorial
+  (`lib/football/daily-news-state.js`) rechazaba la edición **completa** si traía
+  más de 8. La edición existía en memoria, se registraba en el log
+  (`football_daily_news_prepared`) y se escribía `operational.lastReadyDay`, pero
+  `football.json` quedaba con `editions: {}`: al reiniciar no había noticiero, y
+  no había ningún error visible. Ahora el tope vive en `lib/football/club-news.js`
+  (`MAX_CLUB_NEWS`) y el saneador lo importa: una sola fuente de verdad.
+- **Los compromisos V2 del primer día del mes no se preparaban.** El arranque
+  diferido llamaba a `prepareUpcoming` antes de `ensureSeason`, así que no había
+  partidos que preparar; la política y los 8 compromisos del horizonte llegaban
+  con el primer barrido. Ahora la temporada vigente se asegura primero.
+
+Qué hace ahora el arranque (`reconcileBoot(now, { deferHeavyWork: true })`,
+activado por defecto en producción y desactivable con `FOOTBALL_BOOT_DEFER=off`):
+
+1. Asegura la temporada vigente y prepara el horizonte V2 (barato, da apuestas
+   desde el primer minuto).
+2. Gasta hasta `FOOTBALL_BOOT_BUDGET_MS` (2500 ms por defecto) en recuperar
+   resultados: primero cierra temporadas atrasadas (`_settleStaleSeasons`) y
+   luego la deuda de resultados (`repairOverdueMatches`), ambos con el tiempo
+   restante. **No** repite después esas dos pasadas dentro de `reconcile`
+   (`deferOverdue`): era justo lo que volvía a simular la deuda entera.
+3. Lo que no cupo queda en `bootCatchUp` y el scheduler lo termina por tandas
+   acotadas (4 s por vuelta, reenganche cada 3 s mientras haya deuda). Cada
+   vuelta guarda por jornada, así que una caída a mitad no pierde lo ya asentado.
+4. `/healthz` publica `football.catchUp = { pending, liquidados, total, running,
+   elapsedMs, stuck }`. Si quedan vencidos que ninguna vuelta puede asentar (un
+   V2 cuyo reloj no termina, o un compromiso no recuperable) el catch-up se
+   marca terminado con `stuck > 0` en vez de reintentar para siempre.
+
+`repairOverdueMatches(now, { budgetMs })` acepta presupuesto y **0 es un
+presupuesto válido** («no gastes nada»), no «sin tope»: confundirlos era el bug
+que hacía que un arranque sin tiempo restante simulase toda la deuda de golpe. Un
+cursor (`catchUpCursor`) evita reempezar por la primera jornada cada vuelta.
+
+Medido en local con 240 partidos V2 vencidos de una temporada anterior: antes el
+arranque no publicaba hasta ~35 s; ahora devuelve el control en ~1,5–4 s y la
+deuda se salda en ~30 s de tandas de ~2 s, con el proceso atendiendo tráfico
+entre tanda y tanda.
 
 ---
 

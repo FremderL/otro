@@ -580,3 +580,56 @@ test('un partido ya reprogramado o con persistencia caída > 30 min no vuelve a 
   assert.equal(unconfirmedExpired.autoReschedulePending, undefined);
   store.close();
 });
+
+// §15.6 — Arranque con presupuesto: ni se queda simulando media temporada ni
+// declara terminado un catch-up que no hizo. Un `budgetMs: 0` debe devolver el
+// control de inmediato (antes se interpretaba como «sin tope» y simulaba todo).
+test('el presupuesto de recuperación acota la vuelta y el catch-up informa lo que falta', async () => {
+  const { store } = freshStore();
+  const engine = new FootballEngine(store);
+  const matches = store.getMatches();
+  const due = matches.slice(0, 12);
+  for (const match of matches) {
+    match.scheduledKickoffAt = T0 + 100 * 86400000;
+    match.day = 25;
+  }
+  // Doce encuentros vencidos de la misma temporada (se liquidan por jornada).
+  due.forEach((match, index) => {
+    match.scheduledKickoffAt = T0 - 3600000;
+    match.day = 10;
+    match.jornada = 1 + Math.floor(index / 3);
+  });
+  const first = await engine.repairOverdueMatches(T0, { budgetMs: 0 });
+  assert.equal(first.liquidados, 0, 'un presupuesto de 0 no liquida nada');
+  assert.ok(first.remaining > 0);
+  assert.ok(engine.catchUpCursor, 'deja cursor para retomar sin reempezar');
+
+  // Y el barrido sin tope termina el trabajo pendiente.
+  const rest = await engine.repairOverdueMatches(T0, { budgetMs: Infinity });
+  assert.ok(rest.liquidados > 0);
+  assert.equal(engine.overdueMatches(T0).length, 0, 'la deuda queda saldada');
+  store.close();
+});
+
+test('el arranque diferido no simula toda la deuda: deja catchUp y termina por tandas', async () => {
+  const { store } = freshStore();
+  const engine = new FootballEngine(store, { bootBudgetMs: 0 });
+  const matches = store.getMatches();
+  for (const match of matches) {
+    match.scheduledKickoffAt = T0 + 100 * 86400000;
+    match.day = 25;
+  }
+  for (const match of matches.slice(0, 9)) {
+    match.scheduledKickoffAt = T0 - 3600000;
+    match.day = 10;
+  }
+  const summary = await engine.reconcileBoot(T0, { deferHeavyWork: true });
+  assert.equal(summary.deferred, true);
+  assert.ok(summary.pendientes >= 9, 'informa la deuda sin haberla simulado en línea');
+  const health = engine.healthSnapshot(T0);
+  assert.equal(health.catchUp.running, true, '/healthz publica el catch-up en curso');
+  await engine.repairOverdueMatches(T0, { budgetMs: Infinity });
+  assert.equal(engine.overdueMatches(T0).length, 0, 'el barrido por tandas salda la deuda');
+  assert.equal(engine.bootCatchUp.pending, 0);
+  store.close();
+});

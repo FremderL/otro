@@ -4175,7 +4175,16 @@ async function initFootball() {
     const retired = await footballBetting.retireLegacySeason(footballStore.getCurrentSeasonMonth());
     if (!retired.ok) footballLog('football_v1_retirement_pending', { reason: retired.reason });
   }
-  await footballEngine.reconcileBoot(Date.now());
+  // En producción, el catch-up pesado NO se hace antes de escuchar: una ausencia
+  // larga deja cientos de partidos vencidos y cada uno cuesta ~0,2 s de CPU de
+  // simulación V2. Bloquear el event loop ahí hacía que el health check de
+  // Render (/healthz) se quedara sin respuesta y el despliegue se diera por
+  // fallido; el proceso arranca en segundos, informa el avance en /healthz y el
+  // scheduler completa la recuperación por tandas acotadas (§15.6).
+  //   FOOTBALL_BOOT_DEFER=off vuelve a la recuperación síncrona (pruebas y
+  //   operación manual con archivos pequeños).
+  const deferBootCatchUp = String(process.env.FOOTBALL_BOOT_DEFER || 'on').toLowerCase() !== 'off';
+  await footballEngine.reconcileBoot(Date.now(), { deferHeavyWork: deferBootCatchUp });
 
   // 5a. Recuperación de la quiniela al arrancar: aplica con operationId los
   //     movimientos del diario que un crash dejó a medias y liquida jornadas ya
