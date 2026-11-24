@@ -28,13 +28,16 @@
             for (let i = 0; i < 480 && !/MonteCristo lista/.test(text) && child.exitCode === null; i++) await wait(250);
             console.log('::error::BOOTMS ' + (Date.now() - t0));
             const listened = /MonteCristo lista/.test(text);
+            const bench = Date.now();
+            for (let i = 0; i < 100; i++) await admin.query('SELECT 1');
+            console.log('::error::BASE100 ' + (Date.now() - bench));
             try {
               const snap = await admin.query("select pid, state, wait_event_type, wait_event, left(coalesce(query,''), 200) as q from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid() order by query_start");
             for (const r of snap.rows) console.log('::error::PG|' + JSON.stringify(r).slice(0, 400));
               console.log('::error::PGSESIONES ' + snap.rowCount);
             } catch (e) { console.log('::error::PGSNAP ' + e.message); }
             console.log('::error::BOOT escucho=' + listened + ' salida=' + child.exitCode + ' bytes=' + text.length);
-            if (!listened) {
+            if (true) {
               child.kill('SIGUSR2');
               await wait(4000);
               const linesAll = text.split('\n').filter(l => l.trim());
