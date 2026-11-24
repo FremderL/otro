@@ -24,7 +24,9 @@
             child.stdout.on('data', c => { text += c; });
             child.stderr.on('data', c => { text += c; });
             const wait = ms => new Promise(r => setTimeout(r, ms));
-            for (let i = 0; i < 60 && !/MonteCristo lista/.test(text) && child.exitCode === null; i++) await wait(250);
+            const t0 = Date.now();
+            for (let i = 0; i < 480 && !/MonteCristo lista/.test(text) && child.exitCode === null; i++) await wait(250);
+            console.log('::error::BOOTMS ' + (Date.now() - t0));
             const listened = /MonteCristo lista/.test(text);
             try {
               const snap = await admin.query("select pid, state, wait_event_type, wait_event, left(coalesce(query,''), 200) as q from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid() order by query_start");
