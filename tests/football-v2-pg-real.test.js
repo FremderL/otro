@@ -265,9 +265,14 @@ test('PostgreSQL: dos servidores con Estadio activo no arrancan como escritores 
     const url = new URLSearchParams({ options: `-c search_path=${schema}` });
     const dbUrl = `${URL}${URL.includes('?') ? '&' : '?'}${url}`;
     const children = [];
+    const withoutPort = ({ PORT, ...rest }) => rest;
     function launch() {
       const child = spawn(process.execPath, ['server.js'], { cwd: path.resolve(__dirname, '..'),
-        env: { ...process.env, DATABASE_URL: dbUrl, FOOTBALL_ENABLED: 'on', PORT: '0', NODE_ENV: 'test',
+        // Sin PORT: `process.env.PORT || 3000` toma '' como falsy y caía en 3000,
+        // así que dos procesos escuchaban en el MISMO puerto y el segundo moría
+        // por EADDRINUSE en vez de por la concesión de escritor (lo que el test
+        // comprueba). Con PORT ausente, cada uno elige un puerto libre.
+        env: { ...withoutPort(process.env), DATABASE_URL: dbUrl, FOOTBALL_ENABLED: 'on', NODE_ENV: 'test',
           LOG_JSON: 'off', LOTERIA_ENABLED: 'off', FORTUNE_ENABLED: 'off', AUTO_BOTS: 'off',
           SHUTDOWN_GRACE_MS: '100', PROMOTION_MEDIA_DIR: directory,
           PROFILE_STORE_PATH: path.join(directory, 'profiles.json'),
