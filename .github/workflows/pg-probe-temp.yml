@@ -40,6 +40,8 @@ jobs:
         run: |
           set +e
           npm run test:postgres > /tmp/tp.log 2>&1
-          echo "exit=$?"
+          code=$?
+          echo "exit=$code"
           grep -E "^# (pass|fail|skipped)|^not ok|error:|Error:|code:" /tmp/tp.log | head -40
           tail -30 /tmp/tp.log
+          exit $code
