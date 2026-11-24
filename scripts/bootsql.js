@@ -50,7 +50,9 @@ Module._load = function (request, parent, isMain) {
       const orig = Klass.prototype._writeSnapshot;
       Klass.prototype._writeSnapshot = function (...args) {
         snapshots += 1;
-        const frame = String(new Error().stack).split('\n').map(l => /(lib\/[^:)]+):(\d+)/.exec(l)).filter(Boolean)
+        const st = new Error();
+        Error.captureStackTrace(st, Klass.prototype._writeSnapshot);
+        const frame = String(st.stack).split('\n').map(l => /(lib\/[^:)]+):(\d+)/.exec(l)).filter(Boolean)
           .map(m => m[1].replace('lib/football/', 'f/').replace('lib/', '') + ':' + m[2]).slice(0, 4).join('<-');
         fs.writeSync(2, `SNAPSHOTKEY ${frame}\n`);
         return orig.apply(this, args);
