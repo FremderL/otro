@@ -1,0 +1,27 @@
+name: Diagnóstico temporal (borrar)
+on: push
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm ci
+      - name: Integración con detalle
+        run: |
+          set +e
+          npx node --test --test-reporter=tap tests/*.test.js 2>&1 | tee /tmp/out.txt >/dev/null
+          node -e "
+          const fs=require('fs');
+          const lines=fs.readFileSync('/tmp/out.txt','utf8').split('\n');
+          const esc=s=>s.replace(/%/g,'%25').replace(/\r/g,'%0D').replace(/\n/g,'%0A');
+          for(let i=0;i<lines.length;i++){
+            if(/^not ok /.test(lines[i])){
+              const ctx=lines.slice(i,Math.min(i+28,lines.length)).join('\n');
+              console.log('::error title=DIAG::'+esc(ctx.slice(0,1200)));
+            }
+          }
+          const fail=lines.filter(l=>/^# fail /.test(l)).pop()||'# fail ?';
+          console.log('::error title=RESUMEN::'+esc(fail));
+          "
