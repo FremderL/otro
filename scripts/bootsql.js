@@ -36,3 +36,28 @@ Module._load = function (request, parent, isMain) {
   }
   return exp;
 };
+
+// TEMPORAL: contar los volcados completos (cada uno reescribe toda la liga).
+const pgStorePath = require.resolve('../lib/football-store-pg');
+let snapshots = 0;
+const origLoad = Module._load;
+Module._load = function (request, parent, isMain) {
+  const exp = origLoad.apply(this, arguments);
+  try {
+    if (exp && exp.prototype && typeof exp.prototype._writeSnapshot === 'function' && !exp.__snapPatched
+        && parent && /football-store-pg|football\//.test(String(parent.filename || ''))) {
+      exp.__snapPatched = true;
+      const orig = exp.prototype._writeSnapshot;
+      exp.prototype._writeSnapshot = function (...args) {
+        snapshots += 1;
+        if (snapshots <= 3) {
+          const stack = String(new Error().stack).split('\n').slice(1, 8).map(l => l.trim().replace(/\(.*otro\//, '(')).join(' <- ');
+          fs.writeSync(2, `SNAPSHOT#${snapshots} ${stack}\n`);
+        }
+        if (snapshots % 50 === 0) fs.writeSync(2, `SNAPSHOTCOUNT ${snapshots}\n`);
+        return orig.apply(this, args);
+      };
+    }
+  } catch (_) { /* instrumentación best-effort */ }
+  return exp;
+};
