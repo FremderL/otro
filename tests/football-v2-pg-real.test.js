@@ -700,3 +700,42 @@ test('PostgreSQL: mercados nuevos V2 conservan boleto y resultado al reiniciar',
     betting.reconcileEscrow();
     for (const bet of bets) assert.equal(profiles.getProfile(bet.profileId).chips, 900 + bet.payout);
   });
+
+test('PostgreSQL real: el bote de la Quiniela sobrevive a la rotación de temporada', { skip: !URL, timeout: 30000 }, async t => {
+  // Regresión: el bote vivía en el `data` JSONB de cada liga, así que al crear
+  // la temporada siguiente arrancaba en 0 y el sobrante acumulado se perdía.
+  const schema = `v2_quiniela_${randomUUID().replace(/-/g, '')}`;
+  const admin = new Pool({ connectionString: URL });
+  await admin.query(`CREATE SCHEMA ${schema}`);
+  class ScopedPool extends Pool { constructor(options) { super({ ...options, options: `-c search_path=${schema}` }); } }
+  let store, reloaded;
+  t.after(async () => {
+    if (reloaded) { await reloaded.close(); await reloaded.pool.end(); }
+    if (store) { await store.close(); await store.pool.end(); }
+    await admin.query(`DROP SCHEMA ${schema} CASCADE`);
+    await admin.end();
+  });
+  const open = async () => {
+    const pool = new ScopedPool({ connectionString: URL });
+    const next = new PgFootballStore(URL, { pool });
+    await next.ready;
+    return next;
+  };
+  store = await open();
+  store.generateSeason('2026-11');
+  store.quinielaCarry = 175;
+  assert.equal(await store.saveStrict(), true);
+  // Rotación de mes: la temporada nueva no puede arrastrar ni borrar el bote.
+  store.generateSeason('2026-12');
+  store.closeSeason('2026-11');
+  assert.equal(await store.saveStrict(), true);
+  assert.equal(store.quinielaCarry, 175);
+
+  reloaded = await open();
+  assert.equal(reloaded.quinielaCarry, 175, 'el bote vuelve del singleton football_quiniela_bank');
+  // Las dos temporadas siguen ahí (la de diciembre la reabre ensureSeason con el
+  // reloj real, por eso no se fija cuál es la vigente: lo que importa es el bote).
+  assert.deepEqual(reloaded.getSeasonMonths().sort(), ['2026-11', '2026-12']);
+  const bank = await reloaded.pool.query('SELECT carry FROM football_quiniela_bank WHERE id = 1');
+  assert.equal(Number(bank.rows[0].carry), 175);
+});

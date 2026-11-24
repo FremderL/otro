@@ -281,3 +281,30 @@ test('rescheduleMatch rechaza horas en el pasado, formato inválido y partidos y
   assert.strictEqual(missingRes.reason, 'no_match');
   store.close();
 });
+
+test('el bote de la Quiniela se persiste con la liga y sobrevive a la rotación de temporada', () => {
+  // Antes vivía dentro de `league.quiniela`, así que cada mes nuevo lo dejaba en
+  // cero y el sobrante de una jornada sin acertantes desaparecía.
+  const filePath = path.join(tmpDir, 'quiniela-carry.json');
+  const store = new FootballStore(filePath);
+  store.generateSeason('2026-11');
+  store.quinielaCarry = 175;
+  assert.equal(store.saveStrict(), true);
+  store.close();
+
+  const first = new FootballStore(filePath);
+  assert.equal(first.quinielaCarry, 175, 'el bote vuelve del disco');
+  first.generateSeason('2026-12');
+  first.closeSeason('2026-11');
+  assert.equal(first.quinielaCarry, 175, 'rotar de mes no lo borra');
+  first.close();
+
+  const second = new FootballStore(filePath);
+  assert.equal(second.quinielaCarry, 175);
+  second.quinielaCarry = -5;             // dato corrupto: se sanea a 0, nunca resta
+  second.saveStrict();
+  second.close();
+  const third = new FootballStore(filePath);
+  assert.equal(third.quinielaCarry, 0);
+  third.close();
+});

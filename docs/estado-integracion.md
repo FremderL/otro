@@ -10,7 +10,7 @@ virtuales. `FOOTBALL_ENABLED` sigue apagado en producción (`render.yaml`).
 | Escudos | 16 SVG propios conectados al Estadio, Balón de Oro, traspasos, Mi afición, Mi Once e historial; pruebas de asociaciones y vistas | Estadio sigue apagado en producción por decisión del usuario. Ver `docs/escudos.md`. |
 | Rueda de la Fortuna | **Jugable**: diario transaccional en disco con cobros/pagos idempotentes, reembolso al salir o cerrar la mesa y recuperación tras reinicio (devuelve lo no resuelto y paga lo confirmado); tarjeta del lobby habilitada, también en producción | Un solo proceso escritor (el archivo de estado no coordina réplicas); retención de 24 h; el cierre mensual no devuelve fichas borradas por el reinicio. Ver `docs/rueda-fortuna.md`. |
 | Lotería | **Jugable**: sala común en `/loteria` con inscripción autenticada, cobro/reembolso, canto automático, pagos idempotentes y recuperación tras reinicio; pruebas de reglas, servicio, interfaz y servidor real | Una sola instancia (el archivo de estado no coordina réplicas); el adaptador PostgreSQL experimental no está conectado; el cierre mensual puede coincidir con una ronda en curso. Ver `docs/loteria.md`. |
-| Quiniela | Reglas, pantalla de jornada y diario transaccional de boletos, reparto y reembolsos probado en PostgreSQL aislado | Falta conectar ese diario a la cartera compartida, resultados persistidos, interfaz de inscripción y recuperación integral; permanece deshabilitada. |
+| Quiniela | **Jugable**: diario en la liga (viaja con ella en archivo y PostgreSQL), entrada de 50 fichas desde la cartera real con `operationId` idempotente, reparto del bote, reembolso por jornada aplazada, recuperación tras caída y panel en Estadio → Quiniela sobre sockets | Un solo proceso escritor (el diario vive en la liga, sin coordinación entre réplicas). El adaptador `lib/football/quiniela-pg.js` con tabla propia sigue sin conectar y duplica el trabajo del diario: hay que elegir uno. Falta medir el reparto con muchos boletos. Ver `docs/quiniela.md`. |
 | Traspasos | Conectado al Estadio: anuncio del día 15 y cambios para el siguiente ciclo | Pruebas JSON, Socket.IO, interfaz y persistencia PostgreSQL real aislada; Estadio apagado en producción. |
 | Destacados y horarios | Resúmenes al finalizar desde la cronología oficial; calendario escalonado y día doble a +30 min | Sin resúmenes inventados para partidos antiguos; la nueva parrilla se usa al generar nuevas temporadas. |
 | Moderación y seguridad | Migración aditiva y prueba PostgreSQL de reportes, evidencia, acciones y revocación; protección de cuentas verificadas en sockets de Estadio | La administración requiere configuración segura y migración para habilitarse; las rutas legadas y la concurrencia del saldo requieren revisión. |
@@ -42,5 +42,7 @@ autorización adicional.
 La decisión acordada para recuperación —reembolsar cuando no se haya confirmado
 el resultado y pagar el resultado ya confirmado— está implementada para la Rueda
 y cubierta por pruebas de caída (`SIGKILL`) y reinicio; el cierre mensual no
-devuelve fichas que el reinicio ya borró. Lotería y Rueda son las dos únicas
-funciones de esta tabla con recuperación probada; Quiniela sigue pendiente.
+devuelve fichas que el reinicio ya borró. Lotería, Rueda y Quiniela tienen
+recuperación probada: la quiniela reaplica con `operationId` el débito o el
+premio que un crash dejó a medias, y su barrido liquida jornadas pendientes
+incluso cuando el mes ya rotó.

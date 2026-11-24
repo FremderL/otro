@@ -587,8 +587,12 @@
     S.socket.on('football:commentary', onCommentary);
     S.socket.on('football:odds', onOdds);
     S.socket.on('football:settlement', onSettlement);
-    // La quiniela se liquidó o entró un boleto: refresca el panel si está abierto.
-    S.socket.on('football:quiniela_updated', function () {
+    // La quiniela se liquidó o entró un boleto. El aviso trae solo la señal
+    // (temporada, jornada, cierre y bote); el estado completo se pide únicamente
+    // si el panel está abierto y algo cambió de verdad, para no gastar una
+    // petición —ni el payload entero— en cada boleto del evento.
+    S.socket.on('football:quiniela_updated', function (signal) {
+      if (!signalChanged(signal)) return;
       var panel = document.querySelector('[data-hub-panel="quiniela"]');
       if (panel && !panel.hidden) refreshQuiniela();
     });
@@ -3824,6 +3828,17 @@
         renderCasaCareers(res && res.ok ? res : null);
       });
     }
+  }
+
+  // Última señal de quiniela recibida: evita refrescar el panel cuando el aviso
+  // repite lo que ya se ve (el servidor difunde una señal por cada boleto).
+  var lastQuinielaSignal = null;
+  function signalChanged(signal) {
+    if (!signal || typeof signal !== 'object') return false;
+    var key = [signal.season, signal.jornada, signal.closesAt, signal.carry].join('|');
+    if (key === lastQuinielaSignal) return false;
+    lastQuinielaSignal = key;
+    return true;
   }
 
   function refreshQuiniela() {

@@ -57,6 +57,15 @@ function makeMockPool(seed = {}) {
   return pool;
 }
 
+// El pool simulado responde por tabla; `withBankRows` añade la fila del banco de
+// la Quiniela sin tocar el resto del arnés.
+function withBankRows(pool, carry) {
+  const query = pool.query.bind(pool);
+  pool.query = async (sql, params) => (/football_quiniela_bank/i.test(String(sql))
+    ? { rows: carry == null ? [] : [{ carry }] } : query(sql, params));
+  return pool;
+}
+
 // Genera datos reales con el store de archivo y los convierte en filas de PG, para
 // probar la rehidratación con formas idénticas a las de producción.
 function makeSeedRows() {
@@ -410,4 +419,32 @@ test('noticiero diario: roundtrip JSONB en transacción con fence y rehidrataci�
   const reloaded = new PgFootballStore('postgres://mock-host/mockdb', { pool: makeMockPool({ dailyNews: JSON.parse(insert.params[0]) }) });
   t.after(() => reloaded.close()); await reloaded.ready;
   assert.deepEqual(reloaded.dailyNews.editions[edition.day], edition);
+});
+
+test('el bote de la Quiniela se guarda fuera de football_leagues y sobrevive a la rotación', async (t) => {
+  // Regresión: el acumulado vivía dentro de `data` de cada temporada, así que
+  // rotar el mes lo borraba y el sobrante de una jornada sin acertantes se
+  // perdía en silencio. Ahora es un singleton propio.
+  const pool = makeMockPool();
+  const store = new PgFootballStore('postgres://mock-host/mockdb', { pool });
+  t.after(() => store.close());
+  await store.ready;
+  assert.ok(pool.issued(/CREATE TABLE IF NOT EXISTS football_quiniela_bank/i), 'DDL del banco');
+  assert.ok(pool.issued(/SELECT carry FROM football_quiniela_bank/i), 'se carga al arrancar');
+
+  store.quinielaCarry = 250;
+  assert.equal(await store.saveStrict(), true);
+  const bank = pool.insertsTo('football_quiniela_bank');
+  assert.ok(bank.length >= 1, 'el banco se escribe en el volcado');
+  assert.equal(Number(bank[bank.length - 1].params[0]), 250, 'el último volcado guarda el bote vigente');
+  const leagues = pool.insertsTo('football_leagues');
+  assert.ok(!JSON.stringify(leagues[0].params).includes('"bank"'), 'la liga ya no arrastra el bote');
+
+  // Y al rehidratar desde la base, el bote entra aunque la temporada cargada sea otra.
+  const reloaded = new PgFootballStore('postgres://mock-host/mockdb2', {
+    pool: withBankRows(makeMockPool(), 250)
+  });
+  t.after(() => reloaded.close());
+  await reloaded.ready;
+  assert.equal(reloaded.quinielaCarry, 250, 'el bote vuelve del singleton, no de la liga');
 });
