@@ -43,6 +43,7 @@ jobs:
           FOOTBALL_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/montecristo_test?sslmode=disable
           NODE_ENV: test
         run: |
+          cp scripts/tmp-boottrace.js /tmp/boottrace.js
           node -e "
           const { randomUUID } = require('node:crypto');
           const { spawn } = require('node:child_process');
