@@ -43,7 +43,7 @@ const out = line => console.log(`::error::${line}`);
     const liveOnes = matches.filter(m => !m.desempate && m.status !== 'settled'
       && !(m.status === 'scheduled' && now < m.scheduledKickoffAt));
     out(`matches=${matches.length} vivos=${liveOnes.length} muestra=${liveOnes.slice(0, 3).map(m => `${m.id}:${m.status}:sim=${Boolean(m.simulation)}`).join(',')}`);
-    out(`getMarket=${fm.getMarket('2026-11') ? 'ok' : 'NULL'}`);
+    out(`getMarket=${fm.getMarket('2026-11') ? 'ok' : 'NULL'} currentAhora=${store.getCurrentSeasonMonth()}`);
   } catch (error) {
     out(`EXCEPCIÓN ${error && error.message}`);
   } finally {

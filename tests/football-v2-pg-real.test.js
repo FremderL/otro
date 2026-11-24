@@ -272,7 +272,12 @@ test('PostgreSQL: dos servidores con Estadio activo no arrancan como escritores 
         // así que dos procesos escuchaban en el MISMO puerto y el segundo moría
         // por EADDRINUSE en vez de por la concesión de escritor (lo que el test
         // comprueba). Con PORT ausente, cada uno elige un puerto libre.
+        // FOOTBALL_WRITER_WAIT_MS explícito y corto: en producción el arranque
+        // rolling espera hasta 180 s a que la instancia vieja suelte la concesión
+        // (el health check no puede fallar por el lock). Este test comprueba el
+        // fail-closed, así que necesita que el segundo proceso ceda pronto.
         env: { ...withoutPort(process.env), DATABASE_URL: dbUrl, FOOTBALL_ENABLED: 'on', NODE_ENV: 'test',
+          FOOTBALL_WRITER_WAIT_MS: '3000',
           LOG_JSON: 'off', LOTERIA_ENABLED: 'off', FORTUNE_ENABLED: 'off', AUTO_BOTS: 'off',
           SHUTDOWN_GRACE_MS: '100', PROMOTION_MEDIA_DIR: directory,
           PROFILE_STORE_PATH: path.join(directory, 'profiles.json'),
