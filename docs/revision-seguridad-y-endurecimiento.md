@@ -244,6 +244,30 @@ presupuesto válido** («no gastes nada»), no «sin tope»: confundirlos era el
 que hacía que un arranque sin tiempo restante simulase toda la deuda de golpe. Un
 cursor (`catchUpCursor`) evita reempezar por la primera jornada cada vuelta.
 
+### 2.15 Arranque con Postgres: una escritura por vuelta, no una por acta
+
+`runAutoRescheduleSweep` (el barrido de vencidos de más de 30 min) asentaba cada
+partido y **confirmaba con su propio `saveStrict`**. En el store de archivo eso
+es un JSON pequeño; en Postgres cada confirmación reescribe la liga completa
+(`football_leagues` + las 240 filas de `football_matches`). Un despertar con 176
+vencidos gastaba ~90 s de escrituras —y el event loop con él— **antes** de
+`app.listen`: medido en el runner, 86–120 s desde el arranque hasta
+`MonteCristo lista`, por encima del health check y de cualquier espera razonable.
+
+Ahora la vuelta asienta en memoria (`deferSave`) y hace **un solo `saveStrict`**
+al final; si esa confirmación falla, los partidos ya quedaron asentados en
+memoria y la vuelta siguiente lo reintenta (`settleMatch` es idempotente por
+resultado). Además:
+
+- el barrido periódico y el del arranque pasan `budgetMs`
+  (`FOOTBALL_OVERDUE_SETTLE_BUDGET_MS`, 4 s, techo 4000) y lo que no quepa lo
+  retoma la vuelta siguiente; los vencidos van ordenados de más antiguo a más
+  reciente, así que cortar no deja una jornada a medias;
+- las llamadas manuales sin `budgetMs` siguen saldando toda la deuda de una vez.
+
+Resultado medido en el mismo runner: **9,3 s** hasta `MonteCristo lista`
+(antes 86–120 s), 21 consultas en vez de 770 y 1 volcado en vez de 176.
+
 Medido en local con 240 partidos V2 vencidos de una temporada anterior: antes el
 arranque no publicaba hasta ~35 s; ahora devuelve el control en ~1,5–4 s y la
 deuda se salda en ~30 s de tandas de ~2 s, con el proceso atendiendo tráfico
