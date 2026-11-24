@@ -44,11 +44,11 @@ const origLoad = Module._load;
 Module._load = function (request, parent, isMain) {
   const exp = origLoad.apply(this, arguments);
   try {
-    if (exp && exp.prototype && typeof exp.prototype._writeSnapshot === 'function' && !exp.__snapPatched
-        && parent && /football-store-pg|football\//.test(String(parent.filename || ''))) {
-      exp.__snapPatched = true;
-      const orig = exp.prototype._writeSnapshot;
-      exp.prototype._writeSnapshot = function (...args) {
+    const Klass = exp && (exp.PgFootballStore || (typeof exp === 'function' && exp));
+    if (Klass && Klass.prototype && typeof Klass.prototype._writeSnapshot === 'function' && !Klass.__snapPatched) {
+      Klass.__snapPatched = true;
+      const orig = Klass.prototype._writeSnapshot;
+      Klass.prototype._writeSnapshot = function (...args) {
         snapshots += 1;
         if (snapshots <= 3) {
           const stack = String(new Error().stack).split('\n').slice(1, 8).map(l => l.trim().replace(/\(.*otro\//, '(')).join(' <- ');
