@@ -50,11 +50,9 @@ Module._load = function (request, parent, isMain) {
       const orig = Klass.prototype._writeSnapshot;
       Klass.prototype._writeSnapshot = function (...args) {
         snapshots += 1;
-        if (snapshots <= 3) {
-          const stack = String(new Error().stack).split('\n').slice(1, 8).map(l => l.trim().replace(/\(.*otro\//, '(')).join(' <- ');
-          fs.writeSync(2, `SNAPSHOT#${snapshots} ${stack}\n`);
-        }
-        if (snapshots % 50 === 0) fs.writeSync(2, `SNAPSHOTCOUNT ${snapshots}\n`);
+        const frame = String(new Error().stack).split('\n').map(l => /(lib\/[^:)]+):(\d+)/.exec(l)).filter(Boolean)
+          .map(m => m[1].replace('lib/football/', 'f/').replace('lib/', '') + ':' + m[2]).slice(0, 4).join('<-');
+        fs.writeSync(2, `SNAPSHOTKEY ${frame}\n`);
         return orig.apply(this, args);
       };
     }

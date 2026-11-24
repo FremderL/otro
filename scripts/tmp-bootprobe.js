@@ -48,8 +48,10 @@
             const retries = linesAll.filter(l => /reintentando|Reintent/i.test(l));
             console.log('::error::REINTENTOS ' + retries.length + ' ' + retries.slice(0, 1).join(' ').slice(0, 200));
             const stamps = linesAll.map(l => { const m = /"(\d{4}-\d\d-\d\dT[\d:.]+Z)"/.exec(l); return m ? m[1].slice(11, 23) + ' ' + (/"(event|type)":"([^"]+)"/.exec(l) || [])[2] : null; }).filter(Boolean);
-            const snaps = text.split('\n').filter(l => /^SNAPSHOT/.test(l));
-            extra.push('SNAPS ' + snaps.length + ' :: ' + snaps.slice(0, 6).join(' ;; ').slice(0, 1600));
+            const snaps = text.split('\n').filter(l => /^SNAPSHOTKEY/.test(l));
+            const byKey = new Map();
+            for (const line of snaps) { const k = line.replace('SNAPSHOTKEY ', ''); byKey.set(k, (byKey.get(k) || 0) + 1); }
+            extra.push('SNAPS n=' + snaps.length + ' :: ' + [...byKey.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => v + '× ' + k).join(' ;; ').slice(0, 1400));
             extra.push('LINEA ' + stamps.slice(-24).join(' | ').slice(0, 700));
             const sqls = text.split('\n').filter(l => /^SQL#/.test(l));
             const groups = new Map();
