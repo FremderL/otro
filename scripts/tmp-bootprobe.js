@@ -18,7 +18,9 @@
               PROFILE_STORE_PATH: path.join(dir, 'p.json'), FOOTBALL_STORE_PATH: path.join(dir, 'f.json'),
               COMMUNITY_STORE_PATH: path.join(dir, 'c.json'), LOBBY_TOURNAMENT_STORE_PATH: path.join(dir, 't.json') };
             delete env.PORT; env.NODE_OPTIONS = '--require=' + path.join(process.cwd(), 'scripts/bootsql.js');
-            const child = spawn(process.execPath, ['--report-on-signal', '--report-signal=SIGUSR2',
+            const cpuDir = path.join(dir, 'cpu'); fs.mkdirSync(cpuDir);
+            const child = spawn(process.execPath, ['--cpu-prof', '--cpu-prof-dir', cpuDir,
+              '--report-on-signal', '--report-signal=SIGUSR2',
               '--report-directory', reports, 'server.js'], { cwd: process.cwd(), env, stdio: ['ignore', 'pipe', 'pipe'] });
             let text = '';
             child.stdout.on('data', c => { text += c; });
@@ -56,9 +58,8 @@
               g.n += 1; g.ms += Number(m[1]); g.max = Math.max(g.max, Number(m[1]));
               groups.set(key, g);
             }
-            const top = [...groups.entries()].sort((a, b) => b[1].ms - a[1].ms).slice(0, 7);
-            console.log('::error::SQLS total=' + sqls.length);
-            for (const [k, g] of top) console.log('::error::SQLG n=' + g.n + ' ms=' + g.ms + ' max=' + g.max + ' ' + k);
+            const top = [...groups.entries()].sort((a, b) => b[1].ms - a[1].ms).slice(0, 8);
+            console.log('::error::SQLS total=' + sqls.length + ' :: ' + top.map(([k, g]) => `n=${g.n} ms=${g.ms} max=${g.max} ${k}`).join(' ;; ').slice(0, 800));
             const files = fs.readdirSync(reports).filter(f => f.endsWith('.json'));
               if (!files.length) console.log('::error::BOOT sin informe');
               for (const f of files) {
@@ -72,6 +73,21 @@
               }
             }
             child.kill('SIGKILL');
+            await wait(1500);
+            const prof = fs.readdirSync(cpuDir).filter(f => f.endsWith('.cpuprofile'));
+            console.log('::error::CPUPERF archivos=' + prof.length);
+            for (const f of prof) {
+              const data = JSON.parse(fs.readFileSync(path.join(cpuDir, f), 'utf8'));
+              const self = new Map();
+              let totalHits = 0;
+              for (const node of data.nodes) {
+                const hits = node.hitCount || 0; totalHits += hits;
+                const name = (node.callFrame.functionName || '(anónima)') + ' @ ' + (node.callFrame.url || '').split('/').slice(-2).join('/') + ':' + node.callFrame.lineNumber;
+                self.set(name, (self.get(name) || 0) + hits);
+              }
+              const sorted = [...self.entries()].sort((a, b) => b[1] - a[1]).slice(0, 14);
+              console.log('::error::CPUTOP hits=' + totalHits + ' :: ' + sorted.map(([k, v]) => `${Math.round(100 * v / (totalHits || 1))}% ${k}`).join(' ;; ').slice(0, 1100));
+            }
             await admin.query('DROP SCHEMA ' + schema + ' CASCADE');
             await admin.end();
             fs.rmSync(dir, { recursive: true, force: true });
