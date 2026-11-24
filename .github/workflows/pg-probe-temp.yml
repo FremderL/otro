@@ -1,0 +1,40 @@
+name: PG probe (temp)
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: montecristo_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Sonda de conexión y privilegios
+        env:
+          FOOTBALL_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/montecristo_test?sslmode=disable
+          NODE_ENV: test
+          LOG_JSON: 'off'
+        run: |
+          echo "== pg disponible? =="
+          node -e "const{Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.FOOTBALL_TEST_DATABASE_URL});await c.connect();const r=await c.query('select version(),current_user,current_database()');console.log(r.rows[0]);await c.query('create schema probe_x');await c.query('create extension if not exists pgcrypto');console.log('schema+pgcrypto ok');await c.query('drop schema probe_x cascade');await c.end();})().catch(e=>{console.error('SONDA FALLO:',e.message);process.exit(1)})"
+      - name: Test que falla (con detalle)
+        env:
+          FOOTBALL_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/montecristo_test?sslmode=disable
+          NODE_ENV: test
+          LOG_JSON: 'off'
+        run: node --test tests/football-v2-pg-real.test.js 2>&1 | tail -80
