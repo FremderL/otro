@@ -44,8 +44,11 @@
             console.log('::error::LINEA ' + stamps.slice(0, 30).join(' | ').slice(0, 900));
             console.log('::error::LINEB ' + stamps.slice(-30).join(' | ').slice(0, 900));
             const sqls = text.split('\n').filter(l => /^SQL#/.test(l));
-            console.log('::error::SQLS ' + sqls.length);
-            for (const line of sqls.slice(-9)) console.log('::error::SQL|' + line.slice(0, 200));
+            const slow = sqls.filter(l => / (\d+)ms /.test(l));
+            const total = slow.reduce((a, l) => a + Number(/(\d+)ms /.exec(l)[1]), 0);
+            console.log('::error::SQLS total=' + sqls.length + ' lentas=' + slow.length + ' msAcum=' + total);
+            for (const line of slow.sort((a, b) => Number(/(\d+)ms /.exec(b)[1]) - Number(/(\d+)ms /.exec(a)[1])).slice(0, 6)) console.log('::error::SQL|' + line.slice(0, 200));
+            for (const line of sqls.filter(l => /connect/.test(l)).slice(0, 4)) console.log('::error::CONN|' + line.slice(0, 200));
             const files = fs.readdirSync(reports).filter(f => f.endsWith('.json'));
               if (!files.length) console.log('::error::BOOT sin informe');
               for (const f of files) {
