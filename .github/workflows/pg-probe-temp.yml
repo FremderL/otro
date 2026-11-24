@@ -77,8 +77,10 @@ jobs:
             fs.writeFileSync('/tmp/boottrace.out', text);
             console.log('::error::BOOT len=' + text.length + ' exit=' + child.exitCode);
             if (!/MonteCristo lista/.test(text)) {
-              const lines = text.split('\n').map(l => l.replace(/::/g, ':·'));
-              for (const line of lines.filter(l => l.trim()).slice(-40)) console.log('::error::BOOT|' + line);
+              // GitHub limita a 10 anotaciones por paso: nos quedamos con las
+              // últimas líneas que NO son de la traza (los logs reales).
+              const real = text.split('\n').filter(l => l.trim() && !/TRACE /.test(l));
+              for (const line of real.slice(-9)) console.log('::error::BOOT|' + line.slice(0, 300));
               console.log('::error::BOOT salida=' + child.exitCode);
             } else console.log('::error::BOOT escuchó bien');
             child.kill('SIGKILL');
