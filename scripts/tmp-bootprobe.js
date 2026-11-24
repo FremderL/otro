@@ -28,7 +28,7 @@
             child.stderr.on('data', c => { text += c; });
             const wait = ms => new Promise(r => setTimeout(r, ms));
             const t0 = Date.now();
-            for (let i = 0; i < 480 && !/MonteCristo lista/.test(text) && child.exitCode === null; i++) await wait(250);
+            for (let i = 0; i < 240 && !/MonteCristo lista/.test(text) && child.exitCode === null; i++) await wait(250);
             console.log('::error::BOOTMS ' + (Date.now() - t0));
             const listened = /MonteCristo lista/.test(text);
             const resumen = 'escucho=' + listened + ' ms=' + (Date.now() - t0) + ' salida=' + child.exitCode + ' bytes=' + text.length;

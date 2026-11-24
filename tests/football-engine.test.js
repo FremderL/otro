@@ -543,6 +543,53 @@ test('ventana de 30 minutos: hasta 30 min reprograma; pasado 30 min liquida dire
   store.close();
 });
 
+test('el barrido de vencidos confirma en un solo volcado y se detiene al agotar su presupuesto', async () => {
+  // Regresión del arranque con Postgres: cada acta confirmaba con un volcado
+  // completo de la liga (en PG, las 240 filas de football_matches), así que un
+  // despertar con decenas de vencidos tardaba minutos en llegar a escuchar y el
+  // health check del despliegue lo daba por caído.
+  const { store, filePath } = freshStore();
+  const matches = store.getMatches();
+  const overdue = matches.slice(0, 8);
+  for (const match of matches) {
+    match.scheduledKickoffAt = T0 + 100 * 86400000;
+    match.day = 25;
+  }
+  for (const match of overdue) { match.scheduledKickoffAt = T0 - 3600000; match.day = 10; }
+
+  const saves = [];
+  const saveStrict = store.saveStrict.bind(store);
+  store.saveStrict = async () => { saves.push(Date.now()); return saveStrict(); };
+  const logs = [];
+  const engine = new FootballEngine(store);
+  const scheduler = new FootballScheduler(engine, { logEvent: (event, data) => logs.push({ event, data }) });
+
+  await scheduler.runAutoRescheduleSweep(T0);
+
+  assert.equal(overdue.filter(match => match.status === 'settled').length, overdue.length, 'asienta todos los vencidos');
+  assert.equal(saves.length, 1, 'un solo volcado para toda la vuelta, no uno por acta');
+  const restored = new FootballStore(filePath);
+  try {
+    for (const match of overdue) assert.equal(restored.getMatch(match.id).status, 'settled', 'el acta única quedó persistida');
+  } finally { restored.close(); }
+
+  // Con presupuesto 0 la vuelta no asienta nada: lo deja para la siguiente.
+  const { store: limited } = freshStore();
+  const limitedMatches = limited.getMatches();
+  for (const match of limitedMatches) { match.scheduledKickoffAt = T0 + 100 * 86400000; match.day = 25; }
+  limitedMatches[0].scheduledKickoffAt = T0 - 3600000;
+  limitedMatches[0].day = 10;
+  const limitedLogs = [];
+  const limitedScheduler = new FootballScheduler(new FootballEngine(limited), {
+    overdueSettleBudgetMs: 0, logEvent: (event, data) => limitedLogs.push({ event, data })
+  });
+  await limitedScheduler.runAutoRescheduleSweep(T0);
+  assert.equal(limitedMatches[0].status, 'scheduled', 'sin presupuesto no gasta CPU antes de escuchar');
+  assert.ok(limitedLogs.some(item => item.event === 'football_overdue_settle_budget'));
+  limited.close();
+  store.close();
+});
+
 test('un partido ya reprogramado o con persistencia caída > 30 min no vuelve a reprogramarse: se liquida', async () => {
   const { store } = freshStore();
   const matches = store.getMatches();
