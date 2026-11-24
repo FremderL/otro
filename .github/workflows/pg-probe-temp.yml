@@ -24,29 +24,21 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Sonda de conexión y privilegios
+      - name: Test 22 aislado
         env:
           FOOTBALL_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/montecristo_test?sslmode=disable
           NODE_ENV: test
           LOG_JSON: 'off'
         run: |
-          echo "== pg disponible? =="
-          node -e "const{Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.FOOTBALL_TEST_DATABASE_URL});await c.connect();const r=await c.query('select version(),current_user,current_database()');console.log(r.rows[0]);await c.query('create schema probe_x');await c.query('create extension if not exists pgcrypto');console.log('schema+pgcrypto ok');await c.query('drop schema probe_x cascade');await c.end();})().catch(e=>{console.error('SONDA FALLO:',e.message);process.exit(1)})"
-      - name: Script completo test:postgres
+          node --test --test-name-pattern="V2 oficial progresiva conserva" tests/football-v2-pg-real.test.js > /tmp/t22.log 2>&1
+          echo "exit22=$?"
+          grep -nE "not ok|error|Error|expected|actual|at .*football-v2-pg-real|markets" /tmp/t22.log | head -12 | while IFS= read -r l; do echo "::error::T22 $l"; done
+      - name: Test 19 aislado
         env:
           FOOTBALL_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/montecristo_test?sslmode=disable
           NODE_ENV: test
           LOG_JSON: 'off'
         run: |
-          set +e
-          npm run test:postgres > /tmp/tp.log 2>&1
-          code=$?
-          echo "exit=$code"
-          grep -E "^# (pass|fail|skipped)|^not ok|error:|Error:|code:" /tmp/tp.log | head -40
-          # El sandbox del agente no puede descargar logs/artefactos: el
-          # diagnóstico viaja como anotaciones del check-run, que sí son
-          # legibles por la API.
-          grep -E "^not ok|^# (pass|fail|skipped)|error: |AssertionError|ECONNREFUSED|at .*tests/" /tmp/tp.log | head -40 | while IFS= read -r line; do
-            echo "::error::[$code] $line"
-          done
-          exit 0
+          node --test --test-name-pattern="dos servidores con Estadio activo" tests/football-v2-pg-real.test.js > /tmp/t19.log 2>&1
+          echo "exit19=$?"
+          grep -nE "not ok|Tiempo agotado|El servidor terminó|otra instancia|writer|Estadio" /tmp/t19.log | head -12 | while IFS= read -r l; do echo "::error::T19 $l"; done
