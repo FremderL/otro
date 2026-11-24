@@ -69,6 +69,7 @@ jobs:
             const deadline = Date.now() + 25000;
             let last = 0;
             const watcher = setInterval(() => { fs.writeFileSync('/tmp/boottrace.out', text); }, 250);
+            watcher.unref();
             process.on('exit', () => clearInterval(watcher));
             while (Date.now() < deadline && !/MonteCristo lista/.test(text) && child.exitCode === null) {
               await new Promise(r => setTimeout(r, 200));
@@ -82,5 +83,6 @@ jobs:
             await admin.query('DROP SCHEMA ' + schema + ' CASCADE');
             await admin.end();
             fs.rmSync(dir, { recursive: true, force: true });
-          })().catch(e => console.log('::error::BOOT FALLO ' + e.message));
+            process.exit(0);
+          })().catch(e => { console.log('::error::BOOT FALLO ' + e.message); process.exit(0); });
           "
