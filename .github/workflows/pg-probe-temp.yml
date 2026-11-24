@@ -46,7 +46,7 @@ jobs:
           # El sandbox del agente no puede descargar logs/artefactos: el
           # diagnóstico viaja como anotaciones del check-run, que sí son
           # legibles por la API.
-          grep -E "^not ok|error: '|error: |Error: |AssertionError|ECONNREFUSED|code: '" /tmp/tp.log | head -10 | while IFS= read -r line; do
-            echo "::error::$line"
+          grep -E "^not ok|^# (pass|fail|skipped)|error: |AssertionError|ECONNREFUSED|at .*tests/" /tmp/tp.log | head -40 | while IFS= read -r line; do
+            echo "::error::[$code] $line"
           done
           exit 0
