@@ -22,6 +22,7 @@
             const child = spawn(process.execPath, ['--cpu-prof', '--cpu-prof-dir', cpuDir,
               '--report-on-signal', '--report-signal=SIGUSR2',
               '--report-directory', reports, 'server.js'], { cwd: process.cwd(), env, stdio: ['ignore', 'pipe', 'pipe'] });
+            const extra = [];
             let text = '';
             child.stdout.on('data', c => { text += c; });
             child.stderr.on('data', c => { text += c; });
@@ -30,13 +31,14 @@
             for (let i = 0; i < 480 && !/MonteCristo lista/.test(text) && child.exitCode === null; i++) await wait(250);
             console.log('::error::BOOTMS ' + (Date.now() - t0));
             const listened = /MonteCristo lista/.test(text);
+            const resumen = 'escucho=' + listened + ' ms=' + (Date.now() - t0) + ' salida=' + child.exitCode + ' bytes=' + text.length;
             const bench = Date.now();
             for (let i = 0; i < 100; i++) await admin.query('SELECT 1');
             console.log('::error::BASE100 ' + (Date.now() - bench));
             try {
               const snap = await admin.query("select pid, state, wait_event_type, wait_event, left(coalesce(query,''), 200) as q from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid() order by query_start");
-            for (const r of snap.rows) console.log('::error::PG|' + JSON.stringify(r).slice(0, 400));
-              console.log('::error::PGSESIONES ' + snap.rowCount);
+            for (const r of snap.rows) extra.push('PG|' + JSON.stringify(r).slice(0, 200));
+              extra.push('SESIONES ' + snap.rowCount);
             } catch (e) { console.log('::error::PGSNAP ' + e.message); }
             console.log('::error::BOOT escucho=' + listened + ' salida=' + child.exitCode + ' bytes=' + text.length);
             if (true) {
@@ -46,8 +48,7 @@
             const retries = linesAll.filter(l => /reintentando|Reintent/i.test(l));
             console.log('::error::REINTENTOS ' + retries.length + ' ' + retries.slice(0, 1).join(' ').slice(0, 200));
             const stamps = linesAll.map(l => { const m = /"(\d{4}-\d\d-\d\dT[\d:.]+Z)"/.exec(l); return m ? m[1].slice(11, 23) + ' ' + (/"(event|type)":"([^"]+)"/.exec(l) || [])[2] : null; }).filter(Boolean);
-            console.log('::error::LINEA ' + stamps.slice(0, 30).join(' | ').slice(0, 900));
-            console.log('::error::LINEB ' + stamps.slice(-30).join(' | ').slice(0, 900));
+            extra.push('LINEA ' + stamps.slice(-24).join(' | ').slice(0, 700));
             const sqls = text.split('\n').filter(l => /^SQL#/.test(l));
             const groups = new Map();
             for (const line of sqls) {
@@ -59,7 +60,7 @@
               groups.set(key, g);
             }
             const top = [...groups.entries()].sort((a, b) => b[1].ms - a[1].ms).slice(0, 8);
-            console.log('::error::SQLS total=' + sqls.length + ' :: ' + top.map(([k, g]) => `n=${g.n} ms=${g.ms} max=${g.max} ${k}`).join(' ;; ').slice(0, 800));
+            extra.push('SQLS total=' + sqls.length + ' :: ' + top.map(([k, g]) => `n=${g.n} ms=${g.ms} max=${g.max} ${k}`).join(' ;; ').slice(0, 800));
             const files = fs.readdirSync(reports).filter(f => f.endsWith('.json'));
               if (!files.length) console.log('::error::BOOT sin informe');
               for (const f of files) {
@@ -86,11 +87,12 @@
                 self.set(name, (self.get(name) || 0) + hits);
               }
               const sorted = [...self.entries()].sort((a, b) => b[1] - a[1]).slice(0, 14);
-              console.log('::error::CPUTOP hits=' + totalHits + ' :: ' + sorted.map(([k, v]) => `${Math.round(100 * v / (totalHits || 1))}% ${k}`).join(' ;; ').slice(0, 1100));
+              extra.push('CPUTOP hits=' + totalHits + ' :: ' + sorted.map(([k, v]) => `${Math.round(100 * v / (totalHits || 1))}% ${k}`).join(' ;; ').slice(0, 1100));
             }
             await admin.query('DROP SCHEMA ' + schema + ' CASCADE');
             await admin.end();
             fs.rmSync(dir, { recursive: true, force: true });
+            console.log('::error::RESUMEN ' + [resumen, ...extra].join(' ;; ').slice(0, 6000));
             process.exit(0);
           })().catch(e => { console.log('::error::BOOT FALLO ' + e.message); process.exit(0); });
           
