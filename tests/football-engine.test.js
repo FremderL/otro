@@ -543,6 +543,53 @@ test('ventana de 30 minutos: hasta 30 min reprograma; pasado 30 min liquida dire
   store.close();
 });
 
+test('el barrido de vencidos confirma en un solo volcado y se detiene al agotar su presupuesto', async () => {
+  // Regresión del arranque con Postgres: cada acta confirmaba con un volcado
+  // completo de la liga (en PG, las 240 filas de football_matches), así que un
+  // despertar con decenas de vencidos tardaba minutos en llegar a escuchar y el
+  // health check del despliegue lo daba por caído.
+  const { store, filePath } = freshStore();
+  const matches = store.getMatches();
+  const overdue = matches.slice(0, 8);
+  for (const match of matches) {
+    match.scheduledKickoffAt = T0 + 100 * 86400000;
+    match.day = 25;
+  }
+  for (const match of overdue) { match.scheduledKickoffAt = T0 - 3600000; match.day = 10; }
+
+  const saves = [];
+  const saveStrict = store.saveStrict.bind(store);
+  store.saveStrict = async () => { saves.push(Date.now()); return saveStrict(); };
+  const logs = [];
+  const engine = new FootballEngine(store);
+  const scheduler = new FootballScheduler(engine, { logEvent: (event, data) => logs.push({ event, data }) });
+
+  await scheduler.runAutoRescheduleSweep(T0);
+
+  assert.equal(overdue.filter(match => match.status === 'settled').length, overdue.length, 'asienta todos los vencidos');
+  assert.equal(saves.length, 1, 'un solo volcado para toda la vuelta, no uno por acta');
+  const restored = new FootballStore(filePath);
+  try {
+    for (const match of overdue) assert.equal(restored.getMatch(match.id).status, 'settled', 'el acta única quedó persistida');
+  } finally { restored.close(); }
+
+  // Con presupuesto 0 la vuelta no asienta nada: lo deja para la siguiente.
+  const { store: limited } = freshStore();
+  const limitedMatches = limited.getMatches();
+  for (const match of limitedMatches) { match.scheduledKickoffAt = T0 + 100 * 86400000; match.day = 25; }
+  limitedMatches[0].scheduledKickoffAt = T0 - 3600000;
+  limitedMatches[0].day = 10;
+  const limitedLogs = [];
+  const limitedScheduler = new FootballScheduler(new FootballEngine(limited), {
+    logEvent: (event, data) => limitedLogs.push({ event, data })
+  });
+  await limitedScheduler.runAutoRescheduleSweep(T0, { budgetMs: 0 });
+  assert.equal(limitedMatches[0].status, 'scheduled', 'sin presupuesto no gasta CPU antes de escuchar');
+  assert.ok(limitedLogs.some(item => item.event === 'football_overdue_settle_budget'));
+  limited.close();
+  store.close();
+});
+
 test('un partido ya reprogramado o con persistencia caída > 30 min no vuelve a reprogramarse: se liquida', async () => {
   const { store } = freshStore();
   const matches = store.getMatches();
@@ -578,5 +625,58 @@ test('un partido ya reprogramado o con persistencia caída > 30 min no vuelve a 
   assert.equal(rescheduledOnce.status, 'settled', 'no encadena una segunda reprogramación');
   assert.equal(unconfirmedExpired.status, 'settled', 'descarta la reprogramación sin confirmar y liquida');
   assert.equal(unconfirmedExpired.autoReschedulePending, undefined);
+  store.close();
+});
+
+// §15.6 — Arranque con presupuesto: ni se queda simulando media temporada ni
+// declara terminado un catch-up que no hizo. Un `budgetMs: 0` debe devolver el
+// control de inmediato (antes se interpretaba como «sin tope» y simulaba todo).
+test('el presupuesto de recuperación acota la vuelta y el catch-up informa lo que falta', async () => {
+  const { store } = freshStore();
+  const engine = new FootballEngine(store);
+  const matches = store.getMatches();
+  const due = matches.slice(0, 12);
+  for (const match of matches) {
+    match.scheduledKickoffAt = T0 + 100 * 86400000;
+    match.day = 25;
+  }
+  // Doce encuentros vencidos de la misma temporada (se liquidan por jornada).
+  due.forEach((match, index) => {
+    match.scheduledKickoffAt = T0 - 3600000;
+    match.day = 10;
+    match.jornada = 1 + Math.floor(index / 3);
+  });
+  const first = await engine.repairOverdueMatches(T0, { budgetMs: 0 });
+  assert.equal(first.liquidados, 0, 'un presupuesto de 0 no liquida nada');
+  assert.ok(first.remaining > 0);
+  assert.ok(engine.catchUpCursor, 'deja cursor para retomar sin reempezar');
+
+  // Y el barrido sin tope termina el trabajo pendiente.
+  const rest = await engine.repairOverdueMatches(T0, { budgetMs: Infinity });
+  assert.ok(rest.liquidados > 0);
+  assert.equal(engine.overdueMatches(T0).length, 0, 'la deuda queda saldada');
+  store.close();
+});
+
+test('el arranque diferido no simula toda la deuda: deja catchUp y termina por tandas', async () => {
+  const { store } = freshStore();
+  const engine = new FootballEngine(store, { bootBudgetMs: 0 });
+  const matches = store.getMatches();
+  for (const match of matches) {
+    match.scheduledKickoffAt = T0 + 100 * 86400000;
+    match.day = 25;
+  }
+  for (const match of matches.slice(0, 9)) {
+    match.scheduledKickoffAt = T0 - 3600000;
+    match.day = 10;
+  }
+  const summary = await engine.reconcileBoot(T0, { deferHeavyWork: true });
+  assert.equal(summary.deferred, true);
+  assert.ok(summary.pendientes >= 9, 'informa la deuda sin haberla simulado en línea');
+  const health = engine.healthSnapshot(T0);
+  assert.equal(health.catchUp.running, true, '/healthz publica el catch-up en curso');
+  await engine.repairOverdueMatches(T0, { budgetMs: Infinity });
+  assert.equal(engine.overdueMatches(T0).length, 0, 'el barrido por tandas salda la deuda');
+  assert.equal(engine.bootCatchUp.pending, 0);
   store.close();
 });

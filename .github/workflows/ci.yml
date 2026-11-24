@@ -1,0 +1,95 @@
+name: CI
+
+# Antes no había CI: los 139 archivos de tests, ESLint y el chequeo de sintaxis
+# solo se ejecutaban si alguien se acordaba en local (`npm test` tarda varios
+# minutos). Este flujo corre lo mismo en cada push y pull request.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# Un push nuevo cancela la ejecución anterior de la misma rama.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint y sintaxis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+
+  unit:
+    name: Tests unitarios
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # El runner no tiene un reloj con la hora del casino ni stores previos:
+      # cada test crea su propio directorio temporal (os.tmpdir), así que el
+      # job es autocontenido.
+      - run: npm run test:unit
+        env:
+          NODE_ENV: test
+          LOG_JSON: 'off'
+
+  integration:
+    name: Tests de integración (sockets y HTTP)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # Sin DATABASE_URL los stores caen al backend de archivo; los tests que
+      # requieren Postgres real se saltan solos (ver job postgres).
+      - run: npm run test:integration
+        env:
+          NODE_ENV: test
+          LOG_JSON: 'off'
+          DATABASE_URL: ''
+
+  postgres:
+    name: Backend PostgreSQL real
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: montecristo_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run test:postgres
+        env:
+          FOOTBALL_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/montecristo_test?sslmode=disable
+          NODE_ENV: test
+          LOG_JSON: 'off'

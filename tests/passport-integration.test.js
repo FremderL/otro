@@ -364,10 +364,17 @@ test('Rueda se apaga con FORTUNE_ENABLED=off y el lobby lo refleja', { timeout: 
   assert.match(attempt.error, /no está disponible/i);
 });
 
-test('Mi afición equipa y retira el escudo en una mesa real del Casino', { timeout:30000 }, async t => {
+test('Mi afición equipa y retira el escudo en una mesa real del Casino', { timeout:60000 }, async t => {
   const tempDir=fs.mkdtempSync(path.join(os.tmpdir(),'mc-fan-pin-'));
   const port=await reservePort(), output={text:''};
-  const child=spawn(process.execPath,['server.js'],{cwd:path.resolve(__dirname,'..'),env:{...process.env,PORT:String(port),DATABASE_URL:'',PROFILE_STORE_PATH:path.join(tempDir,'profiles.json'),FOOTBALL_STORE_PATH:path.join(tempDir,'football.json'),FOOTBALL_ENABLED:'on',ADMIN_FEATURE_ENABLED:'off',AUTO_BOTS:'off',LOG_JSON:'off'},stdio:['ignore','pipe','pipe']});
+  // Reloj congelado al día 1 del mes: el arranque del Estadio solo simula los
+  // partidos con kickoff vencido, y a mitad de mes esa cola de recuperación son
+  // ~200 simulaciones V2 (~30-45 s de CPU) que no tienen nada que ver con este
+  // test. A día 1 no hay nada vencido y el servidor queda listo en ~1 s.
+  const clock = path.join(tempDir, 'clock.cjs');
+  const firstOfMonth = Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1, 18, 0, 0);
+  fs.writeFileSync(clock, `const R=Date;const f=${firstOfMonth};global.Date=class extends R{constructor(...a){super(...(a.length?a:[f]));}static now(){return f;}};`);
+  const child=spawn(process.execPath,['server.js'],{cwd:path.resolve(__dirname,'..'),env:{...process.env,PORT:String(port),DATABASE_URL:'',NODE_OPTIONS:`--require=${clock}`,PROFILE_STORE_PATH:path.join(tempDir,'profiles.json'),FOOTBALL_STORE_PATH:path.join(tempDir,'football.json'),FOOTBALL_ENABLED:'on',ADMIN_FEATURE_ENABLED:'off',AUTO_BOTS:'off',LOG_JSON:'off'},stdio:['ignore','pipe','pipe']});
   let socket;
   t.after(async()=>{socket?.disconnect();if(child.exitCode===null&&child.signalCode===null) await new Promise(resolve=>{const timer=setTimeout(()=>{child.kill('SIGKILL');resolve();},3000);child.once('exit',()=>{clearTimeout(timer);resolve();});child.kill('SIGTERM');});fs.rmSync(tempDir,{recursive:true,force:true});});
   await waitForServer(child,output); const token='fan-int-'+Date.now(); socket=await connectSocket(port,token);

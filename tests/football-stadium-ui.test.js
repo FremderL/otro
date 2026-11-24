@@ -589,10 +589,21 @@ test('las galerías de anuncios del Estadio y de administración solo apuntan a 
   ].forEach(([document, selector]) => {
     document.querySelectorAll(selector).forEach(button => {
       const preset = button.getAttribute('data-preset');
-      const thumbnail = button.querySelector('img')?.getAttribute('src');
+      // La miniatura puede ser un <img> directo (admin) o un <picture> con
+      // <source type="image/webp"> y respaldo JPEG (Estadio). En el segundo
+      // caso la ruta del preset es la del <source>: el navegador moderno usa
+      // WebP y solo cae al JPEG si no lo soporta.
+      const source = button.querySelector('source[srcset]')?.getAttribute('srcset');
+      const img = button.querySelector('img')?.getAttribute('src');
+      const thumbnail = source || img;
       assert.ok(preset && thumbnail, 'cada preset tiene una ruta y una miniatura');
       assert.equal(thumbnail, preset, 'la miniatura coincide con la imagen que se previsualiza');
       assert.ok(fs.existsSync(path.join(publicDir, preset.replace(/^\//, ''))), `${preset} existe en public/`);
+      // El respaldo del <picture> también debe existir: si falta, los
+      // navegadores sin WebP verían un hueco.
+      if (source && img) {
+        assert.ok(fs.existsSync(path.join(publicDir, img.replace(/^\//, ''))), `${img} existe en public/ (respaldo)`);
+      }
     });
   });
   stadiumDom.window.close();

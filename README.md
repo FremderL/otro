@@ -188,7 +188,7 @@ El apartado **Temporadas** del panel administrativo muestra un calendario de doc
 
 ## Ejecutar
 
-Requiere Node.js 18 o posterior.
+Requiere Node.js 20 o posterior (el runtime de Docker y el `.nvmrc` usan Node 22).
 
 ```bash
 npm install
@@ -200,13 +200,30 @@ Abre `http://localhost:3000`. El servidor escucha en `0.0.0.0` y respeta la vari
 ## Validación
 
 ```bash
+npm ci                    # instala también devDependencies (ESLint, jsdom…)
 npm run check             # ESLint y sintaxis de todos los archivos JavaScript
-npm run test:unit         # configuración, contraseñas y perfiles
-npm run test:integration  # servidor real, invitado, registro y login
+npm run test:unit         # 847 pruebas sin servidor (motores, stores, guardas)
+npm run test:integration  # 300+ pruebas con servidor real y sockets
+npm run test:postgres     # backend PostgreSQL real (requiere DATABASE_URL)
 npm test                  # validación completa
 ```
 
-La suite histórica mencionada por versiones anteriores del README ya no existe en el repositorio. El 1 de octubre de 2026 se reconstruyó una línea base nueva con `node:test`: 9 pruebas unitarias y una prueba de integración que levanta un servidor aislado con perfiles temporales. Su alcance y la diferencia respecto de la suite histórica están documentados en `docs/admin/FASE_0_LINEA_BASE.md`. Esta base se ampliará en cada fase antes de modificar autenticación, autorización y administración.
+`npm ci` es obligatorio antes de `npm run check`: sin devDependencies, ESLint no
+existe y el script falla con `eslint: not found`.
+
+`npm run test:postgres` levanta las pruebas que necesitan un PostgreSQL de verdad
+(crean un esquema temporal y lo borran):
+
+```bash
+DATABASE_URL=postgres://usuario:clave@host:5432/base npm run test:postgres
+```
+
+El flujo de CI (`.github/workflows/ci.yml`) ejecuta lint, tests unitarios, tests de
+integración y el backend PostgreSQL en cada push y pull request. Antes no había
+CI: los 139 archivos de pruebas solo se ejecutaban si alguien se acordaba.
+
+Análisis de la revisión de seguridad y de los cambios aplicados:
+`docs/revision-seguridad-y-endurecimiento.md`.
 
 Variables útiles para pruebas y despliegue:
 
@@ -222,6 +239,10 @@ Variables útiles para pruebas y despliegue:
 - `CASINO_TIME_ZONE`: zona IANA del calendario mensual del ranking y de la rotación visual estacional. Por defecto `America/Mexico_City`; los cambios de temporada ocurren a medianoche local y no a las 00:00 UTC del servidor.
 - `SHUTDOWN_GRACE_MS`: milisegundos que espera el apagado ordenado a que termine el guardado final antes de forzar la salida (Fase 11.3). Por defecto 10000 con Postgres y 2500 con el archivo local; súbelo si tu plan de hosting da poco tiempo de gracia y Neon suele tardar más en responder.
 - `LOG_JSON=off`: desactiva los logs estructurados JSON por línea (activados por defecto).
+- Plantilla completa de variables (con cuáles son secretos y cómo generarlos): `.env.example`.
+- `MAX_PROFILES`: tope de perfiles NUEVOS que el servidor acepta crear (por defecto 50000; `0` lo desactiva). Frena scripts que inventan identidades; los perfiles existentes nunca se bloquean.
+- `ALLOWED_ORIGINS`: orígenes adicionales permitidos para el handshake de Socket.IO, separados por comas. En producción, un origen que no esté en la lista ni sea `APP_ORIGIN` se rechaza (antes se reflejaba cualquiera con credenciales).
+- `PGSSL_REJECT_UNAUTHORIZED=false`: desactiva la verificación TLS de Postgres. Solo para proveedores con CA propia sin bundle; por defecto el certificado se verifica.
 
 ## Persistencia de perfiles (archivo o Postgres)
 

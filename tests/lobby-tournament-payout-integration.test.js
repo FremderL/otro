@@ -130,6 +130,7 @@ async function startTournamentHarness(t, capacity, { pokerDeck, reconnectGraceMs
       ADMIN_FEATURE_ENABLED: 'off', FOOTBALL_ENABLED: 'off', PASSPORT_ENABLED: 'off',
       AUTO_BOTS: 'off', LOG_JSON: 'off', TEST_CLOCK_INITIAL: String(INITIAL_TIME),
       RECONNECT_GRACE_MS: String(reconnectGraceMs),
+      ALLOW_TEST_DECK_HOOKS: 'on', NODE_ENV: 'test',
       ...(pokerDeck ? { TEST_POKER_DECK: JSON.stringify(pokerDeck) } : {})
     },
     execArgv: ['--require', clockPreload],
@@ -195,6 +196,7 @@ async function restartTournamentHarness(harness, { alreadyStopped = false } = {}
       ADMIN_FEATURE_ENABLED: 'off', FOOTBALL_ENABLED: 'off', PASSPORT_ENABLED: 'off',
       AUTO_BOTS: 'off', LOG_JSON: 'off', TEST_CLOCK_INITIAL: String(INITIAL_TIME),
       RECONNECT_GRACE_MS: String(harness.reconnectGraceMs),
+      ALLOW_TEST_DECK_HOOKS: 'on', NODE_ENV: 'test',
       ...(harness.pokerDeck ? { TEST_POKER_DECK: JSON.stringify(harness.pokerDeck) } : { TEST_POKER_DECK: '' })
     },
     execArgv: ['--require', harness.clockPreload],

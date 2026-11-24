@@ -356,7 +356,10 @@ test('pool compartido (A8): close() NO lo cierra; pool propio sí', async () => 
   await storeOwn.ready;
   assert.equal(storeOwn.ownsPool, true, 'dueña del pool que creó');
   assert.ok(created && created.connectionString === 'postgres://mock-host/mockdb?sslmode=require', 'pasó la connectionString');
-  assert.deepEqual(created.ssl, { rejectUnauthorized: false }, 'TLS sin validar cadena (Neon)');
+  // El certificado del servidor SE VERIFICA (antes se aceptaba cualquier CA,
+  // lo que permitía MITM sobre DATABASE_URL). Solo un `sslmode=disable`
+  // explícito o PGSSL_REJECT_UNAUTHORIZED=false lo desactivan.
+  assert.deepEqual(created.ssl, { rejectUnauthorized: true }, 'TLS con validación de cadena');
   await storeOwn.close();
   assert.equal(storeOwn.pool.ended, true, 'close() cierra el pool propio');
 });
